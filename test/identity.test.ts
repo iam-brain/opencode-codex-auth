@@ -29,4 +29,18 @@ describe("identity", () => {
 
     expect(parseJwtClaims(sampleToken)?.email).toBe(payloadEmail)
   })
+
+  it("returns undefined for malformed jwt", () => {
+    expect(parseJwtClaims("not-a-jwt")).toBeUndefined()
+  })
+
+  it("returns undefined for non-object payload", () => {
+    const tokenWithNullPayload = [
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+      Buffer.from("null").toString("base64url"),
+      "sig"
+    ].join(".")
+
+    expect(parseJwtClaims(tokenWithNullPayload)).toBeUndefined()
+  })
 })

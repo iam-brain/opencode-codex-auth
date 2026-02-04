@@ -11,7 +11,14 @@ export function parseJwtClaims(token: string): IdTokenClaims | undefined {
   if (parts.length !== 3) return undefined
 
   try {
-    return JSON.parse(Buffer.from(parts[1], "base64url").toString())
+    const parsed: unknown = JSON.parse(Buffer.from(parts[1], "base64url").toString())
+    if (typeof parsed !== "object" || parsed === null) return undefined
+    if (Array.isArray(parsed)) return undefined
+
+    const proto = Object.getPrototypeOf(parsed)
+    if (proto !== Object.prototype && proto !== null) return undefined
+
+    return parsed as IdTokenClaims
   } catch {
     return undefined
   }
