@@ -5,7 +5,7 @@ import os from "node:os"
 import { parseJwtClaims, type IdTokenClaims } from "./claims"
 import { buildIdentityKey, ensureIdentityKey, normalizeEmail, normalizePlan } from "./identity"
 import { selectAccount } from "./rotation"
-import { loadAuthStorage, saveAuthStorage } from "./storage"
+import { saveAuthStorage } from "./storage"
 import type { AccountRecord, AuthFile, OpenAIMultiOauthAuth } from "./types"
 
 declare const Bun: {
@@ -364,6 +364,7 @@ function upsertAccount(openai: OpenAIMultiOauthAuth, incoming: AccountRecord): A
   })
 
   const match = openai.accounts.find((existing) => {
+    if (existing.enabled === false) return false
     if (computedIdentityKey && existing.identityKey === computedIdentityKey) return true
     if (incoming.identityKey && existing.identityKey === incoming.identityKey) return true
     if (incoming.refresh && existing.refresh === incoming.refresh) return true
