@@ -29,5 +29,7 @@ export type AuthFile = {
         access: string
         expires: number
         accountId?: string
+        email?: string
+        plan?: string
       }
 }

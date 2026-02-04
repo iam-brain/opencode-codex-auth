@@ -11,30 +11,47 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+type LegacyOpenAIOauth = {
+  type: "oauth"
+  refresh: string
+  access: string
+  expires: number
+  accountId?: string
+  email?: string
+  plan?: string
+}
+
+function isMultiOauthAuth(value: unknown): value is OpenAIMultiOauthAuth {
+  if (!isObject(value)) return false
+  if (value.type !== "oauth") return false
+  if (!("accounts" in value)) return false
+  return Array.isArray(value.accounts)
+}
+
+function isLegacyOauthAuth(value: unknown): value is LegacyOpenAIOauth {
+  if (!isObject(value)) return false
+  if (value.type !== "oauth") return false
+  return (
+    typeof value.refresh === "string" &&
+    typeof value.access === "string" &&
+    typeof value.expires === "number"
+  )
+}
+
 function migrateAuthFile(input: AuthFile): AuthFile {
   const auth: AuthFile = input ?? {}
-  const openai = auth.openai as any
+  const openai = auth.openai
   if (!openai || openai.type !== "oauth") return auth
-
-  if (Array.isArray(openai.accounts)) {
-    return auth
-  }
-
-  if (
-    typeof openai.refresh !== "string" ||
-    typeof openai.access !== "string" ||
-    typeof openai.expires !== "number"
-  ) {
-    return auth
-  }
+  if (isMultiOauthAuth(openai)) return auth
+  if (!isLegacyOauthAuth(openai)) return auth
 
   const account: AccountRecord = ensureIdentityKey({
     access: openai.access,
     refresh: openai.refresh,
     expires: openai.expires,
-    accountId: typeof openai.accountId === "string" ? openai.accountId : undefined,
-    email: typeof openai.email === "string" ? openai.email : undefined,
-    plan: typeof openai.plan === "string" ? openai.plan : undefined,
+    accountId: openai.accountId,
+    email: openai.email,
+    plan: openai.plan,
     enabled: true
   })
 
@@ -103,7 +120,8 @@ export async function saveAuthStorage(
   return withFileLock(filePath, async () => {
     const current = await readAuthUnlocked(filePath)
     const result = await update(current)
-    const next = migrateAuthFile((result ?? current) as AuthFile)
+    const nextBase = result === undefined ? current : result
+    const next = migrateAuthFile(nextBase)
     await writeAuthUnlocked(filePath, next)
     return next
   })

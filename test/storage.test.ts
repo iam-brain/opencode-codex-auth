@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest"
 import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { defaultAuthPath } from "../lib/paths"
 import { loadAuthStorage, saveAuthStorage } from "../lib/storage"
 
 function fixturePath(name: string): string {
-  return new URL(`./fixtures/${name}`, import.meta.url).pathname
+  return fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
 }
 
 describe("auth storage", () => {
@@ -37,8 +38,15 @@ describe("auth storage", () => {
     const auth = await loadAuthStorage(filePath)
 
     expect(auth.openai?.type).toBe("oauth")
-    const openai: any = auth.openai
-    expect(Array.isArray(openai?.accounts)).toBe(true)
+    const openai = auth.openai
+    if (!openai || openai.type !== "oauth") {
+      throw new Error("Expected openai oauth auth")
+    }
+    expect("accounts" in openai).toBe(true)
+    if (!("accounts" in openai)) {
+      throw new Error("Expected migrated multi-account auth")
+    }
+    expect(Array.isArray(openai.accounts)).toBe(true)
     expect(openai.accounts).toHaveLength(1)
     const account = openai.accounts[0]
     expect(account.enabled).toBe(true)
@@ -75,8 +83,11 @@ describe("auth storage", () => {
     await writeFile(filePath, singleJson, { mode: 0o600 })
 
     await saveAuthStorage(filePath, (auth) => {
-      const openai = auth.openai as any
-      expect(openai?.accounts?.length).toBe(1)
+      const openai = auth.openai
+      if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
+        throw new Error("Expected migrated multi-account auth")
+      }
+      expect(openai.accounts).toHaveLength(1)
       openai.strategy = "round_robin"
       return auth
     })
