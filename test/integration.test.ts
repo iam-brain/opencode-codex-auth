@@ -13,7 +13,6 @@ describe("integration", () => {
     const selected = selectAccount({
       accounts,
       strategy: "hybrid",
-      activeIdentityKey: "missing",
       now: Date.now()
     })
 
