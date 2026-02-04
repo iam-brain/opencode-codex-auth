@@ -1,5 +1,6 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 
+import http from "node:http"
 import os from "node:os"
 
 import { parseJwtClaims, type IdTokenClaims } from "./claims"
@@ -8,20 +9,16 @@ import { selectAccount } from "./rotation"
 import { saveAuthStorage } from "./storage"
 import type { AccountRecord, AuthFile, OpenAIMultiOauthAuth } from "./types"
 
-declare const Bun: {
-  serve: (options: {
-    port: number
-    fetch: (req: Request) => Response | Promise<Response>
-  }) => { stop: () => void }
-  sleep: (ms: number) => Promise<void>
-} | undefined
-
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const ISSUER = "https://auth.openai.com"
 const CODEX_API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
 const OAUTH_PORT = 1455
 const OAUTH_DUMMY_KEY = "oauth_dummy_key"
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 type PkceCodes = {
   verifier: string
@@ -233,22 +230,24 @@ type PendingOAuth = {
   reject: (error: Error) => void
 }
 
-let oauthServer: { stop: () => void } | undefined
+let oauthServer: http.Server | undefined
 let pendingOAuth: PendingOAuth | undefined
 
 async function startOAuthServer(): Promise<{ redirectUri: string }> {
-  if (!Bun) {
-    throw new Error("Browser OAuth requires Bun runtime; use headless flow instead")
-  }
-
   if (oauthServer) {
     return { redirectUri: `http://localhost:${OAUTH_PORT}/auth/callback` }
   }
 
-  oauthServer = Bun.serve({
-    port: OAUTH_PORT,
-    fetch(req) {
-      const url = new URL(req.url)
+  oauthServer = http.createServer((req, res) => {
+    try {
+      const base = `http://${req.headers.host ?? `localhost:${OAUTH_PORT}`}`
+      const url = new URL(req.url ?? "/", base)
+
+      const sendHtml = (status: number, html: string) => {
+        res.statusCode = status
+        res.setHeader("Content-Type", "text/html")
+        res.end(html)
+      }
 
       if (url.pathname === "/auth/callback") {
         const code = url.searchParams.get("code")
@@ -260,29 +259,24 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
           const errorMsg = errorDescription || error
           pendingOAuth?.reject(new Error(errorMsg))
           pendingOAuth = undefined
-          return new Response(HTML_ERROR(errorMsg), {
-            headers: { "Content-Type": "text/html" }
-          })
+          sendHtml(200, HTML_ERROR(errorMsg))
+          return
         }
 
         if (!code) {
           const errorMsg = "Missing authorization code"
           pendingOAuth?.reject(new Error(errorMsg))
           pendingOAuth = undefined
-          return new Response(HTML_ERROR(errorMsg), {
-            status: 400,
-            headers: { "Content-Type": "text/html" }
-          })
+          sendHtml(400, HTML_ERROR(errorMsg))
+          return
         }
 
         if (!pendingOAuth || state !== pendingOAuth.state) {
           const errorMsg = "Invalid state - potential CSRF attack"
           pendingOAuth?.reject(new Error(errorMsg))
           pendingOAuth = undefined
-          return new Response(HTML_ERROR(errorMsg), {
-            status: 400,
-            headers: { "Content-Type": "text/html" }
-          })
+          sendHtml(400, HTML_ERROR(errorMsg))
+          return
         }
 
         const current = pendingOAuth
@@ -291,26 +285,36 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
           .then((tokens) => current.resolve(tokens))
           .catch((err) => current.reject(err))
 
-        return new Response(HTML_SUCCESS, {
-          headers: { "Content-Type": "text/html" }
-        })
+        sendHtml(200, HTML_SUCCESS)
+        return
       }
 
       if (url.pathname === "/cancel") {
         pendingOAuth?.reject(new Error("Login cancelled"))
         pendingOAuth = undefined
-        return new Response("Login cancelled", { status: 200 })
+        res.statusCode = 200
+        res.end("Login cancelled")
+        return
       }
 
-      return new Response("Not found", { status: 404 })
+      res.statusCode = 404
+      res.end("Not found")
+    } catch (error) {
+      res.statusCode = 500
+      res.end(`Server error: ${(error as Error).message}`)
     }
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    oauthServer?.once("error", reject)
+    oauthServer?.listen(OAUTH_PORT, "127.0.0.1", () => resolve())
   })
 
   return { redirectUri: `http://localhost:${OAUTH_PORT}/auth/callback` }
 }
 
 function stopOAuthServer(): void {
-  oauthServer?.stop()
+  oauthServer?.close()
   oauthServer = undefined
 }
 
@@ -393,40 +397,6 @@ function upsertAccount(openai: OpenAIMultiOauthAuth, incoming: AccountRecord): A
   return target
 }
 
-function removeAuthorizationHeader(init?: RequestInit): void {
-  if (!init?.headers) return
-  if (init.headers instanceof Headers) {
-    init.headers.delete("authorization")
-    init.headers.delete("Authorization")
-    return
-  }
-  if (Array.isArray(init.headers)) {
-    init.headers = init.headers.filter(([key]) => key.toLowerCase() !== "authorization")
-    return
-  }
-  delete init.headers["authorization"]
-  delete init.headers["Authorization"]
-}
-
-function mergeHeaders(init?: RequestInit): Headers {
-  const headers = new Headers()
-  if (!init?.headers) return headers
-
-  if (init.headers instanceof Headers) {
-    init.headers.forEach((value, key) => headers.set(key, value))
-  } else if (Array.isArray(init.headers)) {
-    for (const [key, value] of init.headers) {
-      if (value !== undefined) headers.set(key, String(value))
-    }
-  } else {
-    for (const [key, value] of Object.entries(init.headers)) {
-      if (value !== undefined) headers.set(key, String(value))
-    }
-  }
-
-  return headers
-}
-
 function rewriteUrl(requestInput: string | URL | Request): URL {
   const parsed =
     requestInput instanceof URL
@@ -480,11 +450,12 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
         return {
           apiKey: OAUTH_DUMMY_KEY,
           async fetch(requestInput: string | URL | Request, init?: RequestInit) {
-            removeAuthorizationHeader(init)
-
             const now = Date.now()
             let access: string | undefined
             let accountId: string | undefined
+
+            const baseRequest = new Request(requestInput, init)
+            const outbound = new Request(rewriteUrl(baseRequest), baseRequest)
 
             await saveAuthStorage(undefined, async (authFile) => {
               const openai = authFile.openai
@@ -544,14 +515,12 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
               throw new Error("Failed to acquire OpenAI access token")
             }
 
-            const headers = mergeHeaders(init)
-            headers.set("authorization", `Bearer ${access}`)
-            if (accountId) headers.set("ChatGPT-Account-Id", accountId)
+            outbound.headers.delete("authorization")
+            outbound.headers.delete("Authorization")
+            outbound.headers.set("authorization", `Bearer ${access}`)
+            if (accountId) outbound.headers.set("ChatGPT-Account-Id", accountId)
 
-            return fetch(rewriteUrl(requestInput), {
-              ...init,
-              headers
-            })
+            return fetch(outbound)
           }
         }
       },
@@ -616,10 +585,6 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
               instructions: `Enter code: ${deviceData.user_code}`,
               method: "auto" as const,
               async callback() {
-                if (!Bun) {
-                  throw new Error("Headless OAuth polling requires Bun runtime")
-                }
-
                 while (true) {
                   const response = await fetch(`${ISSUER}/api/accounts/deviceauth/token`, {
                     method: "POST",
@@ -671,7 +636,7 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
                     return { type: "failed" as const }
                   }
 
-                  await Bun.sleep(interval + OAUTH_POLLING_SAFETY_MARGIN_MS)
+                  await sleep(interval + OAUTH_POLLING_SAFETY_MARGIN_MS)
                 }
               }
             }
