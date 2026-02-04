@@ -1,10 +1,7 @@
 import type { Plugin } from "@opencode-ai/plugin"
 
-export const OpenAIMultiAuthPlugin: Plugin = async () => ({
-  auth: {
-    provider: "openai",
-    methods: []
-  }
-})
+import { CodexAuthPlugin } from "./lib/codex-native"
+
+export const OpenAIMultiAuthPlugin: Plugin = CodexAuthPlugin
 
 export default OpenAIMultiAuthPlugin
