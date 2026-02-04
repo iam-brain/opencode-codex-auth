@@ -20,6 +20,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 type PkceCodes = {
   verifier: string
   challenge: string
@@ -218,7 +227,7 @@ const HTML_ERROR = (error: string) => `<!doctype html>
     <div class="container">
       <h1>Authorization Failed</h1>
       <p>An error occurred during authorization.</p>
-      <div class="error">${error}</div>
+      <div class="error">${escapeHtml(error)}</div>
     </div>
   </body>
 </html>`
@@ -305,10 +314,21 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
     }
   })
 
-  await new Promise<void>((resolve, reject) => {
-    oauthServer?.once("error", reject)
-    oauthServer?.listen(OAUTH_PORT, "127.0.0.1", () => resolve())
-  })
+  try {
+    await new Promise<void>((resolve, reject) => {
+      oauthServer?.once("error", reject)
+      oauthServer?.listen(OAUTH_PORT, "localhost", () => resolve())
+    })
+  } catch (error) {
+    const server = oauthServer
+    oauthServer = undefined
+    try {
+      server?.close()
+    } catch {
+      // best-effort cleanup
+    }
+    throw error
+  }
 
   return { redirectUri: `http://localhost:${OAUTH_PORT}/auth/callback` }
 }
@@ -541,15 +561,21 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
                 "Complete authorization in your browser. This window will close automatically.",
               method: "auto" as const,
               callback: async () => {
-                const tokens = await callbackPromise
-                stopOAuthServer()
-                await persistOAuthTokens(tokens)
-                return {
-                  type: "success" as const,
-                  refresh: tokens.refresh_token,
-                  access: tokens.access_token,
-                  expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-                  accountId: extractAccountId(tokens)
+                try {
+                  const tokens = await callbackPromise
+                  await persistOAuthTokens(tokens)
+                  return {
+                    type: "success" as const,
+                    refresh: tokens.refresh_token,
+                    access: tokens.access_token,
+                    expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
+                    accountId: extractAccountId(tokens)
+                  }
+                } catch {
+                  return { type: "failed" as const }
+                } finally {
+                  pendingOAuth = undefined
+                  stopOAuthServer()
                 }
               }
             }
