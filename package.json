@@ -1,0 +1,37 @@
+{
+  "name": "opencode-openai-multi",
+  "version": "0.1.0",
+  "description": "Native Codex auth with multi-account rotation for OpenCode",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "license": "MIT",
+  "author": "iam-brain",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.0.150"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.0.150",
+    "@opencode-ai/sdk": "^1.0.150",
+    "@types/node": "^24.6.2",
+    "@types/proper-lockfile": "^4.1.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "proper-lockfile": "^4.1.2"
+  }
+}
