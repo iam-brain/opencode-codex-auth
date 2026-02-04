@@ -1,0 +1,19 @@
+{
+  "openai": {
+    "type": "oauth",
+    "strategy": "round_robin",
+    "accounts": [
+      {
+        "enabled": true,
+        "refresh": "rt_123",
+        "access": "at_123",
+        "expires": 1700000000,
+        "accountId": "acc_123",
+        "email": "user@example.com",
+        "plan": "plus",
+        "identityKey": "acc_123|user@example.com|plus"
+      }
+    ],
+    "activeIdentityKey": "acc_123|user@example.com|plus"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "openai": {
+    "type": "oauth",
+    "refresh": "rt_123",
+    "access": "at_123",
+    "expires": 1700000000,
+    "accountId": "acc_123",
+    "email": "user@example.com",
+    "plan": "plus"
+  }
+}
