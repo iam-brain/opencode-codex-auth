@@ -405,12 +405,33 @@ export function upsertAccount(
   const requiresInsert =
     !!match &&
     !!match.identityKey &&
-    !!computedIdentityKey &&
-    match.identityKey !== computedIdentityKey
+    (() => {
+      const computedMatchIdentityKey = buildIdentityKey({
+        accountId: incoming.accountId ?? match.accountId,
+        email: normalizedEmail ?? normalizeEmail(match.email),
+        plan: normalizedPlan ?? normalizePlan(match.plan)
+      })
+      if (computedMatchIdentityKey) {
+        return computedMatchIdentityKey !== match.identityKey
+      }
+      return (
+        incoming.accountId !== undefined ||
+        normalizedEmail !== undefined ||
+        normalizedPlan !== undefined
+      )
+    })()
 
   const target = !match || requiresInsert ? ({} as AccountRecord) : match
   if (!match || requiresInsert) {
     openai.accounts.push(target)
+  }
+
+  if (requiresInsert && match) {
+    if (match.accountId) target.accountId = match.accountId
+    const matchEmail = normalizeEmail(match.email)
+    if (matchEmail) target.email = matchEmail
+    const matchPlan = normalizePlan(match.plan)
+    if (matchPlan) target.plan = matchPlan
   }
 
   if (incoming.enabled !== undefined) target.enabled = incoming.enabled
