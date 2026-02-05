@@ -7,6 +7,7 @@ import { parseJwtClaims, type IdTokenClaims } from "./claims"
 import { buildIdentityKey, ensureIdentityKey, normalizeEmail, normalizePlan } from "./identity"
 import { selectAccount } from "./rotation"
 import { saveAuthStorage, setAccountCooldown } from "./storage"
+import type { Logger } from "./logger"
 import type { AccountRecord, AuthFile, OpenAIMultiOauthAuth } from "./types"
 import { FetchOrchestrator } from "./fetch-orchestrator"
 
@@ -438,7 +439,15 @@ function opencodeUserAgent(): string {
   return `opencode-openai-multi ( ${os.platform()} ${os.release()}; ${os.arch()} )`
 }
 
-export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
+export type CodexAuthPluginOptions = {
+  log?: Logger
+}
+
+export async function CodexAuthPlugin(
+  input: PluginInput,
+  opts: CodexAuthPluginOptions = {}
+): Promise<Hooks> {
+  opts.log?.debug("codex-native init")
   return {
     auth: {
       provider: "openai",

@@ -40,10 +40,6 @@ export async function toolOutputForStatus(
   })
 
   lines.push(...dashboardLines)
-  lines.push("")
-  lines.push("---")
-  lines.push(`Auth: ${authPath}`)
-  lines.push(`Snapshots: ${snapshotsPath}`)
 
   return lines.join("\n").trim()
 }

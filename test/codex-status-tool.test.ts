@@ -54,7 +54,6 @@ describe("codex-status tool", () => {
     const output = await toolOutputForStatus(authPath, snapshotsPath)
     expect(output).toContain("test@example.com")
     expect(output).toContain("80% left")
-    expect(output).toContain(snapshotsPath)
   })
 
   it("handles missing snapshots gracefully", async () => {
