@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+
 import { listAccountsForTools } from "../lib/accounts-tools"
 
 describe("accounts-tools listing", () => {
