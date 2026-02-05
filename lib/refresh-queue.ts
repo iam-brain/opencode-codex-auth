@@ -62,7 +62,11 @@ export function createRefreshScheduler(input: {
       for (const task of due) {
         const runner = runners.find(r => r.key === task.key)
         if (!runner) continue
-        await runner.refresh()
+        try {
+          await runner.refresh()
+        } catch {
+          // best-effort background work
+        }
       }
     } finally {
       running = false
