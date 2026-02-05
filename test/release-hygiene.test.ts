@@ -10,3 +10,14 @@ describe("release hygiene", () => {
     expect(pkg.scripts?.verify).toBe("npm run typecheck && npm test && npm run build")
   })
 })
+
+describe("package publish surface", () => {
+  it("limits published files via package.json files list", () => {
+    const pkgPath = join(process.cwd(), "package.json")
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
+    expect(Array.isArray(pkg.files)).toBe(true)
+    expect(pkg.files).toContain("dist/")
+    expect(pkg.files).toContain("README.md")
+    expect(pkg.files).toContain("LICENSE")
+  })
+})
