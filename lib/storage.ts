@@ -4,6 +4,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 import { ensureIdentityKey } from "./identity"
+import { quarantineFile } from "./quarantine"
 import { defaultAuthPath } from "./paths"
 import type { AccountRecord, AuthFile, OpenAIMultiOauthAuth } from "./types"
 
@@ -65,14 +66,32 @@ function migrateAuthFile(input: AuthFile): AuthFile {
   return auth
 }
 
-async function readAuthUnlocked(filePath: string): Promise<AuthFile> {
+async function readAuthUnlocked(
+  filePath: string,
+  opts?: { quarantineDir: string; now: () => number; keep?: number }
+): Promise<AuthFile> {
+  let raw: string
   try {
-    const raw = await fs.readFile(filePath, "utf8")
+    raw = await fs.readFile(filePath, "utf8")
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return {}
+    }
+    throw error
+  }
+
+  try {
     const parsed: unknown = JSON.parse(raw)
     if (!isObject(parsed)) return {}
     return migrateAuthFile(parsed as AuthFile)
   } catch (error: unknown) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+    if (opts?.quarantineDir && opts.now) {
+      await quarantineFile({
+        sourcePath: filePath,
+        quarantineDir: opts.quarantineDir,
+        now: opts.now,
+        keep: opts.keep
+      }).catch(() => {})
       return {}
     }
     throw error
@@ -110,9 +129,10 @@ async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<
 }
 
 export async function loadAuthStorage(
-  filePath: string = defaultAuthPath()
+  filePath: string = defaultAuthPath(),
+  opts?: { quarantineDir: string; now: () => number; keep?: number }
 ): Promise<AuthFile> {
-  return withFileLock(filePath, async () => readAuthUnlocked(filePath))
+  return withFileLock(filePath, async () => readAuthUnlocked(filePath, opts))
 }
 
 export async function saveAuthStorage(
