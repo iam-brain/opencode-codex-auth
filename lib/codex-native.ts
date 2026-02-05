@@ -380,7 +380,10 @@ function ensureOpenAIMultiAuth(auth: AuthFile): OpenAIMultiOauthAuth {
   return next
 }
 
-function upsertAccount(openai: OpenAIMultiOauthAuth, incoming: AccountRecord): AccountRecord {
+export function upsertAccount(
+  openai: OpenAIMultiOauthAuth,
+  incoming: AccountRecord
+): AccountRecord {
   const normalizedEmail = normalizeEmail(incoming.email)
   const normalizedPlan = normalizePlan(incoming.plan)
   const computedIdentityKey = buildIdentityKey({
@@ -399,8 +402,14 @@ function upsertAccount(openai: OpenAIMultiOauthAuth, incoming: AccountRecord): A
     return false
   })
 
-  const target = match ?? ({} as AccountRecord)
-  if (!match) {
+  const requiresInsert =
+    !!match &&
+    !!match.identityKey &&
+    !!computedIdentityKey &&
+    match.identityKey !== computedIdentityKey
+
+  const target = !match || requiresInsert ? ({} as AccountRecord) : match
+  if (!match || requiresInsert) {
     openai.accounts.push(target)
   }
 
