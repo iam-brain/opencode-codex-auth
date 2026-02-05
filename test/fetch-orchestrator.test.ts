@@ -87,6 +87,47 @@ describe("FetchOrchestrator", () => {
     expect(acquireAuth).toHaveBeenCalledTimes(1)
   })
 
+  it("falls back to default attempts when maxAttempts is NaN", async () => {
+    const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
+    const setCooldown = vi.fn(async () => {})
+    const fetchMock = vi.fn(async () => new Response("RL", { status: 429 }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      maxAttempts: Number.NaN
+    })
+
+    const res = await orch.execute("https://api.openai.com/v1/chat/completions")
+    expect(res.status).toBe(429)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(acquireAuth).toHaveBeenCalledTimes(3)
+  })
+
+  it("falls back to default attempts when maxAttempts is infinite", async () => {
+    const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
+    const setCooldown = vi.fn(async () => {})
+    const fetchMock = vi.fn(async () => {
+      if (fetchMock.mock.calls.length > 10) {
+        throw new Error("unexpected unbounded retry")
+      }
+      return new Response("RL", { status: 429 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      maxAttempts: Number.POSITIVE_INFINITY
+    })
+
+    const res = await orch.execute("https://api.openai.com/v1/chat/completions")
+    expect(res.status).toBe(429)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(acquireAuth).toHaveBeenCalledTimes(3)
+  })
+
   it("retries successfully when body is a ReadableStream", async () => {
     const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
     const setCooldown = vi.fn(async () => {})

@@ -17,7 +17,9 @@ export class FetchOrchestrator {
   constructor(private deps: FetchOrchestratorDeps) {}
 
   async execute(input: string | URL | Request, init?: RequestInit): Promise<Response> {
-    const maxAttempts = Math.max(1, Math.floor(this.deps.maxAttempts ?? 3))
+    const requestedAttempts = this.deps.maxAttempts ?? 3
+    const finiteAttempts = Number.isFinite(requestedAttempts) ? requestedAttempts : 3
+    const maxAttempts = Math.max(1, Math.floor(finiteAttempts))
     const nowFn = this.deps.now ?? Date.now
 
     const baseRequest = new Request(input, init)
