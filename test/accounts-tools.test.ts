@@ -37,5 +37,8 @@ describe("switchAccountByIndex", () => {
     const openai = { type: "oauth" as const, accounts: [{ identityKey: "a", enabled: true }] }
     expect(() => switchAccountByIndex(openai, 0)).toThrow()
     expect(() => switchAccountByIndex(openai, 2)).toThrow()
+    expect(() => switchAccountByIndex(openai, 1.1)).toThrow()
+    expect(() => switchAccountByIndex(openai, Number.NaN)).toThrow()
+    expect(() => switchAccountByIndex(openai, Number.POSITIVE_INFINITY)).toThrow()
   })
 })
