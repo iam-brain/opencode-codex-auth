@@ -49,6 +49,37 @@ describe("FetchOrchestrator", () => {
     expect(setCooldown).toHaveBeenCalledWith("id1", 11000) // 1000 + 10 * 1000
   })
 
+  it("applies fallback cooldown when 429 has no retry-after header", async () => {
+    const auths = [
+      { access: "access1", identityKey: "id1", accountId: "acc1" },
+      { access: "access2", identityKey: "id2", accountId: "acc2" }
+    ]
+    let authIdx = 0
+    const acquireAuth = vi.fn(async () => auths[authIdx++])
+    const setCooldown = vi.fn(async () => {})
+
+    let fetchCount = 0
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      fetchCount++
+      if (fetchCount === 1) {
+        return new Response("Too Many Requests", { status: 429 })
+      }
+      return new Response("OK", { status: 200 })
+    }))
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      now: () => 1000,
+      maxAttempts: 2
+    })
+
+    const res = await orch.execute("https://api.openai.com/v1/chat/completions")
+    expect(res.status).toBe(200)
+    expect(fetchCount).toBe(2)
+    expect(setCooldown).toHaveBeenCalledWith("id1", 6000)
+  })
+
   it("stops after maxAttempts", async () => {
     const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
     const setCooldown = vi.fn(async () => {})

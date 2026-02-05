@@ -1,4 +1,4 @@
-import { parseRetryAfterMs } from "./rate-limit"
+import { computeBackoffMs, parseRetryAfterMs } from "./rate-limit"
 
 export type AuthData = {
   access: string
@@ -44,13 +44,17 @@ export class FetchOrchestrator {
 
       // Handle 429
       const retryAfterStr = response.headers.get("retry-after")
-      if (retryAfterStr && auth.identityKey) {
-        const headerMap = { "retry-after": retryAfterStr }
+      if (auth.identityKey) {
+        const headerMap = { "retry-after": retryAfterStr ?? undefined }
         const retryAfterMs = parseRetryAfterMs(headerMap, now)
-        if (retryAfterMs != null) {
-          const cooldownUntil = now + retryAfterMs
-          await this.deps.setCooldown(auth.identityKey, cooldownUntil)
-        }
+        const fallbackMs = computeBackoffMs({
+          attempt,
+          baseMs: 5000,
+          maxMs: 5000,
+          jitterMaxMs: 0
+        })
+        const cooldownUntil = now + (retryAfterMs ?? fallbackMs)
+        await this.deps.setCooldown(auth.identityKey, cooldownUntil)
       }
     }
 
