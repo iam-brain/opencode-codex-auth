@@ -455,11 +455,31 @@ export async function CodexAuthPlugin(
         const auth = await getAuth()
         if (auth.type !== "oauth") return {}
 
+        const codex53 = provider.models["gpt-5.3-codex"]
+        const codex52 = provider.models["gpt-5.2-codex"]
+        if (!codex53 && codex52 && typeof codex52 === "object") {
+          const cloned = { ...(codex52 as Record<string, unknown>) }
+          for (const key of [
+            "id",
+            "slug",
+            "model",
+            "name",
+            "displayName",
+            "display_name"
+          ]) {
+            if (typeof cloned[key] === "string") {
+              cloned[key] = "gpt-5.3-codex"
+            }
+          }
+          provider.models["gpt-5.3-codex"] = cloned as typeof codex52
+        }
+
         const allowedModels = new Set([
           "gpt-5.1-codex-max",
           "gpt-5.1-codex-mini",
           "gpt-5.2",
           "gpt-5.2-codex",
+          "gpt-5.3-codex",
           "gpt-5.1-codex"
         ])
 

@@ -39,3 +39,9 @@ The plugin stores credentials in `~/.config/opencode/auth.json` (best-effort `06
 ```bash
 opencode run "say hi" --model=openai/gpt-5.2
 ```
+
+If your account has server-side access, you can also try:
+
+```bash
+opencode run "say hi" --model=openai/gpt-5.3-codex
+```
