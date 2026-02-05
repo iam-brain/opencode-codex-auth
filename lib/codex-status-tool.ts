@@ -23,8 +23,18 @@ export async function toolOutputForStatus(
   lines.push("## Codex Status")
   lines.push("")
 
+  const displayAccounts = openai.accounts.map((acc) => ({
+    identityKey: acc.identityKey,
+    accountId: acc.accountId,
+    email: acc.email,
+    plan: acc.plan,
+    enabled: acc.enabled,
+    cooldownUntil: acc.cooldownUntil,
+    lastUsed: acc.lastUsed
+  }))
+
   const dashboardLines = renderDashboard({
-    accounts: openai.accounts,
+    accounts: displayAccounts,
     activeIdentityKey: openai.activeIdentityKey,
     snapshots
   })
