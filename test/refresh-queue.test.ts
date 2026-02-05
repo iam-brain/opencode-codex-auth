@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest"
-import { ProactiveRefreshQueue } from "../lib/refresh-queue"
+import { describe, expect, it, vi } from "vitest"
+import { createRefreshScheduler, ProactiveRefreshQueue } from "../lib/refresh-queue"
 
 describe("ProactiveRefreshQueue", () => {
   it("enqueues tasks and pops due ones", () => {
@@ -26,5 +26,26 @@ describe("ProactiveRefreshQueue", () => {
     q.remove("a")
 
     expect(q.due(100)).toEqual([])
+  })
+})
+
+describe("refresh scheduler", () => {
+  it("polls and calls refresh for due tasks", async () => {
+    const q = new ProactiveRefreshQueue({ bufferMs: 10_000 })
+    q.enqueue({ key: "a", expiresAt: 50_000 })
+
+    const calls: string[] = []
+    const scheduler = createRefreshScheduler({
+      intervalMs: 1,
+      queue: q,
+      now: () => 60_000,
+      getTasks: () => [{ key: "a", expiresAt: 50_000, refresh: async () => { calls.push("a") } }]
+    })
+
+    scheduler.start()
+    await new Promise(r => setTimeout(r, 10))
+    scheduler.stop()
+
+    expect(calls.length).toBeGreaterThan(0)
   })
 })

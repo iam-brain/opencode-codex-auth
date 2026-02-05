@@ -28,3 +28,56 @@ export class ProactiveRefreshQueue {
     return due
   }
 }
+
+export type RefreshTaskRunner = {
+  key: string
+  expiresAt: number
+  refresh: () => Promise<void>
+}
+
+export type RefreshScheduler = {
+  start: () => void
+  stop: () => void
+}
+
+export function createRefreshScheduler(input: {
+  intervalMs: number
+  queue: ProactiveRefreshQueue
+  now: () => number
+  getTasks: () => RefreshTaskRunner[]
+}): RefreshScheduler {
+  const intervalMs = Math.max(1, Math.floor(input.intervalMs))
+  let timer: NodeJS.Timeout | undefined
+  let running = false
+
+  async function tick() {
+    if (running) return
+    running = true
+    try {
+      const now = input.now()
+      const due = input.queue.due(now)
+      if (due.length === 0) return
+
+      const runners = input.getTasks()
+      for (const task of due) {
+        const runner = runners.find(r => r.key === task.key)
+        if (!runner) continue
+        await runner.refresh()
+      }
+    } finally {
+      running = false
+    }
+  }
+
+  return {
+    start() {
+      if (timer) return
+      timer = setInterval(() => { tick().catch(() => {}) }, intervalMs)
+    },
+    stop() {
+      if (!timer) return
+      clearInterval(timer)
+      timer = undefined
+    }
+  }
+}
