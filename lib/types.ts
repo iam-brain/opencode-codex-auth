@@ -9,6 +9,7 @@ export type AccountRecord = {
   access?: string
   refresh?: string
   expires?: number
+  refreshLeaseUntil?: number
   cooldownUntil?: number
   lastUsed?: number
 }

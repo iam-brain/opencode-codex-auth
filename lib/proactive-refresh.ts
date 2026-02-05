@@ -1,4 +1,4 @@
-import { loadAuthStorage, updateAccountTokensByIdentityKey } from "./storage"
+import { saveAuthStorage } from "./storage"
 import type { OpenAIMultiOauthAuth } from "./types"
 
 export async function runOneProactiveRefreshTick(input: {
@@ -7,30 +7,75 @@ export async function runOneProactiveRefreshTick(input: {
   bufferMs: number
   refresh: (refreshToken: string) => Promise<{ access: string; refresh: string; expires: number }>
 }): Promise<void> {
-  const auth = await loadAuthStorage(input.authPath)
-  const openai = auth.openai
-  if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
-    return
-  }
+  const leaseMs = 120_000
 
-  const multi = openai as OpenAIMultiOauthAuth
-  const now = input.now()
+  while (true) {
+    let claimed: { identityKey: string; refresh: string } | undefined
 
-  for (const account of multi.accounts) {
-    if (account.enabled === false) continue
-    if (!account.identityKey || !account.refresh || !account.expires) continue
+    await saveAuthStorage(input.authPath, (auth) => {
+      const openai = auth.openai
+      if (!openai || openai.type !== "oauth" || !("accounts" in openai)) return
 
-    if (account.expires <= now + input.bufferMs) {
-      try {
-        const tokens = await input.refresh(account.refresh)
-        await updateAccountTokensByIdentityKey(input.authPath, account.identityKey, {
-          access: tokens.access,
-          refresh: tokens.refresh,
-          expires: tokens.expires
-        })
-      } catch {
-        // best-effort background work
+      const multi = openai as OpenAIMultiOauthAuth
+      const now = input.now()
+      const dueCutoff = now + input.bufferMs
+      const account = multi.accounts.find((candidate) => {
+        if (candidate.enabled === false) return false
+        if (!candidate.identityKey || !candidate.refresh || !candidate.expires) return false
+        if (candidate.expires > dueCutoff) return false
+        if (
+          typeof candidate.refreshLeaseUntil === "number" &&
+          candidate.refreshLeaseUntil > now
+        ) {
+          return false
+        }
+        return true
+      })
+
+      if (!account) return
+
+      account.refreshLeaseUntil = now + leaseMs
+      claimed = {
+        identityKey: account.identityKey,
+        refresh: account.refresh
       }
+    })
+
+    if (!claimed) return
+
+    let tokens: { access: string; refresh: string; expires: number }
+    try {
+      tokens = await input.refresh(claimed.refresh)
+    } catch {
+      // Keep the lease until it expires to avoid immediate re-claim loops.
+      continue
     }
+
+    await saveAuthStorage(input.authPath, (auth) => {
+      const openai = auth.openai
+      if (!openai || openai.type !== "oauth" || !("accounts" in openai)) return
+      const multi = openai as OpenAIMultiOauthAuth
+      const account = multi.accounts.find(
+        (candidate) => candidate.identityKey === claimed.identityKey
+      )
+      if (!account) return
+      if (account.enabled === false) {
+        delete account.refreshLeaseUntil
+        return
+      }
+
+      const now = input.now()
+      if (
+        typeof account.refreshLeaseUntil === "number" &&
+        account.refreshLeaseUntil > now
+      ) {
+        account.access = tokens.access
+        account.refresh = tokens.refresh
+        account.expires = tokens.expires
+        delete account.refreshLeaseUntil
+      } else if (typeof account.refreshLeaseUntil === "number") {
+        delete account.refreshLeaseUntil
+      }
+    })
   }
 }
