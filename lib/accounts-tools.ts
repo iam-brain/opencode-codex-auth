@@ -45,3 +45,23 @@ export function toggleAccountEnabledByIndex(openai: OpenAIMultiOauthAuth, index1
   }
   return { ...openai, accounts: nextAccounts }
 }
+
+export function removeAccountByIndex(openai: OpenAIMultiOauthAuth, index1: number): OpenAIMultiOauthAuth {
+  if (!Number.isInteger(index1)) throw new Error("Invalid account index")
+  const idx = index1 - 1
+  if (idx < 0 || idx >= openai.accounts.length) throw new Error("Invalid account index")
+  const removed = openai.accounts[idx]
+  const accounts = openai.accounts.filter((_, i) => i !== idx)
+  let activeIdentityKey = openai.activeIdentityKey
+
+  if (removed?.identityKey && openai.activeIdentityKey === removed.identityKey) {
+    const fallback = accounts[idx] ?? accounts[accounts.length - 1]
+    activeIdentityKey = fallback?.identityKey
+  }
+
+  return {
+    ...openai,
+    accounts,
+    ...(activeIdentityKey ? { activeIdentityKey } : { activeIdentityKey: undefined })
+  }
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { listAccountsForTools, switchAccountByIndex, toggleAccountEnabledByIndex } from "../lib/accounts-tools"
+import { listAccountsForTools, removeAccountByIndex, switchAccountByIndex, toggleAccountEnabledByIndex } from "../lib/accounts-tools"
 
 describe("accounts-tools listing", () => {
   it("returns a stable list with 1-based display index", () => {
@@ -67,5 +67,34 @@ describe("toggleAccountEnabledByIndex", () => {
       accounts: [{ identityKey: "a", enabled: true }]
     }
     expect(() => toggleAccountEnabledByIndex(openai, 1.5)).toThrow("Invalid account index")
+  })
+})
+
+describe("removeAccountByIndex", () => {
+  it("removes account and updates activeIdentityKey when active was removed", () => {
+    const openai = {
+      type: "oauth" as const,
+      activeIdentityKey: "b",
+      accounts: [
+        { identityKey: "a", enabled: true },
+        { identityKey: "b", enabled: true },
+        { identityKey: "c", enabled: true }
+      ]
+    }
+    const next = removeAccountByIndex(openai, 2)
+    expect(next.accounts.map(a => a.identityKey)).toEqual(["a", "c"])
+    expect(next.activeIdentityKey).toBe("c")
+  })
+
+  it("clears activeIdentityKey if last account removed", () => {
+    const openai = { type: "oauth" as const, activeIdentityKey: "a", accounts: [{ identityKey: "a", enabled: true }] }
+    const next = removeAccountByIndex(openai, 1)
+    expect(next.accounts.length).toBe(0)
+    expect(next.activeIdentityKey).toBeUndefined()
+  })
+
+  it("rejects non-integer indices", () => {
+    const openai = { type: "oauth" as const, accounts: [{ identityKey: "a", enabled: true }] }
+    expect(() => removeAccountByIndex(openai, 1.2)).toThrow("Invalid account index")
   })
 })
