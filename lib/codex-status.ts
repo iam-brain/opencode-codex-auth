@@ -3,15 +3,15 @@ import type { CodexRateLimitSnapshot } from "./types"
 export class CodexStatus {
   private snapshots = new Map<string, CodexRateLimitSnapshot>()
 
-  async updateSnapshot(identityKey: string, snap: CodexRateLimitSnapshot) {
+  updateSnapshot(identityKey: string, snap: CodexRateLimitSnapshot): void {
     this.snapshots.set(identityKey, snap)
   }
 
-  async getSnapshot(identityKey: string) {
+  getSnapshot(identityKey: string): CodexRateLimitSnapshot | undefined {
     return this.snapshots.get(identityKey)
   }
 
-  async getAllSnapshots() {
+  getAllSnapshots(): Record<string, CodexRateLimitSnapshot> {
     return Object.fromEntries(this.snapshots.entries())
   }
 }
