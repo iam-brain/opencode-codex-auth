@@ -6,8 +6,9 @@ import os from "node:os"
 import { parseJwtClaims, type IdTokenClaims } from "./claims"
 import { buildIdentityKey, ensureIdentityKey, normalizeEmail, normalizePlan } from "./identity"
 import { selectAccount } from "./rotation"
-import { saveAuthStorage } from "./storage"
+import { saveAuthStorage, setAccountCooldown } from "./storage"
 import type { AccountRecord, AuthFile, OpenAIMultiOauthAuth } from "./types"
+import { FetchOrchestrator } from "./fetch-orchestrator"
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const ISSUER = "https://auth.openai.com"
@@ -470,77 +471,84 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
         return {
           apiKey: OAUTH_DUMMY_KEY,
           async fetch(requestInput: string | URL | Request, init?: RequestInit) {
-            const now = Date.now()
-            let access: string | undefined
-            let accountId: string | undefined
-
             const baseRequest = new Request(requestInput, init)
             const outbound = new Request(rewriteUrl(baseRequest), baseRequest)
 
-            await saveAuthStorage(undefined, async (authFile) => {
-              const openai = authFile.openai
-              if (!openai || openai.type !== "oauth") {
-                throw new Error("OpenAI OAuth not configured")
+            const orchestrator = new FetchOrchestrator({
+              acquireAuth: async () => {
+                let access: string | undefined
+                let accountId: string | undefined
+                let identityKey: string | undefined
+
+                await saveAuthStorage(undefined, async (authFile) => {
+                  const now = Date.now()
+                  const openai = authFile.openai
+                  if (!openai || openai.type !== "oauth") {
+                    throw new Error("OpenAI OAuth not configured")
+                  }
+
+                  const multi = ensureOpenAIMultiAuth(authFile)
+
+                  const selected = selectAccount({
+                    accounts: multi.accounts,
+                    strategy: multi.strategy,
+                    activeIdentityKey: multi.activeIdentityKey,
+                    now
+                  })
+
+                  if (!selected) {
+                    throw new Error(
+                      "No enabled OpenAI accounts available (check enabled/cooldown settings)"
+                    )
+                  }
+
+                  if (selected.access && selected.expires && selected.expires > now) {
+                    selected.lastUsed = now
+                    access = selected.access
+                    accountId = selected.accountId
+                    identityKey = selected.identityKey
+                    if (selected.identityKey) multi.activeIdentityKey = selected.identityKey
+                    return authFile
+                  }
+
+                  if (!selected.refresh) {
+                    throw new Error("Selected account missing refresh token")
+                  }
+
+                  const tokens = await refreshAccessToken(selected.refresh)
+                  const expires = now + (tokens.expires_in ?? 3600) * 1000
+                  const refreshedAccountId = extractAccountId(tokens) || selected.accountId
+                  const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
+
+                  selected.refresh = tokens.refresh_token
+                  selected.access = tokens.access_token
+                  selected.expires = expires
+                  selected.accountId = refreshedAccountId
+                  if (claims?.email) selected.email = normalizeEmail(claims.email)
+                  if (claims?.plan) selected.plan = normalizePlan(claims.plan)
+                  ensureIdentityKey(selected)
+                  selected.lastUsed = now
+                  identityKey = selected.identityKey
+                  if (selected.identityKey) multi.activeIdentityKey = selected.identityKey
+
+                  access = selected.access
+                  accountId = selected.accountId
+
+                  return authFile
+                })
+
+                if (!access) {
+                  throw new Error("Failed to acquire OpenAI access token")
+                }
+
+                return { access, accountId, identityKey }
+              },
+              setCooldown: async (idKey, cooldownUntil) => {
+                await setAccountCooldown(undefined, idKey, cooldownUntil)
               }
-
-              const multi = ensureOpenAIMultiAuth(authFile)
-
-              const selected = selectAccount({
-                accounts: multi.accounts,
-                strategy: multi.strategy,
-                activeIdentityKey: multi.activeIdentityKey,
-                now
-              })
-
-              if (!selected) {
-                throw new Error(
-                  "No enabled OpenAI accounts available (check enabled/cooldown settings)"
-                )
-              }
-
-              if (selected.access && selected.expires && selected.expires > now) {
-                selected.lastUsed = now
-                access = selected.access
-                accountId = selected.accountId
-                if (selected.identityKey) multi.activeIdentityKey = selected.identityKey
-                return authFile
-              }
-
-              if (!selected.refresh) {
-                throw new Error("Selected account missing refresh token")
-              }
-
-              const tokens = await refreshAccessToken(selected.refresh)
-              const expires = now + (tokens.expires_in ?? 3600) * 1000
-              const refreshedAccountId = extractAccountId(tokens) || selected.accountId
-              const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
-
-              selected.refresh = tokens.refresh_token
-              selected.access = tokens.access_token
-              selected.expires = expires
-              selected.accountId = refreshedAccountId
-              if (claims?.email) selected.email = normalizeEmail(claims.email)
-              if (claims?.plan) selected.plan = normalizePlan(claims.plan)
-              ensureIdentityKey(selected)
-              selected.lastUsed = now
-              if (selected.identityKey) multi.activeIdentityKey = selected.identityKey
-
-              access = selected.access
-              accountId = selected.accountId
-
-              return authFile
             })
 
-            if (!access) {
-              throw new Error("Failed to acquire OpenAI access token")
-            }
-
-            outbound.headers.delete("authorization")
-            outbound.headers.delete("Authorization")
-            outbound.headers.set("authorization", `Bearer ${access}`)
-            if (accountId) outbound.headers.set("ChatGPT-Account-Id", accountId)
-
-            return fetch(outbound)
+            return orchestrator.execute(outbound)
           }
         }
       },

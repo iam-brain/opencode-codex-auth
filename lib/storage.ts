@@ -128,7 +128,7 @@ export async function saveAuthStorage(
 }
 
 export async function setAccountCooldown(
-  filePath: string,
+  filePath: string = defaultAuthPath(),
   identityKey: string,
   cooldownUntil: number
 ): Promise<AuthFile> {
