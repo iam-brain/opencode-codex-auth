@@ -1,7 +1,12 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 
-import { removeAccountByIndex, switchAccountByIndex, toggleAccountEnabledByIndex } from "./lib/accounts-tools"
+import {
+  listAccountsForTools,
+  removeAccountByIndex,
+  switchAccountByIndex,
+  toggleAccountEnabledByIndex
+} from "./lib/accounts-tools"
 import { CodexAuthPlugin } from "./lib/codex-native"
 import { toolOutputForStatus } from "./lib/codex-status-tool"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage"
@@ -29,10 +34,10 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
 
         await saveAuthStorage(undefined, (authFile) => {
           const openai = requireOpenAIMultiOauthAuth(authFile)
-          const target = openai.accounts[index - 1]
+          const row = listAccountsForTools(openai)[index - 1]
           const next = switchAccountByIndex(openai, index)
           authFile.openai = next
-          message = switchToolMessage({ email: target?.email, plan: target?.plan, index1: index })
+          message = switchToolMessage({ email: row?.email, plan: row?.plan, index1: index })
         })
 
         return message
@@ -46,12 +51,12 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
 
         await saveAuthStorage(undefined, (authFile) => {
           const openai = requireOpenAIMultiOauthAuth(authFile)
-          const target = openai.accounts[index - 1]
+          const row = listAccountsForTools(openai)[index - 1]
           const next = toggleAccountEnabledByIndex(openai, index)
           authFile.openai = next
-          const label = target?.email ?? "account"
-          const plan = target?.plan ? ` (${target.plan})` : ""
-          const enabled = next.accounts[index - 1]?.enabled !== false
+          const label = row?.email ?? "account"
+          const plan = row?.plan ? ` (${row.plan})` : ""
+          const enabled = listAccountsForTools(next).find((r) => r.identityKey === row?.identityKey)?.enabled === true
           message = `Toggled #${index}: ${label}${plan} -> ${enabled ? "enabled" : "disabled"}`
         })
 
@@ -70,11 +75,11 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
 
         await saveAuthStorage(undefined, (authFile) => {
           const openai = requireOpenAIMultiOauthAuth(authFile)
-          const target = openai.accounts[index - 1]
+          const row = listAccountsForTools(openai)[index - 1]
           const next = removeAccountByIndex(openai, index)
           authFile.openai = next
-          const label = target?.email ?? "account"
-          const plan = target?.plan ? ` (${target.plan})` : ""
+          const label = row?.email ?? "account"
+          const plan = row?.plan ? ` (${row.plan})` : ""
           message = `Removed #${index}: ${label}${plan}`
         })
 

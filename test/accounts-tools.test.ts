@@ -41,6 +41,17 @@ describe("switchAccountByIndex", () => {
     expect(() => switchAccountByIndex(openai, Number.NaN)).toThrow()
     expect(() => switchAccountByIndex(openai, Number.POSITIVE_INFINITY)).toThrow()
   })
+
+  it("rejects switching to a disabled account", () => {
+    const openai = {
+      type: "oauth" as const,
+      accounts: [
+        { identityKey: "a", enabled: true },
+        { identityKey: "b", enabled: false }
+      ]
+    }
+    expect(() => switchAccountByIndex(openai, 2)).toThrow()
+  })
 })
 
 describe("toggleAccountEnabledByIndex", () => {
@@ -84,6 +95,22 @@ describe("removeAccountByIndex", () => {
     const next = removeAccountByIndex(openai, 2)
     expect(next.accounts.map(a => a.identityKey)).toEqual(["a", "c"])
     expect(next.activeIdentityKey).toBe("c")
+  })
+
+  it("does not pick a disabled account as the active fallback", () => {
+    const openai = {
+      type: "oauth" as const,
+      activeIdentityKey: "b",
+      accounts: [
+        { identityKey: "a", enabled: true },
+        { identityKey: "b", enabled: true },
+        { identityKey: "c", enabled: false },
+        { identityKey: "d", enabled: true }
+      ]
+    }
+    const next = removeAccountByIndex(openai, 2)
+    expect(next.accounts.map(a => a.identityKey)).toEqual(["a", "c", "d"])
+    expect(next.activeIdentityKey).toBe("d")
   })
 
   it("clears activeIdentityKey if last account removed", () => {
