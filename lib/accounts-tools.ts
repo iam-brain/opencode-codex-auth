@@ -21,3 +21,11 @@ export function listAccountsForTools(openai: OpenAIMultiOauthAuth): ToolAccountR
       isActive: openai.activeIdentityKey === a.identityKey
     }))
 }
+
+export function switchAccountByIndex(openai: OpenAIMultiOauthAuth, index1: number): OpenAIMultiOauthAuth {
+  const idx = Math.floor(index1 - 1)
+  if (!Number.isFinite(idx) || idx < 0 || idx >= openai.accounts.length) throw new Error("Invalid account index")
+  const target = openai.accounts[idx]
+  if (!target?.identityKey) throw new Error("Target account missing identityKey")
+  return { ...openai, activeIdentityKey: target.identityKey }
+}

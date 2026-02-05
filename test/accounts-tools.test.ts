@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { listAccountsForTools } from "../lib/accounts-tools"
+import { listAccountsForTools, switchAccountByIndex } from "../lib/accounts-tools"
 
 describe("accounts-tools listing", () => {
   it("returns a stable list with 1-based display index", () => {
@@ -16,5 +16,26 @@ describe("accounts-tools listing", () => {
     expect(rows[0]?.displayIndex).toBe(1)
     expect(rows[1]?.displayIndex).toBe(2)
     expect(rows[1]?.enabled).toBe(false)
+  })
+})
+
+describe("switchAccountByIndex", () => {
+  it("sets activeIdentityKey to the target account identityKey", () => {
+    const openai = {
+      type: "oauth" as const,
+      activeIdentityKey: "a",
+      accounts: [
+        { identityKey: "a", enabled: true },
+        { identityKey: "b", enabled: true }
+      ]
+    }
+    const next = switchAccountByIndex(openai, 2)
+    expect(next.activeIdentityKey).toBe("b")
+  })
+
+  it("rejects invalid indices", () => {
+    const openai = { type: "oauth" as const, accounts: [{ identityKey: "a", enabled: true }] }
+    expect(() => switchAccountByIndex(openai, 0)).toThrow()
+    expect(() => switchAccountByIndex(openai, 2)).toThrow()
   })
 })
