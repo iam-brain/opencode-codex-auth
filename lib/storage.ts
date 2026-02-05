@@ -126,3 +126,18 @@ export async function saveAuthStorage(
     return next
   })
 }
+
+export async function setAccountCooldown(
+  filePath: string,
+  identityKey: string,
+  cooldownUntil: number
+): Promise<AuthFile> {
+  return saveAuthStorage(filePath, (auth) => {
+    const openai = auth.openai
+    if (!openai || !isMultiOauthAuth(openai)) return
+    const acc = openai.accounts.find((a) => a.identityKey === identityKey)
+    if (acc && acc.enabled !== false) {
+      acc.cooldownUntil = cooldownUntil
+    }
+  })
+}
