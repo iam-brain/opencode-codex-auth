@@ -4,7 +4,10 @@ import http from "node:http"
 import os from "node:os"
 
 import { parseJwtClaims, type IdTokenClaims } from "./claims"
+import { CodexStatus, type HeaderMap } from "./codex-status"
+import { saveSnapshots } from "./codex-status-storage"
 import { buildIdentityKey, ensureIdentityKey, normalizeEmail, normalizePlan } from "./identity"
+import { defaultSnapshotsPath } from "./paths"
 import { selectAccount } from "./rotation"
 import { saveAuthStorage, setAccountCooldown } from "./storage"
 import type { Logger } from "./logger"
@@ -532,6 +535,7 @@ export async function CodexAuthPlugin(
           async fetch(requestInput: string | URL | Request, init?: RequestInit) {
             const baseRequest = new Request(requestInput, init)
             const outbound = new Request(rewriteUrl(baseRequest), baseRequest)
+            let selectedIdentityKey: string | undefined
 
             const orchestrator = new FetchOrchestrator({
               acquireAuth: async () => {
@@ -600,6 +604,7 @@ export async function CodexAuthPlugin(
                   throw new Error("Failed to acquire OpenAI access token")
                 }
 
+                selectedIdentityKey = identityKey
                 return { access, accountId, identityKey }
               },
               setCooldown: async (idKey, cooldownUntil) => {
@@ -607,7 +612,30 @@ export async function CodexAuthPlugin(
               }
             })
 
-            return orchestrator.execute(outbound)
+            const response = await orchestrator.execute(outbound)
+
+            if (selectedIdentityKey) {
+              const headers: HeaderMap = {}
+              response.headers.forEach((value, key) => {
+                headers[key.toLowerCase()] = value
+              })
+
+              const status = new CodexStatus()
+              const snapshot = status.parseFromHeaders({
+                now: Date.now(),
+                modelFamily: "codex",
+                headers
+              })
+
+              if (snapshot.limits.length > 0) {
+                void saveSnapshots(defaultSnapshotsPath(), (current) => ({
+                  ...current,
+                  [selectedIdentityKey as string]: snapshot
+                })).catch(() => {})
+              }
+            }
+
+            return response
           }
         }
       },
