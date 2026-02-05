@@ -8,6 +8,7 @@ describe("release hygiene", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
     expect(pkg.scripts?.verify).toBe("npm run typecheck && npm test && npm run build")
+    expect(pkg.scripts?.prepack).toBe("npm run build")
   })
 
   it("includes license and changelog files", () => {
