@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { parseRetryAfterMs } from "../lib/rate-limit"
+import { parseRetryAfterMs, computeBackoffMs } from "../lib/rate-limit"
 
 describe("rate-limit", () => {
   it("parses Retry-After seconds", () => {
@@ -40,5 +40,22 @@ describe("rate-limit", () => {
     const pastRetryAt = "Wed, 01 Jan 2026 00:00:05 GMT"
     const ms = parseRetryAfterMs({ "retry-after": pastRetryAt }, now)
     expect(ms).toBe(0)
+  })
+})
+
+describe("backoff", () => {
+  it("caps exponential backoff", () => {
+    expect(computeBackoffMs({ attempt: 10, baseMs: 1000, maxMs: 5000, jitterMaxMs: 0 })).toBe(5000)
+  })
+
+  it("adds bounded jitter", () => {
+    const ms = computeBackoffMs({ attempt: 0, baseMs: 1000, maxMs: 5000, jitterMaxMs: 250 })
+    expect(ms).toBeGreaterThanOrEqual(1000)
+    expect(ms).toBeLessThanOrEqual(1250)
+  })
+
+  it("handles negative or non-integer attempts", () => {
+    expect(computeBackoffMs({ attempt: -1, baseMs: 1000, maxMs: 5000, jitterMaxMs: 0 })).toBe(1000)
+    expect(computeBackoffMs({ attempt: 1.5, baseMs: 1000, maxMs: 5000, jitterMaxMs: 0 })).toBe(2000)
   })
 })

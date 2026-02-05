@@ -26,3 +26,16 @@ export function parseRetryAfterMs(headers: HeaderMap, nowMs: number): number | u
 
   return Math.max(0, dateMs - nowMs)
 }
+
+export function computeBackoffMs(input: {
+  attempt: number
+  baseMs: number
+  maxMs: number
+  jitterMaxMs: number
+}): number {
+  const attempt = Math.max(0, Math.floor(input.attempt))
+  const exp = input.baseMs * Math.pow(2, attempt)
+  const capped = Math.min(exp, input.maxMs)
+  const jitter = input.jitterMaxMs > 0 ? Math.floor(Math.random() * (input.jitterMaxMs + 1)) : 0
+  return capped + jitter
+}
