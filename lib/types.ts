@@ -33,3 +33,16 @@ export type AuthFile = {
         plan?: string
       }
 }
+
+export type CodexLimit = {
+  name: string
+  leftPct: number
+  resetsAt?: number
+  extra?: string
+}
+
+export type CodexRateLimitSnapshot = {
+  updatedAt: number
+  modelFamily: string
+  limits: CodexLimit[]
+}
