@@ -9,30 +9,56 @@ export type ToolAccountRow = {
   isActive: boolean
 }
 
-function resolveToolAccount(openai: OpenAIMultiOauthAuth, index1: number): AccountRecord & { identityKey: string } {
+type ToolAccountInternalRow = ToolAccountRow & {
+  accountIndex: number
+}
+
+function buildToolRows(openai: OpenAIMultiOauthAuth): ToolAccountInternalRow[] {
+  return openai.accounts
+    .flatMap((account, accountIndex) => {
+      if (typeof account.identityKey !== "string" || account.identityKey.length === 0) {
+        return []
+      }
+      return [{
+        accountIndex,
+        identityKey: account.identityKey,
+        email: account.email,
+        plan: account.plan,
+        enabled: account.enabled !== false,
+        isActive: openai.activeIdentityKey === account.identityKey
+      }]
+    })
+    .map((row, i) => ({
+      ...row,
+      displayIndex: i + 1
+    }))
+}
+
+function resolveToolAccount(
+  openai: OpenAIMultiOauthAuth,
+  index1: number
+): AccountRecord & { identityKey: string } {
   if (!Number.isInteger(index1)) throw new Error("Invalid account index")
   if (index1 < 1) throw new Error("Invalid account index")
 
-  const rows = listAccountsForTools(openai)
+  const rows = buildToolRows(openai)
   const row = rows[index1 - 1]
   if (!row) throw new Error("Invalid account index")
 
-  const account = openai.accounts.find((a) => a.identityKey === row.identityKey)
+  const account = openai.accounts[row.accountIndex]
   if (!account?.identityKey) throw new Error("Target account missing identityKey")
   return account as AccountRecord & { identityKey: string }
 }
 
 export function listAccountsForTools(openai: OpenAIMultiOauthAuth): ToolAccountRow[] {
-  return openai.accounts
-    .filter((a): a is AccountRecord & { identityKey: string } => typeof a.identityKey === "string" && a.identityKey.length > 0)
-    .map((a, i) => ({
-      displayIndex: i + 1,
-      identityKey: a.identityKey,
-      email: a.email,
-      plan: a.plan,
-      enabled: a.enabled !== false,
-      isActive: openai.activeIdentityKey === a.identityKey
-    }))
+  return buildToolRows(openai).map((row) => ({
+    displayIndex: row.displayIndex,
+    identityKey: row.identityKey,
+    email: row.email,
+    plan: row.plan,
+    enabled: row.enabled,
+    isActive: row.isActive
+  }))
 }
 
 export function switchAccountByIndex(openai: OpenAIMultiOauthAuth, index1: number): OpenAIMultiOauthAuth {
@@ -45,11 +71,11 @@ export function toggleAccountEnabledByIndex(openai: OpenAIMultiOauthAuth, index1
   if (!Number.isInteger(index1)) throw new Error("Invalid account index")
   if (index1 < 1) throw new Error("Invalid account index")
 
-  const rows = listAccountsForTools(openai)
+  const rows = buildToolRows(openai)
   const row = rows[index1 - 1]
   if (!row) throw new Error("Invalid account index")
 
-  const idx = openai.accounts.findIndex((a) => a.identityKey === row.identityKey)
+  const idx = row.accountIndex
   if (idx < 0) throw new Error("Target account missing identityKey")
   const target = openai.accounts[idx]
   if (!target?.identityKey) throw new Error("Target account missing identityKey")
@@ -66,11 +92,11 @@ export function removeAccountByIndex(openai: OpenAIMultiOauthAuth, index1: numbe
   if (!Number.isInteger(index1)) throw new Error("Invalid account index")
   if (index1 < 1) throw new Error("Invalid account index")
 
-  const rows = listAccountsForTools(openai)
+  const rows = buildToolRows(openai)
   const row = rows[index1 - 1]
   if (!row) throw new Error("Invalid account index")
 
-  const idx = openai.accounts.findIndex((a) => a.identityKey === row.identityKey)
+  const idx = row.accountIndex
   if (idx < 0) throw new Error("Target account missing identityKey")
 
   const removed = openai.accounts[idx]

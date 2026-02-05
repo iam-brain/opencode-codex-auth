@@ -52,6 +52,19 @@ describe("switchAccountByIndex", () => {
     }
     expect(() => switchAccountByIndex(openai, 2)).toThrow()
   })
+
+  it("resolves by displayed row even when identity keys collide", () => {
+    const openai = {
+      type: "oauth" as const,
+      activeIdentityKey: "dup",
+      accounts: [
+        { identityKey: "dup", email: "disabled@example.com", enabled: false },
+        { identityKey: "dup", email: "enabled@example.com", enabled: true }
+      ]
+    }
+
+    expect(() => switchAccountByIndex(openai, 2)).not.toThrow()
+  })
 })
 
 describe("toggleAccountEnabledByIndex", () => {
@@ -78,6 +91,20 @@ describe("toggleAccountEnabledByIndex", () => {
       accounts: [{ identityKey: "a", enabled: true }]
     }
     expect(() => toggleAccountEnabledByIndex(openai, 1.5)).toThrow("Invalid account index")
+  })
+
+  it("toggles the targeted displayed row when identity keys collide", () => {
+    const openai = {
+      type: "oauth" as const,
+      accounts: [
+        { identityKey: "dup", email: "first@example.com", enabled: false },
+        { identityKey: "dup", email: "second@example.com", enabled: true }
+      ]
+    }
+
+    const next = toggleAccountEnabledByIndex(openai, 2)
+    expect(next.accounts[0]?.enabled).toBe(false)
+    expect(next.accounts[1]?.enabled).toBe(false)
   })
 })
 
@@ -123,5 +150,20 @@ describe("removeAccountByIndex", () => {
   it("rejects non-integer indices", () => {
     const openai = { type: "oauth" as const, accounts: [{ identityKey: "a", enabled: true }] }
     expect(() => removeAccountByIndex(openai, 1.2)).toThrow("Invalid account index")
+  })
+
+  it("removes the targeted displayed row when identity keys collide", () => {
+    const openai = {
+      type: "oauth" as const,
+      activeIdentityKey: "dup",
+      accounts: [
+        { identityKey: "dup", email: "first@example.com", enabled: true },
+        { identityKey: "dup", email: "second@example.com", enabled: true }
+      ]
+    }
+
+    const next = removeAccountByIndex(openai, 2)
+    expect(next.accounts).toHaveLength(1)
+    expect(next.accounts[0]?.email).toBe("first@example.com")
   })
 })
