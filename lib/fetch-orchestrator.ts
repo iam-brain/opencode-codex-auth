@@ -20,12 +20,14 @@ export class FetchOrchestrator {
     const maxAttempts = this.deps.maxAttempts ?? 3
     const nowFn = this.deps.now ?? Date.now
 
+    const baseRequest = new Request(input, init)
     let lastResponse: Response | undefined
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const now = nowFn()
       const auth = await this.deps.acquireAuth()
       
-      const request = new Request(input instanceof Request ? input.clone() : input, init)
+      const request = baseRequest.clone()
       request.headers.set("Authorization", `Bearer ${auth.access}`)
       if (auth.accountId) {
         request.headers.set("ChatGPT-Account-Id", auth.accountId)
@@ -42,9 +44,9 @@ export class FetchOrchestrator {
       const retryAfterStr = response.headers.get("retry-after")
       if (retryAfterStr && auth.identityKey) {
         const headerMap = { "retry-after": retryAfterStr }
-        const retryAfterMs = parseRetryAfterMs(headerMap, nowFn())
+        const retryAfterMs = parseRetryAfterMs(headerMap, now)
         if (retryAfterMs != null) {
-          const cooldownUntil = nowFn() + retryAfterMs
+          const cooldownUntil = now + retryAfterMs
           await this.deps.setCooldown(auth.identityKey, cooldownUntil)
         }
       }
