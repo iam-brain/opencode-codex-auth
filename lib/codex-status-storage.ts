@@ -8,14 +8,20 @@ import type { CodexRateLimitSnapshot } from "./types"
 export type SnapshotMap = Record<string, CodexRateLimitSnapshot>
 
 async function readJson(filePath: string): Promise<SnapshotMap> {
+  let raw: string
   try {
-    const raw = await fs.readFile(filePath, "utf8")
-    return JSON.parse(raw) as SnapshotMap
+    raw = await fs.readFile(filePath, "utf8")
   } catch (error: unknown) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       return {}
     }
     throw error
+  }
+
+  try {
+    return JSON.parse(raw) as SnapshotMap
+  } catch {
+    return {}
   }
 }
 

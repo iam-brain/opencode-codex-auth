@@ -35,6 +35,17 @@ describe("codex-status storage", () => {
     await fs.rm(dir, { recursive: true, force: true })
   })
 
+  it("handles corrupt JSON by returning empty object", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-status-corrupt-"))
+    const p = path.join(dir, "snapshots.json")
+    await fs.writeFile(p, "{not-json", { mode: 0o600 })
+
+    const snapshots = await loadSnapshots(p)
+    expect(snapshots).toEqual({})
+
+    await fs.rm(dir, { recursive: true, force: true })
+  })
+
   it("does not write snapshots file before acquiring lock", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-status-lock-order-"))
     const p = path.join(dir, "snapshots.json")
