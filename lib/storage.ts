@@ -1,7 +1,7 @@
+import lockfile from "proper-lockfile"
+
 import fs from "node:fs/promises"
 import path from "node:path"
-
-import lockfile from "proper-lockfile"
 
 import { ensureIdentityKey } from "./identity"
 import { defaultAuthPath } from "./paths"
@@ -71,8 +71,10 @@ async function readAuthUnlocked(filePath: string): Promise<AuthFile> {
     const parsed: unknown = JSON.parse(raw)
     if (!isObject(parsed)) return {}
     return migrateAuthFile(parsed as AuthFile)
-  } catch (error: any) {
-    if (error?.code === "ENOENT") return {}
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return {}
+    }
     throw error
   }
 }
@@ -140,4 +142,36 @@ export async function setAccountCooldown(
       acc.cooldownUntil = cooldownUntil
     }
   })
+}
+
+export function requireOpenAIMultiOauthAuth(auth: AuthFile): OpenAIMultiOauthAuth {
+  const openai = auth.openai
+  if (!openai || openai.type !== "oauth") {
+    throw new Error("OpenAI OAuth not configured")
+  }
+
+  if (isMultiOauthAuth(openai)) return openai
+
+  if (isLegacyOauthAuth(openai)) {
+    const account: AccountRecord = ensureIdentityKey({
+      access: openai.access,
+      refresh: openai.refresh,
+      expires: openai.expires,
+      accountId: openai.accountId,
+      email: openai.email,
+      plan: openai.plan,
+      enabled: true
+    })
+
+    const migrated: OpenAIMultiOauthAuth = {
+      type: "oauth",
+      accounts: [account],
+      activeIdentityKey: account.identityKey
+    }
+
+    auth.openai = migrated
+    return migrated
+  }
+
+  throw new Error("Invalid OpenAI OAuth config")
 }
