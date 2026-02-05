@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest"
 
-import { getProactiveRefreshEnabled, getProactiveRefreshBufferMs } from "../lib/config"
+import {
+  getDebugEnabled,
+  getProactiveRefreshBufferMs,
+  getProactiveRefreshEnabled,
+  resolveConfig
+} from "../lib/config"
+
+describe("config loading", () => {
+  it("prefers env debug flag", () => {
+    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_AUTH_DEBUG: "1" } })
+    expect(getDebugEnabled(cfg)).toBe(true)
+  })
+
+  it("defaults debug false", () => {
+    const cfg = resolveConfig({ env: {} })
+    expect(getDebugEnabled(cfg)).toBe(false)
+  })
+})
 
 describe("config", () => {
   it("defaults proactive refresh to false", () => {
