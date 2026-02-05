@@ -69,6 +69,24 @@ describe("FetchOrchestrator", () => {
     expect(acquireAuth).toHaveBeenCalledTimes(3)
   })
 
+  it("clamps maxAttempts to at least one attempt", async () => {
+    const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
+    const setCooldown = vi.fn(async () => {})
+    const fetchMock = vi.fn(async () => new Response("RL", { status: 429 }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      maxAttempts: 0
+    })
+
+    const res = await orch.execute("https://api.openai.com/v1/chat/completions")
+    expect(res.status).toBe(429)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(acquireAuth).toHaveBeenCalledTimes(1)
+  })
+
   it("retries successfully when body is a ReadableStream", async () => {
     const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
     const setCooldown = vi.fn(async () => {})
