@@ -2,6 +2,8 @@
 
 Native Codex auth with multi-account rotation for OpenCode.
 
+Docs portal: `docs/README.md`
+
 ## Release checklist
 
 - Update `CHANGELOG.md`
