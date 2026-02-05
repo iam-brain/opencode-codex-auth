@@ -21,7 +21,9 @@ export async function runOneProactiveRefreshTick(input: {
       const dueCutoff = now + input.bufferMs
       const account = multi.accounts.find((candidate) => {
         if (candidate.enabled === false) return false
-        if (!candidate.identityKey || !candidate.refresh || !candidate.expires) return false
+        if (!candidate.identityKey || !candidate.refresh || candidate.expires === undefined) {
+          return false
+        }
         if (candidate.expires > dueCutoff) return false
         if (
           typeof candidate.refreshLeaseUntil === "number" &&

@@ -5,24 +5,24 @@ describe("proactive refresh locking", () => {
     vi.resetModules()
 
     const loadAuthStorage = vi.fn(async () => ({}))
+    const auth = {
+      openai: {
+        type: "oauth",
+        accounts: [
+          {
+            identityKey: "acc|u@e.com|plus",
+            enabled: true,
+            refresh: "rt",
+            expires: 0
+          }
+        ]
+      }
+    }
     const saveAuthStorage = vi.fn(
       async (
         _path: string | undefined,
         update: (auth: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown> | void> | void
       ) => {
-        const auth = {
-          openai: {
-            type: "oauth",
-            accounts: [
-              {
-                identityKey: "acc|u@e.com|plus",
-                enabled: true,
-                refresh: "rt",
-                expires: 0
-              }
-            ]
-          }
-        }
         await update(auth)
         return auth
       }
@@ -41,7 +41,7 @@ describe("proactive refresh locking", () => {
       authPath: "x",
       now: () => 100,
       bufferMs: 1000,
-      refresh: async () => ({ access: "a", refresh: "r", expires: 200 })
+      refresh: async () => ({ access: "a", refresh: "r", expires: 5000 })
     })
 
     expect(loadAuthStorage).not.toHaveBeenCalled()

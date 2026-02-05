@@ -48,4 +48,51 @@ describe("proactive refresh", () => {
     expect(refresh).toHaveBeenCalledTimes(1)
     expect(refresh).toHaveBeenCalledWith("ra")
   })
+
+  it("refreshes accounts with expires set to zero", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-refresh-"))
+    const p = path.join(dir, "auth.json")
+
+    await saveAuthStorage(p, (cur) => ({
+      ...cur,
+      openai: {
+        type: "oauth",
+        strategy: "round_robin",
+        accounts: [
+          {
+            identityKey: "z",
+            enabled: true,
+            refresh: "rz",
+            access: "oldZ",
+            expires: 0,
+            accountId: "3",
+            email: "z@example.com",
+            plan: "plus"
+          }
+        ]
+      }
+    }))
+
+    const refresh = vi.fn(async (refreshToken: string) => ({
+      access: "newZ",
+      refresh: refreshToken,
+      expires: 999_999
+    }))
+
+    await runOneProactiveRefreshTick({
+      authPath: p,
+      now: () => 1_000,
+      bufferMs: 10_000,
+      refresh
+    })
+
+    const stored = await loadAuthStorage(p)
+    const openai = stored.openai
+    if (!openai || !("accounts" in openai)) throw new Error("missing")
+
+    const accountZ = openai.accounts.find((a) => a.identityKey === "z")
+    expect(accountZ?.access).toBe("newZ")
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(refresh).toHaveBeenCalledWith("rz")
+  })
 })
