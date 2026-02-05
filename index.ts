@@ -8,8 +8,9 @@ import {
   toggleAccountEnabledByIndex
 } from "./lib/accounts-tools"
 import { CodexAuthPlugin, refreshAccessToken } from "./lib/codex-native"
+import { getProactiveRefreshBufferMs, getProactiveRefreshEnabled } from "./lib/config"
+import type { PluginConfig } from "./lib/config"
 import { runOneProactiveRefreshTick } from "./lib/proactive-refresh"
-import { createRefreshScheduler, ProactiveRefreshQueue } from "./lib/refresh-queue"
 import { toolOutputForStatus } from "./lib/codex-status-tool"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage"
 import { switchToolMessage } from "./lib/tools-output"
@@ -20,6 +21,32 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
   if (scheduler) {
     scheduler.stop()
     scheduler = undefined
+  }
+
+  const config: PluginConfig = {
+    proactiveRefresh: process.env.OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH === "true",
+    proactiveRefreshBufferMs: process.env.OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS
+      ? parseInt(process.env.OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS, 10)
+      : undefined
+  }
+
+  if (getProactiveRefreshEnabled(config)) {
+    const bufferMs = getProactiveRefreshBufferMs(config)
+    const timer = setInterval(() => {
+      runOneProactiveRefreshTick({
+        now: Date.now,
+        bufferMs,
+        refresh: async (refreshToken) => {
+          const tokens = await refreshAccessToken(refreshToken)
+          return {
+            access: tokens.access_token,
+            refresh: tokens.refresh_token,
+            expires: Date.now() + (tokens.expires_in ?? 3600) * 1000
+          }
+        }
+      }).catch(() => {})
+    }, 60_000)
+    scheduler = { stop: () => clearInterval(timer) }
   }
 
   const hooks = await CodexAuthPlugin(input)
