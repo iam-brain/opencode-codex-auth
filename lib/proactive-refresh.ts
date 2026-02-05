@@ -34,18 +34,23 @@ export async function runOneProactiveRefreshTick(input: {
 
       if (!account) return
 
+      const identityKey = account.identityKey
+      const refreshToken = account.refresh
+      if (!identityKey || !refreshToken) return
+
       account.refreshLeaseUntil = now + leaseMs
       claimed = {
-        identityKey: account.identityKey,
-        refresh: account.refresh
+        identityKey,
+        refresh: refreshToken
       }
     })
 
     if (!claimed) return
+    const claimedAccount = claimed
 
     let tokens: { access: string; refresh: string; expires: number }
     try {
-      tokens = await input.refresh(claimed.refresh)
+      tokens = await input.refresh(claimedAccount.refresh)
     } catch {
       // Keep the lease until it expires to avoid immediate re-claim loops.
       continue
@@ -56,7 +61,7 @@ export async function runOneProactiveRefreshTick(input: {
       if (!openai || openai.type !== "oauth" || !("accounts" in openai)) return
       const multi = openai as OpenAIMultiOauthAuth
       const account = multi.accounts.find(
-        (candidate) => candidate.identityKey === claimed.identityKey
+        (candidate) => candidate.identityKey === claimedAccount.identityKey
       )
       if (!account) return
       if (account.enabled === false) {
