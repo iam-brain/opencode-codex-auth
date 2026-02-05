@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 describe("release hygiene", () => {
@@ -8,6 +8,11 @@ describe("release hygiene", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
     expect(pkg.scripts?.verify).toBe("npm run typecheck && npm test && npm run build")
+  })
+
+  it("includes license and changelog files", () => {
+    expect(existsSync(join(process.cwd(), "LICENSE"))).toBe(true)
+    expect(existsSync(join(process.cwd(), "CHANGELOG.md"))).toBe(true)
   })
 })
 
