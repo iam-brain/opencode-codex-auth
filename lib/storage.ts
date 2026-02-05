@@ -144,6 +144,22 @@ export async function setAccountCooldown(
   })
 }
 
+export async function updateAccountTokensByIdentityKey(
+  filePath: string = defaultAuthPath(),
+  identityKey: string,
+  input: { access: string; refresh: string; expires: number }
+): Promise<AuthFile> {
+  return saveAuthStorage(filePath, (auth) => {
+    const openai = requireOpenAIMultiOauthAuth(auth)
+    const acc = openai.accounts.find((a) => a.identityKey === identityKey)
+    if (acc && acc.enabled !== false) {
+      acc.access = input.access
+      acc.refresh = input.refresh
+      acc.expires = input.expires
+    }
+  })
+}
+
 export function requireOpenAIMultiOauthAuth(auth: AuthFile): OpenAIMultiOauthAuth {
   const openai = auth.openai
   if (!openai || openai.type !== "oauth") {

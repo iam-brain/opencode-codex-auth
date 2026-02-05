@@ -7,12 +7,21 @@ import {
   switchAccountByIndex,
   toggleAccountEnabledByIndex
 } from "./lib/accounts-tools"
-import { CodexAuthPlugin } from "./lib/codex-native"
+import { CodexAuthPlugin, refreshAccessToken } from "./lib/codex-native"
+import { runOneProactiveRefreshTick } from "./lib/proactive-refresh"
+import { createRefreshScheduler, ProactiveRefreshQueue } from "./lib/refresh-queue"
 import { toolOutputForStatus } from "./lib/codex-status-tool"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage"
 import { switchToolMessage } from "./lib/tools-output"
 
+let scheduler: { stop: () => void } | undefined
+
 export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
+  if (scheduler) {
+    scheduler.stop()
+    scheduler = undefined
+  }
+
   const hooks = await CodexAuthPlugin(input)
 
   const z = tool.schema

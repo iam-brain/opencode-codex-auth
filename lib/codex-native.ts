@@ -93,7 +93,7 @@ export function extractAccountId(tokens: TokensWithClaims | undefined): string |
   return undefined
 }
 
-type TokenResponse = {
+export type TokenResponse = {
   id_token?: string
   access_token: string
   refresh_token: string
@@ -139,7 +139,7 @@ async function exchangeCodeForTokens(
   return (await response.json()) as TokenResponse
 }
 
-async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
+export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
   const response = await fetch(`${ISSUER}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
