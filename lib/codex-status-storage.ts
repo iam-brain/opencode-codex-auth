@@ -1,7 +1,7 @@
+import lockfile from "proper-lockfile"
+
 import fs from "node:fs/promises"
 import path from "node:path"
-
-import lockfile from "proper-lockfile"
 
 import type { CodexRateLimitSnapshot } from "./types"
 
@@ -11,8 +11,10 @@ async function readJson(filePath: string): Promise<SnapshotMap> {
   try {
     const raw = await fs.readFile(filePath, "utf8")
     return JSON.parse(raw) as SnapshotMap
-  } catch (error: any) {
-    if (error?.code === "ENOENT") return {}
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return {}
+    }
     throw error
   }
 }
