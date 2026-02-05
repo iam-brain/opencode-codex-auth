@@ -29,3 +29,46 @@ describe("CodexStatus", () => {
     expect(all[k]).toEqual(snap)
   })
 })
+
+describe("CodexStatus headers", () => {
+  it("parses reset times and left percentage from headers", () => {
+    const s = new CodexStatus()
+    const now = 1000
+
+    const snap = s.parseFromHeaders({
+      now,
+      modelFamily: "gpt-5.2",
+      headers: {
+        "x-ratelimit-remaining-requests": "75",
+        "x-ratelimit-limit-requests": "100",
+        "x-ratelimit-reset-requests": "1700"
+      }
+    })
+
+    expect(snap.limits[0]?.leftPct).toBe(75)
+    expect(snap.limits[0]?.resetsAt).toBe(1700 * 1000)
+  })
+
+  it("handles missing headers gracefully", () => {
+    const s = new CodexStatus()
+    const snap = s.parseFromHeaders({
+      now: 1000,
+      modelFamily: "gpt-4",
+      headers: {}
+    })
+    expect(snap.limits).toHaveLength(0)
+  })
+
+  it("handles non-finite header values", () => {
+    const s = new CodexStatus()
+    const snap = s.parseFromHeaders({
+      now: 1000,
+      modelFamily: "gpt-4",
+      headers: {
+        "x-ratelimit-remaining-requests": "NaN",
+        "x-ratelimit-limit-requests": "100"
+      }
+    })
+    expect(snap.limits).toHaveLength(0)
+  })
+})
