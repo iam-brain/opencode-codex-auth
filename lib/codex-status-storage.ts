@@ -42,13 +42,6 @@ export async function saveSnapshots(
 ): Promise<SnapshotMap> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
 
-  // Ensure file exists for lockfile
-  try {
-    await fs.access(filePath)
-  } catch {
-    await fs.writeFile(filePath, "{}", { mode: 0o600 })
-  }
-
   const release = await lockfile.lock(filePath, {
     realpath: false,
     retries: {
