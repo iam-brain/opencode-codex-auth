@@ -26,6 +26,9 @@ import {
 } from "./lib/config"
 import { createLogger } from "./lib/logger"
 import { reconcileOrchestratorAgentsState } from "./lib/orchestrator-agents"
+import { generatePersonaSpec } from "./lib/persona-tool"
+import { createPersonalityFile } from "./lib/personality-create"
+import { installCreatePersonalityCommand } from "./lib/personality-command"
 import { runOneProactiveRefreshTick } from "./lib/proactive-refresh"
 import { toolOutputForStatus } from "./lib/codex-status-tool"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage"
@@ -40,6 +43,7 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
   }
 
   await ensureDefaultConfigFile({ env: process.env }).catch(() => {})
+  await installCreatePersonalityCommand({ force: true }).catch(() => {})
 
   const cfg = resolveConfig({
     env: process.env,
@@ -165,6 +169,54 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
         })
 
         return message
+      }
+    }),
+    "create-personality": tool({
+      description: "Create or update a custom personality markdown file for codex-config.json usage.",
+      args: {
+        name: z.string().min(1).optional(),
+        sourceText: z.string().optional(),
+        targetStyle: z.enum(["lean", "mid", "friendly-sized"]).optional(),
+        voiceFidelity: z.number().min(0).max(1).optional(),
+        competenceStrictness: z.number().min(0).max(1).optional(),
+        domain: z.enum(["coding", "audit", "research", "general"]).optional(),
+        inspiration: z.string().optional(),
+        tone: z.string().optional(),
+        collaborationStyle: z.string().optional(),
+        codeStyle: z.string().optional(),
+        constraints: z.string().optional(),
+        examples: z.string().optional(),
+        scope: z.enum(["global", "project"]).optional(),
+        overwrite: z.boolean().optional()
+      },
+      execute: async (args) => {
+        const name = args.name ?? "custom-personality"
+        if (args.sourceText && args.sourceText.trim()) {
+          const generated = generatePersonaSpec({
+            source_text: args.sourceText,
+            target_style: args.targetStyle ?? "mid",
+            voice_fidelity: args.voiceFidelity ?? 0.85,
+            competence_strictness: args.competenceStrictness ?? 0.95,
+            domain: args.domain ?? "general"
+          })
+          const result = await createPersonalityFile({
+            name,
+            scope: args.scope,
+            overwrite: args.overwrite,
+            projectRoot: input.worktree,
+            markdown: generated.agent_markdown
+          })
+          const action = result.created ? "Created" : "Kept existing"
+          return `${action} personality "${result.key}" at ${result.filePath} (${result.scope}) • tokens=${generated.token_estimate}`
+        }
+
+        const result = await createPersonalityFile({
+          ...args,
+          name,
+          projectRoot: input.worktree
+        })
+        const action = result.created ? "Created" : "Kept existing"
+        return `${action} personality "${result.key}" at ${result.filePath} (${result.scope})`
       }
     })
   }

@@ -43,6 +43,7 @@ export type PluginConfig = {
 const CONFIG_FILE = "codex-config.json"
 
 export const DEFAULT_CODEX_CONFIG = {
+  $schema: "https://schemas.iam-brain.dev/opencode-codex-auth/codex-config.schema.json",
   debug: false,
   quiet: false,
   refreshAhead: {

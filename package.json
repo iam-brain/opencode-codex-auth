@@ -6,7 +6,8 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "bin": {
-    "opencode-codex-auth": "./dist/bin/opencode-codex-auth.js"
+    "opencode-codex-auth": "./dist/bin/opencode-codex-auth.js",
+    "persona-tool": "./dist/bin/persona-tool.js"
   },
   "license": "MIT",
   "author": "iam-brain",

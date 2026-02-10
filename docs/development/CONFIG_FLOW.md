@@ -44,6 +44,7 @@ For config sources:
 
 `index.ts` consumes resolved config to:
 
+- ensure `/create-personality` command template exists
 - reconcile collab agent file state
 - initialize proactive refresh scheduler
 - pass runtime options into `CodexAuthPlugin`

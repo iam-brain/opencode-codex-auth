@@ -20,6 +20,8 @@ This directory contains starter config files.
 4. Validate with schemas:
    - `schemas/codex-config.schema.json`
    - `schemas/opencode.schema.json`
+   - `schemas/codex-accounts.schema.json` (advanced/manual recovery)
+5. Create custom personalities with `/create-personality` (writes `personalities/<key>.md`).
 
 ## Local development
 

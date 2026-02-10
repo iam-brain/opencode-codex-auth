@@ -21,6 +21,12 @@
 - Verify both auth files above exist and are readable.
 - Confirm your selected model slug exists in provider model list.
 
+### `/create-personality` command not found
+
+- Re-run installer: `npx -y @iam-brain/opencode-codex-auth`
+- Verify file exists: `~/.config/opencode/commands/create-personality.md`
+- Restart OpenCode so command discovery refreshes.
+
 ### Quota output shows `Unknown`
 
 Usually means either:
@@ -62,10 +68,19 @@ Enable:
 
 - `OPENCODE_OPENAI_MULTI_DEBUG=1`
 - or `DEBUG_CODEX_PLUGIN=1`
+- `CODEX_AUTH_DEBUG=1` (OAuth lifecycle logs)
 
 Optional request/response snapshots:
 
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true`
 - output in `~/.config/opencode/logs/codex-plugin/`
 
+Optional OAuth timing controls:
+
+- `CODEX_OAUTH_CALLBACK_TIMEOUT_MS`
+- `CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS`
+- `CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS`
+
 Sensitive auth headers/tokens are redacted in snapshot logs.
+
+For complete config/env reference, see `docs/configuration.md`.

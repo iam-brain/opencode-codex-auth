@@ -13,7 +13,7 @@ async function makeTmpDir(prefix: string): Promise<string> {
 describe("custom personality resolution", () => {
   it("prefers project-local personality files", async () => {
     const root = await makeTmpDir("opencode-codex-auth-personality-local-")
-    const localDir = path.join(root, ".opencode", "Personalities")
+    const localDir = path.join(root, ".opencode", "personalities")
     await fs.mkdir(localDir, { recursive: true })
     await fs.writeFile(path.join(localDir, "Friendly.md"), "Local friendly tone", "utf8")
 
@@ -26,7 +26,7 @@ describe("custom personality resolution", () => {
 
   it("falls back to global personality files when local file is missing", async () => {
     const root = await makeTmpDir("opencode-codex-auth-personality-global-")
-    const globalDir = path.join(root, "config", "Personalities")
+    const globalDir = path.join(root, "config", "personalities")
     await fs.mkdir(globalDir, { recursive: true })
     await fs.writeFile(path.join(globalDir, "Pragmatic.md"), "Global pragmatic tone", "utf8")
 
@@ -44,5 +44,19 @@ describe("custom personality resolution", () => {
       configRoot: path.join(root, "config")
     })
     expect(value).toBeNull()
+  })
+
+  it("does not strip leading html markers from personality files", async () => {
+    const root = await makeTmpDir("opencode-codex-auth-personality-marker-")
+    const localDir = path.join(root, ".opencode", "personalities")
+    await fs.mkdir(localDir, { recursive: true })
+    const body = "<!-- opencode personality cache -->\nVoice stays as-is"
+    await fs.writeFile(path.join(localDir, "custom.md"), body, "utf8")
+
+    const value = await resolveCustomPersonalityDescription("custom", {
+      projectRoot: root,
+      configRoot: path.join(root, "config")
+    })
+    expect(value).toBe(body)
   })
 })

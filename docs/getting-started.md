@@ -20,6 +20,7 @@ What this does:
 - Adds `@iam-brain/opencode-codex-auth@latest` to `~/.config/opencode/opencode.json`
 - Installs Codex collab agents to `~/.config/opencode/agents/` as `*.md.disabled`
 - Creates `~/.config/opencode/codex-config.json` if missing
+- Synchronizes `/create-personality` command at `~/.config/opencode/commands/create-personality.md`
 
 To install only the agent templates (no `opencode.json` edits):
 
@@ -44,6 +45,11 @@ Put all plugin behavior flags in:
 - `~/.config/opencode/codex-config.json`
 
 Use `docs/examples/codex-config.json` as a baseline.
+Use schemas for autocomplete/validation:
+
+- `schemas/codex-config.schema.json`
+- `schemas/opencode.schema.json`
+- `schemas/codex-accounts.schema.json`
 
 ## 3) Authenticate
 
@@ -84,6 +90,19 @@ If your account has access:
 opencode run "say hi" --model=openai/gpt-5.3-codex
 ```
 
+## 6) Create a custom personality (optional)
+
+Run:
+
+```bash
+/create-personality
+```
+
+This guided flow writes a profile into:
+
+- `.opencode/personalities/<key>.md` (project scope), or
+- `~/.config/opencode/personalities/<key>.md` (global scope)
+
 ## Mode + agent behavior
 
 Runtime mode is configured in `codex-config.json`.
@@ -96,6 +115,7 @@ Agent files are reconciled at plugin startup:
 
 - `collab`: Codex agents are enabled (`.md`)
 - non-collab: Codex agents are disabled (`.md.disabled`)
+- `/create-personality` command is refreshed to the managed latest template
 
 ## Local development install
 

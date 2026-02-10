@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.iam-brain.dev/opencode-codex-auth/codex-accounts.schema.json",
+  "title": "OpenCode Codex Auth Accounts",
+  "description": "Schema for ~/.config/opencode/codex-accounts.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "openai": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "oauth"
+        },
+        "strategy": {
+          "$ref": "#/$defs/rotationStrategy"
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/accountRecord"
+          }
+        },
+        "activeIdentityKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "native": {
+          "$ref": "#/$defs/authDomain"
+        },
+        "codex": {
+          "$ref": "#/$defs/authDomain"
+        }
+      },
+      "required": ["type", "accounts"]
+    }
+  },
+  "$defs": {
+    "rotationStrategy": {
+      "type": "string",
+      "enum": ["sticky", "hybrid", "round_robin"]
+    },
+    "accountAuthType": {
+      "type": "string",
+      "enum": ["native", "codex"]
+    },
+    "accountRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "identityKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accountId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "email": {
+          "type": "string",
+          "minLength": 1
+        },
+        "plan": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authTypes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/accountAuthType"
+          },
+          "uniqueItems": true
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "access": {
+          "type": "string",
+          "minLength": 1
+        },
+        "refresh": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expires": {
+          "type": "number"
+        },
+        "refreshLeaseUntil": {
+          "type": "number"
+        },
+        "cooldownUntil": {
+          "type": "number"
+        },
+        "lastUsed": {
+          "type": "number"
+        }
+      }
+    },
+    "authDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "$ref": "#/$defs/rotationStrategy"
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/accountRecord"
+          }
+        },
+        "activeIdentityKey": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["accounts"]
+    }
+  },
+  "examples": [
+    {
+      "openai": {
+        "type": "oauth",
+        "strategy": "sticky",
+        "accounts": [],
+        "native": { "accounts": [] },
+        "codex": { "accounts": [] }
+      }
+    }
+  ]
+}

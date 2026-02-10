@@ -5,7 +5,8 @@ Canonical source: `lib/config.ts`
 ## File location
 
 - `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
-- fallback: `~/.config/opencode/codex-config.json`
+- fallback: `$XDG_CONFIG_HOME/opencode/codex-config.json`
+- fallback (no `XDG_CONFIG_HOME`): `~/.config/opencode/codex-config.json`
 
 ## Canonical JSON keys
 
@@ -26,29 +27,72 @@ Top-level:
 - `perModel.<model>.variants.<variant>.personality: string`
 - `perModel.<model>.variants.<variant>.thinkingSummaries: boolean`
 
+Canonical user-edited file set:
+
+- `~/.config/opencode/opencode.json` (plugin registration)
+- `~/.config/opencode/codex-config.json` (runtime behavior)
+- `~/.config/opencode/codex-accounts.json` (advanced/manual recovery only)
+- `.opencode/personalities/*.md` or `~/.config/opencode/personalities/*.md` (custom personalities)
+
+Default generated values:
+
+- `debug: false`
+- `quiet: false`
+- `refreshAhead.enabled: true`
+- `refreshAhead.bufferMs: 60000`
+- `runtime.mode: "native"`
+- `runtime.sanitizeInputs: false`
+- `runtime.headerSnapshots: false`
+- `runtime.pidOffset: false`
+- `global.personality: "pragmatic"`
+- `global.thinkingSummaries: false`
+- `perModel: {}`
+
+## Legacy compatibility keys (parsed, non-canonical)
+
+- top-level `personality`
+- top-level `customSettings`
+- `customSettings.thinkingSummaries`
+- `customSettings.options.personality`
+- `customSettings.models`
+
+Note:
+
+- `runtime.mode` is canonical.
+- Identity behavior is derived automatically:
+  - `native` => native identity
+  - `codex|collab` => codex identity
+
 ## Environment variables
 
-Core:
+Resolved by `resolveConfig`:
 
 - `OPENCODE_OPENAI_MULTI_MODE`
 - `OPENCODE_OPENAI_MULTI_SPOOF_MODE`
 - `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
-
-Behavior + debug:
-
 - `OPENCODE_OPENAI_MULTI_DEBUG`
 - `DEBUG_CODEX_PLUGIN`
-- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`
 - `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER`
+- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`
 - `OPENCODE_OPENAI_MULTI_QUIET`
 - `OPENCODE_OPENAI_MULTI_PID_OFFSET`
 - `OPENCODE_OPENAI_MULTI_PERSONALITY`
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`
-
-Proactive refresh:
-
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`
+
+Resolved by auth/runtime code (`lib/codex-native.ts`):
+
+- `CODEX_AUTH_DEBUG`
+- `CODEX_OAUTH_CALLBACK_TIMEOUT_MS`
+- `CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS`
+- `CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS`
+- `OPENCODE_NO_BROWSER`
+
+Path and UI variables used by helpers:
+
+- `XDG_CONFIG_HOME`
+- `NO_COLOR`
 
 ## Precedence and defaults
 
@@ -61,3 +105,10 @@ Proactive refresh:
   - env spoof mode when set
   - otherwise derived from mode (`native` => `native`, else `codex`)
 - proactive refresh buffer defaults to `60000` when unset.
+
+## Parsing rules
+
+- Boolean env parser accepts only `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_DEBUG` and `DEBUG_CODEX_PLUGIN` enable debug only when equal to `1`.
+- `CODEX_OAUTH_CALLBACK_TIMEOUT_MS` values below `60000` are ignored.
+- Grace timeout envs (`CODEX_OAUTH_SERVER_SHUTDOWN_*`) must be numeric and `>= 0`.

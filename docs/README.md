@@ -5,7 +5,7 @@ This directory contains user and developer documentation for `opencode-codex-aut
 ## Start here
 
 - `getting-started.md` for install/login/first-run.
-- `configuration.md` for runtime modes, flags, and config schema.
+- `configuration.md` for the complete setting-variable reference (all config keys + env vars).
 
 ## User guides
 
@@ -21,6 +21,7 @@ This directory contains user and developer documentation for `opencode-codex-aut
 
 - `../schemas/codex-config.schema.json`
 - `../schemas/opencode.schema.json`
+- `../schemas/codex-accounts.schema.json`
 
 ## Developer guides
 

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://schemas.iam-brain.dev/opencode-codex-auth/codex-config.schema.json",
   "debug": false,
   "quiet": false,
   "refreshAhead": {

@@ -1,6 +1,7 @@
 import path from "node:path"
 
 import { defaultOpencodeAgentsDir, installOrchestratorAgents } from "./orchestrator-agents.js"
+import { installCreatePersonalityCommand } from "./personality-command.js"
 import { ensureDefaultConfigFile } from "./config.js"
 import {
   DEFAULT_PLUGIN_SPECIFIER,
@@ -77,7 +78,7 @@ function helpText(): string {
     "  opencode-codex-auth install-agents [--force] [--dir <path>]",
     "",
     "Commands:",
-    "  install         Install plugin entry in opencode.json and install Codex collaboration agents.",
+    "  install         Install plugin entry in opencode.json, collab agents, and /create-personality command.",
     "  install-agents  Install local Codex collaboration agent templates.",
     "",
     "Options:",
@@ -119,6 +120,14 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
     const defaultConfig = await ensureDefaultConfigFile({ env: process.env })
     io.out(`Codex config: ${defaultConfig.filePath}`)
     io.out(`Codex config created: ${defaultConfig.created ? "yes" : "no"}`)
+
+    const commandResult = await installCreatePersonalityCommand({ force: true })
+    io.out(`Commands directory: ${commandResult.commandsDir}`)
+    io.out(
+      `/create-personality synchronized: ${
+        commandResult.created ? "created" : commandResult.updated ? "updated" : "unchanged"
+      }`
+    )
   }
 
   const agentsDir = parsed.dir ? path.resolve(parsed.dir) : defaultOpencodeAgentsDir()

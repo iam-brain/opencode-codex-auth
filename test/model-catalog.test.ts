@@ -163,7 +163,7 @@ describe("model catalog", () => {
 
   it("renders custom personality content from local file", async () => {
     const root = await makeCacheDir()
-    const personalityDir = path.join(root, ".opencode", "Personalities")
+    const personalityDir = path.join(root, ".opencode", "personalities")
     await fs.mkdir(personalityDir, { recursive: true })
     await fs.writeFile(path.join(personalityDir, "Pirate.md"), "Talk like a pirate", "utf8")
 

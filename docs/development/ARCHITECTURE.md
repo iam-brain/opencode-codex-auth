@@ -29,6 +29,12 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - dynamic model catalog fetch/cache and provider model shaping
 - `lib/orchestrator-agents.ts`
   - Codex agent template install + `.md/.md.disabled` reconciliation
+- `lib/personality-command.ts`
+  - `/create-personality` command template install/bootstrap
+- `lib/personality-create.ts`
+  - custom personality file generation with enforced core assistant contract
+- `lib/personalities.ts`
+  - custom personality resolution from lowercase `personalities/` directories
 - `lib/ui/auth-menu.ts`, `lib/ui/auth-menu-runner.ts`
   - TTY account manager UI
 

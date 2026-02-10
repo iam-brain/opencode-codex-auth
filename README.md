@@ -53,11 +53,13 @@ The installer does two things:
    - `Codex Review.md.disabled`
    - `Codex Compact.md.disabled`
 3. Creates `~/.config/opencode/codex-config.json` with defaults when missing.
+4. Synchronizes `~/.config/opencode/commands/create-personality.md` for `/create-personality` (created/updated as needed).
 
 At plugin startup, files are reconciled against runtime mode:
 
 - `mode: "collab"` -> `.md.disabled` files are activated to `.md`
 - `mode: "native"` or `mode: "codex"` -> Codex agents are disabled to `.md.disabled`
+- `/create-personality` command template is synchronized to the latest managed version.
 
 To install only the agent templates (no `opencode.json` edits):
 
@@ -71,12 +73,24 @@ Keep `opencode.json` minimal (plugin enablement only). Put runtime behavior in:
 
 - `~/.config/opencode/codex-config.json`
 
-Canonical config/env docs are in `docs/configuration.md`.
+Canonical config/env docs (complete key + variable reference) are in `docs/configuration.md`.
 
 Schemas for user-edited JSON files are in:
 
 - `schemas/codex-config.schema.json`
 - `schemas/opencode.schema.json`
+- `schemas/codex-accounts.schema.json` (advanced/manual recovery)
+
+Personality files live in lowercase directories:
+
+- project-local: `.opencode/personalities/`
+- global: `~/.config/opencode/personalities/`
+
+Create guided custom personalities with:
+
+```bash
+/create-personality
+```
 
 ## Runtime modes
 

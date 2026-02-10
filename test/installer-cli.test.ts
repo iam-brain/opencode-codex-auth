@@ -44,6 +44,7 @@ describe("installer cli", () => {
       expect(output).toContain("OpenCode config created: yes")
       expect(output).toContain("OpenCode config updated: yes")
       expect(output).toContain("Codex config:")
+      expect(output).toContain("/create-personality synchronized: created")
       expect(output).toContain("Written: 6")
 
       const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
@@ -52,6 +53,12 @@ describe("installer cli", () => {
         await fs.readFile(path.join(root, "opencode", "codex-config.json"), "utf8")
       ) as { runtime?: { mode?: string } }
       expect(codexConfig.runtime?.mode).toBe("native")
+
+      const createPersonalityCommand = await fs.readFile(
+        path.join(root, "opencode", "commands", "create-personality.md"),
+        "utf8"
+      )
+      expect(createPersonalityCommand).toContain("create-personality")
     } finally {
       if (previousXdg === undefined) {
         delete process.env.XDG_CONFIG_HOME
