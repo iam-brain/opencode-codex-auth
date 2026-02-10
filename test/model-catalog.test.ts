@@ -1,0 +1,276 @@
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+
+import { describe, expect, it, vi } from "vitest"
+
+import {
+  applyCodexCatalogToProviderModels,
+  getCodexModelCatalog,
+  getRuntimeDefaultsForSlug,
+  resolveInstructionsForModel,
+  type CodexModelCatalogEvent
+} from "../lib/model-catalog"
+
+async function makeCacheDir(): Promise<string> {
+  return fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-model-catalog-"))
+}
+
+describe("model catalog", () => {
+  it("fetches /codex/models with auth headers", async () => {
+    const cacheDir = await makeCacheDir()
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>
+      expect(headers.authorization).toBe("Bearer at")
+      expect(headers["chatgpt-account-id"]).toBe("acc_123")
+
+      return new Response(
+        JSON.stringify({
+          models: [{ slug: "gpt-5.4-codex" }, { slug: "gpt-5.1-codex-mini" }, { slug: "gpt-5.2-codex" }]
+        }),
+        { status: 200 }
+      )
+    })
+
+    const result = await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      fetchImpl,
+      forceRefresh: true,
+      cacheDir,
+      now: () => 1000
+    })
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(result?.map((m) => m.slug)).toEqual(["gpt-5.1-codex-mini", "gpt-5.2-codex", "gpt-5.4-codex"])
+  })
+
+  it("honors caller-provided originator/user-agent/beta headers", async () => {
+    const cacheDir = await makeCacheDir()
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>
+      expect(headers.originator).toBe("codex_exec")
+      expect(headers["user-agent"]).toBe("codex_exec/0.1.0 (Mac OS 26.3; arm64) ghostty/1.2.3")
+      expect(headers["openai-beta"]).toBeUndefined()
+      expect(headers.authorization).toBe("Bearer at")
+      return new Response(JSON.stringify({ models: [{ slug: "gpt-5.4-codex" }] }), {
+        status: 200
+      })
+    })
+
+    await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      originator: "codex_exec",
+      userAgent: "codex_exec/0.1.0 (Mac OS 26.3; arm64) ghostty/1.2.3",
+      fetchImpl,
+      forceRefresh: true,
+      cacheDir,
+      now: () => 1000
+    })
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it("uses stale disk cache when token is unavailable and emits telemetry", async () => {
+    const cacheDir = await makeCacheDir()
+
+    const events: CodexModelCatalogEvent[] = []
+    await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      cacheDir,
+      forceRefresh: true,
+      now: () => 1000,
+      fetchImpl: async () => {
+        return new Response(
+          JSON.stringify({
+            models: [{ slug: "gpt-5.4-codex" }]
+          }),
+          { status: 200 }
+        )
+      },
+      onEvent: (event) => events.push(event)
+    })
+
+    const staleEvents: CodexModelCatalogEvent[] = []
+    const stale = await getCodexModelCatalog({
+      accountId: "acc_123",
+      cacheDir,
+      now: () => 1000 + 16 * 60 * 1000,
+      onEvent: (event) => staleEvents.push(event)
+    })
+
+    expect(stale?.map((model) => model.slug)).toEqual(["gpt-5.4-codex"])
+    expect(staleEvents.some((event) => event.type === "stale_cache_used")).toBe(true)
+  })
+
+  it("renders personality in model instructions template", async () => {
+    const root = await makeCacheDir()
+    const prevCwd = process.cwd()
+    const prevXdg = process.env.XDG_CONFIG_HOME
+    process.env.XDG_CONFIG_HOME = path.join(root, "xdg-empty")
+    process.chdir(root)
+    try {
+      const instructions = resolveInstructionsForModel(
+        {
+          slug: "gpt-5.4-codex",
+          model_messages: {
+            instructions_template: "Base {{ personality }}",
+            instructions_variables: {
+              personality_friendly: "Friendly"
+            }
+          }
+        },
+        "friendly"
+      )
+
+      expect(instructions).toBe("Base Friendly")
+    } finally {
+      process.chdir(prevCwd)
+      if (prevXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME
+      } else {
+        process.env.XDG_CONFIG_HOME = prevXdg
+      }
+    }
+  })
+
+  it("falls back to base instructions when template leaves unresolved markers", () => {
+    const instructions = resolveInstructionsForModel({
+      slug: "gpt-5.4-codex",
+      base_instructions: "Safe base instructions",
+      model_messages: {
+        instructions_template: "Base {{ personality }} {{ unsupported_marker }}"
+      }
+    })
+
+    expect(instructions).toBe("Safe base instructions")
+  })
+
+  it("falls back to base instructions when template includes stale bridge tool markers", () => {
+    const instructions = resolveInstructionsForModel({
+      slug: "gpt-5.4-codex",
+      base_instructions: "Safe base instructions",
+      model_messages: {
+        instructions_template:
+          "Use multi_tool_use.parallel with recipient_name=functions.read and function calls"
+      }
+    })
+
+    expect(instructions).toBe("Safe base instructions")
+  })
+
+  it("renders custom personality content from local file", async () => {
+    const root = await makeCacheDir()
+    const personalityDir = path.join(root, ".opencode", "Personalities")
+    await fs.mkdir(personalityDir, { recursive: true })
+    await fs.writeFile(path.join(personalityDir, "Pirate.md"), "Talk like a pirate", "utf8")
+
+    const prev = process.cwd()
+    process.chdir(root)
+    try {
+      const instructions = resolveInstructionsForModel(
+        {
+          slug: "gpt-5.4-codex",
+          model_messages: {
+            instructions_template: "Base {{ personality }}"
+          }
+        },
+        "pirate"
+      )
+
+      expect(instructions).toBe("Base Talk like a pirate")
+    } finally {
+      process.chdir(prev)
+    }
+  })
+
+  it("extracts runtime defaults and applies them to provider models", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.2-codex": { id: "gpt-5.2-codex", instructions: "old" },
+      "o3-mini": { id: "o3-mini" }
+    }
+
+    const catalogModels = [
+      {
+        slug: "gpt-5.4-codex",
+        apply_patch_tool_type: "apply_patch",
+        default_reasoning_level: "medium",
+        supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }],
+        supports_reasoning_summaries: true,
+        reasoning_summary_format: "experimental",
+        support_verbosity: true,
+        default_verbosity: "high",
+        model_messages: {
+          instructions_template: "Base {{ personality }}",
+          instructions_variables: { personality_default: "Default" }
+        }
+      }
+    ]
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels,
+      fallbackModels: ["gpt-5.2-codex"]
+    })
+
+    expect(providerModels["gpt-5.4-codex"]).toBeDefined()
+    expect(providerModels["gpt-5.4-codex"].instructions).toBe("Base Default")
+    expect(providerModels["gpt-5.4-codex"].name).toBe("GPT-5.4 Codex")
+    expect(providerModels["gpt-5.4-codex"].displayName).toBe("GPT-5.4 Codex")
+    expect(providerModels["o3-mini"]).toBeUndefined()
+    expect(providerModels["gpt-5.4-codex"].codexRuntimeDefaults).toEqual({
+      applyPatchToolType: "apply_patch",
+      defaultReasoningEffort: "medium",
+      supportedReasoningEfforts: ["low", "medium", "high"],
+      supportsReasoningSummaries: true,
+      reasoningSummaryFormat: "experimental",
+      supportsVerbosity: true,
+      defaultVerbosity: "high"
+    })
+
+    const defaults = getRuntimeDefaultsForSlug("gpt-5.4-codex-high", catalogModels)
+    expect(defaults?.defaultReasoningEffort).toBe("medium")
+  })
+
+  it("normalizes slug-style model names into title-cased display names", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.2-codex": { id: "gpt-5.2-codex" }
+    }
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [{ slug: "gpt-5.1-codex-mini" }],
+      fallbackModels: []
+    })
+
+    expect(providerModels["gpt-5.1-codex-mini"]).toBeDefined()
+    expect(providerModels["gpt-5.1-codex-mini"].name).toBe("GPT-5.1 Codex Mini")
+    expect(providerModels["gpt-5.1-codex-mini"].displayName).toBe("GPT-5.1 Codex Mini")
+  })
+
+  it("orders provider models in reverse alphabetical slug order", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.2-codex": { id: "gpt-5.2-codex" },
+      "gpt-5.1-codex-mini": { id: "gpt-5.1-codex-mini" },
+      "gpt-5.3-codex": { id: "gpt-5.3-codex" }
+    }
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [
+        { slug: "gpt-5.2-codex" },
+        { slug: "gpt-5.1-codex-mini" },
+        { slug: "gpt-5.3-codex" }
+      ],
+      fallbackModels: []
+    })
+
+    expect(Object.keys(providerModels)).toEqual([
+      "gpt-5.3-codex",
+      "gpt-5.2-codex",
+      "gpt-5.1-codex-mini"
+    ])
+  })
+})
