@@ -1,12 +1,12 @@
 # opencode-codex-auth
 
-OpenCode plugin for OpenAI ChatGPT OAuth with multi-account management, Codex-compatible request modes, and dynamic model behavior controls.
+OpenCode plugin for OpenAI Codex ChatGPT OAuth with multi-account management, Codex-compatible request modes, and dynamic model behavior controls.
 
 Quick links: `docs/getting-started.md` · `docs/configuration.md` · `docs/multi-account.md` · `docs/troubleshooting.md`
 
 ## Why this plugin
 
-- Uses ChatGPT OAuth instead of API keys for OpenAI provider flows.
+- Uses ChatGPT OAuth instead of API keys for OpenAI Codex provider flows.
 - Keeps account rotation state in a plugin-owned store (`codex-accounts.json`).
 - Supports `native`, `codex`, and experimental `collab` runtime modes.
 - Adds account-manager UX to `opencode auth login` (quotas, toggles, scoped deletes, transfer).
@@ -25,7 +25,7 @@ Then authenticate:
 opencode auth login
 ```
 
-Use an OpenAI model through OpenCode:
+Use an OpenAI Codex model through OpenCode:
 
 ```bash
 opencode run "say hi" --model=openai/gpt-5.2

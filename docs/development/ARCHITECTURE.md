@@ -1,6 +1,6 @@
 # Architecture
 
-This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend endpoints using OAuth.
+This plugin bridges OpenCode's OpenAI Codex provider hooks to ChatGPT Codex backend endpoints using OAuth.
 
 ## Runtime overview
 

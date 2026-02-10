@@ -3,7 +3,7 @@
 ## Files written by the plugin
 
 - `~/.config/opencode/codex-accounts.json`
-  - plugin-owned OpenAI account rotation/auth state
+  - plugin-owned OpenAI Codex account rotation/auth state
 - `~/.local/share/opencode/auth.json`
   - OpenCode provider auth marker/state
 - `~/.config/opencode/logs/codex-plugin/` (optional)

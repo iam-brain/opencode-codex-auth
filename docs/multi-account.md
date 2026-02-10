@@ -1,6 +1,6 @@
 # Multi-account behavior
 
-This plugin supports multi-account OpenAI OAuth with strict identity, health-aware routing, and explicit legacy transfer.
+This plugin supports multi-account OpenAI Codex OAuth with strict identity, health-aware routing, and explicit legacy transfer.
 
 ## Storage model
 
@@ -12,7 +12,7 @@ Provider marker file:
 
 - `~/.local/share/opencode/auth.json`
 
-OpenAI auth is stored with domain-aware account sets:
+OpenAI Codex auth is stored with domain-aware account sets:
 
 - `openai.native`
 - `openai.codex`

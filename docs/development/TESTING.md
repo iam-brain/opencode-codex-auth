@@ -46,5 +46,5 @@ Before production release, validate in a live OpenCode session:
 2. add multiple accounts
 3. quota rendering (`5h`, `Weekly`, `Credits`)
 4. enable/disable/delete flows
-5. one real request with OpenAI model
+5. one real request with an OpenAI Codex model
 6. no malformed tool-call output
