@@ -113,8 +113,8 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
 
     io.out(`OpenCode config: ${pluginResult.configPath}`)
     io.out(`Plugin specifier: ${pluginResult.pluginSpecifier}`)
-    io.out(`Config created: ${pluginResult.created ? "yes" : "no"}`)
-    io.out(`Plugin updated: ${pluginResult.changed ? "yes" : "no"}`)
+    io.out(`OpenCode config created: ${pluginResult.created ? "yes" : "no"}`)
+    io.out(`OpenCode config updated: ${pluginResult.changed ? "yes" : "no"}`)
 
     const defaultConfig = await ensureDefaultConfigFile({ env: process.env })
     io.out(`Codex config: ${defaultConfig.filePath}`)

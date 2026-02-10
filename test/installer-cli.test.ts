@@ -41,6 +41,8 @@ describe("installer cli", () => {
       expect(code).toBe(0)
       const output = capture.out.join("\n")
       expect(output).toContain("Plugin specifier: @iam-brain/opencode-codex-auth@latest")
+      expect(output).toContain("OpenCode config created: yes")
+      expect(output).toContain("OpenCode config updated: yes")
       expect(output).toContain("Codex config:")
       expect(output).toContain("Written: 6")
 

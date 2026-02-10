@@ -56,21 +56,10 @@ export const DEFAULT_CODEX_CONFIG = {
     pidOffset: false
   },
   global: {
-    personality: "friendly",
-    thinkingSummaries: true
+    personality: "pragmatic",
+    thinkingSummaries: false
   },
-  perModel: {
-    "gpt-5.3-codex": {
-      personality: "pragmatic",
-      thinkingSummaries: false,
-      variants: {
-        high: {
-          personality: "focused",
-          thinkingSummaries: true
-        }
-      }
-    }
-  }
+  perModel: {}
 } as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {

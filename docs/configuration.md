@@ -28,21 +28,10 @@ If the file is missing, the plugin creates a fresh default `codex-config.json` a
     "pidOffset": false
   },
   "global": {
-    "personality": "friendly",
-    "thinkingSummaries": true
+    "personality": "pragmatic",
+    "thinkingSummaries": false
   },
-  "perModel": {
-    "gpt-5.3-codex": {
-      "personality": "pragmatic",
-      "thinkingSummaries": false,
-      "variants": {
-        "high": {
-          "personality": "focused",
-          "thinkingSummaries": true
-        }
-      }
-    }
-  }
+  "perModel": {}
 }
 ```
 
@@ -72,6 +61,9 @@ For personality and thinking summaries:
 1. `perModel.<model>.variants.<variant>`
 2. `perModel.<model>`
 3. `global`
+
+Built-in personality keys guaranteed by model metadata are `friendly` and `pragmatic`.
+Any other personality key should be backed by a local or global `Personalities/<Name>.md` file.
 
 ## Environment variables
 

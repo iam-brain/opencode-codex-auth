@@ -12,19 +12,8 @@
     "pidOffset": false
   },
   "global": {
-    "personality": "friendly",
-    "thinkingSummaries": true
+    "personality": "pragmatic",
+    "thinkingSummaries": false
   },
-  "perModel": {
-    "gpt-5.3-codex": {
-      "personality": "pragmatic",
-      "thinkingSummaries": false,
-      "variants": {
-        "high": {
-          "personality": "focused",
-          "thinkingSummaries": true
-        }
-      }
-    }
-  }
+  "perModel": {}
 }
