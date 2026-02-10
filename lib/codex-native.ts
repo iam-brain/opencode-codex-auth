@@ -251,6 +251,7 @@ export const __testOnly = {
   buildOAuthSuccessHtml,
   buildOAuthErrorHtml,
   composeCodexSuccessRedirectUrl,
+  modeForRuntimeMode,
   buildCodexUserAgent,
   resolveRequestUserAgent,
   resolveHookAgentName,
@@ -453,7 +454,7 @@ function buildOAuthErrorHtml(error: string): string {
 type PendingOAuth = {
   pkce: PkceCodes
   state: string
-  spoofMode: CodexSpoofMode
+  authMode: OpenAIAuthMode
   resolve: (tokens: TokenResponse) => void
   reject: (error: Error) => void
 }
@@ -518,7 +519,7 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
           .then((tokens) => {
             current.resolve(tokens)
             if (res.writableEnded) return
-            if (current.spoofMode === "codex") {
+            if (current.authMode === "codex") {
               redirect(composeCodexSuccessRedirectUrl(tokens))
               return
             }
@@ -581,7 +582,7 @@ function stopOAuthServer(): void {
 function waitForOAuthCallback(
   pkce: PkceCodes,
   state: string,
-  spoofMode: CodexSpoofMode
+  authMode: OpenAIAuthMode
 ): Promise<TokenResponse> {
   return new Promise((resolve, reject) => {
     let settled = false
@@ -605,15 +606,15 @@ function waitForOAuthCallback(
     pendingOAuth = {
       pkce,
       state,
-      spoofMode,
+      authMode,
       resolve: resolveOnce,
       reject: rejectOnce
     }
   })
 }
 
-function modeForSpoofMode(spoofMode: CodexSpoofMode): OpenAIAuthMode {
-  return spoofMode === "codex" ? "codex" : "native"
+function modeForRuntimeMode(runtimeMode: PluginRuntimeMode): OpenAIAuthMode {
+  return runtimeMode === "native" ? "native" : "codex"
 }
 
 const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
@@ -1628,7 +1629,7 @@ export async function CodexAuthPlugin(
         ? "codex"
         : "native"
   const collabModeEnabled = runtimeMode === "collab"
-  const authMode: OpenAIAuthMode = modeForSpoofMode(spoofMode)
+  const authMode: OpenAIAuthMode = modeForRuntimeMode(runtimeMode)
   const resolveCatalogHeaders = (): {
     originator: string
     userAgent: string
@@ -2371,7 +2372,7 @@ export async function CodexAuthPlugin(
                 state,
                 "codex_cli_rs"
               )
-              const callbackPromise = waitForOAuthCallback(pkce, state, spoofMode)
+              const callbackPromise = waitForOAuthCallback(pkce, state, authMode)
               void tryOpenUrlInBrowser(authUrl, opts.log)
               process.stdout.write(`\nGo to: ${authUrl}\n`)
               process.stdout.write("Complete authorization in your browser. This window will close automatically.\n")
@@ -2439,7 +2440,7 @@ export async function CodexAuthPlugin(
               state,
               "codex_cli_rs"
             )
-            const callbackPromise = waitForOAuthCallback(pkce, state, spoofMode)
+            const callbackPromise = waitForOAuthCallback(pkce, state, authMode)
             void tryOpenUrlInBrowser(authUrl, opts.log)
 
             return {
