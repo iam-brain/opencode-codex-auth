@@ -7,6 +7,7 @@ Canonical source: `lib/config.ts`
 - `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
 - fallback: `$XDG_CONFIG_HOME/opencode/codex-config.json`
 - fallback (no `XDG_CONFIG_HOME`): `~/.config/opencode/codex-config.json`
+- parser accepts JSON with comments (`//`, `/* ... */`)
 
 ## Canonical JSON keys
 
@@ -45,7 +46,6 @@ Default generated values:
 - `runtime.headerSnapshots: false`
 - `runtime.pidOffset: false`
 - `global.personality: "pragmatic"`
-- `global.thinkingSummaries: false`
 - `perModel: {}`
 
 ## Legacy compatibility keys (parsed, non-canonical)

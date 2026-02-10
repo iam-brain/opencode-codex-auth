@@ -20,6 +20,7 @@ import {
   getThinkingSummariesOverride,
   getQuietMode,
   loadConfigFile,
+  parseConfigJsonWithComments,
   resolveConfig
 } from "../lib/config"
 
@@ -313,9 +314,12 @@ describe("config file loading", () => {
   it("creates default codex config when missing", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const result = await ensureDefaultConfigFile({ env: { XDG_CONFIG_HOME: root } })
-    const written = JSON.parse(await fs.readFile(result.filePath, "utf8")) as unknown
+    const raw = await fs.readFile(result.filePath, "utf8")
+    const written = parseConfigJsonWithComments(raw) as unknown
 
     expect(result.created).toBe(true)
+    expect(raw).toContain("// default: \"native\"")
+    expect(raw).toContain("// Thinking summaries behavior:")
     expect(written).toEqual(DEFAULT_CODEX_CONFIG)
   })
 
@@ -344,9 +348,32 @@ describe("config file loading", () => {
       env: { XDG_CONFIG_HOME: root },
       overwrite: true
     })
-    const written = JSON.parse(await fs.readFile(filePath, "utf8")) as unknown
+    const raw = await fs.readFile(filePath, "utf8")
+    const written = parseConfigJsonWithComments(raw) as unknown
 
     expect(result.created).toBe(true)
+    expect(raw).toContain("// Optional model-specific overrides.")
     expect(written).toEqual(DEFAULT_CODEX_CONFIG)
+  })
+
+  it("loads config JSON with line and block comments", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(
+      filePath,
+      `{
+        // line comment
+        "quiet": true,
+        /* block comment */
+        "runtime": { "mode": "codex" }
+      }
+      `,
+      "utf8"
+    )
+
+    const loaded = loadConfigFile({ filePath })
+    expect(loaded.quietMode).toBe(true)
+    expect(loaded.mode).toBe("codex")
+    expect(loaded.spoofMode).toBe("codex")
   })
 })

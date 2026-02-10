@@ -1427,6 +1427,7 @@ type ModelRuntimeDefaults = {
   applyPatchToolType?: string
   defaultReasoningEffort?: string
   supportsReasoningSummaries?: boolean
+  reasoningSummaryFormat?: string
   defaultVerbosity?: "low" | "medium" | "high"
   supportsVerbosity?: boolean
 }
@@ -1446,6 +1447,13 @@ function asStringArray(value: unknown): string[] | undefined {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
 }
 
+function normalizeReasoningSummaryOption(value: unknown): "auto" | "concise" | "detailed" | undefined {
+  const normalized = asString(value)?.toLowerCase()
+  if (!normalized || normalized === "none") return undefined
+  if (normalized === "auto" || normalized === "concise" || normalized === "detailed") return normalized
+  return undefined
+}
+
 function readModelRuntimeDefaults(options: Record<string, unknown>): ModelRuntimeDefaults {
   const raw = options.codexRuntimeDefaults
   if (!isRecord(raw)) return {}
@@ -1454,6 +1462,7 @@ function readModelRuntimeDefaults(options: Record<string, unknown>): ModelRuntim
     defaultReasoningEffort: asString(raw.defaultReasoningEffort),
     supportsReasoningSummaries:
       typeof raw.supportsReasoningSummaries === "boolean" ? raw.supportsReasoningSummaries : undefined,
+    reasoningSummaryFormat: asString(raw.reasoningSummaryFormat),
     defaultVerbosity:
       raw.defaultVerbosity === "low" || raw.defaultVerbosity === "medium" || raw.defaultVerbosity === "high"
         ? raw.defaultVerbosity
@@ -1645,15 +1654,30 @@ function applyCodexRuntimeDefaultsToParams(input: {
 
   const reasoningEffort = asString(options.reasoningEffort)
   const hasReasoning = reasoningEffort !== undefined && reasoningEffort !== "none"
-  const currentReasoningSummary = asString(options.reasoningSummary)
-  if (currentReasoningSummary === undefined) {
-    if (input.thinkingSummariesOverride === false) {
-      options.reasoningSummary = "none"
-    } else if (
+  const rawReasoningSummary = asString(options.reasoningSummary)
+  const hadExplicitReasoningSummary = rawReasoningSummary !== undefined
+  const currentReasoningSummary = normalizeReasoningSummaryOption(rawReasoningSummary)
+  if (rawReasoningSummary !== undefined) {
+    if (currentReasoningSummary) {
+      options.reasoningSummary = currentReasoningSummary
+    } else {
+      delete options.reasoningSummary
+    }
+  }
+  if (!hadExplicitReasoningSummary && currentReasoningSummary === undefined) {
+    if (
       hasReasoning &&
       (defaults.supportsReasoningSummaries === true || input.thinkingSummariesOverride === true)
     ) {
-      options.reasoningSummary = "auto"
+      if (input.thinkingSummariesOverride === false) {
+        delete options.reasoningSummary
+      } else {
+        if (defaults.reasoningSummaryFormat?.toLowerCase() === "none") {
+          delete options.reasoningSummary
+        } else {
+          options.reasoningSummary = defaults.reasoningSummaryFormat ?? "auto"
+        }
+      }
     }
   }
 
@@ -1675,7 +1699,8 @@ function applyCodexRuntimeDefaultsToParams(input: {
 
   const shouldIncludeReasoning =
     hasReasoning &&
-    ((asString(options.reasoningSummary) !== undefined && asString(options.reasoningSummary) !== "none") ||
+    ((asString(options.reasoningSummary) !== undefined &&
+      asString(options.reasoningSummary)?.toLowerCase() !== "none") ||
       defaults.supportsReasoningSummaries === true)
 
   if (shouldIncludeReasoning) {

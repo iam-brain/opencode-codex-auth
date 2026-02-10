@@ -76,6 +76,74 @@ describe("codex-native spoof + params hooks", () => {
     ])
   })
 
+  it("applies model reasoning summary format default verbatim", async () => {
+    const hooks = await CodexAuthPlugin({} as never)
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_123",
+      agent: "default",
+      provider: {},
+      message: {},
+      model: {
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexRuntimeDefaults: {
+            defaultReasoningEffort: "high",
+            supportsReasoningSummaries: true,
+            reasoningSummaryFormat: "experimental"
+          }
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {}
+    }
+
+    await chatParams?.(input, output)
+    expect(output.options.reasoningSummary).toBe("experimental")
+  })
+
+  it("treats model reasoning summary format none as disabled", async () => {
+    const hooks = await CodexAuthPlugin({} as never)
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_123",
+      agent: "default",
+      provider: {},
+      message: {},
+      model: {
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexRuntimeDefaults: {
+            defaultReasoningEffort: "high",
+            supportsReasoningSummaries: true,
+            reasoningSummaryFormat: "none"
+          }
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {}
+    }
+
+    await chatParams?.(input, output)
+    expect(output.options.reasoningSummary).toBeUndefined()
+  })
+
   it("keeps explicit host options in chat.params", async () => {
     const hooks = await CodexAuthPlugin({} as never)
     const chatParams = hooks["chat.params"]
@@ -118,7 +186,7 @@ describe("codex-native spoof + params hooks", () => {
 
     expect(output.options.instructions).toBe("Host instructions")
     expect(output.options.reasoningEffort).toBe("minimal")
-    expect(output.options.reasoningSummary).toBe("none")
+    expect(output.options.reasoningSummary).toBeUndefined()
     expect(output.options.textVerbosity).toBe("high")
     expect(output.options.parallelToolCalls).toBe(false)
     expect(output.options.include).toEqual(["reasoning.encrypted_content"])
@@ -348,7 +416,7 @@ describe("codex-native spoof + params hooks", () => {
     }
 
     await chatParams?.(input, output)
-    expect(output.options.reasoningSummary).toBe("none")
+    expect(output.options.reasoningSummary).toBeUndefined()
   })
 
   it("prefers per-model thinking summaries over global setting", async () => {
@@ -393,7 +461,7 @@ describe("codex-native spoof + params hooks", () => {
     }
 
     await chatParams?.(input, output)
-    expect(output.options.reasoningSummary).toBe("none")
+    expect(output.options.reasoningSummary).toBeUndefined()
   })
 
   it("prefers per-variant thinking summaries over per-model and global", async () => {

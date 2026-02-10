@@ -4,6 +4,7 @@ import path from "node:path"
 
 import { describe, expect, it } from "vitest"
 
+import { parseConfigJsonWithComments } from "../lib/config"
 import { runInstallerCli } from "../lib/installer-cli"
 
 function captureIo() {
@@ -49,7 +50,7 @@ describe("installer cli", () => {
 
       const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
       expect(config.plugin).toContain("@iam-brain/opencode-codex-auth@latest")
-      const codexConfig = JSON.parse(
+      const codexConfig = parseConfigJsonWithComments(
         await fs.readFile(path.join(root, "opencode", "codex-config.json"), "utf8")
       ) as { runtime?: { mode?: string } }
       expect(codexConfig.runtime?.mode).toBe("native")

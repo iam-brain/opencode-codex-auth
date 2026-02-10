@@ -57,11 +57,87 @@ export const DEFAULT_CODEX_CONFIG = {
     pidOffset: false
   },
   global: {
-    personality: "pragmatic",
-    thinkingSummaries: false
+    personality: "pragmatic"
   },
   perModel: {}
 } as const
+
+const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
+  "$schema": "https://schemas.iam-brain.dev/opencode-codex-auth/codex-config.schema.json",
+
+  // Enable verbose plugin debug logs.
+  // options: true | false
+  // default: false
+  "debug": false,
+
+  // Suppress plugin UI toasts/notifications.
+  // options: true | false
+  // default: false
+  "quiet": false,
+
+  // Proactively refresh access tokens before expiry.
+  "refreshAhead": {
+    // options: true | false
+    // default: true
+    "enabled": true,
+
+    // Milliseconds before expiry to refresh.
+    // default: 60000
+    "bufferMs": 60000
+  },
+
+  "runtime": {
+    // Request identity/profile mode.
+    // options: "native" | "codex" | "collab"
+    // default: "native"
+    "mode": "native",
+
+    // Input compatibility sanitizer for edge payloads.
+    // options: true | false
+    // default: false
+    "sanitizeInputs": false,
+
+    // Write request header snapshots to plugin logs.
+    // options: true | false
+    // default: false
+    "headerSnapshots": false,
+
+    // Session-aware offset for account selection.
+    // options: true | false
+    // default: false
+    "pidOffset": false
+  },
+
+  "global": {
+    // Global personality key.
+    // built-ins: "pragmatic", "friendly"
+    // custom: any lowercase key from personalities/<key>.md
+    // default: "pragmatic"
+    "personality": "pragmatic"
+
+    // Thinking summaries behavior:
+    // true  => force on
+    // false => force off
+    // omit  => use model default from catalog cache (recommended)
+    // "thinkingSummaries": true
+  },
+
+  // Optional model-specific overrides.
+  // Supports same fields as global plus nested variants.
+  "perModel": {
+    // "gpt-5.3-codex": {
+    //   "personality": "friendly",
+    //   "thinkingSummaries": true,
+    //   "variants": {
+    //     "high": {
+    //       "personality": "pragmatic",
+    //       "thinkingSummaries": false
+    //     }
+    //   }
+    // }
+  }
+}
+`
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -78,6 +154,77 @@ function parseEnvNumber(value: string | undefined): number | undefined {
   if (value === undefined) return undefined
   const n = Number(value)
   return Number.isFinite(n) ? n : undefined
+}
+
+function stripJsonComments(raw: string): string {
+  let out = ""
+  let inString = false
+  let escaped = false
+  let inLineComment = false
+  let inBlockComment = false
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const ch = raw[index]
+    const next = raw[index + 1]
+
+    if (inLineComment) {
+      if (ch === "\n" || ch === "\r") {
+        inLineComment = false
+        out += ch
+      }
+      continue
+    }
+
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false
+        index += 1
+        continue
+      }
+      if (ch === "\n" || ch === "\r") {
+        out += ch
+      }
+      continue
+    }
+
+    if (inString) {
+      out += ch
+      if (escaped) {
+        escaped = false
+      } else if (ch === "\\") {
+        escaped = true
+      } else if (ch === "\"") {
+        inString = false
+      }
+      continue
+    }
+
+    if (ch === "\"") {
+      inString = true
+      out += ch
+      continue
+    }
+
+    if (ch === "/" && next === "/") {
+      inLineComment = true
+      index += 1
+      continue
+    }
+
+    if (ch === "/" && next === "*") {
+      inBlockComment = true
+      index += 1
+      continue
+    }
+
+    out += ch
+  }
+
+  return out
+}
+
+export function parseConfigJsonWithComments(raw: string): unknown {
+  return JSON.parse(stripJsonComments(raw)) as unknown
 }
 
 export function normalizePersonalityOption(value: unknown): PersonalityOption | undefined {
@@ -426,7 +573,7 @@ export async function ensureDefaultConfigFile(input: {
   }
 
   await fsPromises.mkdir(path.dirname(filePath), { recursive: true })
-  const content = `${JSON.stringify(DEFAULT_CODEX_CONFIG, null, 2)}\n`
+  const content = DEFAULT_CODEX_CONFIG_TEMPLATE
   await fsPromises.writeFile(filePath, content, { encoding: "utf8", mode: 0o600 })
   return { filePath, created: true }
 }
@@ -445,7 +592,7 @@ export function loadConfigFile(input: {
     if (!fs.existsSync(filePath)) continue
     try {
       const raw = fs.readFileSync(filePath, "utf8")
-      const parsed = JSON.parse(raw) as unknown
+      const parsed = parseConfigJsonWithComments(raw)
       return parseConfigFileObject(parsed)
     } catch {
       return {}

@@ -22,6 +22,8 @@ The plugin loads config in this order:
 2. `$XDG_CONFIG_HOME/opencode/codex-config.json`
 3. `~/.config/opencode/codex-config.json`
 
+`codex-config.json` supports JSON comments (`//` and `/* ... */`) for readability.
+
 ## Default generated config
 
 ```json
@@ -40,8 +42,7 @@ The plugin loads config in this order:
     "pidOffset": false
   },
   "global": {
-    "personality": "pragmatic",
-    "thinkingSummaries": false
+    "personality": "pragmatic"
   },
   "perModel": {}
 }
@@ -78,15 +79,15 @@ The plugin loads config in this order:
 - `global.personality: string`
   - Personality key applied to all models unless overridden.
 - `global.thinkingSummaries: boolean`
-  - Global thinking-summary preference.
+  - Global thinking-summary preference. Omit to use model/catalog default.
 - `perModel.<model>.personality: string`
   - Model-specific personality override.
 - `perModel.<model>.thinkingSummaries: boolean`
-  - Model-specific summary override.
+  - Model-specific summary override (`true` force-on, `false` force-off).
 - `perModel.<model>.variants.<variant>.personality: string`
   - Variant-level personality override.
 - `perModel.<model>.variants.<variant>.thinkingSummaries: boolean`
-  - Variant-level summary override.
+  - Variant-level summary override (`true` force-on, `false` force-off).
 
 Precedence for `personality` and `thinkingSummaries`:
 

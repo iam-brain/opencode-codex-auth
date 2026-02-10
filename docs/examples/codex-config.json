@@ -13,8 +13,7 @@
     "pidOffset": false
   },
   "global": {
-    "personality": "pragmatic",
-    "thinkingSummaries": false
+    "personality": "pragmatic"
   },
   "perModel": {}
 }
