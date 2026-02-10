@@ -31,7 +31,7 @@ describe("orchestrator agents installer", () => {
   })
 
   it("installs templates idempotently unless force is enabled", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-agents-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-agents-"))
     const agentsDir = path.join(root, "agents")
 
     const first = await installOrchestratorAgents({ agentsDir })
@@ -52,7 +52,7 @@ describe("orchestrator agents installer", () => {
   })
 
   it("toggles collab agents with .md.disabled when mode changes", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-agents-toggle-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-agents-toggle-"))
     const agentsDir = path.join(root, "agents")
 
     await installOrchestratorAgents({ agentsDir })

@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
-export const DEFAULT_PLUGIN_SPECIFIER = "@iam-brain/opencode-openai-multi@latest"
+export const DEFAULT_PLUGIN_SPECIFIER = "@iam-brain/opencode-codex-auth@latest"
 
 export function defaultOpencodeConfigPath(env: Record<string, string | undefined> = process.env): string {
   const xdgRoot = env.XDG_CONFIG_HOME?.trim()

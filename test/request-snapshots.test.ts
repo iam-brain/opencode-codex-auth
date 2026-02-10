@@ -8,7 +8,7 @@ import { createRequestSnapshots } from "../lib/request-snapshots"
 
 describe("request snapshots", () => {
   it("writes redacted request snapshots when enabled", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-snapshots-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
     const snapshots = createRequestSnapshots({ enabled: true, dir: root })
 
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
@@ -57,7 +57,7 @@ describe("request snapshots", () => {
   })
 
   it("skips writing files when disabled", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-snapshots-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
     const snapshots = createRequestSnapshots({ enabled: false, dir: root })
 
     await snapshots.captureRequest("before-auth", new Request("https://example.com"))

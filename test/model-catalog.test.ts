@@ -13,7 +13,7 @@ import {
 } from "../lib/model-catalog"
 
 async function makeCacheDir(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-model-catalog-"))
+  return fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-model-catalog-"))
 }
 
 describe("model catalog", () => {

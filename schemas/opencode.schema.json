@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.iam-brain.dev/opencode-openai-multi/opencode.schema.json",
+  "$id": "https://schemas.iam-brain.dev/opencode-codex-auth/opencode.schema.json",
   "title": "OpenCode Config (Plugin Focused)",
   "description": "Schema for ~/.config/opencode/opencode.json with plugin registration guidance.",
   "type": "object",
@@ -8,7 +8,7 @@
   "properties": {
     "plugin": {
       "type": "array",
-      "description": "Include @iam-brain/opencode-openai-multi@latest to enable this plugin.",
+      "description": "Include @iam-brain/opencode-codex-auth@latest to enable this plugin.",
       "items": {
         "type": "string",
         "minLength": 1
@@ -17,7 +17,7 @@
   },
   "examples": [
     {
-      "plugin": ["@iam-brain/opencode-openai-multi@latest"]
+      "plugin": ["@iam-brain/opencode-codex-auth@latest"]
     }
   ]
 }

@@ -33,7 +33,7 @@ describe("integration", () => {
     const auth = await loadAuthStorage(filePath)
     const openai = auth.openai
     if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
-      throw new Error("Expected openai multi-account oauth auth")
+      throw new Error("Expected OpenAI multi-account oauth auth")
     }
 
     const now = 1_000

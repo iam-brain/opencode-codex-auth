@@ -1,6 +1,6 @@
 # Documentation
 
-This directory contains user and developer documentation for `opencode-openai-multi`.
+This directory contains user and developer documentation for `opencode-codex-auth`.
 
 ## Start here
 

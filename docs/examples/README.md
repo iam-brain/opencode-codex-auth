@@ -27,6 +27,6 @@ For local development, you can use a file plugin path instead of a package speci
 
 ```json
 {
-  "plugin": ["file:///absolute/path/to/opencode-openai-multi/dist"]
+  "plugin": ["file:///absolute/path/to/opencode-codex-auth/dist"]
 }
 ```

@@ -17,7 +17,7 @@ describe("opencode installer config", () => {
   })
 
   it("creates config and installs plugin specifier", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-"))
     const configPath = path.join(root, "opencode.json")
 
     const first = await ensurePluginInstalled({ configPath })

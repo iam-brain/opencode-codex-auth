@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.iam-brain.dev/opencode-openai-multi/codex-config.schema.json",
-  "title": "OpenCode OpenAI Multi Codex Config",
+  "$id": "https://schemas.iam-brain.dev/opencode-codex-auth/codex-config.schema.json",
+  "title": "OpenCode Codex Auth Config",
   "description": "Schema for ~/.config/opencode/codex-config.json",
   "type": "object",
   "additionalProperties": false,

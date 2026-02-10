@@ -838,7 +838,7 @@ function rewriteUrl(requestInput: string | URL | Request): URL {
 }
 
 function opencodeUserAgent(): string {
-  return `opencode-openai-multi ( ${os.platform()} ${os.release()}; ${os.arch()} )`
+  return `opencode-codex-auth ( ${os.platform()} ${os.release()}; ${os.arch()} )`
 }
 
 type CodexOriginator = "codex_cli_rs" | "codex_exec"

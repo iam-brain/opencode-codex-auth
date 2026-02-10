@@ -206,7 +206,7 @@ describe("codex-native snapshots", () => {
       headers: {
         "content-type": "application/json",
         originator: "codex_exec",
-        "user-agent": "opencode-openai-multi (...) ai-sdk/provider-utils/3.0.20 runtime/bun/1.3.5"
+        "user-agent": "opencode-codex-auth (...) ai-sdk/provider-utils/3.0.20 runtime/bun/1.3.5"
       },
       body: JSON.stringify({ model: "gpt-5.2-codex", input: "hi" })
     })

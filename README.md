@@ -1,4 +1,4 @@
-# opencode-openai-multi
+# opencode-codex-auth
 
 OpenCode plugin for OpenAI ChatGPT OAuth with multi-account management, Codex-compatible request modes, and dynamic model behavior controls.
 
@@ -16,7 +16,7 @@ Quick links: `docs/getting-started.md` · `docs/configuration.md` · `docs/multi
 Install and register the plugin (recommended):
 
 ```bash
-npx -y @iam-brain/opencode-openai-multi
+npx -y @iam-brain/opencode-codex-auth
 ```
 
 Then authenticate:
@@ -37,11 +37,11 @@ This plugin is intended for personal development use with your own ChatGPT accou
 
 ## Install behavior
 
-By default, `npx -y @iam-brain/opencode-openai-multi` runs the installer.
+By default, `npx -y @iam-brain/opencode-codex-auth` runs the installer.
 
 The installer does two things:
 
-1. Ensures `@iam-brain/opencode-openai-multi@latest` is present in `~/.config/opencode/opencode.json`.
+1. Ensures `@iam-brain/opencode-codex-auth@latest` is present in `~/.config/opencode/opencode.json`.
 2. Installs Codex collaboration agent templates in `~/.config/opencode/agents/` as disabled files:
    - `Codex Orchestrator.md.disabled`
    - `Codex Default.md.disabled`
@@ -59,7 +59,7 @@ At plugin startup, files are reconciled against runtime mode:
 To install only the agent templates (no `opencode.json` edits):
 
 ```bash
-npx -y @iam-brain/opencode-openai-multi install-agents
+npx -y @iam-brain/opencode-codex-auth install-agents
 ```
 
 ## Config split

@@ -12,19 +12,19 @@ This guide covers install, login, migration transfer, and first verification.
 Published install:
 
 ```bash
-npx -y @iam-brain/opencode-openai-multi
+npx -y @iam-brain/opencode-codex-auth
 ```
 
 What this does:
 
-- Adds `@iam-brain/opencode-openai-multi@latest` to `~/.config/opencode/opencode.json`
+- Adds `@iam-brain/opencode-codex-auth@latest` to `~/.config/opencode/opencode.json`
 - Installs Codex collab agents to `~/.config/opencode/agents/` as `*.md.disabled`
 - Creates `~/.config/opencode/codex-config.json` if missing
 
 To install only the agent templates (no `opencode.json` edits):
 
 ```bash
-npx -y @iam-brain/opencode-openai-multi install-agents
+npx -y @iam-brain/opencode-codex-auth install-agents
 ```
 
 ## 2) Keep OpenCode config minimal
@@ -35,7 +35,7 @@ Example:
 
 ```json
 {
-  "plugin": ["@iam-brain/opencode-openai-multi@latest"]
+  "plugin": ["@iam-brain/opencode-codex-auth@latest"]
 }
 ```
 
@@ -108,6 +108,6 @@ Then use a file plugin path in your local `opencode.json`:
 
 ```json
 {
-  "plugin": ["file:///absolute/path/to/opencode-openai-multi/dist"]
+  "plugin": ["file:///absolute/path/to/opencode-codex-auth/dist"]
 }
 ```

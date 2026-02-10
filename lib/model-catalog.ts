@@ -132,9 +132,9 @@ function cacheKey(cacheDir: string, accountId?: string): string {
 function cachePath(cacheDir: string, accountId?: string): string {
   const normalized = normalizeAccountId(accountId)
   if (!normalized) {
-    return path.join(cacheDir, "openai-multi-codex-models-shared.json")
+    return path.join(cacheDir, "codex-auth-models-shared.json")
   }
-  return path.join(cacheDir, `openai-multi-codex-models-${hashAccountId(normalized)}.json`)
+  return path.join(cacheDir, `codex-auth-models-${hashAccountId(normalized)}.json`)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

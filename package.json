@@ -1,12 +1,12 @@
 {
-  "name": "opencode-openai-multi",
+  "name": "opencode-codex-auth",
   "version": "0.1.0",
   "description": "Native Codex auth with multi-account rotation for OpenCode",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
   "bin": {
-    "opencode-openai-multi": "./dist/bin/opencode-openai-multi.js"
+    "opencode-codex-auth": "./dist/bin/opencode-codex-auth.js"
   },
   "license": "MIT",
   "author": "iam-brain",

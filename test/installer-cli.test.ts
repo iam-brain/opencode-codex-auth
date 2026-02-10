@@ -29,7 +29,7 @@ describe("installer cli", () => {
   })
 
   it("runs full install by default: plugin config + codex collaboration agents", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-installer-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-"))
     const agentsDir = path.join(root, "agents")
     const configPath = path.join(root, "opencode.json")
     const capture = captureIo()
@@ -40,12 +40,12 @@ describe("installer cli", () => {
       const code = await runInstallerCli(["--dir", agentsDir, "--config", configPath], capture.io)
       expect(code).toBe(0)
       const output = capture.out.join("\n")
-      expect(output).toContain("Plugin specifier: @iam-brain/opencode-openai-multi@latest")
+      expect(output).toContain("Plugin specifier: @iam-brain/opencode-codex-auth@latest")
       expect(output).toContain("Codex config:")
       expect(output).toContain("Written: 6")
 
       const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
-      expect(config.plugin).toContain("@iam-brain/opencode-openai-multi@latest")
+      expect(config.plugin).toContain("@iam-brain/opencode-codex-auth@latest")
       const codexConfig = JSON.parse(
         await fs.readFile(path.join(root, "opencode", "codex-config.json"), "utf8")
       ) as { runtime?: { mode?: string } }
@@ -60,7 +60,7 @@ describe("installer cli", () => {
   })
 
   it("installs agents to requested directory", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-installer-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-"))
     const agentsDir = path.join(root, "agents")
     const capture = captureIo()
 

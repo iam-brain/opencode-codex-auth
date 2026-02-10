@@ -192,7 +192,7 @@ describe("config", () => {
 
 describe("config file loading", () => {
   it("loads JSON config from explicit path env", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const filePath = path.join(root, "codex-config.json")
     await fs.writeFile(
       filePath,
@@ -249,7 +249,7 @@ describe("config file loading", () => {
   })
 
   it("ignores top-level mode field in config file", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const filePath = path.join(root, "codex-config.json")
     await fs.writeFile(filePath, JSON.stringify({ mode: "codex" }), "utf8")
 
@@ -262,7 +262,7 @@ describe("config file loading", () => {
   })
 
   it("accepts runtime.mode field in config file", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const filePath = path.join(root, "codex-config.json")
     await fs.writeFile(
       filePath,
@@ -281,7 +281,7 @@ describe("config file loading", () => {
   })
 
   it("accepts runtime.collab mode field in config file", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const filePath = path.join(root, "codex-config.json")
     await fs.writeFile(
       filePath,
@@ -300,7 +300,7 @@ describe("config file loading", () => {
   })
 
   it("loads codex-config.json from XDG config home", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const configDir = path.join(root, "opencode")
     await fs.mkdir(configDir, { recursive: true })
     const filePath = path.join(configDir, "codex-config.json")
@@ -311,7 +311,7 @@ describe("config file loading", () => {
   })
 
   it("creates default codex config when missing", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const result = await ensureDefaultConfigFile({ env: { XDG_CONFIG_HOME: root } })
     const written = JSON.parse(await fs.readFile(result.filePath, "utf8")) as unknown
 
@@ -320,7 +320,7 @@ describe("config file loading", () => {
   })
 
   it("does not overwrite existing codex config by default", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const configDir = path.join(root, "opencode")
     const filePath = path.join(configDir, "codex-config.json")
     await fs.mkdir(configDir, { recursive: true })
@@ -334,7 +334,7 @@ describe("config file loading", () => {
   })
 
   it("overwrites codex config when requested", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const configDir = path.join(root, "opencode")
     const filePath = path.join(configDir, "codex-config.json")
     await fs.mkdir(configDir, { recursive: true })

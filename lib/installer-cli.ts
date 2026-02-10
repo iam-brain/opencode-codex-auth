@@ -70,11 +70,11 @@ function parseArgs(args: string[]): {
 
 function helpText(): string {
   return [
-    "opencode-openai-multi installer",
+    "opencode-codex-auth installer",
     "",
     "Usage:",
-    "  opencode-openai-multi install [--force] [--dir <path>] [--config <path>] [--plugin <specifier>]",
-    "  opencode-openai-multi install-agents [--force] [--dir <path>]",
+    "  opencode-codex-auth install [--force] [--dir <path>] [--config <path>] [--plugin <specifier>]",
+    "  opencode-codex-auth install-agents [--force] [--dir <path>]",
     "",
     "Commands:",
     "  install         Install plugin entry in opencode.json and install Codex collaboration agents.",

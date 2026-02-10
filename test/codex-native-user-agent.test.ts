@@ -17,7 +17,7 @@ describe("codex-native user-agent parity", () => {
   it("keeps native mode UA as plugin-native and codex mode as codex-style", () => {
     const nativeUa = __testOnly.resolveRequestUserAgent("native", "codex_cli_rs")
     const codexUa = __testOnly.resolveRequestUserAgent("codex", "codex_cli_rs")
-    expect(nativeUa).toContain("opencode-openai-multi")
+    expect(nativeUa).toContain("opencode-codex-auth")
     expect(codexUa).toMatch(/^codex_cli_rs\//)
   })
 })

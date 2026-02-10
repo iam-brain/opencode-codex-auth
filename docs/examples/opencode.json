@@ -1,3 +1,3 @@
 {
-  "plugin": ["@iam-brain/opencode-openai-multi@latest"]
+  "plugin": ["@iam-brain/opencode-codex-auth@latest"]
 }

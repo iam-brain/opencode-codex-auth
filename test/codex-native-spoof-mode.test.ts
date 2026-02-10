@@ -167,7 +167,7 @@ describe("codex-native spoof + params hooks", () => {
       options: {}
     }
 
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-spoof-global-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-spoof-global-"))
     const prevCwd = process.cwd()
     const prevXdg = process.env.XDG_CONFIG_HOME
     process.env.XDG_CONFIG_HOME = path.join(root, "xdg-empty")
@@ -234,7 +234,7 @@ describe("codex-native spoof + params hooks", () => {
       options: {}
     }
 
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-spoof-model-"))
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-spoof-model-"))
     const prevCwd = process.cwd()
     const prevXdg = process.env.XDG_CONFIG_HOME
     process.env.XDG_CONFIG_HOME = path.join(root, "xdg-empty")
@@ -700,7 +700,7 @@ describe("codex-native spoof + params hooks", () => {
     await chatHeaders?.(input, output)
 
     expect(output.headers.originator).toBe("codex_cli_rs")
-    expect(output.headers["User-Agent"]).toContain("opencode-openai-multi")
+    expect(output.headers["User-Agent"]).toContain("opencode-codex-auth")
     expect(output.headers.session_id).toBe("ses_prompt_native")
     expect(output.headers.conversation_id).toBe("ses_prompt_native")
     expect(output.headers["OpenAI-Beta"]).toBe("responses=experimental")
@@ -720,7 +720,7 @@ describe("codex-native spoof + params hooks", () => {
     await chatHeaders?.(input, output)
 
     expect(output.headers.originator).toBe("codex_cli_rs")
-    expect(output.headers["User-Agent"]).toContain("opencode-openai-multi")
+    expect(output.headers["User-Agent"]).toContain("opencode-codex-auth")
     expect(output.headers.session_id).toBeUndefined()
     expect(output.headers.conversation_id).toBeUndefined()
     expect(output.headers["OpenAI-Beta"]).toBe("responses=experimental")

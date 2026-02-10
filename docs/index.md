@@ -1,6 +1,6 @@
-# opencode-openai-multi docs
+# opencode-codex-auth docs
 
-`opencode-openai-multi` brings ChatGPT OAuth-backed OpenAI access to OpenCode with hardened multi-account behavior.
+`opencode-codex-auth` brings ChatGPT OAuth-backed OpenAI access to OpenCode with hardened multi-account behavior.
 
 ## What you get
 
