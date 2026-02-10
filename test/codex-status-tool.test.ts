@@ -54,6 +54,9 @@ describe("codex-status tool", () => {
     const output = await toolOutputForStatus(authPath, snapshotsPath)
     expect(output).toContain("test@example.com")
     expect(output).toContain("80% left")
+    expect(output).toContain("5h")
+    expect(output).toContain("Weekly")
+    expect(output).toContain("Credits")
   })
 
   it("handles missing snapshots gracefully", async () => {
@@ -64,7 +67,8 @@ describe("codex-status tool", () => {
           {
             identityKey: "acc1|test@example.com|free",
             email: "test@example.com",
-            enabled: true
+            enabled: true,
+            expires: Date.now() - 60_000
           }
         ]
       }
@@ -72,6 +76,9 @@ describe("codex-status tool", () => {
 
     const output = await toolOutputForStatus(authPath, snapshotsPath)
     expect(output).toContain("test@example.com")
-    expect(output).toContain("(no snapshot)")
+    expect(output).toContain("5h")
+    expect(output).toContain("Weekly")
+    expect(output).toContain("Unknown, account expired")
+    expect(output).toContain("Credits")
   })
 })
