@@ -3,7 +3,8 @@ export interface IdTokenClaims {
   email?: string
   plan?: string
   organizations?: Array<{ id: string }>
-  "https://api.openai.com/auth"?: { chatgpt_account_id?: string }
+  "https://api.openai.com/auth"?: { chatgpt_account_id?: string; chatgpt_plan_type?: string }
+  "https://api.openai.com/profile"?: { email?: string }
 }
 
 export function parseJwtClaims(token: string): IdTokenClaims | undefined {
@@ -22,4 +23,23 @@ export function parseJwtClaims(token: string): IdTokenClaims | undefined {
   } catch {
     return undefined
   }
+}
+
+export function extractAccountIdFromClaims(claims: IdTokenClaims | undefined): string | undefined {
+  if (!claims) return undefined
+  return (
+    claims.chatgpt_account_id ||
+    claims["https://api.openai.com/auth"]?.chatgpt_account_id ||
+    claims.organizations?.[0]?.id
+  )
+}
+
+export function extractEmailFromClaims(claims: IdTokenClaims | undefined): string | undefined {
+  if (!claims) return undefined
+  return claims.email || claims["https://api.openai.com/profile"]?.email
+}
+
+export function extractPlanFromClaims(claims: IdTokenClaims | undefined): string | undefined {
+  if (!claims) return undefined
+  return claims.plan || claims["https://api.openai.com/auth"]?.chatgpt_plan_type
 }

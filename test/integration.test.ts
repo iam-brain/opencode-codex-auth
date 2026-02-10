@@ -8,7 +8,7 @@ import { selectAccount } from "../lib/rotation"
 import { loadAuthStorage } from "../lib/storage"
 
 describe("integration", () => {
-  it("hybrid prefers most recently used when activeIdentityKey is missing", async () => {
+  it("hybrid prefers least recently used when activeIdentityKey is missing", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
     const filePath = path.join(dir, "auth.json")
     await writeFile(
@@ -43,6 +43,6 @@ describe("integration", () => {
       now
     })
 
-    expect(selected?.identityKey).toBe("b")
+    expect(selected?.identityKey).toBe("a")
   })
 })

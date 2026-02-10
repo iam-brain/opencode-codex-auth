@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { selectAccount } from "../lib/rotation"
+import { createStickySessionState, selectAccount } from "../lib/rotation"
 import type { AccountRecord } from "../lib/types"
 
 describe("rotation", () => {
@@ -20,7 +20,7 @@ describe("rotation", () => {
     expect(selected?.identityKey).toBe("b")
   })
 
-  it("defaults to round_robin when strategy omitted", () => {
+  it("defaults to sticky when strategy omitted", () => {
     const accounts: AccountRecord[] = [
       { identityKey: "a", enabled: true },
       { identityKey: "b", enabled: true }
@@ -32,7 +32,7 @@ describe("rotation", () => {
       now: Date.now()
     })
 
-    expect(selected?.identityKey).toBe("b")
+    expect(selected?.identityKey).toBe("a")
   })
 
   it("round_robin returns first eligible when active missing", () => {
@@ -84,7 +84,7 @@ describe("rotation", () => {
     expect(selected?.identityKey).toBe("a")
   })
 
-  it("hybrid picks most recently used when active missing", () => {
+  it("hybrid picks least recently used when active missing", () => {
     const accounts: AccountRecord[] = [
       { identityKey: "a", enabled: true, lastUsed: 100 },
       { identityKey: "b", enabled: true, lastUsed: 200 }
@@ -97,7 +97,7 @@ describe("rotation", () => {
       now: Date.now()
     })
 
-    expect(selected?.identityKey).toBe("b")
+    expect(selected?.identityKey).toBe("a")
   })
 
   it("skips disabled accounts (including active)", () => {
@@ -147,6 +147,175 @@ describe("rotation", () => {
         strategy: "round_robin",
         activeIdentityKey: "b",
         now
+      })?.identityKey
+    ).toBe("b")
+  })
+
+  it("sticky session mode rotates to next healthy account for new sessions", () => {
+    const accounts: AccountRecord[] = [
+      { identityKey: "a", enabled: true },
+      { identityKey: "b", enabled: true },
+      { identityKey: "c", enabled: true }
+    ]
+    const stickySessionState = createStickySessionState()
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "sticky",
+        now: 1000,
+        stickyPidOffset: true,
+        stickySessionKey: "ses-1",
+        stickySessionState
+      })?.identityKey
+    ).toBe("a")
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "sticky",
+        now: 1000,
+        stickyPidOffset: true,
+        stickySessionKey: "ses-2",
+        stickySessionState
+      })?.identityKey
+    ).toBe("b")
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "sticky",
+        now: 1000,
+        stickyPidOffset: true,
+        stickySessionKey: "ses-1",
+        stickySessionState
+      })?.identityKey
+    ).toBe("a")
+  })
+
+  it("sticky session mode reassigns when assigned account is no longer healthy", () => {
+    const stickySessionState = createStickySessionState()
+    const accounts: AccountRecord[] = [
+      { identityKey: "a", enabled: true, cooldownUntil: 2_000 },
+      { identityKey: "b", enabled: true }
+    ]
+
+    stickySessionState.bySessionKey.set("ses-1", "a")
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "sticky",
+        now: 1000,
+        stickyPidOffset: true,
+        stickySessionKey: "ses-1",
+        stickySessionState
+      })?.identityKey
+    ).toBe("b")
+  })
+
+  it("sticky ignores session assignment and keeps active when pid offset disabled", () => {
+    const stickySessionState = createStickySessionState()
+    const accounts: AccountRecord[] = [
+      { identityKey: "a", enabled: true },
+      { identityKey: "b", enabled: true }
+    ]
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "sticky",
+        activeIdentityKey: "a",
+        now: 1000,
+        stickySessionKey: "ses-1",
+        stickySessionState
+      })?.identityKey
+    ).toBe("a")
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "sticky",
+        activeIdentityKey: "a",
+        now: 1000,
+        stickySessionKey: "ses-2",
+        stickySessionState
+      })?.identityKey
+    ).toBe("a")
+  })
+
+  it("hybrid reuses active account when pid offset disabled", () => {
+    const accounts: AccountRecord[] = [
+      { identityKey: "a", enabled: true, lastUsed: 500 },
+      { identityKey: "b", enabled: true, lastUsed: 100 }
+    ]
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "hybrid",
+        activeIdentityKey: "a",
+        now: 1000
+      })?.identityKey
+    ).toBe("a")
+  })
+
+  it("hybrid assigns per-session and reuses assignment when pid offset enabled", () => {
+    const accounts: AccountRecord[] = [
+      { identityKey: "a", enabled: true, lastUsed: 100 },
+      { identityKey: "b", enabled: true, lastUsed: 200 },
+      { identityKey: "c", enabled: true, lastUsed: 300 }
+    ]
+    const stickySessionState = createStickySessionState()
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "hybrid",
+        now: 1000,
+        stickyPidOffset: true,
+        stickySessionKey: "ses-1",
+        stickySessionState
+      })?.identityKey
+    ).toBe("a")
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "hybrid",
+        now: 1000,
+        stickyPidOffset: true,
+        stickySessionKey: "ses-2",
+        stickySessionState
+      })?.identityKey
+    ).toBe("b")
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "hybrid",
+        now: 1000,
+        stickyPidOffset: true,
+        stickySessionKey: "ses-1",
+        stickySessionState
+      })?.identityKey
+    ).toBe("a")
+  })
+
+  it("sticky applies pid offset when no active or session assignment exists", () => {
+    const accounts: AccountRecord[] = [
+      { identityKey: "a", enabled: true },
+      { identityKey: "b", enabled: true },
+      { identityKey: "c", enabled: true }
+    ]
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "sticky",
+        now: 1000,
+        stickyPidOffset: true,
+        pid: 4
       })?.identityKey
     ).toBe("b")
   })

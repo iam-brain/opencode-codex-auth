@@ -32,7 +32,18 @@ describe("proactive refresh locking", () => {
     vi.doMock("../lib/storage", () => ({
       loadAuthStorage,
       saveAuthStorage,
-      updateAccountTokensByIdentityKey
+      updateAccountTokensByIdentityKey,
+      listOpenAIOAuthDomains: vi.fn(() => [
+        {
+          mode: "native" as const,
+          domain: {
+            accounts: auth.openai.accounts
+          }
+        }
+      ]),
+      ensureOpenAIOAuthDomain: vi.fn(() => ({
+        accounts: auth.openai.accounts
+      }))
     }))
 
     const { runOneProactiveRefreshTick } = await import("../lib/proactive-refresh")

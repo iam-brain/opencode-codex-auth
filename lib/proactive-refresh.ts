@@ -1,5 +1,23 @@
-import { saveAuthStorage } from "./storage"
-import type { OpenAIMultiOauthAuth } from "./types"
+import { ensureOpenAIOAuthDomain, listOpenAIOAuthDomains, saveAuthStorage } from "./storage"
+import type { OpenAIAuthMode } from "./types"
+
+const PROACTIVE_REFRESH_FAILURE_COOLDOWN_MS = 30_000
+
+function isInvalidGrantError(error: unknown): boolean {
+  const oauthCode =
+    typeof error === "object" && error !== null && "oauthCode" in error
+      ? (error as { oauthCode?: unknown }).oauthCode
+      : undefined
+  if (typeof oauthCode === "string" && oauthCode.toLowerCase() === "invalid_grant") {
+    return true
+  }
+
+  if (error instanceof Error) {
+    return error.message.toLowerCase().includes("invalid_grant")
+  }
+
+  return false
+}
 
 export async function runOneProactiveRefreshTick(input: {
   authPath?: string
@@ -9,22 +27,26 @@ export async function runOneProactiveRefreshTick(input: {
 }): Promise<void> {
   const leaseMs = 120_000
 
-  while (true) {
+  const processDomain = async (authMode: OpenAIAuthMode): Promise<void> => {
+    while (true) {
     let claimed: { identityKey: string; refresh: string } | undefined
 
     await saveAuthStorage(input.authPath, (auth) => {
-      const openai = auth.openai
-      if (!openai || openai.type !== "oauth" || !("accounts" in openai)) return
-
-      const multi = openai as OpenAIMultiOauthAuth
+      const domain = ensureOpenAIOAuthDomain(auth, authMode)
       const now = input.now()
       const dueCutoff = now + input.bufferMs
-      const account = multi.accounts.find((candidate) => {
+      const account = domain.accounts.find((candidate) => {
         if (candidate.enabled === false) return false
         if (!candidate.identityKey || !candidate.refresh || candidate.expires === undefined) {
           return false
         }
         if (candidate.expires > dueCutoff) return false
+        if (
+          typeof candidate.cooldownUntil === "number" &&
+          candidate.cooldownUntil > now
+        ) {
+          return false
+        }
         if (
           typeof candidate.refreshLeaseUntil === "number" &&
           candidate.refreshLeaseUntil > now
@@ -53,16 +75,29 @@ export async function runOneProactiveRefreshTick(input: {
     let tokens: { access: string; refresh: string; expires: number }
     try {
       tokens = await input.refresh(claimedAccount.refresh)
-    } catch {
-      // Keep the lease until it expires to avoid immediate re-claim loops.
+    } catch (error) {
+      const invalidGrant = isInvalidGrantError(error)
+      await saveAuthStorage(input.authPath, (auth) => {
+        const domain = ensureOpenAIOAuthDomain(auth, authMode)
+        const account = domain.accounts.find(
+          (candidate) => candidate.identityKey === claimedAccount.identityKey
+        )
+        if (!account) return
+        delete account.refreshLeaseUntil
+        if (invalidGrant) {
+          account.enabled = false
+          delete account.cooldownUntil
+          return
+        }
+        if (account.enabled === false) return
+        account.cooldownUntil = input.now() + PROACTIVE_REFRESH_FAILURE_COOLDOWN_MS
+      })
       continue
     }
 
     await saveAuthStorage(input.authPath, (auth) => {
-      const openai = auth.openai
-      if (!openai || openai.type !== "oauth" || !("accounts" in openai)) return
-      const multi = openai as OpenAIMultiOauthAuth
-      const account = multi.accounts.find(
+      const domain = ensureOpenAIOAuthDomain(auth, authMode)
+      const account = domain.accounts.find(
         (candidate) => candidate.identityKey === claimedAccount.identityKey
       )
       if (!account) return
@@ -80,9 +115,17 @@ export async function runOneProactiveRefreshTick(input: {
         account.refresh = tokens.refresh
         account.expires = tokens.expires
         delete account.refreshLeaseUntil
+        delete account.cooldownUntil
       } else if (typeof account.refreshLeaseUntil === "number") {
         delete account.refreshLeaseUntil
       }
     })
+  }
+  }
+
+  const initial = await saveAuthStorage(input.authPath, (auth) => auth)
+  const modes = listOpenAIOAuthDomains(initial).map((entry) => entry.mode)
+  for (const authMode of modes) {
+    await processDomain(authMode)
   }
 }
