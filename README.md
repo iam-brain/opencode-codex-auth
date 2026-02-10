@@ -25,13 +25,13 @@ npx -y @iam-brain/opencode-openai-multi
 Default installer behavior:
 
 - Ensures plugin enablement in `~/.config/opencode/opencode.json` with `@iam-brain/opencode-openai-multi@latest`.
-- Installs codex-style collaboration agents in `~/.config/opencode/agents/`:
-  - `Codex Orchestrator.md`
-  - `Codex Default.md`
-  - `Codex Plan.md`
-  - `Codex Execute.md`
-  - `Codex Review.md`
-  - `Codex Compact.md`
+- Installs codex-style collaboration agents in `~/.config/opencode/agents/` as disabled files:
+  - `Codex Orchestrator.md.disabled`
+  - `Codex Default.md.disabled`
+  - `Codex Plan.md.disabled`
+  - `Codex Execute.md.disabled`
+  - `Codex Review.md.disabled`
+  - `Codex Compact.md.disabled`
 - Codex collaboration profile behavior is only enabled when:
   - runtime mode is explicitly set to `collab` in `codex-config.json`, and
   - the active agent is in the `Codex*` family.

@@ -58,7 +58,7 @@ describe("orchestrator agents installer", () => {
     await installOrchestratorAgents({ agentsDir })
 
     const disabled = await reconcileOrchestratorAgentsState({ agentsDir, enabled: false })
-    expect(disabled.renamed).toHaveLength(6)
+    expect(disabled.renamed).toHaveLength(0)
 
     const filesAfterDisable = (await fs.readdir(agentsDir)).sort()
     expect(filesAfterDisable).toEqual([
@@ -81,6 +81,19 @@ describe("orchestrator agents installer", () => {
       "Codex Orchestrator.md",
       "Codex Plan.md",
       "Codex Review.md"
+    ])
+
+    const disabledAgain = await reconcileOrchestratorAgentsState({ agentsDir, enabled: false })
+    expect(disabledAgain.renamed).toHaveLength(6)
+
+    const filesAfterDisableAgain = (await fs.readdir(agentsDir)).sort()
+    expect(filesAfterDisableAgain).toEqual([
+      "Codex Compact.md.disabled",
+      "Codex Default.md.disabled",
+      "Codex Execute.md.disabled",
+      "Codex Orchestrator.md.disabled",
+      "Codex Plan.md.disabled",
+      "Codex Review.md.disabled"
     ])
   })
 })

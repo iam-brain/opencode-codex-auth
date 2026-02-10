@@ -212,16 +212,25 @@ export async function installOrchestratorAgents(
 
   await fs.mkdir(agentsDir, { recursive: true })
   for (const template of templates) {
-    const filePath = path.join(agentsDir, template.fileName)
+    const activePath = path.join(agentsDir, template.fileName)
+    const filePath = path.join(agentsDir, disabledAgentFileName(template.fileName))
     if (!force) {
-      try {
-        await fs.stat(filePath)
+      const hasDisabled = await fileExists(filePath)
+      const hasActive = await fileExists(activePath)
+      if (hasDisabled || hasActive) {
         skipped.push(filePath)
         continue
-      } catch {
-        // File does not exist yet; continue writing below.
       }
     }
+
+    if (force) {
+      try {
+        await fs.rm(activePath)
+      } catch {
+        // best-effort cleanup; continue writing disabled file
+      }
+    }
+
     await fs.writeFile(filePath, template.content, { encoding: "utf8", mode: 0o600 })
     written.push(filePath)
   }

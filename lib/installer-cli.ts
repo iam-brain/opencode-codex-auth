@@ -80,7 +80,7 @@ function helpText(): string {
     "  install-agents  Install local Codex collaboration agent templates.",
     "",
     "Options:",
-    "  --force         Overwrite existing Codex*.md collaboration agent files.",
+    "  --force         Overwrite existing Codex*.md / Codex*.md.disabled collaboration agent files.",
     "  --dir <path>    Custom agents directory (defaults to ~/.config/opencode/agents).",
     "  --config <path> Custom opencode.json path (defaults to ~/.config/opencode/opencode.json).",
     `  --plugin <spec> Plugin specifier for opencode.json (default: ${DEFAULT_PLUGIN_SPECIFIER}).`

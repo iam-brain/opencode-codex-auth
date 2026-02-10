@@ -64,12 +64,12 @@ describe("installer cli", () => {
 
     const files = (await fs.readdir(agentsDir)).sort()
     expect(files).toEqual([
-      "Codex Compact.md",
-      "Codex Default.md",
-      "Codex Execute.md",
-      "Codex Orchestrator.md",
-      "Codex Plan.md",
-      "Codex Review.md"
+      "Codex Compact.md.disabled",
+      "Codex Default.md.disabled",
+      "Codex Execute.md.disabled",
+      "Codex Orchestrator.md.disabled",
+      "Codex Plan.md.disabled",
+      "Codex Review.md.disabled"
     ])
   })
 })
