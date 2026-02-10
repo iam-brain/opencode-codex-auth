@@ -5,7 +5,7 @@ This directory contains starter config files.
 ## Files
 
 - `opencode.json`
-  - minimal plugin registration example
+  - minimal plugin registration example (published install)
 - `codex-config.json`
   - runtime and model behavior example
 
@@ -17,3 +17,13 @@ This directory contains starter config files.
    - `runtime.mode` (`native`, `codex`, `collab`)
    - `global` personality/summaries
    - `perModel` and `variants`
+
+## Local development
+
+For local development, you can use a file plugin path instead of a package specifier:
+
+```json
+{
+  "plugin": ["file:///absolute/path/to/opencode-openai-multi/dist"]
+}
+```

@@ -6,6 +6,7 @@
     "bufferMs": 60000
   },
   "runtime": {
+    "mode": "native",
     "identityMode": "native",
     "sanitizeInputs": false,
     "headerSnapshots": false
@@ -20,7 +21,7 @@
       "thinkingSummaries": false,
       "variants": {
         "high": {
-          "personality": "strict",
+          "personality": "focused",
           "thinkingSummaries": true
         }
       }
