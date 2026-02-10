@@ -63,6 +63,7 @@ import { CODEX_RS_COMPACT_PROMPT } from "./orchestrator-agents"
 import { sanitizeRequestPayloadForCompat } from "./compat-sanitizer"
 import { fetchQuotaSnapshotFromBackend } from "./codex-quota-fetch"
 import { createRequestSnapshots } from "./request-snapshots"
+import { CODEX_OAUTH_SUCCESS_HTML } from "./oauth-pages"
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const ISSUER = "https://auth.openai.com"
@@ -249,6 +250,7 @@ export const __testOnly = {
   generatePKCE,
   buildOAuthSuccessHtml,
   buildOAuthErrorHtml,
+  composeCodexSuccessRedirectUrl,
   buildCodexUserAgent,
   resolveRequestUserAgent,
   resolveHookAgentName,
@@ -317,7 +319,57 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
   return (await response.json()) as TokenResponse
 }
 
-function buildOAuthSuccessHtml(): string {
+function getOpenAIAuthClaims(token: string | undefined): Record<string, unknown> {
+  if (!token) return {}
+  const claims = parseJwtClaims(token)
+  const authClaims = claims?.["https://api.openai.com/auth"]
+  if (!authClaims || typeof authClaims !== "object" || Array.isArray(authClaims)) {
+    return {}
+  }
+  return authClaims as Record<string, unknown>
+}
+
+function getClaimString(claims: Record<string, unknown>, key: string): string {
+  const value = claims[key]
+  return typeof value === "string" ? value : ""
+}
+
+function getClaimBoolean(claims: Record<string, unknown>, key: string): boolean {
+  const value = claims[key]
+  return typeof value === "boolean" ? value : false
+}
+
+function composeCodexSuccessRedirectUrl(
+  tokens: TokenResponse,
+  options: { issuer?: string; port?: number } = {}
+): string {
+  const issuer = options.issuer ?? ISSUER
+  const port = options.port ?? OAUTH_PORT
+  const idClaims = getOpenAIAuthClaims(tokens.id_token)
+  const accessClaims = getOpenAIAuthClaims(tokens.access_token)
+
+  const needsSetup =
+    !getClaimBoolean(idClaims, "completed_platform_onboarding") &&
+    getClaimBoolean(idClaims, "is_org_owner")
+
+  const platformUrl =
+    issuer === ISSUER ? "https://platform.openai.com" : "https://platform.api.openai.org"
+
+  const params = new URLSearchParams({
+    id_token: tokens.id_token ?? "",
+    needs_setup: String(needsSetup),
+    org_id: getClaimString(idClaims, "organization_id"),
+    project_id: getClaimString(idClaims, "project_id"),
+    plan_type: getClaimString(accessClaims, "chatgpt_plan_type"),
+    platform_url: platformUrl
+  })
+
+  return `http://localhost:${port}/success?${params.toString()}`
+}
+
+function buildOAuthSuccessHtml(mode: CodexSpoofMode = "codex"): string {
+  if (mode === "codex") return CODEX_OAUTH_SUCCESS_HTML
+
   return `<!doctype html>
 <html>
   <head>
@@ -401,6 +453,7 @@ function buildOAuthErrorHtml(error: string): string {
 type PendingOAuth = {
   pkce: PkceCodes
   state: string
+  spoofMode: CodexSpoofMode
   resolve: (tokens: TokenResponse) => void
   reject: (error: Error) => void
 }
@@ -422,6 +475,11 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
         res.statusCode = status
         res.setHeader("Content-Type", "text/html")
         res.end(html)
+      }
+      const redirect = (location: string) => {
+        res.statusCode = 302
+        res.setHeader("Location", location)
+        res.end()
       }
 
       if (url.pathname === "/auth/callback") {
@@ -457,10 +515,26 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
         const current = pendingOAuth
         pendingOAuth = undefined
         exchangeCodeForTokens(code, `http://localhost:${OAUTH_PORT}/auth/callback`, current.pkce)
-          .then((tokens) => current.resolve(tokens))
-          .catch((err) => current.reject(err))
+          .then((tokens) => {
+            current.resolve(tokens)
+            if (res.writableEnded) return
+            if (current.spoofMode === "codex") {
+              redirect(composeCodexSuccessRedirectUrl(tokens))
+              return
+            }
+            sendHtml(200, buildOAuthSuccessHtml("native"))
+          })
+          .catch((err) => {
+            const oauthError = err instanceof Error ? err : new Error(String(err))
+            current.reject(oauthError)
+            if (res.writableEnded) return
+            sendHtml(500, buildOAuthErrorHtml(oauthError.message))
+          })
+        return
+      }
 
-        sendHtml(200, buildOAuthSuccessHtml())
+      if (url.pathname === "/success") {
+        sendHtml(200, buildOAuthSuccessHtml("codex"))
         return
       }
 
@@ -504,7 +578,11 @@ function stopOAuthServer(): void {
   oauthServer = undefined
 }
 
-function waitForOAuthCallback(pkce: PkceCodes, state: string): Promise<TokenResponse> {
+function waitForOAuthCallback(
+  pkce: PkceCodes,
+  state: string,
+  spoofMode: CodexSpoofMode
+): Promise<TokenResponse> {
   return new Promise((resolve, reject) => {
     let settled = false
     const resolveOnce = (tokens: TokenResponse) => {
@@ -527,6 +605,7 @@ function waitForOAuthCallback(pkce: PkceCodes, state: string): Promise<TokenResp
     pendingOAuth = {
       pkce,
       state,
+      spoofMode,
       resolve: resolveOnce,
       reject: rejectOnce
     }
@@ -2292,7 +2371,7 @@ export async function CodexAuthPlugin(
                 state,
                 "codex_cli_rs"
               )
-              const callbackPromise = waitForOAuthCallback(pkce, state)
+              const callbackPromise = waitForOAuthCallback(pkce, state, spoofMode)
               void tryOpenUrlInBrowser(authUrl, opts.log)
               process.stdout.write(`\nGo to: ${authUrl}\n`)
               process.stdout.write("Complete authorization in your browser. This window will close automatically.\n")
@@ -2360,7 +2439,7 @@ export async function CodexAuthPlugin(
               state,
               "codex_cli_rs"
             )
-            const callbackPromise = waitForOAuthCallback(pkce, state)
+            const callbackPromise = waitForOAuthCallback(pkce, state, spoofMode)
             void tryOpenUrlInBrowser(authUrl, opts.log)
 
             return {
