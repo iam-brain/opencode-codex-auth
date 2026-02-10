@@ -15,7 +15,7 @@
 - Ensure port `1455` is free.
 - Close other auth flows (Codex/OpenCode) and retry.
 
-### OpenAI Codex model not found / API key missing
+### OpenAI model not found / API key missing
 
 - Re-run `opencode auth login`.
 - Verify both auth files above exist and are readable.

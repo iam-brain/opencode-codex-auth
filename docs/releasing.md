@@ -29,7 +29,7 @@ This runs:
 5. Refresh one account token
 6. Delete one account, then delete-all (scoped and full)
 7. Confirm deleted-all does not auto-repopulate
-8. Run one real prompt via an `openai/*` OpenAI Codex model
+8. Run one real prompt via `openai/*` model
 9. Confirm no malformed tool output in session
 
 ## Release notes should include

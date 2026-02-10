@@ -1,10 +1,10 @@
 # opencode-codex-auth docs
 
-`opencode-codex-auth` brings ChatGPT OAuth-backed OpenAI Codex access to OpenCode with hardened multi-account behavior.
+`opencode-codex-auth` brings ChatGPT OAuth-backed OpenAI access to OpenCode with hardened multi-account behavior.
 
 ## What you get
 
-- OpenAI Codex OAuth account login/management in `opencode auth login`
+- OpenAI OAuth account login/management in `opencode auth login`
 - Multi-account rotation with health-aware failover
 - Runtime identity modes (`native`, `codex`) and experimental collaboration mode (`collab`)
 - Dynamic model behavior overrides (`global`, `perModel`, `variants`)
