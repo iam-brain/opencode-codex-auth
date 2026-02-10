@@ -5,6 +5,9 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
+  "bin": {
+    "opencode-openai-multi": "./dist/bin/opencode-openai-multi.js"
+  },
   "license": "MIT",
   "author": "iam-brain",
   "scripts": {

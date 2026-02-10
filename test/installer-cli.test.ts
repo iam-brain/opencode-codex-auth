@@ -1,0 +1,75 @@
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+
+import { describe, expect, it } from "vitest"
+
+import { runInstallerCli } from "../lib/installer-cli"
+
+function captureIo() {
+  const out: string[] = []
+  const err: string[] = []
+  return {
+    out,
+    err,
+    io: {
+      out: (message: string) => out.push(message),
+      err: (message: string) => err.push(message)
+    }
+  }
+}
+
+describe("installer cli", () => {
+  it("prints help", async () => {
+    const capture = captureIo()
+    const code = await runInstallerCli(["--help"], capture.io)
+    expect(code).toBe(0)
+    expect(capture.out.join("\n")).toContain("install ")
+    expect(capture.out.join("\n")).toContain("install-agents")
+  })
+
+  it("runs full install by default: plugin config + codex collaboration agents", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-installer-"))
+    const agentsDir = path.join(root, "agents")
+    const configPath = path.join(root, "opencode.json")
+    const capture = captureIo()
+    const previousXdg = process.env.XDG_CONFIG_HOME
+    process.env.XDG_CONFIG_HOME = root
+
+    try {
+      const code = await runInstallerCli(["--dir", agentsDir, "--config", configPath], capture.io)
+      expect(code).toBe(0)
+      expect(capture.out.join("\n")).toContain("Plugin specifier: @iam-brain/opencode-openai-multi@latest")
+      expect(capture.out.join("\n")).toContain("Written: 6")
+
+      const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
+      expect(config.plugin).toContain("@iam-brain/opencode-openai-multi@latest")
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg
+      }
+    }
+  })
+
+  it("installs agents to requested directory", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-installer-"))
+    const agentsDir = path.join(root, "agents")
+    const capture = captureIo()
+
+    const code = await runInstallerCli(["install-agents", "--dir", agentsDir], capture.io)
+    expect(code).toBe(0)
+    expect(capture.out.join("\n")).toContain("Written: 6")
+
+    const files = (await fs.readdir(agentsDir)).sort()
+    expect(files).toEqual([
+      "Codex Compact.md",
+      "Codex Default.md",
+      "Codex Execute.md",
+      "Codex Orchestrator.md",
+      "Codex Plan.md",
+      "Codex Review.md"
+    ])
+  })
+})
