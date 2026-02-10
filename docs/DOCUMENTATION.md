@@ -29,4 +29,4 @@ This document explains the organization of documentation in this repository.
 ## Notes
 
 - `docs/plans/` is intentionally ignored by the main repository and is expected to be managed as its own nested git repository.
-- Avoid putting secrets in docs, plans, or examples. Treat any `auth.json` content as sensitive.
+- Avoid putting secrets in docs, plans, or examples. Treat any auth store content (`codex-accounts.json` and provider `auth.json`) as sensitive.

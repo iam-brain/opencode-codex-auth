@@ -9,6 +9,8 @@ This directory contains user- and developer-facing documentation for `opencode-o
 - [Multi-account](multi-account.md)
 - [Troubleshooting](troubleshooting.md)
 - [Privacy](privacy.md)
+- [Releasing](releasing.md)
+- [Config examples](examples/)
 
 ## For developers
 

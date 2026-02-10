@@ -14,6 +14,7 @@ This repo is intended for local development and controlled environments.
 - [Troubleshooting](troubleshooting.md)
 - [Privacy](privacy.md)
 - [Releasing](releasing.md)
+- [Config examples](examples/README.md)
 
 ### For developers
 

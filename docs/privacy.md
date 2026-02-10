@@ -2,9 +2,12 @@
 
 ## Secrets on disk
 
-OAuth tokens are stored locally in `~/.config/opencode/auth.json`.
+OAuth data is stored locally in:
 
-- Treat this file like a password file.
+- `~/.config/opencode/codex-accounts.json` (plugin multi-account store)
+- `~/.local/share/opencode/auth.json` (OpenCode provider auth state)
+
+- Treat both files like password files.
 - Writes are atomic (temp + rename) with best-effort `0600` permissions.
 
 ## Logging
