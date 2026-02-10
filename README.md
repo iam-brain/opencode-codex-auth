@@ -1,5 +1,8 @@
 # opencode-codex-auth
 
+[![CI](https://github.com/iam-brain/opencode-codex-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/iam-brain/opencode-codex-auth/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/%40iam-brain%2Fopencode-codex-auth.svg)](https://www.npmjs.com/package/@iam-brain/opencode-codex-auth)
+
 OpenCode plugin for OpenAI ChatGPT OAuth with multi-account management, Codex-compatible request modes, and dynamic model behavior controls.
 
 Quick links: `docs/getting-started.md` · `docs/configuration.md` · `docs/multi-account.md` · `docs/troubleshooting.md`
