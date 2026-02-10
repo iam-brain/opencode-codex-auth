@@ -6,7 +6,12 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { defaultAuthPath } from "../lib/paths"
-import { loadAuthStorage, saveAuthStorage, shouldOfferLegacyTransfer } from "../lib/storage"
+import {
+  importLegacyInstallData,
+  loadAuthStorage,
+  saveAuthStorage,
+  shouldOfferLegacyTransfer
+} from "../lib/storage"
 
 function fixturePath(name: string): string {
   return fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
@@ -60,164 +65,7 @@ describe("auth storage", () => {
     expect(openai.activeIdentityKey).toBe(account.identityKey)
   })
 
-  it("loads legacy auth.json when codex-accounts.json is missing", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
-    const filePath = path.join(dir, "codex-accounts.json")
-    const legacyPath = path.join(dir, "auth.json")
-    const singleJson = await readFile(fixturePath("auth-single.json"), "utf8")
-    await writeFile(legacyPath, singleJson, { mode: 0o600 })
-
-    const auth = await loadAuthStorage(filePath)
-    const openai = auth.openai
-    if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
-      throw new Error("Expected migrated multi-account auth")
-    }
-    expect(openai.accounts).toHaveLength(1)
-
-    const migratedOnDisk = JSON.parse(await readFile(filePath, "utf8"))
-    expect(migratedOnDisk.openai.accounts).toHaveLength(1)
-  })
-
-  it("loads legacy openai-codex-accounts.json when codex-accounts.json is missing", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
-    const filePath = path.join(dir, "codex-accounts.json")
-    const legacyPath = path.join(dir, "openai-codex-accounts.json")
-    const singleJson = await readFile(fixturePath("auth-single.json"), "utf8")
-    await writeFile(legacyPath, singleJson, { mode: 0o600 })
-
-    const auth = await loadAuthStorage(filePath)
-    const openai = auth.openai
-    if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
-      throw new Error("Expected migrated multi-account auth")
-    }
-    expect(openai.accounts).toHaveLength(1)
-
-    await saveAuthStorage(filePath, (current) => current)
-    const migratedOnDisk = JSON.parse(await readFile(filePath, "utf8"))
-    expect(migratedOnDisk.openai.accounts).toHaveLength(1)
-  })
-
-  it("migrates legacy v4 openai-codex-accounts schema into oauth multi-account state", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
-    const filePath = path.join(dir, "codex-accounts.json")
-    const legacyPath = path.join(dir, "openai-codex-accounts.json")
-    await writeFile(
-      legacyPath,
-      `${JSON.stringify(
-        {
-          version: 4,
-          accounts: [
-            {
-              refreshToken: "rt_1",
-              accountId: "acc_1",
-              email: "one@example.com",
-              plan: "plus",
-              enabled: true,
-              lastUsed: 111
-            },
-            {
-              refreshToken: "rt_2",
-              accountId: "acc_2",
-              email: "two@example.com",
-              plan: "pro",
-              enabled: false,
-              coolingDownUntil: 9999
-            }
-          ],
-          activeIndex: 1
-        },
-        null,
-        2
-      )}\n`,
-      { mode: 0o600 }
-    )
-
-    const auth = await loadAuthStorage(filePath)
-    const openai = auth.openai
-    if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
-      throw new Error("Expected migrated multi-account auth")
-    }
-
-    expect(openai.accounts).toHaveLength(2)
-    expect(openai.accounts[0].identityKey).toBe("acc_1|one@example.com|plus")
-    expect(openai.accounts[0].refresh).toBe("rt_1")
-    expect(openai.accounts[0].expires).toBe(0)
-    expect(openai.accounts[0].lastUsed).toBe(111)
-    expect(openai.accounts[1].identityKey).toBe("acc_2|two@example.com|pro")
-    expect(openai.accounts[1].enabled).toBe(false)
-    expect(openai.accounts[1].cooldownUntil).toBe(9999)
-    expect(openai.activeIdentityKey).toBe("acc_2|two@example.com|pro")
-  })
-
-  it("loads OpenCode provider auth marker from ~/.local/share/opencode/auth.json when codex-accounts is missing", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
-    const prevHome = process.env.HOME
-    process.env.HOME = root
-
-    try {
-      const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
-      const providerAuthPath = path.join(root, ".local", "share", "opencode", "auth.json")
-      await mkdir(path.dirname(providerAuthPath), { recursive: true })
-      const singleJson = await readFile(fixturePath("auth-single.json"), "utf8")
-      await writeFile(providerAuthPath, singleJson, { mode: 0o600 })
-
-      const auth = await loadAuthStorage(filePath)
-      const openai = auth.openai
-      if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
-        throw new Error("Expected migrated multi-account auth")
-      }
-      expect(openai.accounts).toHaveLength(1)
-
-      await saveAuthStorage(filePath, (current) => current)
-      const migratedOnDisk = JSON.parse(await readFile(filePath, "utf8"))
-      expect(migratedOnDisk.openai.accounts).toHaveLength(1)
-    } finally {
-      if (prevHome === undefined) {
-        delete process.env.HOME
-      } else {
-        process.env.HOME = prevHome
-      }
-    }
-  })
-
-  it("skips unsupported legacy schema and falls through to OpenCode provider auth marker", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
-    const prevHome = process.env.HOME
-    process.env.HOME = root
-
-    try {
-      const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
-      const unsupportedLegacyPath = path.join(root, ".config", "opencode", "openai-codex-accounts.json")
-      const providerAuthPath = path.join(root, ".local", "share", "opencode", "auth.json")
-
-      await mkdir(path.dirname(unsupportedLegacyPath), { recursive: true })
-      await writeFile(
-        unsupportedLegacyPath,
-        `${JSON.stringify({ version: 1, accounts: [], activeIndex: 0 }, null, 2)}\n`,
-        { mode: 0o600 }
-      )
-
-      await mkdir(path.dirname(providerAuthPath), { recursive: true })
-      const singleJson = await readFile(fixturePath("auth-single.json"), "utf8")
-      await writeFile(providerAuthPath, singleJson, { mode: 0o600 })
-
-      const auth = await loadAuthStorage(filePath)
-      const openai = auth.openai
-      if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
-        throw new Error("Expected migrated multi-account auth")
-      }
-      expect(openai.accounts).toHaveLength(1)
-      expect(openai.accounts[0].identityKey).toBe("acc_123|user@example.com|plus")
-    } finally {
-      if (prevHome === undefined) {
-        delete process.env.HOME
-      } else {
-        process.env.HOME = prevHome
-      }
-    }
-  })
-
-  it("prefers legacy account data with strict identities when codex-accounts.json is degraded", async () => {
+  it("imports legacy v4 openai-codex-accounts schema only through explicit transfer", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
     const prevHome = process.env.HOME
     process.env.HOME = root
@@ -225,27 +73,7 @@ describe("auth storage", () => {
     try {
       const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
       const legacyPath = path.join(root, ".config", "opencode", "openai-codex-accounts.json")
-      await mkdir(path.dirname(filePath), { recursive: true })
-      await writeFile(
-        filePath,
-        `${JSON.stringify(
-          {
-            openai: {
-              type: "oauth",
-              accounts: [
-                {
-                  refresh: "rt_from_provider",
-                  access: "at_from_provider",
-                  expires: 123
-                }
-              ]
-            }
-          },
-          null,
-          2
-        )}\n`,
-        { mode: 0o600 }
-      )
+      await mkdir(path.dirname(legacyPath), { recursive: true })
       await writeFile(
         legacyPath,
         `${JSON.stringify(
@@ -257,14 +85,16 @@ describe("auth storage", () => {
                 accountId: "acc_1",
                 email: "one@example.com",
                 plan: "plus",
-                enabled: true
+                enabled: true,
+                lastUsed: 111
               },
               {
                 refreshToken: "rt_2",
                 accountId: "acc_2",
                 email: "two@example.com",
                 plan: "pro",
-                enabled: true
+                enabled: false,
+                coolingDownUntil: 9999
               }
             ],
             activeIndex: 1
@@ -275,6 +105,12 @@ describe("auth storage", () => {
         { mode: 0o600 }
       )
 
+      const before = await loadAuthStorage(filePath)
+      expect(before).toEqual({})
+
+      const transfer = await importLegacyInstallData(filePath)
+      expect(transfer.imported).toBe(2)
+
       const auth = await loadAuthStorage(filePath)
       const openai = auth.openai
       if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
@@ -283,7 +119,13 @@ describe("auth storage", () => {
 
       expect(openai.accounts).toHaveLength(2)
       expect(openai.accounts[0].identityKey).toBe("acc_1|one@example.com|plus")
+      expect(openai.accounts[0].refresh).toBe("rt_1")
+      expect(openai.accounts[0].expires).toBe(0)
+      expect(openai.accounts[0].lastUsed).toBe(111)
       expect(openai.accounts[1].identityKey).toBe("acc_2|two@example.com|pro")
+      expect(openai.accounts[1].enabled).toBe(false)
+      expect(openai.accounts[1].cooldownUntil).toBe(9999)
+      expect(openai.activeIdentityKey).toBe("acc_2|two@example.com|pro")
     } finally {
       if (prevHome === undefined) {
         delete process.env.HOME
@@ -293,7 +135,40 @@ describe("auth storage", () => {
     }
   })
 
-  it("hydrates account identity from JWT claims when legacy oauth fields are missing", async () => {
+  it("imports native OpenCode provider auth marker only through explicit transfer", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
+    const prevHome = process.env.HOME
+    process.env.HOME = root
+
+    try {
+      const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
+      const providerAuthPath = path.join(root, ".local", "share", "opencode", "auth.json")
+      await mkdir(path.dirname(providerAuthPath), { recursive: true })
+      const singleJson = await readFile(fixturePath("auth-single.json"), "utf8")
+      await writeFile(providerAuthPath, singleJson, { mode: 0o600 })
+
+      const before = await loadAuthStorage(filePath)
+      expect(before).toEqual({})
+
+      const transfer = await importLegacyInstallData(filePath)
+      expect(transfer.imported).toBe(1)
+
+      const auth = await loadAuthStorage(filePath)
+      const openai = auth.openai
+      if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
+        throw new Error("Expected migrated multi-account auth")
+      }
+      expect(openai.accounts).toHaveLength(1)
+    } finally {
+      if (prevHome === undefined) {
+        delete process.env.HOME
+      } else {
+        process.env.HOME = prevHome
+      }
+    }
+  })
+
+  it("hydrates account identity from JWT claims when oauth fields are missing", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
     const filePath = path.join(dir, "auth.json")
     const access = fakeJwt({
@@ -375,7 +250,7 @@ describe("auth storage", () => {
     expect(openai.accounts[0].identityKey).toBe("acc_multi|multiuser@example.com|pro")
   })
 
-  it("keeps codex-accounts.json OpenAI-only when seeding from provider auth.json", async () => {
+  it("keeps codex-accounts.json OpenAI-only when transfering from provider auth.json", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
     const prevHome = process.env.HOME
     process.env.HOME = root
@@ -421,6 +296,7 @@ describe("auth storage", () => {
         { mode: 0o600 }
       )
 
+      await importLegacyInstallData(filePath)
       const auth = await loadAuthStorage(filePath)
       expect((auth as Record<string, unknown>).google).toBeUndefined()
       expect((auth as Record<string, unknown>).opencode).toBeUndefined()
@@ -455,7 +331,13 @@ describe("auth storage", () => {
       const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
       const providerAuthPath = path.join(root, ".local", "share", "opencode", "auth.json")
       await mkdir(path.dirname(providerAuthPath), { recursive: true })
-      await writeFile(providerAuthPath, JSON.stringify({ openai: { type: "oauth" } }), "utf8")
+      await writeFile(
+        providerAuthPath,
+        JSON.stringify({
+          openai: { type: "oauth", refresh: "rt_native", access: "at_native", expires: Date.now() + 60_000 }
+        }),
+        "utf8"
+      )
 
       await expect(shouldOfferLegacyTransfer(filePath)).resolves.toBe(true)
     } finally {

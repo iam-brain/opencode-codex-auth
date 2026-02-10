@@ -4,7 +4,6 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 import {
-  buildIdentityKey,
   ensureIdentityKey,
   normalizeEmail,
   normalizePlan
@@ -20,7 +19,6 @@ import {
   CODEX_ACCOUNTS_FILE,
   defaultAuthPath,
   opencodeProviderAuthPath,
-  legacyAuthPathFor,
   legacyOpenAICodexAccountsPathFor
 } from "./paths"
 import type {
@@ -273,31 +271,6 @@ function sanitizeAuthFile(input: AuthFile): AuthFile {
   return {}
 }
 
-function identityCount(auth: AuthFile): number {
-  const openai = auth.openai
-  if (!openai || openai.type !== "oauth") return 0
-  if (!isMultiOauthAuth(openai)) {
-    return buildIdentityKey({
-      accountId: openai.accountId,
-      email: normalizeEmail(openai.email),
-      plan: normalizePlan(openai.plan)
-    })
-      ? 1
-      : 0
-  }
-  const normalized = normalizeOpenAIOAuthState(openai)
-  return normalized.accounts.reduce((count, account) => {
-    if (account.identityKey) return count + 1
-    return buildIdentityKey({
-      accountId: account.accountId,
-      email: normalizeEmail(account.email),
-      plan: normalizePlan(account.plan)
-    })
-      ? count + 1
-      : count
-  }, 0)
-}
-
 function hasUsableOpenAIOAuth(auth: AuthFile): boolean {
   const openai = auth.openai
   if (!openai || openai.type !== "oauth") return false
@@ -454,77 +427,6 @@ async function readAuthUnlocked(
   }
 }
 
-async function readAuthWithLegacyFallback(
-  filePath: string,
-  opts?: { quarantineDir: string; now: () => number; keep?: number }
-): Promise<AuthFile> {
-  let primaryExists = false
-  try {
-    await fs.access(filePath)
-    primaryExists = true
-  } catch {
-    primaryExists = false
-  }
-
-  const auth = await readAuthUnlocked(filePath, opts)
-  const primaryUsable = hasUsableOpenAIOAuth(auth)
-  const primaryIdentityCount = identityCount(auth)
-  if (primaryUsable && (path.basename(filePath) !== CODEX_ACCOUNTS_FILE || primaryIdentityCount > 0)) {
-    return auth
-  }
-
-  if (primaryExists && path.basename(filePath) !== CODEX_ACCOUNTS_FILE) {
-    return auth
-  }
-
-  if (
-    primaryExists &&
-    path.basename(filePath) === CODEX_ACCOUNTS_FILE &&
-    isMultiOauthAuth(auth.openai) &&
-    auth.openai.accounts.length === 0
-  ) {
-    return auth
-  }
-
-  if (primaryExists && path.basename(filePath) === CODEX_ACCOUNTS_FILE && Object.keys(auth).length > 0) {
-    // Continue to legacy fallbacks when codex-accounts exists but does not contain usable OpenAI OAuth state.
-  } else if (Object.keys(auth).length > 0) {
-    return auth
-  }
-
-  if (path.basename(filePath) !== CODEX_ACCOUNTS_FILE) {
-    return auth
-  }
-
-  const legacyCandidates = [
-    legacyOpenAICodexAccountsPathFor(filePath),
-    legacyAuthPathFor(filePath),
-    opencodeProviderAuthPath()
-  ]
-  for (const legacyPath of legacyCandidates) {
-    if (legacyPath === filePath) continue
-    try {
-      await fs.access(legacyPath)
-      const legacyAuth = await readAuthUnlocked(legacyPath, opts)
-      const legacyUsable = hasUsableOpenAIOAuth(legacyAuth)
-      if (legacyUsable) {
-        if (!primaryUsable) {
-          await writeAuthUnlocked(filePath, legacyAuth).catch(() => {})
-          return legacyAuth
-        }
-        if (identityCount(legacyAuth) > primaryIdentityCount) {
-          await writeAuthUnlocked(filePath, legacyAuth).catch(() => {})
-          return legacyAuth
-        }
-      }
-    } catch {
-      // check next legacy candidate
-    }
-  }
-
-  return auth
-}
-
 export async function shouldOfferLegacyTransfer(filePath: string = defaultAuthPath()): Promise<boolean> {
   try {
     await fs.access(filePath)
@@ -537,13 +439,139 @@ export async function shouldOfferLegacyTransfer(filePath: string = defaultAuthPa
   for (const legacyPath of legacyCandidates) {
     try {
       await fs.access(legacyPath)
-      return true
+      const legacyAuth = await readAuthUnlocked(legacyPath)
+      if (hasUsableOpenAIOAuth(legacyAuth)) {
+        return true
+      }
     } catch {
       // check next source
     }
   }
 
   return false
+}
+
+function ensureMultiOauthState(auth: AuthFile): OpenAIMultiOauthAuth {
+  const openai = auth.openai
+  if (!openai || openai.type !== "oauth") {
+    const created: OpenAIMultiOauthAuth = {
+      type: "oauth",
+      accounts: [],
+      native: { accounts: [] }
+    }
+    auth.openai = normalizeOpenAIOAuthState(created)
+    return auth.openai as OpenAIMultiOauthAuth
+  }
+  if (!isMultiOauthAuth(openai)) {
+    const migrated = migrateAuthFile({ openai }).openai
+    if (migrated && isMultiOauthAuth(migrated)) {
+      auth.openai = normalizeOpenAIOAuthState(migrated)
+      return auth.openai as OpenAIMultiOauthAuth
+    }
+    const created: OpenAIMultiOauthAuth = {
+      type: "oauth",
+      accounts: [],
+      native: { accounts: [] }
+    }
+    auth.openai = normalizeOpenAIOAuthState(created)
+    return auth.openai as OpenAIMultiOauthAuth
+  }
+  auth.openai = normalizeOpenAIOAuthState(openai)
+  return auth.openai as OpenAIMultiOauthAuth
+}
+
+function upsertDomainAccount(domain: OpenAIOAuthDomain, input: AccountRecord, authMode: OpenAIAuthMode): boolean {
+  const incoming: AccountRecord = { ...input, authTypes: [authMode] }
+  normalizeAccountRecord(incoming, authMode)
+
+  const incomingIdentity = incoming.identityKey
+  const incomingRefresh = typeof incoming.refresh === "string" ? incoming.refresh : ""
+  const matchIndex = domain.accounts.findIndex((existing) => {
+    normalizeAccountRecord(existing, authMode)
+    if (incomingIdentity && existing.identityKey === incomingIdentity) return true
+    if (!incomingIdentity && incomingRefresh && existing.refresh === incomingRefresh) return true
+    return false
+  })
+
+  if (matchIndex < 0) {
+    domain.accounts.push(incoming)
+    return true
+  }
+
+  const existing = domain.accounts[matchIndex]
+  if (!existing) return false
+  const existingExpires = typeof existing.expires === "number" ? existing.expires : -Infinity
+  const incomingExpires = typeof incoming.expires === "number" ? incoming.expires : -Infinity
+  const preferIncoming = incomingExpires >= existingExpires
+  domain.accounts[matchIndex] = preferIncoming
+    ? { ...existing, ...incoming, authTypes: [authMode] }
+    : { ...incoming, ...existing, authTypes: [authMode] }
+  normalizeAccountRecord(domain.accounts[matchIndex], authMode)
+  return false
+}
+
+export type LegacyTransferResult = {
+  imported: number
+  sourcesUsed: number
+}
+
+export async function importLegacyInstallData(
+  filePath: string = defaultAuthPath()
+): Promise<LegacyTransferResult> {
+  return withFileLock(filePath, async () => {
+    const current = sanitizeAuthFile(migrateAuthFile(await readAuthUnlocked(filePath)))
+    const nextOpenAI = ensureMultiOauthState(current)
+    current.openai = nextOpenAI
+
+    let imported = 0
+    let sourcesUsed = 0
+    const legacyCandidates = [legacyOpenAICodexAccountsPathFor(filePath), opencodeProviderAuthPath()]
+
+    for (const legacyPath of legacyCandidates) {
+      if (legacyPath === filePath) continue
+      try {
+        await fs.access(legacyPath)
+      } catch {
+        continue
+      }
+
+      const legacyAuth = await readAuthUnlocked(legacyPath)
+      if (!hasUsableOpenAIOAuth(legacyAuth)) continue
+      sourcesUsed += 1
+
+      const legacyOpenAI = legacyAuth.openai
+      if (!legacyOpenAI || legacyOpenAI.type !== "oauth") continue
+      const normalizedLegacy = normalizeOpenAIOAuthState(
+        isMultiOauthAuth(legacyOpenAI)
+          ? legacyOpenAI
+          : (migrateAuthFile({ openai: legacyOpenAI }).openai as OpenAIMultiOauthAuth)
+      )
+
+      for (const mode of OPENAI_AUTH_MODES) {
+        const sourceDomain = normalizedLegacy[mode]
+        if (!sourceDomain) continue
+        const targetDomain = ensureOpenAIOAuthDomain(current, mode)
+        if (targetDomain.strategy === undefined && sourceDomain.strategy !== undefined) {
+          targetDomain.strategy = sourceDomain.strategy
+        }
+        for (const account of sourceDomain.accounts) {
+          if (upsertDomainAccount(targetDomain, account, mode)) {
+            imported += 1
+          }
+        }
+        if (
+          sourceDomain.activeIdentityKey &&
+          targetDomain.accounts.some((account) => account.identityKey === sourceDomain.activeIdentityKey)
+        ) {
+          targetDomain.activeIdentityKey = sourceDomain.activeIdentityKey
+        }
+      }
+    }
+
+    current.openai = normalizeOpenAIOAuthState(current.openai as OpenAIMultiOauthAuth)
+    await writeAuthUnlocked(filePath, current)
+    return { imported, sourcesUsed }
+  })
 }
 
 export function getOpenAIOAuthDomain(
@@ -622,7 +650,7 @@ export async function loadAuthStorage(
   filePath: string = defaultAuthPath(),
   opts?: { quarantineDir: string; now: () => number; keep?: number }
 ): Promise<AuthFile> {
-  return withFileLock(filePath, async () => readAuthWithLegacyFallback(filePath, opts))
+  return withFileLock(filePath, async () => readAuthUnlocked(filePath, opts))
 }
 
 export async function saveAuthStorage(
@@ -630,7 +658,7 @@ export async function saveAuthStorage(
   update: (auth: AuthFile) => void | AuthFile | Promise<void | AuthFile>
 ): Promise<AuthFile> {
   return withFileLock(filePath, async () => {
-    const current = await readAuthWithLegacyFallback(filePath)
+    const current = await readAuthUnlocked(filePath)
     const result = await update(current)
     const nextBase = result === undefined ? current : result
     const next = sanitizeAuthFile(migrateAuthFile(nextBase))

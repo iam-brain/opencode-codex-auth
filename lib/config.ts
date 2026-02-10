@@ -40,7 +40,6 @@ export type PluginConfig = {
 }
 
 const CONFIG_FILE = "codex-config.json"
-const LEGACY_CONFIG_FILE = "openai-codex-auth-config.json"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -72,17 +71,17 @@ export function normalizePersonalityOption(value: unknown): PersonalityOption | 
 function parseSpoofMode(value: unknown): CodexSpoofMode | undefined {
   if (typeof value !== "string") return undefined
   const normalized = value.trim().toLowerCase()
-  if (normalized === "native" || normalized === "standard") return "native"
-  if (normalized === "codex" || normalized === "strict") return "codex"
+  if (normalized === "native") return "native"
+  if (normalized === "codex") return "codex"
   return undefined
 }
 
 function parseRuntimeMode(value: unknown): PluginRuntimeMode | undefined {
   if (typeof value !== "string") return undefined
   const normalized = value.trim().toLowerCase()
-  if (normalized === "native" || normalized === "standard") return "native"
-  if (normalized === "codex" || normalized === "strict") return "codex"
-  if (normalized === "collab" || normalized === "collaboration") return "collab"
+  if (normalized === "native") return "native"
+  if (normalized === "codex") return "codex"
+  if (normalized === "collab") return "collab"
   return undefined
 }
 
@@ -91,9 +90,7 @@ function normalizeCustomSettings(raw: unknown): CustomSettings | undefined {
 
   const out: CustomSettings = {}
 
-  if (typeof raw.thinking_summaries === "boolean") {
-    out.thinkingSummaries = raw.thinking_summaries
-  } else if (typeof raw.thinkingSummaries === "boolean") {
+  if (typeof raw.thinkingSummaries === "boolean") {
     out.thinkingSummaries = raw.thinkingSummaries
   }
 
@@ -136,9 +133,7 @@ function normalizeModelBehaviorSettings(raw: unknown): ModelBehaviorSettings | u
   const personality = normalizePersonalityOption(raw.personality) ?? normalizePersonalityOption(options?.personality)
   if (personality) out.personality = personality
 
-  if (typeof raw.thinking_summaries === "boolean") {
-    out.thinkingSummaries = raw.thinking_summaries
-  } else if (typeof raw.thinkingSummaries === "boolean") {
+  if (typeof raw.thinkingSummaries === "boolean") {
     out.thinkingSummaries = raw.thinkingSummaries
   }
 
@@ -153,9 +148,7 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
   if (!isRecord(raw)) return undefined
 
   const modelBehavior = normalizeModelBehaviorSettings(raw)
-  const rawVariants =
-    (isRecord(raw.variants) ? raw.variants : undefined) ??
-    (isRecord(raw.perVariant) ? raw.perVariant : undefined)
+  const rawVariants = isRecord(raw.variants) ? raw.variants : undefined
 
   let variants: ModelConfigOverride["variants"] | undefined
   if (rawVariants) {
@@ -338,46 +331,24 @@ function cloneCustomSettings(input: CustomSettings | undefined): CustomSettings 
 function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
   if (!isRecord(raw)) return {}
 
-  const legacyCustomSettings = normalizeCustomSettings(raw.custom_settings ?? raw.customSettings)
+  const explicitCustomSettings = normalizeCustomSettings(raw.customSettings)
   const newCustomSettings = normalizeNewBehaviorSections(raw)
-  const customSettings = mergeCustomSettings(legacyCustomSettings, newCustomSettings)
+  const customSettings = mergeCustomSettings(explicitCustomSettings, newCustomSettings)
   const personalityFromTopLevel = normalizePersonalityOption(raw.personality)
   const personalityFromCustom = customSettings?.options?.personality
 
-  const debug =
-    typeof raw.debug === "boolean"
-      ? raw.debug
-      : typeof raw.authDebug === "boolean"
-        ? raw.authDebug
-        : undefined
+  const debug = typeof raw.debug === "boolean" ? raw.debug : undefined
   const proactiveRefresh =
     isRecord(raw.refreshAhead) && typeof raw.refreshAhead.enabled === "boolean"
       ? raw.refreshAhead.enabled
-      : typeof raw.proactiveTokenRefresh === "boolean"
-        ? raw.proactiveTokenRefresh
-        : typeof raw.proactiveRefresh === "boolean"
-        ? raw.proactiveRefresh
-        : undefined
+      : undefined
   const proactiveRefreshBufferMs =
     isRecord(raw.refreshAhead) && typeof raw.refreshAhead.bufferMs === "number"
       ? raw.refreshAhead.bufferMs
-      : typeof raw.tokenRefreshSkewMs === "number"
-        ? raw.tokenRefreshSkewMs
-        : typeof raw.proactiveRefreshBufferMs === "number"
-        ? raw.proactiveRefreshBufferMs
-        : undefined
-  const quietMode =
-    typeof raw.quiet === "boolean"
-      ? raw.quiet
-      : typeof raw.quietMode === "boolean"
-        ? raw.quietMode
-        : undefined
+      : undefined
+  const quietMode = typeof raw.quiet === "boolean" ? raw.quiet : undefined
   const explicitMode = parseRuntimeMode((isRecord(raw.runtime) ? raw.runtime.mode : undefined) ?? raw.mode)
-  const spoofModeFromFields = parseSpoofMode(
-    (isRecord(raw.runtime) ? raw.runtime.identityMode : undefined) ??
-      raw.codexSpoofMode ??
-      raw.spoofMode
-  )
+  const spoofModeFromFields = parseSpoofMode(isRecord(raw.runtime) ? raw.runtime.identityMode : undefined)
   const mode =
     explicitMode ??
     (spoofModeFromFields === "native" ? "native" : spoofModeFromFields === "codex" ? "codex" : undefined)
@@ -387,33 +358,15 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
   const compatInputSanitizer =
     isRecord(raw.runtime) && typeof raw.runtime.sanitizeInputs === "boolean"
       ? raw.runtime.sanitizeInputs
-      : isRecord(raw.compat)
-        ? typeof raw.compat.inputSanitizer === "boolean"
-          ? raw.compat.inputSanitizer
-          : undefined
-        : typeof raw.compatInputSanitizer === "boolean"
-          ? raw.compatInputSanitizer
-          : undefined
+      : undefined
   const headerSnapshots =
     isRecord(raw.runtime) && typeof raw.runtime.headerSnapshots === "boolean"
       ? raw.runtime.headerSnapshots
-      : isRecord(raw.telemetry)
-        ? typeof raw.telemetry.headerSnapshots === "boolean"
-          ? raw.telemetry.headerSnapshots
-          : typeof raw.telemetry.requestShapeDebug === "boolean"
-            ? raw.telemetry.requestShapeDebug
-            : undefined
-        : typeof raw.headerSnapshots === "boolean"
-          ? raw.headerSnapshots
-          : undefined
+      : undefined
   const pidOffsetEnabled =
     isRecord(raw.runtime) && typeof raw.runtime.pidOffset === "boolean"
       ? raw.runtime.pidOffset
-      : isRecord(raw.rotation) && typeof raw.rotation.pidOffset === "boolean"
-        ? raw.rotation.pidOffset
-        : typeof raw.pidOffsetEnabled === "boolean"
-          ? raw.pidOffsetEnabled
-          : undefined
+      : undefined
 
   return {
     debug,
@@ -438,36 +391,14 @@ function resolveDefaultConfigPath(env: Record<string, string | undefined>): stri
   return path.join(os.homedir(), ".config", "opencode", CONFIG_FILE)
 }
 
-function resolveLegacyDefaultConfigPath(env: Record<string, string | undefined>): string {
-  const xdgRoot = env.XDG_CONFIG_HOME?.trim()
-  if (xdgRoot) {
-    return path.join(xdgRoot, "opencode", LEGACY_CONFIG_FILE)
-  }
-  return path.join(os.homedir(), ".config", "opencode", LEGACY_CONFIG_FILE)
-}
-
-function resolveLegacyConfigPath(fileName: string): string {
-  return path.join(os.homedir(), ".opencode", fileName)
-}
-
 export function loadConfigFile(input: {
   env?: Record<string, string | undefined>
   filePath?: string
 } = {}): Partial<PluginConfig> {
   const env = input.env ?? process.env
-  const explicitPath =
-    input.filePath ??
-    env.OPENCODE_OPENAI_MULTI_CONFIG_PATH?.trim() ??
-    env.CODEX_AUTH_CONFIG_PATH?.trim()
+  const explicitPath = input.filePath ?? env.OPENCODE_OPENAI_MULTI_CONFIG_PATH?.trim()
 
-  const candidates = explicitPath
-    ? [explicitPath]
-    : [
-        resolveDefaultConfigPath(env),
-        resolveLegacyDefaultConfigPath(env),
-        resolveLegacyConfigPath(CONFIG_FILE),
-        resolveLegacyConfigPath(LEGACY_CONFIG_FILE)
-      ]
+  const candidates = explicitPath ? [explicitPath] : [resolveDefaultConfigPath(env)]
 
   for (const filePath of candidates) {
     if (!filePath) continue
@@ -493,8 +424,7 @@ export function resolveConfig(input: {
   const fileCustom = normalizeCustomSettings(file.customSettings)
 
   const envDebug =
-    env.CODEX_AUTH_DEBUG === "1" ||
-    env.OPENCODE_OPENAI_AUTH_DEBUG === "1" ||
+    env.OPENCODE_OPENAI_MULTI_DEBUG === "1" ||
     env.DEBUG_CODEX_PLUGIN === "1"
 
   const proactiveRefresh =
@@ -503,24 +433,15 @@ export function resolveConfig(input: {
     parseEnvNumber(env.OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS) ??
     file.proactiveRefreshBufferMs
   const quietMode =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_QUIET) ??
-    parseEnvBoolean(env.CODEX_AUTH_QUIET) ??
-    file.quietMode
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_QUIET) ?? file.quietMode
   const pidOffsetEnabled =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_PID_OFFSET) ??
-    parseEnvBoolean(env.CODEX_AUTH_PID_OFFSET) ??
-    file.pidOffsetEnabled
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_PID_OFFSET) ?? file.pidOffsetEnabled
 
   const envPersonality = normalizePersonalityOption(env.OPENCODE_OPENAI_MULTI_PERSONALITY)
-  const envThinkingSummaries =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES) ??
-    parseEnvBoolean(env.CODEX_AUTH_THINKING_SUMMARIES)
-  const spoofModeFromEnv =
-    parseSpoofMode(env.OPENCODE_OPENAI_MULTI_SPOOF_MODE) ??
-    parseSpoofMode(env.CODEX_AUTH_SPOOF_MODE)
+  const envThinkingSummaries = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES)
+  const spoofModeFromEnv = parseSpoofMode(env.OPENCODE_OPENAI_MULTI_SPOOF_MODE)
   const mode =
     parseRuntimeMode(env.OPENCODE_OPENAI_MULTI_MODE) ??
-    parseRuntimeMode(env.CODEX_AUTH_MODE) ??
     file.mode ??
     (spoofModeFromEnv === "codex" || file.spoofMode === "codex" ? "codex" : "native")
 
@@ -567,9 +488,7 @@ export function resolveConfig(input: {
   const compatInputSanitizer =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER) ?? file.compatInputSanitizer
   const headerSnapshots =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS) ??
-    parseEnvBoolean(env.ENABLE_PLUGIN_REQUEST_LOGGING) ??
-    file.headerSnapshots
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS) ?? file.headerSnapshots
 
   return {
     ...file,

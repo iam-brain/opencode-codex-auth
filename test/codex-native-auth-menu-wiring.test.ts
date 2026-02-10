@@ -114,6 +114,7 @@ async function loadPluginWithMenu(input: {
   vi.doMock("../lib/storage", () => ({
     loadAuthStorage: vi.fn(async () => storageState),
     saveAuthStorage,
+    importLegacyInstallData: vi.fn(async () => ({ imported: 0, sourcesUsed: 0 })),
     getOpenAIOAuthDomain,
     ensureOpenAIOAuthDomain,
     listOpenAIOAuthDomains,

@@ -27,6 +27,7 @@ import { createStickySessionState, selectAccount } from "./rotation"
 import {
   ensureOpenAIOAuthDomain,
   getOpenAIOAuthDomain,
+  importLegacyInstallData,
   listOpenAIOAuthDomains,
   loadAuthStorage,
   saveAuthStorage,
@@ -1698,14 +1699,14 @@ export async function CodexAuthPlugin(
             )
           },
           onTransfer: async () => {
-            let total = 0
+            const transfer = await importLegacyInstallData()
+            let total = transfer.imported
             let hydrated = 0
             let refreshed = 0
             await saveAuthStorage(undefined, async (authFile) => {
               for (const mode of ["native", "codex"] as const) {
                 const domain = getOpenAIOAuthDomain(authFile, mode)
                 if (!domain) continue
-                total += domain.accounts.length
 
                 for (const account of domain.accounts) {
                   const hadIdentity = Boolean(buildIdentityKey(account))
@@ -1739,7 +1740,7 @@ export async function CodexAuthPlugin(
               return authFile
             })
             process.stdout.write(
-              `\nTransfer complete: ${total} account(s) available. Hydrated ${hydrated} account(s)` +
+              `\nTransfer complete: imported ${total} account(s). Hydrated ${hydrated} account(s)` +
                 `${refreshed > 0 ? `, refreshed ${refreshed} token(s)` : ""}.\n\n`
             )
           },

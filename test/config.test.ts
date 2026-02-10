@@ -23,7 +23,7 @@ import {
 
 describe("config loading", () => {
   it("prefers env debug flag", () => {
-    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_AUTH_DEBUG: "1" } })
+    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_DEBUG: "1" } })
     expect(getDebugEnabled(cfg)).toBe(true)
   })
 
@@ -75,19 +75,6 @@ describe("config loading", () => {
     expect(getSpoofMode(cfg)).toBe("native")
   })
 
-  it("accepts legacy spoof mode aliases from env", () => {
-    const strictAlias = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_SPOOF_MODE: "strict" } })
-    const nativeAlias = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_SPOOF_MODE: "native" } })
-    expect(getSpoofMode(strictAlias)).toBe("codex")
-    expect(getSpoofMode(nativeAlias)).toBe("native")
-  })
-
-  it("accepts standard alias from env for backward compatibility", () => {
-    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_SPOOF_MODE: "standard" } })
-    expect(getSpoofMode(cfg)).toBe("native")
-    expect(getMode(cfg)).toBe("native")
-  })
-
   it("parses runtime mode from env", () => {
     const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_MODE: "collab" } })
     expect(getMode(cfg)).toBe("collab")
@@ -100,10 +87,8 @@ describe("config loading", () => {
   })
 
   it("enables header snapshots from env flags", () => {
-    const cfgExplicit = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS: "1" } })
-    const cfgCompat = resolveConfig({ env: { ENABLE_PLUGIN_REQUEST_LOGGING: "1" } })
-    expect(getHeaderSnapshotsEnabled(cfgExplicit)).toBe(true)
-    expect(getHeaderSnapshotsEnabled(cfgCompat)).toBe(true)
+    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS: "1" } })
+    expect(getHeaderSnapshotsEnabled(cfg)).toBe(true)
   })
 
   it("reads personality + custom settings from file config", () => {
@@ -195,6 +180,7 @@ describe("config file loading", () => {
           bufferMs: 45_000
         },
         runtime: {
+          mode: "codex",
           identityMode: "codex",
           sanitizeInputs: true,
           headerSnapshots: true,
@@ -290,55 +276,9 @@ describe("config file loading", () => {
     const configDir = path.join(root, "opencode")
     await fs.mkdir(configDir, { recursive: true })
     const filePath = path.join(configDir, "codex-config.json")
-    await fs.writeFile(filePath, JSON.stringify({ quietMode: true }), "utf8")
+    await fs.writeFile(filePath, JSON.stringify({ quiet: true }), "utf8")
 
     const loaded = loadConfigFile({ env: { XDG_CONFIG_HOME: root } })
     expect(loaded.quietMode).toBe(true)
-  })
-
-  it("falls back to legacy config filename in XDG config home", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
-    const configDir = path.join(root, "opencode")
-    await fs.mkdir(configDir, { recursive: true })
-    const filePath = path.join(configDir, "openai-codex-auth-config.json")
-    await fs.writeFile(filePath, JSON.stringify({ quietMode: true }), "utf8")
-
-    const loaded = loadConfigFile({ env: { XDG_CONFIG_HOME: root } })
-    expect(loaded.quietMode).toBe(true)
-  })
-
-  it("parses legacy config aliases for backward compatibility", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
-    const filePath = path.join(root, "codex-config.json")
-    await fs.writeFile(
-      filePath,
-      JSON.stringify({
-        authDebug: true,
-        proactiveTokenRefresh: true,
-        tokenRefreshSkewMs: 12_345,
-        codexSpoofMode: "strict",
-        compat: { inputSanitizer: true },
-        telemetry: { requestShapeDebug: true },
-        rotation: { pidOffset: true },
-        custom_settings: {
-          thinking_summaries: true,
-          options: { personality: "friendly" }
-        }
-      }),
-      "utf8"
-    )
-
-    const loaded = loadConfigFile({
-      env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath }
-    })
-    expect(loaded.debug).toBe(true)
-    expect(loaded.proactiveRefresh).toBe(true)
-    expect(loaded.proactiveRefreshBufferMs).toBe(12_345)
-    expect(loaded.spoofMode).toBe("codex")
-    expect(loaded.compatInputSanitizer).toBe(true)
-    expect(loaded.headerSnapshots).toBe(true)
-    expect(loaded.pidOffsetEnabled).toBe(true)
-    expect(loaded.customSettings?.thinkingSummaries).toBe(true)
-    expect(loaded.customSettings?.options?.personality).toBe("friendly")
   })
 })
