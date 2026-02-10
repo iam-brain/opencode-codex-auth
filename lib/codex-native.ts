@@ -374,7 +374,7 @@ function buildOAuthSuccessHtml(mode: CodexSpoofMode = "codex"): string {
   return `<!doctype html>
 <html>
   <head>
-    <title>Sign into Codex</title>
+    <title>OpenCode - Codex Authorization Successful</title>
     <style>
       body {
         font-family: system-ui, -apple-system, sans-serif;
@@ -390,6 +390,10 @@ function buildOAuthSuccessHtml(mode: CodexSpoofMode = "codex"): string {
         text-align: center;
         padding: 2rem;
       }
+      h1 {
+        color: #f1ecec;
+        margin-bottom: 1rem;
+      }
       p {
         color: #b7b1b1;
       }
@@ -397,8 +401,8 @@ function buildOAuthSuccessHtml(mode: CodexSpoofMode = "codex"): string {
   </head>
   <body>
     <div class="container">
-      <h1>Signed in to Codex</h1>
-      <p>You may now close this page.</p>
+      <h1>Authorization Successful</h1>
+      <p>You can close this window and return to OpenCode.</p>
     </div>
     <script>
       setTimeout(() => window.close(), 2000)

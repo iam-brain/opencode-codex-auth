@@ -15,6 +15,14 @@ describe("codex-native oauth callback page branding", () => {
     expect(html).not.toContain("OpenCode")
   })
 
+  it("uses OpenCode-native branding for native success page", () => {
+    const html = __testOnly.buildOAuthSuccessHtml("native")
+    expect(html).toContain("OpenCode - Codex Authorization Successful")
+    expect(html).toContain("Authorization Successful")
+    expect(html).toContain("You can close this window and return to OpenCode.")
+    expect(html).not.toContain("Signed in to Codex")
+  })
+
   it("uses Codex branding for error page", () => {
     const html = __testOnly.buildOAuthErrorHtml("bad things")
     expect(html).toContain("Sign into Codex")
