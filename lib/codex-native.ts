@@ -3,7 +3,8 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import http from "node:http"
 import os from "node:os"
 import { execFile, execFileSync } from "node:child_process"
-import { readFileSync } from "node:fs"
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs"
+import path from "node:path"
 import { promisify } from "node:util"
 
 import {
@@ -90,6 +91,8 @@ const OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS = (() => {
   const parsed = Number(raw)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 60_000
 })()
+const OAUTH_DEBUG_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
+const OAUTH_DEBUG_LOG_FILE = path.join(OAUTH_DEBUG_LOG_DIR, "oauth-lifecycle.log")
 const execFileAsync = promisify(execFile)
 const DEFAULT_PLUGIN_VERSION = "0.1.0"
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
@@ -153,10 +156,16 @@ export async function tryOpenUrlInBrowser(
   if (process.env.OPENCODE_NO_BROWSER === "1") return false
   if (process.env.VITEST || process.env.NODE_ENV === "test") return false
   const invocation = browserOpenInvocationFor(url)
+  emitOAuthDebug("browser_open_attempt", { command: invocation.command })
   try {
     await execFileAsync(invocation.command, invocation.args, { windowsHide: true, timeout: 5000 })
+    emitOAuthDebug("browser_open_success", { command: invocation.command })
     return true
   } catch (error) {
+    emitOAuthDebug("browser_open_failure", {
+      command: invocation.command,
+      error: error instanceof Error ? error.message : String(error)
+    })
     log?.warn("failed to auto-open oauth URL", {
       command: invocation.command,
       error: error instanceof Error ? error.message : String(error)
@@ -487,6 +496,32 @@ let oauthServer: http.Server | undefined
 let pendingOAuth: PendingOAuth | undefined
 let oauthServerCloseTimer: ReturnType<typeof setTimeout> | undefined
 
+function isOAuthDebugEnabled(): boolean {
+  return process.env.CODEX_AUTH_DEBUG === "1"
+}
+
+function emitOAuthDebug(event: string, meta: Record<string, unknown> = {}): void {
+  if (!isOAuthDebugEnabled()) return
+  const payload: Record<string, unknown> = {
+    ts: new Date().toISOString(),
+    pid: process.pid,
+    event,
+    ...meta
+  }
+  const line = JSON.stringify(payload)
+  try {
+    console.error(`[codex-auth-debug] ${line}`)
+  } catch {
+    // best effort stderr logging
+  }
+  try {
+    mkdirSync(OAUTH_DEBUG_LOG_DIR, { recursive: true, mode: 0o700 })
+    appendFileSync(OAUTH_DEBUG_LOG_FILE, `${line}\n`, { encoding: "utf8", mode: 0o600 })
+  } catch {
+    // best effort file logging
+  }
+}
+
 function clearOAuthServerCloseTimer(): void {
   if (!oauthServerCloseTimer) return
   clearTimeout(oauthServerCloseTimer)
@@ -496,9 +531,11 @@ function clearOAuthServerCloseTimer(): void {
 async function startOAuthServer(): Promise<{ redirectUri: string }> {
   clearOAuthServerCloseTimer()
   if (oauthServer) {
+    emitOAuthDebug("server_reuse", { port: OAUTH_PORT })
     return { redirectUri: `http://localhost:${OAUTH_PORT}/auth/callback` }
   }
 
+  emitOAuthDebug("server_starting", { port: OAUTH_PORT })
   oauthServer = http.createServer((req, res) => {
     try {
       const base = `http://${req.headers.host ?? `localhost:${OAUTH_PORT}`}`
@@ -520,9 +557,15 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
         const state = url.searchParams.get("state")
         const error = url.searchParams.get("error")
         const errorDescription = url.searchParams.get("error_description")
+        emitOAuthDebug("callback_hit", {
+          hasCode: Boolean(code),
+          hasState: Boolean(state),
+          hasError: Boolean(error)
+        })
 
         if (error) {
           const errorMsg = errorDescription || error
+          emitOAuthDebug("callback_error", { reason: errorMsg })
           pendingOAuth?.reject(new Error(errorMsg))
           pendingOAuth = undefined
           sendHtml(200, buildOAuthErrorHtml(errorMsg))
@@ -531,6 +574,7 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
 
         if (!code) {
           const errorMsg = "Missing authorization code"
+          emitOAuthDebug("callback_error", { reason: errorMsg })
           pendingOAuth?.reject(new Error(errorMsg))
           pendingOAuth = undefined
           sendHtml(400, buildOAuthErrorHtml(errorMsg))
@@ -539,6 +583,7 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
 
         if (!pendingOAuth || state !== pendingOAuth.state) {
           const errorMsg = "Invalid state - potential CSRF attack"
+          emitOAuthDebug("callback_error", { reason: errorMsg })
           pendingOAuth?.reject(new Error(errorMsg))
           pendingOAuth = undefined
           sendHtml(400, buildOAuthErrorHtml(errorMsg))
@@ -547,9 +592,11 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
 
         const current = pendingOAuth
         pendingOAuth = undefined
+        emitOAuthDebug("token_exchange_start", { authMode: current.authMode })
         exchangeCodeForTokens(code, `http://localhost:${OAUTH_PORT}/auth/callback`, current.pkce)
           .then((tokens) => {
             current.resolve(tokens)
+            emitOAuthDebug("token_exchange_success", { authMode: current.authMode })
             if (res.writableEnded) return
             if (current.authMode === "codex") {
               redirect(composeCodexSuccessRedirectUrl(tokens))
@@ -560,6 +607,7 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
           .catch((err) => {
             const oauthError = err instanceof Error ? err : new Error(String(err))
             current.reject(oauthError)
+            emitOAuthDebug("token_exchange_error", { error: oauthError.message })
             if (res.writableEnded) return
             sendHtml(500, buildOAuthErrorHtml(oauthError.message))
           })
@@ -567,11 +615,13 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
       }
 
       if (url.pathname === "/success") {
+        emitOAuthDebug("callback_success_page")
         sendHtml(200, buildOAuthSuccessHtml("codex"))
         return
       }
 
       if (url.pathname === "/cancel") {
+        emitOAuthDebug("callback_cancel")
         pendingOAuth?.reject(new Error("Login cancelled"))
         pendingOAuth = undefined
         res.statusCode = 200
@@ -592,7 +642,11 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
       oauthServer?.once("error", reject)
       oauthServer?.listen(OAUTH_PORT, () => resolve())
     })
+    emitOAuthDebug("server_started", { port: OAUTH_PORT })
   } catch (error) {
+    emitOAuthDebug("server_start_error", {
+      error: error instanceof Error ? error.message : String(error)
+    })
     const server = oauthServer
     oauthServer = undefined
     try {
@@ -608,16 +662,23 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
 
 function stopOAuthServer(): void {
   clearOAuthServerCloseTimer()
+  emitOAuthDebug("server_stopping", { hadPendingOAuth: Boolean(pendingOAuth) })
   oauthServer?.close()
   oauthServer = undefined
+  emitOAuthDebug("server_stopped")
 }
 
-function scheduleOAuthServerStop(delayMs = OAUTH_SERVER_SHUTDOWN_GRACE_MS): void {
+function scheduleOAuthServerStop(
+  delayMs = OAUTH_SERVER_SHUTDOWN_GRACE_MS,
+  reason: "success" | "error" | "other" = "other"
+): void {
   if (!oauthServer) return
   clearOAuthServerCloseTimer()
+  emitOAuthDebug("server_stop_scheduled", { delayMs, reason })
   oauthServerCloseTimer = setTimeout(() => {
     oauthServerCloseTimer = undefined
     if (pendingOAuth) return
+    emitOAuthDebug("server_stop_timer_fired", { reason })
     stopOAuthServer()
   }, delayMs)
 }
@@ -627,22 +688,29 @@ function waitForOAuthCallback(
   state: string,
   authMode: OpenAIAuthMode
 ): Promise<TokenResponse> {
+  emitOAuthDebug("callback_wait_start", {
+    authMode,
+    stateTail: state.slice(-6)
+  })
   return new Promise((resolve, reject) => {
     let settled = false
     const resolveOnce = (tokens: TokenResponse) => {
       if (settled) return
       settled = true
       clearTimeout(timeout)
+      emitOAuthDebug("callback_wait_resolved", { authMode })
       resolve(tokens)
     }
     const rejectOnce = (error: Error) => {
       if (settled) return
       settled = true
       clearTimeout(timeout)
+      emitOAuthDebug("callback_wait_rejected", { authMode, error: error.message })
       reject(error)
     }
     const timeout = setTimeout(() => {
       pendingOAuth = undefined
+      emitOAuthDebug("callback_wait_timeout", { authMode, timeoutMs: OAUTH_CALLBACK_TIMEOUT_MS })
       rejectOnce(new Error("OAuth callback timeout - authorization took too long"))
     }, OAUTH_CALLBACK_TIMEOUT_MS)
 
@@ -2434,7 +2502,8 @@ export async function CodexAuthPlugin(
               } finally {
                 pendingOAuth = undefined
                 scheduleOAuthServerStop(
-                  authFailed ? OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS : OAUTH_SERVER_SHUTDOWN_GRACE_MS
+                  authFailed ? OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS : OAUTH_SERVER_SHUTDOWN_GRACE_MS,
+                  authFailed ? "error" : "success"
                 )
               }
             }
@@ -2515,7 +2584,8 @@ export async function CodexAuthPlugin(
                 } finally {
                   pendingOAuth = undefined
                   scheduleOAuthServerStop(
-                    authFailed ? OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS : OAUTH_SERVER_SHUTDOWN_GRACE_MS
+                    authFailed ? OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS : OAUTH_SERVER_SHUTDOWN_GRACE_MS,
+                    authFailed ? "error" : "success"
                   )
                 }
               }
