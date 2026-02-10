@@ -17,7 +17,7 @@ If OpenCode reports `ProviderModelNotFoundError` for `openai/*` or `OpenAI API k
 - `~/.local/share/opencode/auth.json` (OpenCode OAuth marker)
 - `~/.config/opencode/codex-accounts.json` (plugin multi-account store)
 
-On first run, the plugin can bootstrap `codex-accounts.json` from legacy files and from the OpenCode provider marker.
+Legacy import is explicit only. Run `opencode auth login`, then select `Transfer OpenAI accounts from native & old plugins?` when offered.
 
 If needed, run `opencode auth login` again to refresh provider auth state.
 
@@ -50,7 +50,7 @@ On `429` responses, the plugin parses `Retry-After`, persists a per-account cool
 
 ## Debug logs
 
-Enable debug logs with `OPENCODE_OPENAI_AUTH_DEBUG=1`.
+Enable debug logs with `OPENCODE_OPENAI_MULTI_DEBUG=1` (or `DEBUG_CODEX_PLUGIN=1`).
 
 Rotation tracing is now included in debug mode:
 

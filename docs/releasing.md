@@ -56,5 +56,6 @@ Include these sections:
 
 - User-facing changes
 - Reliability and auth/storage safety changes
-- Migration/compat notes (legacy file fallback behavior, config aliases)
+- Migration notes (explicit legacy transfer behavior)
+- Config/runtime notes (canonical `codex-config.json` keys and env flags)
 - Verification evidence (`npm run verify` + smoke-check summary)

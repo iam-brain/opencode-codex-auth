@@ -50,9 +50,22 @@ Auth data is split across:
 - OpenCode OAuth marker: `~/.local/share/opencode/auth.json`
 - Plugin multi-account store: `~/.config/opencode/codex-accounts.json`
 
-If `codex-accounts.json` does not exist yet, the plugin can bootstrap from legacy files and from the OpenCode marker.
+If `codex-accounts.json` does not exist yet and legacy files are present, use:
 
-Once `codex-accounts.json` exists, it is authoritative. If you intentionally delete all accounts, the plugin will not auto-reseed from legacy files unless you explicitly transfer again.
+```bash
+opencode auth login
+```
+
+Then select:
+
+- `Transfer OpenAI accounts from native & old plugins?`
+
+Once `codex-accounts.json` exists, it is authoritative. If you intentionally delete all accounts, the plugin will not auto-reseed from legacy files.
+
+Collab agents are auto-toggled by runtime mode:
+
+- `mode: "collab"` keeps `Codex *.md` agents active.
+- `mode: "native"` or `mode: "codex"` auto-disables them to `Codex *.md.disabled`.
 
 The plugin store is written with atomic temp+rename and best-effort `0600`.
 

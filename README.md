@@ -1,6 +1,6 @@
 # opencode-openai-multi
 
-Native OpenAI Codex OAuth auth for OpenCode, with multi-account rotation and account-management UX.
+A fork of the Native OpenAI Codex OAuth auth for OpenCode, upgraded with a dedicated Codex spoof mode, multi-account rotation, and account-management UX.
 
 Docs portal: `docs/README.md`
 
@@ -15,23 +15,6 @@ Docs portal: `docs/README.md`
   - Enable/disable
   - Refresh token
   - Delete account / delete all accounts
-
-## Install (local development)
-
-```bash
-npm install
-npm run build
-```
-
-In `opencode.json`, keep plugin config minimal:
-
-```json
-{
-  "plugin": ["file:///absolute/path/to/opencode-openai-multi/dist"]
-}
-```
-
-Put runtime behavior flags in `~/.config/opencode/codex-config.json` (not in `opencode.json`).
 
 ## Install (published package)
 
@@ -52,6 +35,9 @@ Default installer behavior:
 - Codex collaboration profile behavior is only enabled when:
   - runtime mode is explicitly set to `collab` in `codex-config.json`, and
   - the active agent is in the `Codex*` family.
+- Agent activation is reconciled on plugin startup:
+  - `mode: "collab"` keeps `Codex *.md` active
+  - other modes auto-disable to `Codex *.md.disabled`
 - `collab` mode is currently WIP/untested and not recommended for production use yet.
 
 See:
@@ -76,16 +62,3 @@ Browser login notes:
   - `Credits`
 - Session compaction prompt is automatically swapped to codex-rs compact instructions for OpenAI-provider sessions.
 - `/review` subtasks are automatically hot-swapped to the `Codex Review` agent for OpenAI-provider sessions.
-
-## Verify before release
-
-```bash
-npm run verify
-```
-
-## Release checklist
-
-- Update `CHANGELOG.md`
-- Run `npm run verify`
-- Run manual smoke checks from `docs/releasing.md`
-- Tag/push only when explicitly intended

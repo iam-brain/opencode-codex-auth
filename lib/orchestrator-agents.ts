@@ -68,6 +68,8 @@ export type OrchestratorAgentTemplate = {
   content: string
 }
 
+const DISABLED_AGENT_EXTENSION = ".disabled"
+
 function withFrontmatter(config: {
   description: string
   mode: "primary" | "subagent"
@@ -174,6 +176,31 @@ export type InstallOrchestratorAgentsResult = {
   skipped: string[]
 }
 
+export type ReconcileOrchestratorAgentsStateInput = {
+  agentsDir?: string
+  enabled: boolean
+}
+
+export type ReconcileOrchestratorAgentsStateResult = {
+  agentsDir: string
+  enabled: boolean
+  renamed: string[]
+  skipped: string[]
+}
+
+function disabledAgentFileName(fileName: string): string {
+  return `${fileName}${DISABLED_AGENT_EXTENSION}`
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.stat(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function installOrchestratorAgents(
   input: InstallOrchestratorAgentsInput = {}
 ): Promise<InstallOrchestratorAgentsResult> {
@@ -200,4 +227,52 @@ export async function installOrchestratorAgents(
   }
 
   return { agentsDir, written, skipped }
+}
+
+export async function reconcileOrchestratorAgentsState(
+  input: ReconcileOrchestratorAgentsStateInput
+): Promise<ReconcileOrchestratorAgentsStateResult> {
+  const agentsDir = input.agentsDir ?? defaultOpencodeAgentsDir()
+  const enabled = input.enabled === true
+  const templates = getOrchestratorAgentTemplates()
+  const renamed: string[] = []
+  const skipped: string[] = []
+
+  await fs.mkdir(agentsDir, { recursive: true })
+
+  for (const template of templates) {
+    const activePath = path.join(agentsDir, template.fileName)
+    const disabledPath = path.join(agentsDir, disabledAgentFileName(template.fileName))
+
+    if (enabled) {
+      const hasActive = await fileExists(activePath)
+      if (hasActive) {
+        skipped.push(activePath)
+        continue
+      }
+      const hasDisabled = await fileExists(disabledPath)
+      if (!hasDisabled) {
+        skipped.push(activePath)
+        continue
+      }
+      await fs.rename(disabledPath, activePath)
+      renamed.push(activePath)
+      continue
+    }
+
+    const hasDisabled = await fileExists(disabledPath)
+    if (hasDisabled) {
+      skipped.push(disabledPath)
+      continue
+    }
+    const hasActive = await fileExists(activePath)
+    if (!hasActive) {
+      skipped.push(disabledPath)
+      continue
+    }
+    await fs.rename(activePath, disabledPath)
+    renamed.push(disabledPath)
+  }
+
+  return { agentsDir, enabled, renamed, skipped }
 }

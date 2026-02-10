@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest"
 import {
   defaultOpencodeAgentsDir,
   getOrchestratorAgentTemplates,
-  installOrchestratorAgents
+  installOrchestratorAgents,
+  reconcileOrchestratorAgentsState
 } from "../lib/orchestrator-agents"
 
 describe("orchestrator agents installer", () => {
@@ -48,5 +49,38 @@ describe("orchestrator agents installer", () => {
   it("uses XDG config root when present", () => {
     const dir = defaultOpencodeAgentsDir({ XDG_CONFIG_HOME: "/tmp/xdg-root" })
     expect(dir).toBe(path.join("/tmp/xdg-root", "opencode", "agents"))
+  })
+
+  it("toggles collab agents with .md.disabled when mode changes", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-agents-toggle-"))
+    const agentsDir = path.join(root, "agents")
+
+    await installOrchestratorAgents({ agentsDir })
+
+    const disabled = await reconcileOrchestratorAgentsState({ agentsDir, enabled: false })
+    expect(disabled.renamed).toHaveLength(6)
+
+    const filesAfterDisable = (await fs.readdir(agentsDir)).sort()
+    expect(filesAfterDisable).toEqual([
+      "Codex Compact.md.disabled",
+      "Codex Default.md.disabled",
+      "Codex Execute.md.disabled",
+      "Codex Orchestrator.md.disabled",
+      "Codex Plan.md.disabled",
+      "Codex Review.md.disabled"
+    ])
+
+    const enabled = await reconcileOrchestratorAgentsState({ agentsDir, enabled: true })
+    expect(enabled.renamed).toHaveLength(6)
+
+    const filesAfterEnable = (await fs.readdir(agentsDir)).sort()
+    expect(filesAfterEnable).toEqual([
+      "Codex Compact.md",
+      "Codex Default.md",
+      "Codex Execute.md",
+      "Codex Orchestrator.md",
+      "Codex Plan.md",
+      "Codex Review.md"
+    ])
   })
 })

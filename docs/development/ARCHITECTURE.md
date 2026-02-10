@@ -13,7 +13,8 @@ This plugin bridges OpenCode's OpenAI provider hooks to the ChatGPT Codex backen
 
 - `index.ts`: registers plugin hooks + tools.
 - `lib/codex-native.ts`: OAuth flows, request rewrite, model filtering, auth-menu orchestration.
-- `lib/storage.ts`: `codex-accounts.json` read/migrate/write under `proper-lockfile` with atomic writes (`openai-codex-accounts.json`, sibling `auth.json`, and OpenCode provider marker fallback supported).
+- `lib/storage.ts`: `codex-accounts.json` read/migrate/write under `proper-lockfile` with atomic writes.
+- `lib/storage.ts`: explicit legacy transfer import path for `openai-codex-accounts.json` and OpenCode provider marker (`~/.local/share/opencode/auth.json`).
 - `lib/rotation.ts`: selection strategies.
 - `lib/fetch-orchestrator.ts`: 429 handling and retry safety.
 - `lib/proactive-refresh.ts`: optional enabled-only background refresh with lease + cooldown guards.

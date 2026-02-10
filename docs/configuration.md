@@ -6,11 +6,8 @@ The plugin supports both JSON config files and environment variables.
 
 The plugin reads `codex-config.json` from:
 
-- `OPENCODE_OPENAI_MULTI_CONFIG_PATH` (or `CODEX_AUTH_CONFIG_PATH`) if set
+- `OPENCODE_OPENAI_MULTI_CONFIG_PATH` if set
 - `~/.config/opencode/codex-config.json`
-- legacy fallback: `~/.config/opencode/openai-codex-auth-config.json`
-- legacy fallback: `~/.opencode/codex-config.json`
-- legacy fallback: `~/.opencode/openai-codex-auth-config.json`
 
 ## OpenCode config split
 
@@ -48,7 +45,7 @@ Put plugin behavior flags in `~/.config/opencode/codex-config.json`:
       "thinkingSummaries": false,
       "variants": {
         "high": {
-          "personality": "strict",
+          "personality": "focused",
           "thinkingSummaries": true
         }
       }
@@ -65,25 +62,21 @@ Put plugin behavior flags in `~/.config/opencode/codex-config.json`:
 `perModel.<model>.variants.<variant>` accepts the same behavior fields as `global` and `perModel.<model>`.
 Variant overrides apply before per-model and global values.
 
-The parser also accepts legacy/compat keys for existing installs:
+Canonical file keys only:
 
-- `authDebug` (alias for `debug`)
-- `quietMode` (alias for `quiet`)
-- `proactiveRefresh` / `proactiveTokenRefresh` (map to `refreshAhead.enabled`)
-- `proactiveRefreshBufferMs` / `tokenRefreshSkewMs` (map to `refreshAhead.bufferMs`)
-- `spoofMode` / `codexSpoofMode` (map to `runtime.identityMode`)
-- `mode` / `runtime.mode` (runtime mode: `native|codex|collab`)
-- `compatInputSanitizer` / `compat.inputSanitizer` (map to `runtime.sanitizeInputs`)
-- `runtime.headerSnapshots` and `telemetry.requestShapeDebug` / `telemetry.headerSnapshots` (map to request snapshot logging)
-- `custom_settings` / `customSettings` with `thinking_summaries` / `thinkingSummaries`
-- `perModel.<model>.perVariant` (alias for `perModel.<model>.variants`)
+- `debug`, `quiet`
+- `refreshAhead.enabled`, `refreshAhead.bufferMs`
+- `runtime.mode`, `runtime.identityMode`, `runtime.sanitizeInputs`, `runtime.headerSnapshots`, `runtime.pidOffset`
+- `mode` (top-level alias for `runtime.mode`)
+- `global`
+- `perModel.<model>`
+- `perModel.<model>.variants.<variant>`
 
 ## Debug logging
 
 Enable debug logs (gated):
 
-- `OPENCODE_OPENAI_AUTH_DEBUG=1`
-- `CODEX_AUTH_DEBUG=1`
+- `OPENCODE_OPENAI_MULTI_DEBUG=1`
 - `DEBUG_CODEX_PLUGIN=1`
 
 ## Runtime behavior flags
@@ -91,14 +84,15 @@ Enable debug logs (gated):
 - Spoof mode:
   - `OPENCODE_OPENAI_MULTI_SPOOF_MODE=native` (default)
   - `OPENCODE_OPENAI_MULTI_SPOOF_MODE=codex`
-  - alias: `CODEX_AUTH_SPOOF_MODE=native|codex`
-  - backward-compatible aliases: `standard -> native`, `strict -> codex`
   - `native`: legacy-plugin-style headers (`originator=codex_cli_rs`, `OpenAI-Beta=responses=experimental`, `conversation_id/session_id=<promptCacheKey>` when present)
   - `codex`: codex-rs-style headers (`originator=codex_cli_rs`, `session_id=<promptCacheKey|sessionID>`, no `OpenAI-Beta` or `conversation_id`)
 - Runtime mode:
   - `mode` / `runtime.mode`: `native` (default), `codex`, `collab`
-  - env: `OPENCODE_OPENAI_MULTI_MODE` (alias `CODEX_AUTH_MODE`)
+  - env: `OPENCODE_OPENAI_MULTI_MODE`
   - `collab` is required for Codex collaboration profile/header injection; `native` and `codex` do not inject collaboration behavior.
+  - collab agent files are reconciled on startup:
+    - `collab`: `Codex *.md` active
+    - `native|codex`: `Codex *.md.disabled` (auto-disabled)
   - `collab` is currently **WIP / untested** and is not recommended for production usage yet.
 - Compatibility sanitizer (default off):
   - `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER=true`
@@ -108,7 +102,6 @@ Enable debug logs (gated):
   - For OpenAI-provider sessions, `/review` subtasks are rewritten to run with `Codex Review` agent instructions.
 - Request/response header snapshots (default off):
   - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true`
-  - compatibility alias: `ENABLE_PLUGIN_REQUEST_LOGGING=1`
   - output path: `~/.config/opencode/logs/codex-plugin/`
   - captures staged files such as `request-*-before-auth.json`, `request-*-after-sanitize.json`, `request-*-orchestrator-attempt-*.json`, and matching `response-*` files
   - appends a rolling request-header stream to `live-headers.jsonl` in the same directory
@@ -117,10 +110,8 @@ Enable debug logs (gated):
   - `OPENCODE_OPENAI_MULTI_PERSONALITY=friendly` (or another safe key)
 - Thinking summaries override:
   - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES=true|false`
-  - alias: `CODEX_AUTH_THINKING_SUMMARIES=true|false`
 - Quiet mode:
   - `OPENCODE_OPENAI_MULTI_QUIET=true`
-  - alias: `CODEX_AUTH_QUIET=true`
 
 Boolean env values accept `true/false` or `1/0`.
 
@@ -138,17 +129,17 @@ OpenCode and this plugin use two related auth files:
 - OpenCode OAuth marker (provider auth): `~/.local/share/opencode/auth.json`
 - Plugin multi-account store (rotation + cooldowns): `~/.config/opencode/codex-accounts.json`
 
-Legacy account-file fallbacks are supported during migration:
+Legacy import sources:
 
 - `~/.config/opencode/openai-codex-accounts.json`
-- `~/.config/opencode/auth.json`
-- `~/.local/share/opencode/auth.json` (OpenCode provider marker fallback path)
+- `~/.local/share/opencode/auth.json` (OpenCode provider marker)
 
 The plugin can quarantine corrupt multi-account JSON (bounded retention) when load options are provided.
 
 ## Account migration behavior
 
-- If `codex-accounts.json` is missing, the plugin may bootstrap from legacy/native auth files.
+- The plugin does not auto-bootstrap from legacy files during normal load.
+- Use `opencode auth login` and select `Transfer OpenAI accounts from native & old plugins?` for explicit import.
 - If `codex-accounts.json` exists (including `accounts: []`), that file is authoritative.
 - The interactive `Transfer OpenAI accounts from native & old plugins?` option appears only when:
   - `codex-accounts.json` is missing, and

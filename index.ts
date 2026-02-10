@@ -24,6 +24,7 @@ import {
   resolveConfig
 } from "./lib/config"
 import { createLogger } from "./lib/logger"
+import { reconcileOrchestratorAgentsState } from "./lib/orchestrator-agents"
 import { runOneProactiveRefreshTick } from "./lib/proactive-refresh"
 import { toolOutputForStatus } from "./lib/codex-status-tool"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage"
@@ -41,7 +42,24 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     env: process.env,
     file: loadConfigFile({ env: process.env })
   })
+  const runtimeMode = getMode(cfg)
   const log = createLogger({ debug: getDebugEnabled(cfg) })
+
+  try {
+    const reconcile = await reconcileOrchestratorAgentsState({
+      enabled: runtimeMode === "collab"
+    })
+    if (reconcile.renamed.length > 0) {
+      log.debug("orchestrator agent state reconciled", {
+        enabled: reconcile.enabled,
+        renamed: reconcile.renamed.length
+      })
+    }
+  } catch (error) {
+    log.debug("orchestrator agent state reconcile failed", {
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
 
   if (getProactiveRefreshEnabled(cfg)) {
     const bufferMs = getProactiveRefreshBufferMs(cfg)
@@ -66,7 +84,7 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
   const hooks = await CodexAuthPlugin(input, {
     log,
     personality: getPersonality(cfg),
-    mode: getMode(cfg),
+    mode: runtimeMode,
     quietMode: getQuietMode(cfg),
     pidOffsetEnabled: getPidOffsetEnabled(cfg),
     spoofMode: getSpoofMode(cfg),
