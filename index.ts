@@ -8,7 +8,21 @@ import {
   toggleAccountEnabledByIndex
 } from "./lib/accounts-tools"
 import { CodexAuthPlugin, refreshAccessToken } from "./lib/codex-native"
-import { getDebugEnabled, getProactiveRefreshBufferMs, getProactiveRefreshEnabled, resolveConfig } from "./lib/config"
+import {
+  getCompatInputSanitizerEnabled,
+  getCustomSettings,
+  getDebugEnabled,
+  getHeaderSnapshotsEnabled,
+  getMode,
+  getPidOffsetEnabled,
+  getPersonality,
+  getProactiveRefreshBufferMs,
+  getProactiveRefreshEnabled,
+  getSpoofMode,
+  getQuietMode,
+  loadConfigFile,
+  resolveConfig
+} from "./lib/config"
 import { createLogger } from "./lib/logger"
 import { runOneProactiveRefreshTick } from "./lib/proactive-refresh"
 import { toolOutputForStatus } from "./lib/codex-status-tool"
@@ -23,7 +37,10 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     scheduler = undefined
   }
 
-  const cfg = resolveConfig({ env: process.env })
+  const cfg = resolveConfig({
+    env: process.env,
+    file: loadConfigFile({ env: process.env })
+  })
   const log = createLogger({ debug: getDebugEnabled(cfg) })
 
   if (getProactiveRefreshEnabled(cfg)) {
@@ -46,7 +63,17 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
   }
 
   log.debug("plugin init")
-  const hooks = await CodexAuthPlugin(input, { log })
+  const hooks = await CodexAuthPlugin(input, {
+    log,
+    personality: getPersonality(cfg),
+    mode: getMode(cfg),
+    quietMode: getQuietMode(cfg),
+    pidOffsetEnabled: getPidOffsetEnabled(cfg),
+    spoofMode: getSpoofMode(cfg),
+    compatInputSanitizer: getCompatInputSanitizerEnabled(cfg),
+    headerSnapshots: getHeaderSnapshotsEnabled(cfg),
+    customSettings: getCustomSettings(cfg)
+  })
 
   const z = tool.schema
 
