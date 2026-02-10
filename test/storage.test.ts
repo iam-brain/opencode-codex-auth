@@ -314,12 +314,32 @@ describe("auth storage", () => {
   })
 
   it("offers legacy transfer when codex-accounts.json is missing and legacy v4 file exists", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
-    const filePath = path.join(dir, "codex-accounts.json")
-    const legacyPath = path.join(dir, "openai-codex-accounts.json")
-    await writeFile(legacyPath, JSON.stringify({ version: 4, accounts: [] }), "utf8")
+    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
+    const prevHome = process.env.HOME
+    process.env.HOME = root
 
-    await expect(shouldOfferLegacyTransfer(filePath)).resolves.toBe(true)
+    try {
+      const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
+      const legacyPath = path.join(root, ".config", "opencode", "openai-codex-accounts.json")
+      await mkdir(path.dirname(legacyPath), { recursive: true })
+      await writeFile(
+        legacyPath,
+        JSON.stringify({
+          version: 4,
+          activeIndex: 0,
+          accounts: [{ refreshToken: "rt_legacy_1", accessToken: "at_legacy_1", expiresAt: Date.now() + 60_000 }]
+        }),
+        "utf8"
+      )
+
+      await expect(shouldOfferLegacyTransfer(filePath)).resolves.toBe(true)
+    } finally {
+      if (prevHome === undefined) {
+        delete process.env.HOME
+      } else {
+        process.env.HOME = prevHome
+      }
+    }
   })
 
   it("offers legacy transfer when codex-accounts.json is missing and native auth.json exists", async () => {
