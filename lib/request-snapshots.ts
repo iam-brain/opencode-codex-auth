@@ -1,0 +1,170 @@
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+import { randomUUID } from "node:crypto"
+
+import type { Logger } from "./logger"
+
+const DEFAULT_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
+const REDACTED = "[redacted]"
+const REDACTED_HEADERS = new Set(["authorization", "cookie", "set-cookie", "proxy-authorization"])
+const REDACTED_BODY_KEYS = new Set(["access_token", "refresh_token", "id_token", "authorization"])
+const LIVE_HEADERS_LOG_FILE = "live-headers.jsonl"
+
+function sanitizeHeaderValue(name: string, value: string): string {
+  const lower = name.toLowerCase()
+  if (!REDACTED_HEADERS.has(lower)) return value
+  if (lower === "authorization") {
+    const [scheme] = value.split(" ")
+    return scheme ? `${scheme} ${REDACTED}` : REDACTED
+  }
+  return REDACTED
+}
+
+function sanitizeHeaders(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [name, value] of headers.entries()) {
+    out[name.toLowerCase()] = sanitizeHeaderValue(name, value)
+  }
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)))
+}
+
+function sanitizeBodyValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => sanitizeBodyValue(entry))
+  if (!value || typeof value !== "object") return value
+
+  const out: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value)) {
+    out[key] = REDACTED_BODY_KEYS.has(key.toLowerCase()) ? REDACTED : sanitizeBodyValue(entry)
+  }
+  return out
+}
+
+async function serializeRequestBody(request: Request): Promise<unknown> {
+  try {
+    const raw = await request.clone().text()
+    if (!raw) return undefined
+    try {
+      return sanitizeBodyValue(JSON.parse(raw))
+    } catch {
+      return raw.length > 8000 ? `${raw.slice(0, 8000)}... [truncated]` : raw
+    }
+  } catch {
+    return undefined
+  }
+}
+
+type SnapshotWriterInput = {
+  enabled: boolean
+  dir?: string
+  log?: Logger
+}
+
+type SnapshotMeta = Record<string, unknown> | undefined
+
+function getPromptCacheKey(body: unknown): string | undefined {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return undefined
+  const candidate = (body as Record<string, unknown>).prompt_cache_key
+  return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined
+}
+
+export type RequestSnapshots = {
+  captureRequest: (stage: string, request: Request, meta?: SnapshotMeta) => Promise<void>
+  captureResponse: (
+    stage: string,
+    response: Response,
+    meta?: SnapshotMeta
+  ) => Promise<void>
+}
+
+export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnapshots {
+  if (!input.enabled) {
+    return {
+      captureRequest: async () => {},
+      captureResponse: async () => {}
+    }
+  }
+
+  const dir = input.dir ?? DEFAULT_LOG_DIR
+  const runId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}-${randomUUID().slice(0, 8)}`
+  let requestCounter = 0
+  let responseCounter = 0
+
+  const ensureDir = async (): Promise<void> => {
+    await fs.mkdir(dir, { recursive: true })
+  }
+
+  const writeJson = async (fileName: string, payload: Record<string, unknown>): Promise<void> => {
+    try {
+      await ensureDir()
+      const filePath = path.join(dir, `${runId}-${fileName}`)
+      await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 })
+    } catch (error) {
+      input.log?.warn("failed to write request snapshot", {
+        fileName,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
+  const appendJsonl = async (fileName: string, payload: Record<string, unknown>): Promise<void> => {
+    try {
+      await ensureDir()
+      const filePath = path.join(dir, fileName)
+      await fs.appendFile(filePath, `${JSON.stringify(payload)}\n`, { mode: 0o600 })
+    } catch (error) {
+      input.log?.warn("failed to append request snapshot line", {
+        fileName,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
+  return {
+    captureRequest: async (stage, request, meta) => {
+      const requestId = ++requestCounter
+      const timestamp = new Date().toISOString()
+      const body = await serializeRequestBody(request)
+      const headers = sanitizeHeaders(request.headers)
+      const payload = {
+        timestamp,
+        runId,
+        requestId,
+        stage,
+        method: request.method,
+        url: request.url,
+        headers,
+        body,
+        ...(meta ?? {})
+      }
+      await writeJson(`request-${requestId}-${stage}.json`, {
+        ...payload
+      })
+      await appendJsonl(LIVE_HEADERS_LOG_FILE, {
+        timestamp,
+        runId,
+        requestId,
+        stage,
+        method: request.method,
+        url: request.url,
+        headers,
+        prompt_cache_key: getPromptCacheKey(body),
+        ...(meta ?? {})
+      })
+    },
+    captureResponse: async (stage, response, meta) => {
+      const responseId = ++responseCounter
+      const timestamp = new Date().toISOString()
+      await writeJson(`response-${responseId}-${stage}.json`, {
+        timestamp,
+        runId,
+        responseId,
+        stage,
+        status: response.status,
+        statusText: response.statusText,
+        headers: sanitizeHeaders(response.headers),
+        ...(meta ?? {})
+      })
+    }
+  }
+}

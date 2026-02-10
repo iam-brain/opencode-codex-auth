@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { FetchOrchestrator } from "../lib/fetch-orchestrator"
+import { FetchOrchestrator, createFetchOrchestratorState } from "../lib/fetch-orchestrator"
 
 describe("FetchOrchestrator", () => {
   it("retries with different account after 429", async () => {
@@ -98,6 +98,8 @@ describe("FetchOrchestrator", () => {
     const res = await orch.execute("https://api.openai.com/v1/chat/completions")
     expect(res.status).toBe(429)
     expect(acquireAuth).toHaveBeenCalledTimes(3)
+    const body = await res.json()
+    expect(body.error?.type).toBe("all_accounts_rate_limited")
   })
 
   it("clamps maxAttempts to at least one attempt", async () => {
@@ -230,5 +232,289 @@ describe("FetchOrchestrator", () => {
     // cooldownUntil = now() + retryAfterMs // now() -> 2000. returns 2000 + dateMs - 1000 = dateMs + 1000
     // So it should FAIL if we expect exactly expectedDateMs
     expect(setCooldown).toHaveBeenCalledWith("id1", expectedDateMs)
+  })
+
+  it("shows a toast when a new chat starts", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn(async () => {})
+    const showToast = vi.fn(async () => {})
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      body: JSON.stringify({ prompt_cache_key: "ses_new_1", input: "hi" })
+    })
+
+    expect(showToast).toHaveBeenCalledWith("New chat: user@example.com (plus)", "info", false)
+  })
+
+  it("shows a toast when switching to an existing session", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn(async () => {})
+    const showToast = vi.fn(async () => {})
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      body: JSON.stringify({ prompt_cache_key: "ses_alpha", input: "one" })
+    })
+    await orch.execute("https://api.com", {
+      method: "POST",
+      body: JSON.stringify({ prompt_cache_key: "ses_beta", input: "two" })
+    })
+    await orch.execute("https://api.com", {
+      method: "POST",
+      body: JSON.stringify({ prompt_cache_key: "ses_alpha", input: "three" })
+    })
+
+    expect(
+      showToast.mock.calls.some(
+        (call) =>
+          call[0] === "Session switched: user@example.com (plus)" &&
+          call[1] === "info" &&
+          call[2] === false
+      )
+    ).toBe(true)
+  })
+
+  it("shows a toast when the account changes", async () => {
+    const auths = [
+      { access: "a1", identityKey: "id1", accountId: "acc1", accountLabel: "one@example.com (plus)" },
+      { access: "a2", identityKey: "id2", accountId: "acc2", accountLabel: "two@example.com (pro)" }
+    ]
+    let idx = 0
+    const acquireAuth = vi.fn(async () => auths[idx++])
+    const setCooldown = vi.fn(async () => {})
+    const showToast = vi.fn(async () => {})
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast
+    })
+
+    await orch.execute("https://api.com")
+    await orch.execute("https://api.com")
+
+    expect(showToast).toHaveBeenCalledWith(
+      "Account switched: two@example.com (pro)",
+      "info",
+      false
+    )
+  })
+
+  it("shows a warning toast on rate-limit switch", async () => {
+    const auths = [
+      { access: "a1", identityKey: "id1", accountId: "acc1", accountLabel: "one@example.com (plus)" },
+      { access: "a2", identityKey: "id2", accountId: "acc2", accountLabel: "two@example.com (plus)" }
+    ]
+    let idx = 0
+    const acquireAuth = vi.fn(async () => auths[idx++])
+    const setCooldown = vi.fn(async () => {})
+    const showToast = vi.fn(async () => {})
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        if (idx === 1) {
+          return new Response("Too Many Requests", {
+            status: 429,
+            headers: { "Retry-After": "1" }
+          })
+        }
+        return new Response("OK", { status: 200 })
+      })
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      maxAttempts: 2
+    })
+
+    const response = await orch.execute("https://api.com")
+    expect(response.status).toBe(200)
+    expect(showToast).toHaveBeenCalledWith("Rate limited - switching account", "warning", false)
+  })
+
+  it("reuses shared session state across orchestrator instances to avoid duplicate new-chat toasts", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn(async () => {})
+    const showToast = vi.fn(async () => {})
+    const sharedState = createFetchOrchestratorState()
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+
+    const first = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      state: sharedState
+    })
+    await first.execute("https://api.com", {
+      method: "POST",
+      body: JSON.stringify({ prompt_cache_key: "ses_shared_1", input: "first" })
+    })
+
+    const second = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      state: sharedState
+    })
+    await second.execute("https://api.com", {
+      method: "POST",
+      body: JSON.stringify({ prompt_cache_key: "ses_shared_1", input: "second" })
+    })
+
+    const newChatToasts = showToast.mock.calls.filter(
+      (call) => call[0] === "New chat: user@example.com (plus)"
+    )
+    expect(newChatToasts).toHaveLength(1)
+  })
+
+  it("coalesces rapid new-chat toasts across different sessions", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn(async () => {})
+    const showToast = vi.fn(async () => {})
+    let nowValue = 1_000
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      now: () => nowValue
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      body: JSON.stringify({ prompt_cache_key: "ses_new_1", input: "one" })
+    })
+    nowValue = 2_000
+    await orch.execute("https://api.com", {
+      method: "POST",
+      body: JSON.stringify({ prompt_cache_key: "ses_new_2", input: "two" })
+    })
+
+    const newChatToasts = showToast.mock.calls.filter(
+      (call) => call[0] === "New chat: user@example.com (plus)"
+    )
+    expect(newChatToasts).toHaveLength(1)
+  })
+
+  it("coalesces rapid account-switch toasts", async () => {
+    const auths = [
+      { access: "a1", identityKey: "id1", accountId: "acc1", accountLabel: "one@example.com (plus)" },
+      { access: "a2", identityKey: "id2", accountId: "acc2", accountLabel: "two@example.com (plus)" },
+      { access: "a1", identityKey: "id1", accountId: "acc1", accountLabel: "one@example.com (plus)" },
+      { access: "a2", identityKey: "id2", accountId: "acc2", accountLabel: "two@example.com (plus)" }
+    ]
+    let idx = 0
+    const acquireAuth = vi.fn(async () => auths[idx++])
+    const setCooldown = vi.fn(async () => {})
+    const showToast = vi.fn(async () => {})
+    let nowValue = 1_000
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      now: () => nowValue
+    })
+
+    await orch.execute("https://api.com")
+    nowValue = 2_000
+    await orch.execute("https://api.com")
+    nowValue = 3_000
+    await orch.execute("https://api.com")
+    nowValue = 4_000
+    await orch.execute("https://api.com")
+
+    const accountSwitchToasts = showToast.mock.calls.filter(
+      (call) => typeof call[0] === "string" && call[0].startsWith("Account switched:")
+    )
+    expect(accountSwitchToasts).toHaveLength(1)
+  })
+
+  it("emits per-attempt request and response snapshots with auth headers", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "token_123",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn(async () => {})
+    const onAttemptRequest = vi.fn(async () => {})
+    const onAttemptResponse = vi.fn(async () => {})
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      onAttemptRequest,
+      onAttemptResponse
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      body: JSON.stringify({ prompt_cache_key: "ses_snap_1", input: "hi" })
+    })
+
+    expect(onAttemptRequest).toHaveBeenCalledTimes(1)
+    expect(onAttemptResponse).toHaveBeenCalledTimes(1)
+
+    const requestArg = onAttemptRequest.mock.calls[0][0] as {
+      request: Request
+      attempt: number
+      maxAttempts: number
+      sessionKey: string | null
+    }
+    expect(requestArg.attempt).toBe(0)
+    expect(requestArg.maxAttempts).toBe(3)
+    expect(requestArg.sessionKey).toBe("ses_snap_1")
+    expect(requestArg.request.headers.get("Authorization")).toBe("Bearer token_123")
+    expect(requestArg.request.headers.get("ChatGPT-Account-Id")).toBe("acc1")
   })
 })
