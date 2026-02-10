@@ -490,8 +490,16 @@ export function resolveConfig(input: {
   const envPersonality = normalizePersonalityOption(env.OPENCODE_OPENAI_MULTI_PERSONALITY)
   const envThinkingSummaries = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES)
   const spoofModeFromEnv = parseSpoofMode(env.OPENCODE_OPENAI_MULTI_SPOOF_MODE)
+  const modeFromEnv = parseRuntimeMode(env.OPENCODE_OPENAI_MULTI_MODE)
+  const modeFromSpoofEnv =
+    modeFromEnv === undefined && spoofModeFromEnv !== undefined
+      ? spoofModeFromEnv === "codex"
+        ? "codex"
+        : "native"
+      : undefined
   const mode =
-    parseRuntimeMode(env.OPENCODE_OPENAI_MULTI_MODE) ??
+    modeFromEnv ??
+    modeFromSpoofEnv ??
     file.mode ??
     (spoofModeFromEnv === "codex" || file.spoofMode === "codex" ? "codex" : "native")
 

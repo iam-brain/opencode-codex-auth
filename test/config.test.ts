@@ -83,6 +83,27 @@ describe("config loading", () => {
     expect(getSpoofMode(cfg)).toBe("codex")
   })
 
+  it("lets spoof env temporarily override file runtime mode", () => {
+    const cfg = resolveConfig({
+      env: { OPENCODE_OPENAI_MULTI_SPOOF_MODE: "codex" },
+      file: { mode: "native" }
+    })
+    expect(getMode(cfg)).toBe("codex")
+    expect(getSpoofMode(cfg)).toBe("codex")
+  })
+
+  it("keeps explicit runtime env mode higher priority than spoof env", () => {
+    const cfg = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_MODE: "native",
+        OPENCODE_OPENAI_MULTI_SPOOF_MODE: "codex"
+      },
+      file: { mode: "codex" }
+    })
+    expect(getMode(cfg)).toBe("native")
+    expect(getSpoofMode(cfg)).toBe("codex")
+  })
+
   it("parses compat input sanitizer from env", () => {
     const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER: "1" } })
     expect(getCompatInputSanitizerEnabled(cfg)).toBe(true)
