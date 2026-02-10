@@ -84,6 +84,12 @@ const OAUTH_SERVER_SHUTDOWN_GRACE_MS = (() => {
   const parsed = Number(raw)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 2000
 })()
+const OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS = (() => {
+  const raw = process.env.CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS
+  if (!raw) return 60_000
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 60_000
+})()
 const execFileAsync = promisify(execFile)
 const DEFAULT_PLUGIN_VERSION = "0.1.0"
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
@@ -144,6 +150,8 @@ export async function tryOpenUrlInBrowser(
   url: string,
   log?: Logger
 ): Promise<boolean> {
+  if (process.env.OPENCODE_NO_BROWSER === "1") return false
+  if (process.env.VITEST || process.env.NODE_ENV === "test") return false
   const invocation = browserOpenInvocationFor(url)
   try {
     await execFileAsync(invocation.command, invocation.args, { windowsHide: true, timeout: 5000 })
@@ -2412,18 +2420,22 @@ export async function CodexAuthPlugin(
               process.stdout.write(`\nGo to: ${authUrl}\n`)
               process.stdout.write("Complete authorization in your browser. This window will close automatically.\n")
 
+              let authFailed = false
               try {
                 const tokens = await callbackPromise
                 await persistOAuthTokens(tokens)
                 process.stdout.write("\nAccount added.\n\n")
                 return tokens
               } catch (error) {
+                authFailed = true
                 const reason = error instanceof Error ? error.message : "Authorization failed"
                 process.stdout.write(`\nAuthorization failed: ${reason}\n\n`)
                 return null
               } finally {
                 pendingOAuth = undefined
-                scheduleOAuthServerStop()
+                scheduleOAuthServerStop(
+                  authFailed ? OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS : OAUTH_SERVER_SHUTDOWN_GRACE_MS
+                )
               }
             }
 
@@ -2453,6 +2465,14 @@ export async function CodexAuthPlugin(
                 const tokens = await runSingleBrowserOAuthInline()
                 if (tokens) {
                   lastAddedTokens = tokens
+                  continue
+                }
+
+                return {
+                  url: "",
+                  method: "auto" as const,
+                  instructions: "Authorization failed.",
+                  callback: async () => ({ type: "failed" as const })
                 }
               }
             }
@@ -2484,15 +2504,19 @@ export async function CodexAuthPlugin(
                 "Complete authorization in your browser. If you close the tab early, cancel (Ctrl+C) and retry.",
               method: "auto" as const,
               callback: async () => {
+                let authFailed = false
                 try {
                   const tokens = await callbackPromise
                   await persistOAuthTokens(tokens)
                   return toOAuthSuccess(tokens)
                 } catch {
+                  authFailed = true
                   return { type: "failed" as const }
                 } finally {
                   pendingOAuth = undefined
-                  scheduleOAuthServerStop()
+                  scheduleOAuthServerStop(
+                    authFailed ? OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS : OAUTH_SERVER_SHUTDOWN_GRACE_MS
+                  )
                 }
               }
             }

@@ -171,7 +171,9 @@ function buildJwt(payload: Record<string, unknown>): string {
 }
 
 describe("codex-native auth menu wiring", () => {
-  afterEach(() => {
+  afterEach(async () => {
+    const { __testOnly } = await import("../lib/codex-native")
+    __testOnly.stopOAuthServer()
     vi.unstubAllGlobals()
   })
 
@@ -477,4 +479,5 @@ describe("codex-native auth menu wiring", () => {
       stdout.isTTY = prevOut
     }
   })
+
 })

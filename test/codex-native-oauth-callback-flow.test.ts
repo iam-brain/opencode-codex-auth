@@ -252,4 +252,57 @@ describe("codex-native oauth callback flow", () => {
       }
     }
   })
+
+  it("keeps oauth callback server alive briefly after auth error", async () => {
+    const previousDebug = process.env.CODEX_AUTH_DEBUG
+    const previousGrace = process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS
+    const previousErrorGrace = process.env.CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS
+    process.env.CODEX_AUTH_DEBUG = "1"
+    process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS = "100"
+    process.env.CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS = "5000"
+
+    try {
+      const { hooks } = await loadPluginForOAuthFlow({
+        mode: "codex",
+        spoofMode: "codex"
+      })
+      const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+      if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+      const flow = await browserMethod.authorize()
+      const authUrl = new URL(flow.url)
+      const state = authUrl.searchParams.get("state")
+      expect(state).toBeTruthy()
+      if (!state) throw new Error("missing oauth state")
+
+      const callbackResultPromise = flow.callback()
+      const callbackUrl = `http://localhost:1455/auth/callback?error=request_forbidden&error_description=csrf&state=${encodeURIComponent(state)}`
+      const callbackResponse = await httpGet(callbackUrl)
+      expect(callbackResponse.statusCode).toBe(200)
+      expect(callbackResponse.body).toContain("Sign-in failed")
+
+      const result = await callbackResultPromise
+      expect(result.type).toBe("failed")
+
+      const retryResponse = await httpGet(callbackUrl)
+      expect(retryResponse.statusCode).toBe(200)
+      expect(retryResponse.body).toContain("Sign-in failed")
+    } finally {
+      if (previousDebug === undefined) {
+        delete process.env.CODEX_AUTH_DEBUG
+      } else {
+        process.env.CODEX_AUTH_DEBUG = previousDebug
+      }
+      if (previousGrace === undefined) {
+        delete process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS
+      } else {
+        process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS = previousGrace
+      }
+      if (previousErrorGrace === undefined) {
+        delete process.env.CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS
+      } else {
+        process.env.CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS = previousErrorGrace
+      }
+    }
+  })
 })
