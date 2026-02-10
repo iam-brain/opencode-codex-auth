@@ -72,7 +72,18 @@ const OAUTH_PORT = 1455
 const OAUTH_DUMMY_KEY = "oauth_dummy_key"
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000
 const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
-const OAUTH_CALLBACK_TIMEOUT_MS = 2 * 60 * 1000
+const OAUTH_CALLBACK_TIMEOUT_MS = (() => {
+  const raw = process.env.CODEX_OAUTH_CALLBACK_TIMEOUT_MS
+  if (!raw) return 10 * 60 * 1000
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 60_000 ? parsed : 10 * 60 * 1000
+})()
+const OAUTH_SERVER_SHUTDOWN_GRACE_MS = (() => {
+  const raw = process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS
+  if (!raw) return 2000
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 2000
+})()
 const execFileAsync = promisify(execFile)
 const DEFAULT_PLUGIN_VERSION = "0.1.0"
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
@@ -256,7 +267,8 @@ export const __testOnly = {
   resolveRequestUserAgent,
   resolveHookAgentName,
   resolveCollaborationModeKind,
-  resolveSubagentHeaderValue
+  resolveSubagentHeaderValue,
+  stopOAuthServer
 }
 
 async function exchangeCodeForTokens(
@@ -465,8 +477,16 @@ type PendingOAuth = {
 
 let oauthServer: http.Server | undefined
 let pendingOAuth: PendingOAuth | undefined
+let oauthServerCloseTimer: ReturnType<typeof setTimeout> | undefined
+
+function clearOAuthServerCloseTimer(): void {
+  if (!oauthServerCloseTimer) return
+  clearTimeout(oauthServerCloseTimer)
+  oauthServerCloseTimer = undefined
+}
 
 async function startOAuthServer(): Promise<{ redirectUri: string }> {
+  clearOAuthServerCloseTimer()
   if (oauthServer) {
     return { redirectUri: `http://localhost:${OAUTH_PORT}/auth/callback` }
   }
@@ -562,7 +582,7 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
   try {
     await new Promise<void>((resolve, reject) => {
       oauthServer?.once("error", reject)
-      oauthServer?.listen(OAUTH_PORT, "localhost", () => resolve())
+      oauthServer?.listen(OAUTH_PORT, () => resolve())
     })
   } catch (error) {
     const server = oauthServer
@@ -579,8 +599,19 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
 }
 
 function stopOAuthServer(): void {
+  clearOAuthServerCloseTimer()
   oauthServer?.close()
   oauthServer = undefined
+}
+
+function scheduleOAuthServerStop(delayMs = OAUTH_SERVER_SHUTDOWN_GRACE_MS): void {
+  if (!oauthServer) return
+  clearOAuthServerCloseTimer()
+  oauthServerCloseTimer = setTimeout(() => {
+    oauthServerCloseTimer = undefined
+    if (pendingOAuth) return
+    stopOAuthServer()
+  }, delayMs)
 }
 
 function waitForOAuthCallback(
@@ -2392,7 +2423,7 @@ export async function CodexAuthPlugin(
                 return null
               } finally {
                 pendingOAuth = undefined
-                stopOAuthServer()
+                scheduleOAuthServerStop()
               }
             }
 
@@ -2461,7 +2492,7 @@ export async function CodexAuthPlugin(
                   return { type: "failed" as const }
                 } finally {
                   pendingOAuth = undefined
-                  stopOAuthServer()
+                  scheduleOAuthServerStop()
                 }
               }
             }

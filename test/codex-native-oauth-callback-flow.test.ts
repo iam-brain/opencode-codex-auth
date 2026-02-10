@@ -148,13 +148,17 @@ async function loadPluginForOAuthFlow(input: {
 }
 
 describe("codex-native oauth callback flow", () => {
-  afterEach(() => {
+  afterEach(async () => {
+    const { __testOnly } = await import("../lib/codex-native")
+    __testOnly.stopOAuthServer()
     vi.unstubAllGlobals()
   })
 
   it("persists codex account domain from runtime mode even with debug + native spoof", async () => {
     const previousDebug = process.env.CODEX_AUTH_DEBUG
+    const previousGrace = process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS
     process.env.CODEX_AUTH_DEBUG = "1"
+    process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS = "5000"
 
     try {
       const { hooks, storageState } = await loadPluginForOAuthFlow({
@@ -178,6 +182,10 @@ describe("codex-native oauth callback flow", () => {
 
       const result = await flow.callback()
       expect(result.type).toBe("success")
+      if (!callbackResponse.location) throw new Error("missing success redirect")
+      const successResponse = await httpGet(callbackResponse.location)
+      expect(successResponse.statusCode).toBe(200)
+      expect(successResponse.body).toContain("Signed in to Codex")
 
       const openai = storageState.openai as {
         native?: { accounts?: unknown[] }
@@ -192,12 +200,19 @@ describe("codex-native oauth callback flow", () => {
       } else {
         process.env.CODEX_AUTH_DEBUG = previousDebug
       }
+      if (previousGrace === undefined) {
+        delete process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS
+      } else {
+        process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS = previousGrace
+      }
     }
   })
 
   it("serves native success HTML when runtime mode is native", async () => {
     const previousDebug = process.env.CODEX_AUTH_DEBUG
+    const previousGrace = process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS
     process.env.CODEX_AUTH_DEBUG = "1"
+    process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS = "5000"
 
     try {
       const { hooks } = await loadPluginForOAuthFlow({
@@ -229,6 +244,11 @@ describe("codex-native oauth callback flow", () => {
         delete process.env.CODEX_AUTH_DEBUG
       } else {
         process.env.CODEX_AUTH_DEBUG = previousDebug
+      }
+      if (previousGrace === undefined) {
+        delete process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS
+      } else {
+        process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS = previousGrace
       }
     }
   })
