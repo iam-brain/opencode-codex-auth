@@ -11,15 +11,22 @@ function buildJwt(payload: Record<string, unknown>): string {
   return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.${encode("sig")}`
 }
 
-async function httpGet(url: string): Promise<{ statusCode: number; location?: string }> {
+async function httpGet(url: string): Promise<{ statusCode: number; location?: string; body: string }> {
   return new Promise((resolve, reject) => {
     const req = http.get(url, (res) => {
       const location = Array.isArray(res.headers.location)
         ? res.headers.location[0]
         : res.headers.location
-      res.resume()
+      const chunks: Buffer[] = []
+      res.on("data", (chunk) => {
+        chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk)
+      })
       res.once("end", () => {
-        resolve({ statusCode: res.statusCode ?? 0, location })
+        resolve({
+          statusCode: res.statusCode ?? 0,
+          location,
+          body: Buffer.concat(chunks).toString("utf8")
+        })
       })
     })
     req.once("error", reject)
@@ -179,6 +186,44 @@ describe("codex-native oauth callback flow", () => {
       expect(openai.codex?.accounts?.length).toBe(1)
       expect(openai.native?.accounts?.length ?? 0).toBe(0)
       expect(openai.codex?.accounts?.[0]?.identityKey).toBe("acc_codex|codex@example.com|plus")
+    } finally {
+      if (previousDebug === undefined) {
+        delete process.env.CODEX_AUTH_DEBUG
+      } else {
+        process.env.CODEX_AUTH_DEBUG = previousDebug
+      }
+    }
+  })
+
+  it("serves native success HTML when runtime mode is native", async () => {
+    const previousDebug = process.env.CODEX_AUTH_DEBUG
+    process.env.CODEX_AUTH_DEBUG = "1"
+
+    try {
+      const { hooks } = await loadPluginForOAuthFlow({
+        mode: "native",
+        spoofMode: "codex"
+      })
+      const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+      if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+      const flow = await browserMethod.authorize()
+      const authUrl = new URL(flow.url)
+      const state = authUrl.searchParams.get("state")
+      expect(state).toBeTruthy()
+      if (!state) throw new Error("missing oauth state")
+
+      const callbackResponse = await httpGet(
+        `http://localhost:1455/auth/callback?code=test_code&state=${encodeURIComponent(state)}`
+      )
+      expect(callbackResponse.statusCode).toBe(200)
+      expect(callbackResponse.location).toBeUndefined()
+      expect(callbackResponse.body).toContain("Authorization Successful")
+      expect(callbackResponse.body).toContain("return to OpenCode")
+      expect(callbackResponse.body).not.toContain("Signed in to Codex")
+
+      const result = await flow.callback()
+      expect(result.type).toBe("success")
     } finally {
       if (previousDebug === undefined) {
         delete process.env.CODEX_AUTH_DEBUG
