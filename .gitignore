@@ -5,3 +5,7 @@ dist/
 
 # docs plans live in a nested git repo
 docs/plans/
+docs/research/
+
+# local-only agent instructions
+AGENTS.md
