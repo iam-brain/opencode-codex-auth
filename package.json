@@ -1,5 +1,5 @@
 {
-  "name": "opencode-codex-auth",
+  "name": "@iam-brain/opencode-codex-auth",
   "version": "0.1.0",
   "description": "Native Codex auth with multi-account rotation for OpenCode",
   "main": "./dist/index.js",
@@ -10,12 +10,37 @@
   },
   "license": "MIT",
   "author": "iam-brain",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iam-brain/opencode-codex-auth.git"
+  },
+  "keywords": [
+    "opencode",
+    "openai",
+    "codex",
+    "chatgpt",
+    "oauth",
+    "multi-account",
+    "plugin",
+    "auth"
+  ],
+  "homepage": "https://github.com/iam-brain/opencode-codex-auth#readme",
+  "bugs": {
+    "url": "https://github.com/iam-brain/opencode-codex-auth/issues"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "verify": "npm run typecheck && npm test && npm run build",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "release:patch": "npm test && npm version patch -m \"release: v%s\" && npm run build && git push origin main --follow-tags",
+    "release:minor": "npm test && npm version minor -m \"release: v%s\" && npm run build && git push origin main --follow-tags",
+    "release:major": "npm test && npm version major -m \"release: v%s\" && npm run build && git push origin main --follow-tags"
   },
   "files": [
     "dist/",
