@@ -9,6 +9,7 @@ import {
 } from "./lib/accounts-tools"
 import { CodexAuthPlugin, refreshAccessToken } from "./lib/codex-native"
 import {
+  ensureDefaultConfigFile,
   getCompatInputSanitizerEnabled,
   getCustomSettings,
   getDebugEnabled,
@@ -37,6 +38,8 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     scheduler.stop()
     scheduler = undefined
   }
+
+  await ensureDefaultConfigFile({ env: process.env }).catch(() => {})
 
   const cfg = resolveConfig({
     env: process.env,

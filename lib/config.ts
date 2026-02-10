@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import fsPromises from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
@@ -40,6 +41,37 @@ export type PluginConfig = {
 }
 
 const CONFIG_FILE = "codex-config.json"
+
+export const DEFAULT_CODEX_CONFIG = {
+  debug: false,
+  quiet: false,
+  refreshAhead: {
+    enabled: true,
+    bufferMs: 60_000
+  },
+  runtime: {
+    mode: "native",
+    sanitizeInputs: false,
+    headerSnapshots: false,
+    pidOffset: false
+  },
+  global: {
+    personality: "friendly",
+    thinkingSummaries: true
+  },
+  perModel: {
+    "gpt-5.3-codex": {
+      personality: "pragmatic",
+      thinkingSummaries: false,
+      variants: {
+        high: {
+          personality: "focused",
+          thinkingSummaries: true
+        }
+      }
+    }
+  }
+} as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -347,14 +379,8 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
       ? raw.refreshAhead.bufferMs
       : undefined
   const quietMode = typeof raw.quiet === "boolean" ? raw.quiet : undefined
-  const explicitMode = parseRuntimeMode((isRecord(raw.runtime) ? raw.runtime.mode : undefined) ?? raw.mode)
-  const spoofModeFromFields = parseSpoofMode(isRecord(raw.runtime) ? raw.runtime.identityMode : undefined)
-  const mode =
-    explicitMode ??
-    (spoofModeFromFields === "native" ? "native" : spoofModeFromFields === "codex" ? "codex" : undefined)
-  const spoofMode =
-    spoofModeFromFields ??
-    (mode === "native" ? "native" : mode === "codex" || mode === "collab" ? "codex" : undefined)
+  const mode = parseRuntimeMode(isRecord(raw.runtime) ? raw.runtime.mode : undefined)
+  const spoofMode = mode === "native" ? "native" : mode === "codex" || mode === "collab" ? "codex" : undefined
   const compatInputSanitizer =
     isRecord(raw.runtime) && typeof raw.runtime.sanitizeInputs === "boolean"
       ? raw.runtime.sanitizeInputs
@@ -383,12 +409,36 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
   }
 }
 
-function resolveDefaultConfigPath(env: Record<string, string | undefined>): string {
+export function resolveDefaultConfigPath(env: Record<string, string | undefined>): string {
   const xdgRoot = env.XDG_CONFIG_HOME?.trim()
   if (xdgRoot) {
     return path.join(xdgRoot, "opencode", CONFIG_FILE)
   }
   return path.join(os.homedir(), ".config", "opencode", CONFIG_FILE)
+}
+
+export type EnsureDefaultConfigFileResult = {
+  filePath: string
+  created: boolean
+}
+
+export async function ensureDefaultConfigFile(input: {
+  env?: Record<string, string | undefined>
+  filePath?: string
+  overwrite?: boolean
+} = {}): Promise<EnsureDefaultConfigFileResult> {
+  const env = input.env ?? process.env
+  const filePath = input.filePath ?? resolveDefaultConfigPath(env)
+  const overwrite = input.overwrite === true
+
+  if (!overwrite && fs.existsSync(filePath)) {
+    return { filePath, created: false }
+  }
+
+  await fsPromises.mkdir(path.dirname(filePath), { recursive: true })
+  const content = `${JSON.stringify(DEFAULT_CODEX_CONFIG, null, 2)}\n`
+  await fsPromises.writeFile(filePath, content, { encoding: "utf8", mode: 0o600 })
+  return { filePath, created: true }
 }
 
 export function loadConfigFile(input: {

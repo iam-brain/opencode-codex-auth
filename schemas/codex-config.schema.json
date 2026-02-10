@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.iam-brain.dev/opencode-openai-multi/codex-config.schema.json",
+  "title": "OpenCode OpenAI Multi Codex Config",
+  "description": "Schema for ~/.config/opencode/codex-config.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "debug": {
+      "type": "boolean"
+    },
+    "quiet": {
+      "type": "boolean"
+    },
+    "refreshAhead": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "bufferMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["native", "codex", "collab"]
+        },
+        "sanitizeInputs": {
+          "type": "boolean"
+        },
+        "headerSnapshots": {
+          "type": "boolean"
+        },
+        "pidOffset": {
+          "type": "boolean"
+        }
+      }
+    },
+    "global": {
+      "$ref": "#/$defs/modelBehavior"
+    },
+    "perModel": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/modelConfig"
+      }
+    },
+    "personality": {
+      "$ref": "#/$defs/personality"
+    },
+    "customSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "thinkingSummaries": {
+          "type": "boolean"
+        },
+        "options": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "personality": {
+              "$ref": "#/$defs/personality"
+            }
+          }
+        },
+        "models": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/modelConfig"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "personality": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!.*(?:\\.\\.|/|\\\\)).+$"
+    },
+    "modelBehavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "personality": {
+          "$ref": "#/$defs/personality"
+        },
+        "thinkingSummaries": {
+          "type": "boolean"
+        },
+        "options": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "personality": {
+              "$ref": "#/$defs/personality"
+            }
+          }
+        }
+      }
+    },
+    "modelConfig": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/modelBehavior"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "personality": {
+              "$ref": "#/$defs/personality"
+            },
+            "thinkingSummaries": {
+              "type": "boolean"
+            },
+            "options": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "personality": {
+                  "$ref": "#/$defs/personality"
+                }
+              }
+            },
+            "variants": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/modelBehavior"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

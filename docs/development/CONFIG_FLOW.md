@@ -2,6 +2,13 @@
 
 Config resolution has two stages.
 
+## Stage 0: ensure default file
+
+`ensureDefaultConfigFile({ env: process.env })`
+
+- creates `~/.config/opencode/codex-config.json` when missing
+- seeds canonical defaults for runtime + behavior sections
+
 ## Stage 1: file load
 
 `loadConfigFile({ env: process.env })`

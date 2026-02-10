@@ -9,6 +9,8 @@ Resolved in this order:
 1. `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
 2. `~/.config/opencode/codex-config.json`
 
+If the file is missing, the plugin creates a fresh default `codex-config.json` automatically.
+
 ## Recommended config shape
 
 ```json
@@ -21,7 +23,6 @@ Resolved in this order:
   },
   "runtime": {
     "mode": "native",
-    "identityMode": "native",
     "sanitizeInputs": false,
     "headerSnapshots": false,
     "pidOffset": false
@@ -47,7 +48,7 @@ Resolved in this order:
 
 ## Runtime modes
 
-- `runtime.mode` or top-level `mode`
+- `runtime.mode`
 - Allowed values: `native`, `codex`, `collab`
 
 Behavior:
@@ -55,6 +56,9 @@ Behavior:
 - `native`: native-plugin request identity defaults
 - `codex`: codex-rs-like request identity defaults
 - `collab`: collaboration profile injection for Codex agents (WIP / untested)
+- Identity mode is inferred automatically:
+  - `native` -> native identity
+  - `codex|collab` -> codex identity
 
 Collab agent file reconciliation at startup:
 
@@ -74,8 +78,8 @@ For personality and thinking summaries:
 ### Core
 
 - `OPENCODE_OPENAI_MULTI_MODE=native|codex|collab`
-- `OPENCODE_OPENAI_MULTI_SPOOF_MODE=native|codex`
 - `OPENCODE_OPENAI_MULTI_CONFIG_PATH=/path/to/codex-config.json`
+- `OPENCODE_OPENAI_MULTI_SPOOF_MODE=native|codex` (advanced override)
 
 ### Debug + snapshots
 
@@ -103,9 +107,23 @@ For personality and thinking summaries:
 
 Supported file keys are canonical only:
 
-- top-level: `debug`, `quiet`, `refreshAhead`, `runtime`, `mode`, `global`, `perModel`
-- runtime: `mode`, `identityMode`, `sanitizeInputs`, `headerSnapshots`, `pidOffset`
+- top-level: `debug`, `quiet`, `refreshAhead`, `runtime`, `global`, `perModel`
+- runtime: `mode`, `sanitizeInputs`, `headerSnapshots`, `pidOffset`
 - model settings: `personality`, `thinkingSummaries`, `variants`
+
+Legacy compatibility keys are still parsed where applicable, but they are not part of the canonical config shape.
+
+## JSON schemas
+
+Schemas are published in this repository:
+
+- `schemas/codex-config.schema.json`
+- `schemas/opencode.schema.json`
+
+Use them for validation and editor autocomplete when editing:
+
+- `~/.config/opencode/codex-config.json`
+- `~/.config/opencode/opencode.json`
 
 ## Auth/account files
 

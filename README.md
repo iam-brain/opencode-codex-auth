@@ -49,6 +49,7 @@ The installer does two things:
    - `Codex Execute.md.disabled`
    - `Codex Review.md.disabled`
    - `Codex Compact.md.disabled`
+3. Creates `~/.config/opencode/codex-config.json` with defaults when missing.
 
 At plugin startup, files are reconciled against runtime mode:
 
@@ -68,6 +69,11 @@ Keep `opencode.json` minimal (plugin enablement only). Put runtime behavior in:
 - `~/.config/opencode/codex-config.json`
 
 Canonical config/env docs are in `docs/configuration.md`.
+
+Schemas for user-edited JSON files are in:
+
+- `schemas/codex-config.schema.json`
+- `schemas/opencode.schema.json`
 
 ## Runtime modes
 

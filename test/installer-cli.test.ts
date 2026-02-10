@@ -39,11 +39,17 @@ describe("installer cli", () => {
     try {
       const code = await runInstallerCli(["--dir", agentsDir, "--config", configPath], capture.io)
       expect(code).toBe(0)
-      expect(capture.out.join("\n")).toContain("Plugin specifier: @iam-brain/opencode-openai-multi@latest")
-      expect(capture.out.join("\n")).toContain("Written: 6")
+      const output = capture.out.join("\n")
+      expect(output).toContain("Plugin specifier: @iam-brain/opencode-openai-multi@latest")
+      expect(output).toContain("Codex config:")
+      expect(output).toContain("Written: 6")
 
       const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
       expect(config.plugin).toContain("@iam-brain/opencode-openai-multi@latest")
+      const codexConfig = JSON.parse(
+        await fs.readFile(path.join(root, "opencode", "codex-config.json"), "utf8")
+      ) as { runtime?: { mode?: string } }
+      expect(codexConfig.runtime?.mode).toBe("native")
     } finally {
       if (previousXdg === undefined) {
         delete process.env.XDG_CONFIG_HOME

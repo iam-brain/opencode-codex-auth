@@ -19,6 +19,7 @@ What this does:
 
 - Adds `@iam-brain/opencode-openai-multi@latest` to `~/.config/opencode/opencode.json`
 - Installs Codex collab agents to `~/.config/opencode/agents/` as `*.md.disabled`
+- Creates `~/.config/opencode/codex-config.json` if missing
 
 To install only the agent templates (no `opencode.json` edits):
 

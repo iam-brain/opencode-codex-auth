@@ -17,6 +17,9 @@ This directory contains starter config files.
    - `runtime.mode` (`native`, `codex`, `collab`)
    - `global` personality/summaries
    - `perModel` and `variants`
+4. Validate with schemas:
+   - `schemas/codex-config.schema.json`
+   - `schemas/opencode.schema.json`
 
 ## Local development
 

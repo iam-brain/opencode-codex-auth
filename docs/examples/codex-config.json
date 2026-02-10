@@ -7,9 +7,9 @@
   },
   "runtime": {
     "mode": "native",
-    "identityMode": "native",
     "sanitizeInputs": false,
-    "headerSnapshots": false
+    "headerSnapshots": false,
+    "pidOffset": false
   },
   "global": {
     "personality": "friendly",

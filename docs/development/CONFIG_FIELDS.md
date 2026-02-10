@@ -16,11 +16,9 @@ Top-level:
 - `refreshAhead.enabled: boolean`
 - `refreshAhead.bufferMs: number`
 - `runtime.mode: "native" | "codex" | "collab"`
-- `runtime.identityMode: "native" | "codex"`
 - `runtime.sanitizeInputs: boolean`
 - `runtime.headerSnapshots: boolean`
 - `runtime.pidOffset: boolean`
-- `mode: "native" | "codex" | "collab"` (alias for runtime mode)
 - `global.personality: string`
 - `global.thinkingSummaries: boolean`
 - `perModel.<model>.personality: string`
@@ -56,9 +54,10 @@ Proactive refresh:
 
 - Env overrides file values.
 - `mode` defaults to:
-  - explicit env/file mode when set
+  - explicit env mode when set
+  - explicit file `runtime.mode` when set
   - otherwise inferred from spoof mode (`codex` => `codex`, else `native`)
 - `spoofMode` defaults to:
-  - env/file spoof mode when set
+  - env spoof mode when set
   - otherwise derived from mode (`native` => `native`, else `codex`)
 - proactive refresh buffer defaults to `60000` when unset.

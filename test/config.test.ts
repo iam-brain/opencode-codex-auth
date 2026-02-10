@@ -5,6 +5,8 @@ import path from "node:path"
 import { describe, expect, it } from "vitest"
 
 import {
+  DEFAULT_CODEX_CONFIG,
+  ensureDefaultConfigFile,
   getCompatInputSanitizerEnabled,
   getCustomSettings,
   getDebugEnabled,
@@ -181,7 +183,6 @@ describe("config file loading", () => {
         },
         runtime: {
           mode: "codex",
-          identityMode: "codex",
           sanitizeInputs: true,
           headerSnapshots: true,
           pidOffset: true
@@ -226,7 +227,7 @@ describe("config file loading", () => {
     expect(loaded.personality).toBe("friendly")
   })
 
-  it("accepts top-level mode field in config file", async () => {
+  it("ignores top-level mode field in config file", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
     const filePath = path.join(root, "codex-config.json")
     await fs.writeFile(filePath, JSON.stringify({ mode: "codex" }), "utf8")
@@ -235,8 +236,8 @@ describe("config file loading", () => {
       env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath }
     })
 
-    expect(loaded.mode).toBe("codex")
-    expect(loaded.spoofMode).toBe("codex")
+    expect(loaded.mode).toBeUndefined()
+    expect(loaded.spoofMode).toBeUndefined()
   })
 
   it("accepts runtime.mode field in config file", async () => {
@@ -258,10 +259,16 @@ describe("config file loading", () => {
     expect(loaded.spoofMode).toBe("codex")
   })
 
-  it("accepts collab mode field in config file", async () => {
+  it("accepts runtime.collab mode field in config file", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
     const filePath = path.join(root, "codex-config.json")
-    await fs.writeFile(filePath, JSON.stringify({ mode: "collab" }), "utf8")
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        runtime: { mode: "collab" }
+      }),
+      "utf8"
+    )
 
     const loaded = loadConfigFile({
       env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath }
@@ -280,5 +287,45 @@ describe("config file loading", () => {
 
     const loaded = loadConfigFile({ env: { XDG_CONFIG_HOME: root } })
     expect(loaded.quietMode).toBe(true)
+  })
+
+  it("creates default codex config when missing", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const result = await ensureDefaultConfigFile({ env: { XDG_CONFIG_HOME: root } })
+    const written = JSON.parse(await fs.readFile(result.filePath, "utf8")) as unknown
+
+    expect(result.created).toBe(true)
+    expect(written).toEqual(DEFAULT_CODEX_CONFIG)
+  })
+
+  it("does not overwrite existing codex config by default", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const configDir = path.join(root, "opencode")
+    const filePath = path.join(configDir, "codex-config.json")
+    await fs.mkdir(configDir, { recursive: true })
+    await fs.writeFile(filePath, JSON.stringify({ debug: true }), "utf8")
+
+    const result = await ensureDefaultConfigFile({ env: { XDG_CONFIG_HOME: root } })
+    const written = JSON.parse(await fs.readFile(filePath, "utf8")) as unknown
+
+    expect(result.created).toBe(false)
+    expect(written).toEqual({ debug: true })
+  })
+
+  it("overwrites codex config when requested", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-openai-multi-config-file-"))
+    const configDir = path.join(root, "opencode")
+    const filePath = path.join(configDir, "codex-config.json")
+    await fs.mkdir(configDir, { recursive: true })
+    await fs.writeFile(filePath, JSON.stringify({ debug: true }), "utf8")
+
+    const result = await ensureDefaultConfigFile({
+      env: { XDG_CONFIG_HOME: root },
+      overwrite: true
+    })
+    const written = JSON.parse(await fs.readFile(filePath, "utf8")) as unknown
+
+    expect(result.created).toBe(true)
+    expect(written).toEqual(DEFAULT_CODEX_CONFIG)
   })
 })

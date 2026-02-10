@@ -17,6 +17,11 @@ This directory contains user and developer documentation for `opencode-openai-mu
 - `releasing.md`
 - `examples/README.md`
 
+## Schemas
+
+- `../schemas/codex-config.schema.json`
+- `../schemas/opencode.schema.json`
+
 ## Developer guides
 
 - `development/ARCHITECTURE.md`

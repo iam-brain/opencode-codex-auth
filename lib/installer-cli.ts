@@ -1,6 +1,7 @@
 import path from "node:path"
 
 import { defaultOpencodeAgentsDir, installOrchestratorAgents } from "./orchestrator-agents.js"
+import { ensureDefaultConfigFile } from "./config.js"
 import {
   DEFAULT_PLUGIN_SPECIFIER,
   defaultOpencodeConfigPath,
@@ -114,6 +115,10 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
     io.out(`Plugin specifier: ${pluginResult.pluginSpecifier}`)
     io.out(`Config created: ${pluginResult.created ? "yes" : "no"}`)
     io.out(`Plugin updated: ${pluginResult.changed ? "yes" : "no"}`)
+
+    const defaultConfig = await ensureDefaultConfigFile({ env: process.env })
+    io.out(`Codex config: ${defaultConfig.filePath}`)
+    io.out(`Codex config created: ${defaultConfig.created ? "yes" : "no"}`)
   }
 
   const agentsDir = parsed.dir ? path.resolve(parsed.dir) : defaultOpencodeAgentsDir()
