@@ -1,52 +1,64 @@
-# Config fields
+# Config fields reference
 
-## Debug
+Canonical source: `lib/config.ts`
 
-Either of these enables debug logging:
+## File location
 
-- `OPENCODE_OPENAI_MULTI_DEBUG=1`
-- `DEBUG_CODEX_PLUGIN=1`
+- `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
+- fallback: `~/.config/opencode/codex-config.json`
 
-## Behavior toggles
+## Canonical JSON keys
 
-- `OPENCODE_OPENAI_MULTI_SPOOF_MODE=native|codex`
-- `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER=true|false`
-- `OPENCODE_OPENAI_MULTI_MODE=native|codex|collab`
-- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true|false`
-- `OPENCODE_OPENAI_MULTI_PERSONALITY=<personality-key>`
-- `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES=true|false`
-- `OPENCODE_OPENAI_MULTI_QUIET=true|false`
-- `OPENCODE_OPENAI_MULTI_PID_OFFSET=true|false`
+Top-level:
 
-## Proactive refresh
+- `debug: boolean`
+- `quiet: boolean`
+- `refreshAhead.enabled: boolean`
+- `refreshAhead.bufferMs: number`
+- `runtime.mode: "native" | "codex" | "collab"`
+- `runtime.identityMode: "native" | "codex"`
+- `runtime.sanitizeInputs: boolean`
+- `runtime.headerSnapshots: boolean`
+- `runtime.pidOffset: boolean`
+- `mode: "native" | "codex" | "collab"` (alias for runtime mode)
+- `global.personality: string`
+- `global.thinkingSummaries: boolean`
+- `perModel.<model>.personality: string`
+- `perModel.<model>.thinkingSummaries: boolean`
+- `perModel.<model>.variants.<variant>.personality: string`
+- `perModel.<model>.variants.<variant>.thinkingSummaries: boolean`
 
-- `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH=true`
-- `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS=<number>`
+## Environment variables
 
-## Config file
+Core:
 
-`codex-config.json` is loaded from:
+- `OPENCODE_OPENAI_MULTI_MODE`
+- `OPENCODE_OPENAI_MULTI_SPOOF_MODE`
+- `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
 
-- `OPENCODE_OPENAI_MULTI_CONFIG_PATH` (if set)
-- `~/.config/opencode/codex-config.json`
+Behavior + debug:
 
-Canonical file layout:
+- `OPENCODE_OPENAI_MULTI_DEBUG`
+- `DEBUG_CODEX_PLUGIN`
+- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`
+- `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER`
+- `OPENCODE_OPENAI_MULTI_QUIET`
+- `OPENCODE_OPENAI_MULTI_PID_OFFSET`
+- `OPENCODE_OPENAI_MULTI_PERSONALITY`
+- `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`
 
-- top level:
-  - `debug: boolean`
-  - `quiet: boolean`
-  - `refreshAhead.enabled: boolean`
-  - `refreshAhead.bufferMs: number`
-  - `runtime.mode: "native" | "codex" | "collab"`
-  - `runtime.identityMode: "native" | "codex"`
-  - `mode: "native" | "codex" | "collab"` (alias for `runtime.mode`)
-  - `runtime.sanitizeInputs: boolean`
-  - `runtime.headerSnapshots: boolean`
-  - `runtime.pidOffset: boolean`
-- model behavior:
-  - `global.personality`, `global.thinkingSummaries`
-  - `perModel.<model>.personality`, `perModel.<model>.thinkingSummaries`
-  - `perModel.<model>.variants.<variant>.personality`
-  - `perModel.<model>.variants.<variant>.thinkingSummaries`
+Proactive refresh:
 
-See `lib/config.ts`.
+- `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH`
+- `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`
+
+## Precedence and defaults
+
+- Env overrides file values.
+- `mode` defaults to:
+  - explicit env/file mode when set
+  - otherwise inferred from spoof mode (`codex` => `codex`, else `native`)
+- `spoofMode` defaults to:
+  - env/file spoof mode when set
+  - otherwise derived from mode (`native` => `native`, else `codex`)
+- proactive refresh buffer defaults to `60000` when unset.

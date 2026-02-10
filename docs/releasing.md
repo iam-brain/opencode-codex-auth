@@ -1,61 +1,41 @@
 # Releasing
 
-Use this checklist before creating any production release.
+Use this checklist before shipping.
 
 ## Safety rules
 
-- Do not run `npm publish` manually.
-- Do not run any `release:*` scripts unless explicitly requested.
-- Always run `npm run verify` before any release.
+- Do not publish unless explicitly intended.
+- Do not edit generated `dist/` files manually.
+- Always run full verification first.
 
-## Versioning
-
-- Follow semver.
-- Update `CHANGELOG.md` before tagging.
-
-## Build artifacts
-
-- `dist/` is generated.
-- Never edit `dist/` by hand.
-
-## Required preflight
-
-Run:
+## Required verification
 
 ```bash
 npm run verify
 ```
 
-This executes:
+This runs:
 
-- typecheck
-- full test suite
-- build
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
 
-## Manual smoke checks (recommended)
-
-Before release, run these in a real OpenCode session:
+## Manual smoke checklist
 
 1. `opencode auth login`
-2. Add at least two accounts in one run (`Add new account` should return to menu after success).
-3. Run `Check quotas` and verify output includes:
-   - `5h` bar with inline reset timer
-   - `Weekly` bar with inline reset timer
-   - `Credits`
-4. Test account actions:
-   - enable/disable
-   - refresh token
-   - delete single account
-   - delete all accounts
-5. Confirm deleted-all state persists (accounts should not auto-reappear from legacy files).
-6. Run one real model call through OpenCode and confirm normal tool usage / no malformed output.
+2. Add at least two accounts in one session
+3. Check quotas (`5h`, `Weekly`, `Credits` render)
+4. Toggle enable/disable for one account
+5. Refresh one account token
+6. Delete one account, then delete-all (scoped and full)
+7. Confirm deleted-all does not auto-repopulate
+8. Run one real prompt via `openai/*` model
+9. Confirm no malformed tool output in session
 
-## Release notes content
+## Release notes should include
 
-Include these sections:
-
-- User-facing changes
-- Reliability and auth/storage safety changes
-- Migration notes (explicit legacy transfer behavior)
-- Config/runtime notes (canonical `codex-config.json` keys and env flags)
-- Verification evidence (`npm run verify` + smoke-check summary)
+- User-facing behavior changes
+- Auth/storage reliability changes
+- Config/mode changes
+- Migration/transfer changes
+- Verification evidence

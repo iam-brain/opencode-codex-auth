@@ -1,26 +1,29 @@
 # Documentation
 
-This directory contains user- and developer-facing documentation for `opencode-openai-multi`.
+This directory contains user and developer documentation for `opencode-openai-multi`.
 
-## For users
+## Start here
 
-- [Getting started](getting-started.md)
-- [Configuration](configuration.md)
-- [Multi-account](multi-account.md)
-- [Troubleshooting](troubleshooting.md)
-- [Privacy](privacy.md)
-- [Releasing](releasing.md)
-- [Config examples](examples/)
+- `getting-started.md` for install/login/first-run.
+- `configuration.md` for runtime modes, flags, and config schema.
 
-## For developers
+## User guides
 
-- [Architecture](development/ARCHITECTURE.md)
-- [Config flow](development/CONFIG_FLOW.md)
-- [Config fields](development/CONFIG_FIELDS.md)
-- [Testing](development/TESTING.md)
+- `getting-started.md`
+- `configuration.md`
+- `multi-account.md`
+- `troubleshooting.md`
+- `privacy.md`
+- `releasing.md`
+- `examples/README.md`
 
-## Plans
+## Developer guides
 
-Implementation plans live in `docs/plans/`.
+- `development/ARCHITECTURE.md`
+- `development/CONFIG_FLOW.md`
+- `development/CONFIG_FIELDS.md`
+- `development/TESTING.md`
 
-In this repo, `docs/plans/` is intended to be managed as a nested git repository to keep plan iteration isolated from the plugin code history.
+## Local planning and research
+
+`docs/plans/` and `docs/research/` are local workflow directories and may be managed outside the main repository history.

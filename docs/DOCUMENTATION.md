@@ -1,32 +1,34 @@
-# Documentation Structure
+# Documentation structure
 
-This document explains the organization of documentation in this repository.
+This file describes how docs are organized and maintained.
 
-## Structure overview
+## Layout
 
-```
-├── README.md
-├── AGENTS.md
-├── docs/
-│   ├── index.md
-│   ├── README.md
-│   ├── DOCUMENTATION.md
-│   ├── _config.yml
-│   ├── getting-started.md
-│   ├── configuration.md
-│   ├── multi-account.md
-│   ├── troubleshooting.md
-│   ├── privacy.md
-│   ├── releasing.md
-│   └── development/
-│       ├── ARCHITECTURE.md
-│       ├── CONFIG_FLOW.md
-│       ├── CONFIG_FIELDS.md
-│       └── TESTING.md
-└── docs/plans/  (nested git repo; ignored by parent)
-```
+- Root entrypoints:
+  - `README.md`
+  - `docs/README.md`
+  - `docs/index.md`
+- User-facing guides:
+  - `docs/getting-started.md`
+  - `docs/configuration.md`
+  - `docs/multi-account.md`
+  - `docs/troubleshooting.md`
+  - `docs/privacy.md`
+  - `docs/releasing.md`
+  - `docs/examples/README.md`
+- Developer docs:
+  - `docs/development/ARCHITECTURE.md`
+  - `docs/development/CONFIG_FLOW.md`
+  - `docs/development/CONFIG_FIELDS.md`
+  - `docs/development/TESTING.md`
 
-## Notes
+## Documentation rules
 
-- `docs/plans/` is intentionally ignored by the main repository and is expected to be managed as its own nested git repository.
-- Avoid putting secrets in docs, plans, or examples. Treat any auth store content (`codex-accounts.json` and provider `auth.json`) as sensitive.
+- Prefer canonical behavior from code over historical behavior.
+- Keep config docs aligned with `lib/config.ts`.
+- Keep auth/account docs aligned with `lib/storage.ts`, `lib/rotation.ts`, and `lib/codex-native.ts`.
+- Treat token/auth files as sensitive. Never paste raw secrets in docs.
+
+## Local-only workflow directories
+
+`docs/plans/` and `docs/research/` are local authoring areas and may be managed as separate git history from the plugin codebase.

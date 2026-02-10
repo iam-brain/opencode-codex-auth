@@ -1,21 +1,26 @@
-# Privacy
+# Privacy and data handling
 
-## Secrets on disk
+## Files written by the plugin
 
-OAuth data is stored locally in:
+- `~/.config/opencode/codex-accounts.json`
+  - plugin-owned OpenAI account rotation/auth state
+- `~/.local/share/opencode/auth.json`
+  - OpenCode provider auth marker/state
+- `~/.config/opencode/logs/codex-plugin/` (optional)
+  - request/response snapshot logs when enabled
 
-- `~/.config/opencode/codex-accounts.json` (plugin multi-account store)
-- `~/.local/share/opencode/auth.json` (OpenCode provider auth state)
+## Sensitive data handling
 
-- Treat both files like password files.
-- Writes are atomic (temp + rename) with best-effort `0600` permissions.
+- Auth files contain OAuth material and should be treated like credentials.
+- Writes use atomic temp+rename and best-effort `0600` permissions.
+- Corrupt auth files can be quarantined with bounded retention when quarantine paths/options are used.
 
-## Logging
+## Logging behavior
 
-The plugin avoids logging tokens.
+- Debug logging is opt-in.
+- Snapshot logging is opt-in.
+- Snapshot writer redacts sensitive auth headers/tokens before persistence.
 
-Debug logging is gated and must be explicitly enabled.
+## Legacy import
 
-## Tool output
-
-User-facing tool output strings avoid printing absolute filesystem paths.
+Legacy import is explicit via auth menu transfer and does not run implicitly during normal storage loads.

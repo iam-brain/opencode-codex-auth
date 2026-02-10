@@ -1,18 +1,42 @@
 # Config flow
 
-Config is resolved in two steps:
+Config resolution has two stages.
 
-1. `loadConfigFile({ env: process.env })`
-2. `resolveConfig({ env: process.env, file })`
+## Stage 1: file load
 
-The implementation is intentionally conservative:
+`loadConfigFile({ env: process.env })`
 
-- Environment variables take precedence over file values.
-- Defaults are safe (debug off; proactive refresh off).
-- Values are validated and normalized (booleans/numbers are parsed and clamped).
-- Model behavior resolution precedence is `perModel.<model>.variants.<variant>` -> `perModel.<model>` -> `global`.
-- Config file load order:
-  - `OPENCODE_OPENAI_MULTI_CONFIG_PATH` (if set)
-  - `~/.config/opencode/codex-config.json`
+- reads from `OPENCODE_OPENAI_MULTI_CONFIG_PATH` if present
+- otherwise reads `~/.config/opencode/codex-config.json`
+- parses canonical fields into `PluginConfig` partial
 
-See `lib/config.ts`.
+## Stage 2: runtime resolve
+
+`resolveConfig({ env: process.env, file })`
+
+- overlays env variables on file values
+- normalizes booleans/numbers/enum-like values
+- resolves runtime mode + spoof mode defaults
+- merges custom settings (`global`/`perModel`/`variants`)
+
+## Behavior precedence
+
+For model behavior:
+
+1. `perModel.<model>.variants.<variant>`
+2. `perModel.<model>`
+3. `global`
+
+For config sources:
+
+1. environment
+2. config file
+3. defaults
+
+## Startup consumers
+
+`index.ts` consumes resolved config to:
+
+- reconcile collab agent file state
+- initialize proactive refresh scheduler
+- pass runtime options into `CodexAuthPlugin`

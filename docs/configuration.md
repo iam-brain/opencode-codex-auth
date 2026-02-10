@@ -1,25 +1,15 @@
 # Configuration
 
-The plugin supports both JSON config files and environment variables.
+The plugin uses one canonical config file plus environment overrides.
 
-## Config file locations
+## Config file location
 
-The plugin reads `codex-config.json` from:
+Resolved in this order:
 
-- `OPENCODE_OPENAI_MULTI_CONFIG_PATH` if set
-- `~/.config/opencode/codex-config.json`
+1. `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
+2. `~/.config/opencode/codex-config.json`
 
-## OpenCode config split
-
-Keep `opencode.json` minimal and only use it to enable this plugin:
-
-```json
-{
-  "plugin": ["file:///absolute/path/to/opencode-openai-multi/dist"]
-}
-```
-
-Put plugin behavior flags in `~/.config/opencode/codex-config.json`:
+## Recommended config shape
 
 ```json
 {
@@ -33,7 +23,8 @@ Put plugin behavior flags in `~/.config/opencode/codex-config.json`:
     "mode": "native",
     "identityMode": "native",
     "sanitizeInputs": false,
-    "headerSnapshots": false
+    "headerSnapshots": false,
+    "pidOffset": false
   },
   "global": {
     "personality": "friendly",
@@ -54,93 +45,71 @@ Put plugin behavior flags in `~/.config/opencode/codex-config.json`:
 }
 ```
 
-`global` and `perModel.<model>` accept the same model behavior fields:
+## Runtime modes
 
-- `personality`
-- `thinkingSummaries`
+- `runtime.mode` or top-level `mode`
+- Allowed values: `native`, `codex`, `collab`
 
-`perModel.<model>.variants.<variant>` accepts the same behavior fields as `global` and `perModel.<model>`.
-Variant overrides apply before per-model and global values.
+Behavior:
 
-Canonical file keys only:
+- `native`: native-plugin request identity defaults
+- `codex`: codex-rs-like request identity defaults
+- `collab`: collaboration profile injection for Codex agents (WIP / untested)
 
-- `debug`, `quiet`
-- `refreshAhead.enabled`, `refreshAhead.bufferMs`
-- `runtime.mode`, `runtime.identityMode`, `runtime.sanitizeInputs`, `runtime.headerSnapshots`, `runtime.pidOffset`
-- `mode` (top-level alias for `runtime.mode`)
-- `global`
-- `perModel.<model>`
-- `perModel.<model>.variants.<variant>`
+Collab agent file reconciliation at startup:
 
-## Debug logging
+- `collab`: `Codex *.md` active
+- `native|codex`: `Codex *.md.disabled`
 
-Enable debug logs (gated):
+## Model behavior precedence
+
+For personality and thinking summaries:
+
+1. `perModel.<model>.variants.<variant>`
+2. `perModel.<model>`
+3. `global`
+
+## Environment variables
+
+### Core
+
+- `OPENCODE_OPENAI_MULTI_MODE=native|codex|collab`
+- `OPENCODE_OPENAI_MULTI_SPOOF_MODE=native|codex`
+- `OPENCODE_OPENAI_MULTI_CONFIG_PATH=/path/to/codex-config.json`
+
+### Debug + snapshots
 
 - `OPENCODE_OPENAI_MULTI_DEBUG=1`
 - `DEBUG_CODEX_PLUGIN=1`
+- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true|false`
 
-## Runtime behavior flags
+### Runtime toggles
 
-- Spoof mode:
-  - `OPENCODE_OPENAI_MULTI_SPOOF_MODE=native` (default)
-  - `OPENCODE_OPENAI_MULTI_SPOOF_MODE=codex`
-  - `native`: legacy-plugin-style headers (`originator=codex_cli_rs`, `OpenAI-Beta=responses=experimental`, `conversation_id/session_id=<promptCacheKey>` when present)
-  - `codex`: codex-rs-style headers (`originator=codex_cli_rs`, `session_id=<promptCacheKey|sessionID>`, no `OpenAI-Beta` or `conversation_id`)
-- Runtime mode:
-  - `mode` / `runtime.mode`: `native` (default), `codex`, `collab`
-  - env: `OPENCODE_OPENAI_MULTI_MODE`
-  - `collab` is required for Codex collaboration profile/header injection; `native` and `codex` do not inject collaboration behavior.
-  - collab agent files are reconciled on startup:
-    - `collab`: `Codex *.md` active
-    - `native|codex`: `Codex *.md.disabled` (auto-disabled)
-  - `collab` is currently **WIP / untested** and is not recommended for production usage yet.
-- Compatibility sanitizer (default off):
-  - `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER=true`
-- Compaction prompt behavior:
-  - For OpenAI-provider sessions, the plugin replaces OpenCode's default compaction prompt with the codex-rs compact prompt.
-- Review behavior:
-  - For OpenAI-provider sessions, `/review` subtasks are rewritten to run with `Codex Review` agent instructions.
-- Request/response header snapshots (default off):
-  - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true`
-  - output path: `~/.config/opencode/logs/codex-plugin/`
-  - captures staged files such as `request-*-before-auth.json`, `request-*-after-sanitize.json`, `request-*-orchestrator-attempt-*.json`, and matching `response-*` files
-  - appends a rolling request-header stream to `live-headers.jsonl` in the same directory
-  - sensitive auth headers/tokens are redacted before write
-- Personality override:
-  - `OPENCODE_OPENAI_MULTI_PERSONALITY=friendly` (or another safe key)
-- Thinking summaries override:
-  - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES=true|false`
-- Quiet mode:
-  - `OPENCODE_OPENAI_MULTI_QUIET=true`
+- `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER=true|false`
+- `OPENCODE_OPENAI_MULTI_QUIET=true|false`
+- `OPENCODE_OPENAI_MULTI_PID_OFFSET=true|false`
 
-Boolean env values accept `true/false` or `1/0`.
+### Proactive refresh
 
-## Proactive refresh (optional)
+- `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH=true|false`
+- `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS=<number>`
 
-Disabled by default.
+### Behavior overrides
 
-- Enable: `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH=true`
-- Buffer: `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS=60000`
+- `OPENCODE_OPENAI_MULTI_PERSONALITY=<key>`
+- `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES=true|false`
 
-## Account files
+## Canonical keys only
 
-OpenCode and this plugin use two related auth files:
+Supported file keys are canonical only:
 
-- OpenCode OAuth marker (provider auth): `~/.local/share/opencode/auth.json`
-- Plugin multi-account store (rotation + cooldowns): `~/.config/opencode/codex-accounts.json`
+- top-level: `debug`, `quiet`, `refreshAhead`, `runtime`, `mode`, `global`, `perModel`
+- runtime: `mode`, `identityMode`, `sanitizeInputs`, `headerSnapshots`, `pidOffset`
+- model settings: `personality`, `thinkingSummaries`, `variants`
 
-Legacy import sources:
+## Auth/account files
 
-- `~/.config/opencode/openai-codex-accounts.json`
-- `~/.local/share/opencode/auth.json` (OpenCode provider marker)
+- Provider marker: `~/.local/share/opencode/auth.json`
+- Plugin store: `~/.config/opencode/codex-accounts.json`
 
-The plugin can quarantine corrupt multi-account JSON (bounded retention) when load options are provided.
-
-## Account migration behavior
-
-- The plugin does not auto-bootstrap from legacy files during normal load.
-- Use `opencode auth login` and select `Transfer OpenAI accounts from native & old plugins?` for explicit import.
-- If `codex-accounts.json` exists (including `accounts: []`), that file is authoritative.
-- The interactive `Transfer OpenAI accounts from native & old plugins?` option appears only when:
-  - `codex-accounts.json` is missing, and
-  - a legacy/native source exists.
+Legacy data is imported explicitly from auth menu transfer, not auto-loaded on normal reads.

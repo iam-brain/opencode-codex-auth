@@ -1,36 +1,56 @@
 # Architecture
 
-This plugin bridges OpenCode's OpenAI provider hooks to the ChatGPT Codex backend API using OAuth.
+This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend endpoints using OAuth.
 
-## High-level flow
+## Runtime overview
 
-1) OpenCode calls the plugin `auth.loader` to obtain provider auth.
-2) The plugin selects an enabled account using the rotation strategy.
-3) Requests are rewritten to the Codex backend endpoint.
-4) Request-time auth acquisition and `429` handling both support failover across enabled accounts (with cooldown/disable semantics based on failure type).
+1. OpenCode initializes plugin hooks (`index.ts`).
+2. Config is resolved from `codex-config.json` + env overrides (`lib/config.ts`).
+3. Collab agent files are reconciled to match runtime mode (`lib/orchestrator-agents.ts`).
+4. Auth loader selects a healthy account (`lib/storage.ts`, `lib/rotation.ts`).
+5. Requests are transformed and routed through Codex backend paths (`lib/codex-native.ts`).
+6. Failures (`429`, refresh/auth) trigger cooldown/disable semantics and retry orchestration (`lib/fetch-orchestrator.ts`).
 
 ## Key modules
 
-- `index.ts`: registers plugin hooks + tools.
-- `lib/codex-native.ts`: OAuth flows, request rewrite, model filtering, auth-menu orchestration.
-- `lib/storage.ts`: `codex-accounts.json` read/migrate/write under `proper-lockfile` with atomic writes.
-- `lib/storage.ts`: explicit legacy transfer import path for `openai-codex-accounts.json` and OpenCode provider marker (`~/.local/share/opencode/auth.json`).
-- `lib/rotation.ts`: selection strategies.
-- `lib/fetch-orchestrator.ts`: 429 handling and retry safety.
-- `lib/proactive-refresh.ts`: optional enabled-only background refresh with lease + cooldown guards.
-- `lib/codex-quota-fetch.ts`: live quota fetch (`/backend-api/wham/usage` with fallback) normalized to internal snapshot model.
-- `lib/codex-status-ui.ts`: account quota rendering (`5h`, `Weekly`, `Credits`).
-- `lib/ui/auth-menu.ts` + `lib/ui/auth-menu-runner.ts`: TTY account-manager menus.
+- `index.ts`
+  - plugin entrypoint, config wiring, tools registration, proactive refresh scheduler
+- `lib/codex-native.ts`
+  - OAuth/login flow, account menu wiring, request rewriting, mode-specific header identity behavior
+- `lib/storage.ts`
+  - lock-guarded auth store IO, migration normalization, explicit legacy transfer
+- `lib/rotation.ts`
+  - `sticky`, `hybrid`, `round_robin` account selection
+- `lib/fetch-orchestrator.ts`
+  - retry/failover control around backend requests
+- `lib/proactive-refresh.ts`
+  - optional background refresh with lease/cooldown guards
+- `lib/model-catalog.ts`
+  - dynamic model catalog fetch/cache and provider model shaping
+- `lib/orchestrator-agents.ts`
+  - Codex agent template install + `.md/.md.disabled` reconciliation
+- `lib/ui/auth-menu.ts`, `lib/ui/auth-menu-runner.ts`
+  - TTY account manager UI
 
-## Auth state locations
+## Auth and account files
 
-- OpenCode provider auth marker: `~/.local/share/opencode/auth.json`
-- Plugin multi-account storage and rotation state: `~/.config/opencode/codex-accounts.json`
+- Provider marker: `~/.local/share/opencode/auth.json`
+- Plugin store: `~/.config/opencode/codex-accounts.json`
 
-## Safety invariants
+## Invariants
 
-- Disabled accounts are never selected or mutated.
-- `identityKey` derivation is stable and only based on `accountId|email|plan`.
-- Storage updates are done under one lock with atomic writes.
-- Proactive refresh uses lock-backed leasing (`refreshLeaseUntil`) to avoid duplicate concurrent refresh work.
-- If `codex-accounts.json` exists with `openai.accounts: []`, it is treated as authoritative (no implicit legacy reseed).
+- Strict account identity key: `accountId|email|plan`
+- Disabled accounts are never selected/refreshed/mutated
+- Read/merge/write runs under `proper-lockfile`
+- Writes are atomic (`tmp` + rename; best-effort `0600`)
+- Legacy import is explicit via transfer action, not implicit during normal reads
+- Existing `codex-accounts.json` remains authoritative even when empty
+
+## Collaboration-mode file behavior
+
+Installer writes Codex agent templates as disabled files (`*.md.disabled`).
+
+On startup:
+
+- `mode=collab` -> activate to `*.md`
+- `mode=native|codex` -> keep/rename to `*.md.disabled`

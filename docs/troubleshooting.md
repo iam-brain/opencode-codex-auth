@@ -1,62 +1,71 @@
 # Troubleshooting
 
-## OAuth callback issues
+## Quick checks
 
-Browser OAuth uses a local callback server on `http://localhost:1455/auth/callback`.
+1. Confirm plugin is installed in `~/.config/opencode/opencode.json`.
+2. Confirm config exists at `~/.config/opencode/codex-config.json`.
+3. Confirm auth files exist:
+   - `~/.local/share/opencode/auth.json`
+   - `~/.config/opencode/codex-accounts.json`
 
-If the port is already in use, stop other Codex/OpenCode auth flows and retry.
+## Common issues
 
-## Corrupt codex-accounts.json
+### Login appears stuck on callback wait
 
-If `~/.config/opencode/codex-accounts.json` (plugin multi-account store) becomes corrupt JSON, the storage layer can quarantine the file (bounded retention) and return an empty storage object.
+- Ensure port `1455` is free.
+- Close other auth flows (Codex/OpenCode) and retry.
 
-## OpenAI model not found / API key missing
+### OpenAI model not found / API key missing
 
-If OpenCode reports `ProviderModelNotFoundError` for `openai/*` or `OpenAI API key is missing`, verify both auth files exist and are valid:
+- Re-run `opencode auth login`.
+- Verify both auth files above exist and are readable.
+- Confirm your selected model slug exists in provider model list.
 
-- `~/.local/share/opencode/auth.json` (OpenCode OAuth marker)
-- `~/.config/opencode/codex-accounts.json` (plugin multi-account store)
+### Quota output shows `Unknown`
 
-Legacy import is explicit only. Run `opencode auth login`, then select `Transfer OpenAI accounts from native & old plugins?` when offered.
+Usually means either:
 
-If needed, run `opencode auth login` again to refresh provider auth state.
+- account expired and needs re-auth, or
+- backend did not return reset timestamp for that window.
 
-## Quota output shows Unknown
+Fix:
 
-`Check quotas` fetches live quota data. Unknown reset labels usually mean:
+- open account manager
+- run per-account `Refresh token`
+- run `Check quotas` again
 
-- account is expired and needs reauth, or
-- backend did not return a reset timestamp for that window.
+### Refresh token rejected (`invalid_grant`)
 
-Run `opencode auth login` and use per-account `Refresh token`, then run `Check quotas` again.
+Meaning:
 
-## Refresh token rejected (`invalid_grant`)
+- request exhausted healthy candidates and at least one account requires re-auth.
 
-If the plugin returns a refresh-token error, all enabled candidates were exhausted for that request and at least one account needs reauthentication.
+Fix:
 
-- Run `opencode auth login` to refresh credentials.
-- If multiple accounts are configured, the plugin will automatically fail over when possible.
-- For repeatedly failing accounts, switch away (`codex-switch-accounts`) or disable (`codex-toggle-account`) and retry.
+- reauthenticate affected accounts via `opencode auth login`
+- disable repeatedly failing accounts temporarily
 
-## Delete all accounts appears to repopulate
+### Delete-all appears to repopulate
 
-Current behavior: if `codex-accounts.json` exists and has `accounts: []`, that empty state is authoritative and should not auto-reimport legacy files.
+Expected behavior:
 
-If accounts reappear, check for custom scripts or multiple plugin installs writing to auth files in parallel.
+- existing `codex-accounts.json` (including empty `accounts: []`) is authoritative.
 
-## Rate limits
+If accounts reappear:
 
-On `429` responses, the plugin parses `Retry-After`, persists a per-account cooldown, and retries with another enabled account when possible.
+- check for multiple plugin installs writing concurrently
+- check external scripts touching auth files
 
-## Debug logs
+## Debug mode
 
-Enable debug logs with `OPENCODE_OPENAI_MULTI_DEBUG=1` (or `DEBUG_CODEX_PLUGIN=1`).
+Enable:
 
-Rotation tracing is now included in debug mode:
+- `OPENCODE_OPENAI_MULTI_DEBUG=1`
+- or `DEBUG_CODEX_PLUGIN=1`
 
-- `rotation begin`
-- `rotation decision`
-- `rotation candidate selected`
-- `rotation stop: ...`
+Optional request/response snapshots:
 
-These events include strategy, session key, active/selected identity keys, and why selection stopped or switched.
+- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true`
+- output in `~/.config/opencode/logs/codex-plugin/`
+
+Sensitive auth headers/tokens are redacted in snapshot logs.

@@ -1,72 +1,88 @@
-# Multi-account
+# Multi-account behavior
 
-This plugin supports multiple OpenAI OAuth accounts and rotates between them when needed.
+This plugin supports multi-account OpenAI OAuth with strict identity, health-aware routing, and explicit legacy transfer.
 
-## Storage schema
+## Storage model
 
-Accounts are stored under `openai` in the plugin store:
+Primary file:
 
 - `~/.config/opencode/codex-accounts.json`
 
-OpenCode also keeps provider OAuth state in:
+Provider marker file:
 
 - `~/.local/share/opencode/auth.json`
 
-Key fields:
+OpenAI auth is stored with domain-aware account sets:
 
-- `accounts[]`: list of account records
-- `activeIdentityKey`: the active pointer
-- `enabled`: disabled accounts are never selected, refreshed, rotated, or mutated
+- `openai.native`
+- `openai.codex`
 
-## Identity keys
+Each account can include `authTypes` so one identity can be valid in one or both auth modes.
 
-`identityKey` is derived ONLY from:
+## Identity key policy
 
-- `accountId.trim()`
-- `email.trim().toLowerCase()`
-- `plan.trim().toLowerCase()`
+Identity key is strict and deterministic:
 
-Format: `accountId|email|plan`
+- `accountId|email|plan`
 
-## Rotation
+Normalization:
 
-Selection strategy is stored in `openai.strategy`:
+- `email` lowercased/trimmed
+- `plan` lowercased/trimmed
+- `accountId` trimmed
 
-- `sticky`
-- `round_robin`
+Matching preference:
+
+1. strict `identityKey`
+2. refresh token fallback only if identity is unavailable
+
+## Rotation strategies
+
+Configured in `openai.strategy`:
+
+- `sticky` (default)
 - `hybrid`
+- `round_robin`
 
-Default strategy is `sticky` when unset.
+### sticky
 
-Sticky behavior details:
+- Reuses active account while healthy.
+- With PID/session offset enabled, assigns new session keys (`promptCacheKey`) across healthy accounts.
 
-- Requests stay on one account while it remains healthy.
-- New sessions (`prompt_cache_key`) are distributed to the next healthy account (session affinity), so subagent sessions can spread load without enabling full `round_robin`/`hybrid`.
-- If no active/session assignment exists, sticky can still distribute by PID offset across processes.
+### hybrid
 
-Disabled accounts are always skipped.
+- Reuses active account when valid.
+- Otherwise picks least-recently-used healthy account.
+- With PID/session offset enabled, session assignments are sticky and health-aware.
 
-Automatic failover happens in two cases:
+### round_robin
 
-- Rate-limit driven (`429` + cooldown)
-- Auth-refresh driven during token acquisition
-  - `invalid_grant`: failing account is disabled and the request continues with another enabled account when available
-  - transient refresh failures / missing refresh token: failing account is cooled down and the request continues with another enabled account when available
+- Advances account per request among healthy candidates.
+- Highest churn; generally least efficient for token/refresh usage.
 
-The request only hard-fails when all enabled candidates are exhausted.
+## Health and failover
 
-## Tools
+Accounts are eligible only when:
 
-The plugin registers tools for account management:
+- `enabled !== false`
+- no active cooldown (`cooldownUntil <= now`)
 
-- `codex-status`
-- `codex-switch-accounts` (1-based index)
-- `codex-toggle-account` (1-based index)
-- `codex-remove-account` (requires `confirm: true`)
+Failover triggers:
 
-## Interactive account manager (`opencode auth login`)
+- `429` + retry parsing -> cooldown + retry on another healthy account
+- refresh/auth failures:
+  - `invalid_grant` -> account disabled
+  - transient token failure -> cooldown
 
-The login flow includes a full account-management menu.
+Request hard-fails only when all enabled candidates are exhausted.
+
+## Interactive account manager
+
+Open with:
+
+```bash
+opencode auth login
+```
 
 Primary actions:
 
@@ -80,15 +96,27 @@ Per-account actions:
 
 - Enable/disable
 - Refresh token
-- Delete this account
-- Delete all accounts
+- Delete account
+- Delete all accounts (scoped)
 
-Behavior notes:
+## Tooling hooks
 
-- `Add new account` returns to the menu after success so you can continue adding accounts.
-- `Check quotas` performs a live backend fetch and renders:
-  - `5h` usage bar with inline reset timer
-  - `Weekly` usage bar with inline reset timer
-  - `Credits`
-- `Delete all accounts` persists as empty `accounts: []`; this no longer triggers immediate legacy auto-reimport.
-- `Transfer OpenAI accounts from native & old plugins?` is shown only when `codex-accounts.json` is missing and a legacy/native source exists.
+Registered tools:
+
+- `codex-status`
+- `codex-switch-accounts`
+- `codex-toggle-account`
+- `codex-remove-account`
+
+All index arguments are 1-based.
+
+## Legacy transfer
+
+Legacy import is explicit-only through auth menu transfer.
+
+Source files:
+
+- `~/.config/opencode/openai-codex-accounts.json`
+- `~/.local/share/opencode/auth.json`
+
+If `codex-accounts.json` exists (including empty accounts), it remains authoritative.

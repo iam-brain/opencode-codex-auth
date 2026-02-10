@@ -1,24 +1,19 @@
-# opencode-openai-multi
+# opencode-openai-multi docs
 
-Native Codex OAuth auth with multi-account rotation for OpenCode.
+`opencode-openai-multi` brings ChatGPT OAuth-backed OpenAI access to OpenCode with hardened multi-account behavior.
 
-This repo is intended for local development and controlled environments.
+## What you get
 
-## Quick links
+- OpenAI OAuth account login/management in `opencode auth login`
+- Multi-account rotation with health-aware failover
+- Runtime identity modes (`native`, `codex`) and experimental collaboration mode (`collab`)
+- Dynamic model behavior overrides (`global`, `perModel`, `variants`)
 
-### For users
+## Read in this order
 
-- [Getting started](getting-started.md)
-- [Configuration](configuration.md)
-- [Multi-account](multi-account.md)
-- [Troubleshooting](troubleshooting.md)
-- [Privacy](privacy.md)
-- [Releasing](releasing.md)
-- [Config examples](examples/README.md)
+1. `getting-started.md`
+2. `configuration.md`
+3. `multi-account.md`
+4. `troubleshooting.md`
 
-### For developers
-
-- [Architecture](development/ARCHITECTURE.md)
-- [Config flow](development/CONFIG_FLOW.md)
-- [Config fields](development/CONFIG_FIELDS.md)
-- [Testing](development/TESTING.md)
+For internals and contribution workflows, continue with `development/ARCHITECTURE.md` and `development/TESTING.md`.
