@@ -54,12 +54,14 @@ The installer does two things:
    - `Codex Compact.md.disabled`
 3. Creates `~/.config/opencode/codex-config.json` with defaults when missing.
 4. Synchronizes `~/.config/opencode/commands/create-personality.md` for `/create-personality` (created/updated as needed).
+5. Synchronizes `~/.config/opencode/skills/personality-builder/SKILL.md` (plus references) for skill-driven personality workflows.
 
 At plugin startup, files are reconciled against runtime mode:
 
 - `mode: "collab"` -> `.md.disabled` files are activated to `.md`
 - `mode: "native"` or `mode: "codex"` -> Codex agents are disabled to `.md.disabled`
 - `/create-personality` command template is synchronized to the latest managed version.
+- `personality-builder` skill template bundle is synchronized to the latest managed version.
 
 To install only the agent templates (no `opencode.json` edits):
 
@@ -102,6 +104,8 @@ Create guided custom personalities with:
 
 - Provider auth marker: `~/.local/share/opencode/auth.json`
 - Plugin multi-account store: `~/.config/opencode/codex-accounts.json`
+- Session affinity cache: `~/.config/opencode/cache/codex-session-affinity.json`
+- Quota snapshot cache: `~/.config/opencode/cache/codex-snapshots.json`
 
 Legacy sources can be imported explicitly from the auth menu:
 

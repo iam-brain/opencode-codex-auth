@@ -23,7 +23,7 @@ import {
   toSyntheticErrorResponse
 } from "./fatal-errors"
 import { buildIdentityKey, ensureIdentityKey, normalizeEmail, normalizePlan } from "./identity"
-import { defaultSnapshotsPath } from "./paths"
+import { defaultSessionAffinityPath, defaultSnapshotsPath } from "./paths"
 import { createStickySessionState, selectAccount } from "./rotation"
 import {
   ensureOpenAIOAuthDomain,
@@ -42,7 +42,8 @@ import type {
   AccountRecord,
   AuthFile,
   OpenAIAuthMode,
-  OpenAIOAuthDomain
+  OpenAIOAuthDomain,
+  RotationStrategy
 } from "./types"
 import { FetchOrchestrator, createFetchOrchestratorState } from "./fetch-orchestrator"
 import type {
@@ -65,6 +66,14 @@ import { sanitizeRequestPayloadForCompat } from "./compat-sanitizer"
 import { fetchQuotaSnapshotFromBackend } from "./codex-quota-fetch"
 import { createRequestSnapshots } from "./request-snapshots"
 import { CODEX_OAUTH_SUCCESS_HTML } from "./oauth-pages"
+import {
+  createSessionExistsFn,
+  loadSessionAffinity,
+  pruneSessionAffinitySnapshot,
+  readSessionAffinitySnapshot,
+  saveSessionAffinity,
+  writeSessionAffinitySnapshot
+} from "./session-affinity"
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const ISSUER = "https://auth.openai.com"
@@ -285,6 +294,7 @@ export const __testOnly = {
   resolveHookAgentName,
   resolveCollaborationModeKind,
   resolveSubagentHeaderValue,
+  isOAuthDebugEnabled,
   stopOAuthServer
 }
 
@@ -497,7 +507,8 @@ let pendingOAuth: PendingOAuth | undefined
 let oauthServerCloseTimer: ReturnType<typeof setTimeout> | undefined
 
 function isOAuthDebugEnabled(): boolean {
-  return process.env.CODEX_AUTH_DEBUG === "1"
+  const raw = process.env.CODEX_AUTH_DEBUG?.trim().toLowerCase()
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on"
 }
 
 function emitOAuthDebug(event: string, meta: Record<string, unknown> = {}): void {
@@ -838,10 +849,11 @@ function rewriteUrl(requestInput: string | URL | Request): URL {
 }
 
 function opencodeUserAgent(): string {
-  return `opencode-codex-auth ( ${os.platform()} ${os.release()}; ${os.arch()} )`
+  const version = resolvePluginVersion()
+  return `opencode/${version} (${os.platform()} ${os.release()}; ${os.arch()})`
 }
 
-type CodexOriginator = "codex_cli_rs" | "codex_exec"
+type CodexOriginator = "opencode" | "codex_cli_rs" | "codex_exec"
 
 let cachedPluginVersion: string | undefined
 let cachedMacProductVersion: string | undefined
@@ -1041,6 +1053,7 @@ function resolveCodexPlatformSignature(platform: NodeJS.Platform = process.platf
 }
 
 function buildCodexUserAgent(originator: CodexOriginator): string {
+  if (originator === "opencode") return opencodeUserAgent()
   const buildVersion = resolvePluginVersion()
   const terminalToken = resolveTerminalUserAgentToken()
   const prefix = `${originator}/${buildVersion} (${resolveCodexPlatformSignature()}) ${terminalToken}`
@@ -1208,7 +1221,7 @@ function isTuiWorkerInvocation(argv: string[]): boolean {
 }
 
 function resolveCodexOriginator(spoofMode: CodexSpoofMode, argv = process.argv): CodexOriginator {
-  if (spoofMode !== "codex") return "codex_cli_rs"
+  if (spoofMode !== "codex") return "opencode"
   const normalizedArgv = argv.map((entry) => String(entry))
   if (isTuiWorkerInvocation(normalizedArgv)) return "codex_cli_rs"
   return normalizedArgv.includes("run") ? "codex_exec" : "codex_cli_rs"
@@ -1375,14 +1388,17 @@ export type CodexAuthPluginOptions = {
   mode?: PluginRuntimeMode
   quietMode?: boolean
   pidOffsetEnabled?: boolean
+  rotationStrategy?: RotationStrategy
   spoofMode?: CodexSpoofMode
   compatInputSanitizer?: boolean
   headerSnapshots?: boolean
+  headerTransformDebug?: boolean
 }
 
 async function selectCatalogAuthCandidate(
   authMode: OpenAIAuthMode,
-  pidOffsetEnabled: boolean
+  pidOffsetEnabled: boolean,
+  rotationStrategy?: RotationStrategy
 ): Promise<{ accessToken?: string; accountId?: string }> {
   try {
     const auth = await loadAuthStorage()
@@ -1393,7 +1409,7 @@ async function selectCatalogAuthCandidate(
 
     const selected = selectAccount({
       accounts: domain.accounts,
-      strategy: domain.strategy,
+      strategy: rotationStrategy ?? domain.strategy,
       activeIdentityKey: domain.activeIdentityKey,
       now: Date.now(),
       stickyPidOffset: pidOffsetEnabled
@@ -1779,7 +1795,7 @@ export async function CodexAuthPlugin(
     }
   }
   const requestSnapshots = createRequestSnapshots({
-    enabled: opts.headerSnapshots === true,
+    enabled: opts.headerSnapshots === true || opts.headerTransformDebug === true,
     log: opts.log
   })
   const showToast = async (
@@ -2086,9 +2102,56 @@ export async function CodexAuthPlugin(
         }
         if (!hasOAuth) return {}
 
+        const sessionAffinityPath = defaultSessionAffinityPath()
+        const loadedSessionAffinity = await loadSessionAffinity(sessionAffinityPath).catch(
+          () => ({ version: 1 as const })
+        )
+        const initialSessionAffinity = readSessionAffinitySnapshot(
+          loadedSessionAffinity,
+          authMode
+        )
+        const sessionExists = createSessionExistsFn(process.env)
+        await pruneSessionAffinitySnapshot(initialSessionAffinity, sessionExists).catch(() => 0)
+
+        const orchestratorState = createFetchOrchestratorState()
+        orchestratorState.seenSessionKeys = initialSessionAffinity.seenSessionKeys
+
+        const stickySessionState = createStickySessionState()
+        stickySessionState.bySessionKey = initialSessionAffinity.stickyBySessionKey
+        const hybridSessionState = createStickySessionState()
+        hybridSessionState.bySessionKey = initialSessionAffinity.hybridBySessionKey
+
+        let sessionAffinityPersistQueue = Promise.resolve()
+        const persistSessionAffinityState = (): void => {
+          sessionAffinityPersistQueue = sessionAffinityPersistQueue
+            .then(async () => {
+              await pruneSessionAffinitySnapshot(
+                {
+                  seenSessionKeys: orchestratorState.seenSessionKeys,
+                  stickyBySessionKey: stickySessionState.bySessionKey,
+                  hybridBySessionKey: hybridSessionState.bySessionKey
+                },
+                sessionExists
+              )
+              await saveSessionAffinity(
+                async (current) =>
+                  writeSessionAffinitySnapshot(current, authMode, {
+                    seenSessionKeys: orchestratorState.seenSessionKeys,
+                    stickyBySessionKey: stickySessionState.bySessionKey,
+                    hybridBySessionKey: hybridSessionState.bySessionKey
+                  }),
+                sessionAffinityPath
+              )
+            })
+            .catch(() => {
+              // best-effort persistence
+            })
+        }
+
         const catalogAuth = await selectCatalogAuthCandidate(
           authMode,
-          opts.pidOffsetEnabled === true
+          opts.pidOffsetEnabled === true,
+          opts.rotationStrategy
         )
         const catalogModels = await getCodexModelCatalog({
           accessToken: catalogAuth.accessToken,
@@ -2104,27 +2167,50 @@ export async function CodexAuthPlugin(
           personality: opts.personality
         })
 
-        const orchestratorState = createFetchOrchestratorState()
-        const stickySessionState = createStickySessionState()
-
         return {
           apiKey: OAUTH_DUMMY_KEY,
           async fetch(requestInput: string | URL | Request, init?: RequestInit) {
             const baseRequest = new Request(requestInput, init)
+            const inboundCollaborationModeKind =
+              baseRequest.headers.get(INTERNAL_COLLABORATION_MODE_HEADER) ?? undefined
+            if (opts.headerTransformDebug === true) {
+              await requestSnapshots.captureRequest("before-header-transform", baseRequest, {
+                spoofMode,
+                ...(inboundCollaborationModeKind
+                  ? { collaborationModeKind: inboundCollaborationModeKind }
+                  : {})
+              })
+            }
             const outbound = new Request(rewriteUrl(baseRequest), baseRequest)
             const inboundOriginator = outbound.headers.get("originator")?.trim()
             const outboundOriginator =
-              inboundOriginator === "codex_exec" || inboundOriginator === "codex_cli_rs"
+              inboundOriginator === "opencode" ||
+              inboundOriginator === "codex_exec" ||
+              inboundOriginator === "codex_cli_rs"
                 ? inboundOriginator
                 : resolveCodexOriginator(spoofMode)
             outbound.headers.set("originator", outboundOriginator)
-            outbound.headers.set(
-              "user-agent",
-              resolveRequestUserAgent(spoofMode, outboundOriginator)
-            )
+            const inboundUserAgent = outbound.headers.get("user-agent")?.trim()
+            if (spoofMode === "native" && inboundUserAgent) {
+              outbound.headers.set("user-agent", inboundUserAgent)
+            } else {
+              outbound.headers.set(
+                "user-agent",
+                resolveRequestUserAgent(spoofMode, outboundOriginator)
+              )
+            }
             const collaborationModeKind = outbound.headers.get(INTERNAL_COLLABORATION_MODE_HEADER)
             if (collaborationModeKind) {
               outbound.headers.delete(INTERNAL_COLLABORATION_MODE_HEADER)
+            }
+            const subagentHeader = outbound.headers.get("x-openai-subagent")?.trim()
+            const isSubagentRequest = Boolean(subagentHeader)
+            if (opts.headerTransformDebug === true) {
+              await requestSnapshots.captureRequest("after-header-transform", outbound, {
+                spoofMode,
+                ...(collaborationModeKind ? { collaborationModeKind } : {}),
+                ...(isSubagentRequest ? { subagent: subagentHeader } : {})
+              })
             }
             let selectedIdentityKey: string | undefined
 
@@ -2143,6 +2229,11 @@ export async function CodexAuthPlugin(
                 let plan: string | undefined
 
                 try {
+                  if (isSubagentRequest && context?.sessionKey) {
+                    orchestratorState.seenSessionKeys.delete(context.sessionKey)
+                    stickySessionState.bySessionKey.delete(context.sessionKey)
+                    hybridSessionState.bySessionKey.delete(context.sessionKey)
+                  }
                   await saveAuthStorage(undefined, async (authFile) => {
                     const now = Date.now()
                     const openai = authFile.openai
@@ -2179,8 +2270,10 @@ export async function CodexAuthPlugin(
                     let sawInvalidGrant = false
                     let sawRefreshFailure = false
                     let sawMissingRefresh = false
+                    const rotationStrategy: RotationStrategy =
+                      opts.rotationStrategy ?? domain.strategy ?? "sticky"
                     opts.log?.debug("rotation begin", {
-                      strategy: domain.strategy ?? "sticky",
+                      strategy: rotationStrategy,
                       activeIdentityKey: domain.activeIdentityKey,
                       totalAccounts: domain.accounts.length,
                       enabledAccounts: enabled.length,
@@ -2189,14 +2282,20 @@ export async function CodexAuthPlugin(
                     })
 
                     while (attempted.size < domain.accounts.length) {
+                      const sessionState =
+                        rotationStrategy === "sticky"
+                          ? stickySessionState
+                          : rotationStrategy === "hybrid"
+                            ? hybridSessionState
+                            : undefined
                       const selected = selectAccount({
                         accounts: domain.accounts,
-                        strategy: domain.strategy,
+                        strategy: rotationStrategy,
                         activeIdentityKey: domain.activeIdentityKey,
                         now,
                         stickyPidOffset: opts.pidOffsetEnabled === true,
-                        stickySessionKey: context?.sessionKey,
-                        stickySessionState,
+                        stickySessionKey: isSubagentRequest ? undefined : context?.sessionKey,
+                        stickySessionState: sessionState,
                         onDebug: (event) => {
                           opts.log?.debug("rotation decision", event)
                         }
@@ -2224,6 +2323,9 @@ export async function CodexAuthPlugin(
                         break
                       }
                       attempted.add(attemptKey)
+                      if (!isSubagentRequest && context?.sessionKey && sessionState) {
+                        persistSessionAffinityState()
+                      }
                       opts.log?.debug("rotation candidate selected", {
                         attemptKey,
                         selectedIdentityKey: selected.identityKey,
@@ -2399,6 +2501,17 @@ export async function CodexAuthPlugin(
               },
               quietMode: opts.quietMode === true,
               state: orchestratorState,
+              onSessionObserved: ({ event, sessionKey }) => {
+                if (isSubagentRequest) {
+                  orchestratorState.seenSessionKeys.delete(sessionKey)
+                  stickySessionState.bySessionKey.delete(sessionKey)
+                  hybridSessionState.bySessionKey.delete(sessionKey)
+                  return
+                }
+                if (event === "new" || event === "resume" || event === "switch") {
+                  persistSessionAffinityState()
+                }
+              },
               showToast,
               onAttemptRequest: async ({ attempt, maxAttempts, request, auth, sessionKey }) => {
                 await requestSnapshots.captureRequest("outbound-attempt", request, {
@@ -2506,7 +2619,7 @@ export async function CodexAuthPlugin(
                 redirectUri,
                 pkce,
                 state,
-                "codex_cli_rs"
+                spoofMode === "codex" ? "codex_cli_rs" : "opencode"
               )
               const callbackPromise = waitForOAuthCallback(pkce, state, authMode)
               void tryOpenUrlInBrowser(authUrl, opts.log)
@@ -2587,7 +2700,7 @@ export async function CodexAuthPlugin(
               redirectUri,
               pkce,
               state,
-              "codex_cli_rs"
+              spoofMode === "codex" ? "codex_cli_rs" : "opencode"
             )
             const callbackPromise = waitForOAuthCallback(pkce, state, authMode)
             void tryOpenUrlInBrowser(authUrl, opts.log)
@@ -2798,14 +2911,9 @@ export async function CodexAuthPlugin(
       const modelOptions = isRecord(hookInput.model.options) ? hookInput.model.options : {}
       const promptCacheKey = resolvePromptCacheKey(modelOptions)
       if (spoofMode === "native") {
-        output.headers["OpenAI-Beta"] = "responses=experimental"
-        if (promptCacheKey) {
-          output.headers.session_id = promptCacheKey
-          output.headers.conversation_id = promptCacheKey
-        } else {
-          delete output.headers.session_id
-          delete output.headers.conversation_id
-        }
+        output.headers.session_id = hookInput.sessionID
+        delete output.headers["OpenAI-Beta"]
+        delete output.headers.conversation_id
       } else {
         output.headers.session_id = promptCacheKey ?? hookInput.sessionID
         delete output.headers["OpenAI-Beta"]

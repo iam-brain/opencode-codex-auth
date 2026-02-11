@@ -59,6 +59,11 @@ export type FetchOrchestratorDeps = {
     auth: AuthData
     sessionKey: string | null
   }) => Promise<void> | void
+  onSessionObserved?: (input: {
+    sessionKey: string
+    now: number
+    event: "new" | "resume" | "switch" | "seen"
+  }) => Promise<void> | void
 }
 
 const SESSION_KEY_TTL_MS = 6 * 60 * 60 * 1000
@@ -196,15 +201,29 @@ export class FetchOrchestrator {
     const baseRequest = new Request(input, init)
     const body = await readRequestBody(baseRequest)
     const sessionKey = resolveSessionKey(body)
-    let sessionEvent: "new" | "switch" | null = null
+    let sessionEvent: "new" | "resume" | "switch" | null = null
     if (sessionKey) {
-      const hasSeen = this.touchSessionKey(sessionKey, nowFn())
+      const sessionNow = nowFn()
+      const hasSeen = this.touchSessionKey(sessionKey, sessionNow)
       if (!hasSeen) {
         sessionEvent = "new"
+      } else if (!this.state.lastSessionKey) {
+        sessionEvent = "resume"
       } else if (this.state.lastSessionKey && this.state.lastSessionKey !== sessionKey) {
         sessionEvent = "switch"
       }
       this.state.lastSessionKey = sessionKey
+      if (this.deps.onSessionObserved) {
+        try {
+          await this.deps.onSessionObserved({
+            sessionKey,
+            now: sessionNow,
+            event: sessionEvent ?? "seen"
+          })
+        } catch {
+          // Session persistence hooks should never block request execution.
+        }
+      }
     }
     let sessionToastEmitted = false
     let lastResponse: Response | undefined
@@ -223,6 +242,8 @@ export class FetchOrchestrator {
         const message =
           sessionEvent === "new"
             ? `New chat: ${accountLabel}`
+            : sessionEvent === "resume"
+              ? `Resuming chat: ${accountLabel}`
             : `Session switched: ${accountLabel}`
         await this.maybeShowToast(message, "info", {
           dedupeKey: `session:${sessionEvent}`,

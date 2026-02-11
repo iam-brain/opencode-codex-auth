@@ -71,54 +71,79 @@ function resolveOffsetIndex(input: SelectAccountInput, eligibleLength: number): 
   return pid % eligibleLength
 }
 
-function resolveStickySessionAccount(
+function resolveAssignedSessionAccount(
   input: SelectAccountInput,
-  eligible: AccountRecord[]
+  eligible: AccountRecord[],
+  strategy: "sticky" | "hybrid"
 ): AccountRecord | undefined {
   const state = input.stickySessionState
   const sessionKey = input.stickySessionKey?.trim()
   if (!state || !sessionKey) return undefined
 
   const assignedIdentityKey = state.bySessionKey.get(sessionKey)
-  if (assignedIdentityKey) {
-    const assigned = eligible.find((acc) => acc.identityKey === assignedIdentityKey)
-    if (assigned) {
-      input.onDebug?.({
-        strategy: "sticky",
-        decision: "sticky-session-reuse",
-        selectedIdentityKey: assigned.identityKey,
-        activeIdentityKey: input.activeIdentityKey,
-        sessionKey,
-        eligibleCount: eligible.length
-      })
-      return assigned
-    }
+  if (!assignedIdentityKey) return undefined
+
+  const assigned = eligible.find((acc) => acc.identityKey === assignedIdentityKey)
+  if (!assigned) {
     state.bySessionKey.delete(sessionKey)
+    return undefined
   }
 
+  input.onDebug?.({
+    strategy,
+    decision: strategy === "sticky" ? "sticky-session-reuse" : "hybrid-session-reuse",
+    selectedIdentityKey: assigned.identityKey,
+    activeIdentityKey: input.activeIdentityKey,
+    sessionKey,
+    eligibleCount: eligible.length
+  })
+  return assigned
+}
+
+function assignSessionAccount(
+  input: SelectAccountInput,
+  selected: AccountRecord | undefined,
+  strategy: "sticky" | "hybrid",
+  extra?: Record<string, unknown>
+): void {
+  const state = input.stickySessionState
+  const sessionKey = input.stickySessionKey?.trim()
+  if (!state || !sessionKey || !selected?.identityKey) return
+
+  state.bySessionKey.set(sessionKey, selected.identityKey)
+  const maxEntries = Math.max(1, Math.floor(state.maxEntries ?? DEFAULT_SESSION_ASSIGNMENT_MAX))
+  while (state.bySessionKey.size > maxEntries) {
+    const oldest = state.bySessionKey.keys().next().value as string | undefined
+    if (!oldest) break
+    state.bySessionKey.delete(oldest)
+  }
+
+  input.onDebug?.({
+    strategy,
+    decision: strategy === "sticky" ? "sticky-session-assign" : "hybrid-session-assign",
+    selectedIdentityKey: selected.identityKey,
+    activeIdentityKey: input.activeIdentityKey,
+    sessionKey,
+    eligibleCount: input.accounts.length,
+    ...(extra ? { extra } : {})
+  })
+}
+
+function resolveStickySessionAccount(
+  input: SelectAccountInput,
+  eligible: AccountRecord[]
+): AccountRecord | undefined {
+  const reused = resolveAssignedSessionAccount(input, eligible, "sticky")
+  if (reused) return reused
+
   if (eligible.length === 0) return undefined
+  const state = input.stickySessionState
+  if (!state) return undefined
   const index = state.cursor % eligible.length
   state.cursor = (state.cursor + 1) % eligible.length
   const selected = eligible[index]
   if (!selected) return undefined
-  if (selected.identityKey) {
-    state.bySessionKey.set(sessionKey, selected.identityKey)
-    const maxEntries = Math.max(1, Math.floor(state.maxEntries ?? DEFAULT_SESSION_ASSIGNMENT_MAX))
-    while (state.bySessionKey.size > maxEntries) {
-      const oldest = state.bySessionKey.keys().next().value as string | undefined
-      if (!oldest) break
-      state.bySessionKey.delete(oldest)
-    }
-  }
-  input.onDebug?.({
-    strategy: "sticky",
-    decision: "sticky-session-assign",
-    selectedIdentityKey: selected.identityKey,
-    activeIdentityKey: input.activeIdentityKey,
-    sessionKey,
-    eligibleCount: eligible.length,
-    extra: { sessionCursor: state.cursor }
-  })
+  assignSessionAccount(input, selected, "sticky", { sessionCursor: state.cursor })
   return selected
 }
 
@@ -126,26 +151,8 @@ function resolveHybridSessionAccount(
   input: SelectAccountInput,
   eligible: AccountRecord[]
 ): AccountRecord | undefined {
-  const state = input.stickySessionState
-  const sessionKey = input.stickySessionKey?.trim()
-  if (!state || !sessionKey) return undefined
-
-  const assignedIdentityKey = state.bySessionKey.get(sessionKey)
-  if (assignedIdentityKey) {
-    const assigned = eligible.find((acc) => acc.identityKey === assignedIdentityKey)
-    if (assigned) {
-      input.onDebug?.({
-        strategy: "hybrid",
-        decision: "hybrid-session-reuse",
-        selectedIdentityKey: assigned.identityKey,
-        activeIdentityKey: input.activeIdentityKey,
-        sessionKey,
-        eligibleCount: eligible.length
-      })
-      return assigned
-    }
-    state.bySessionKey.delete(sessionKey)
-  }
+  const reused = resolveAssignedSessionAccount(input, eligible, "hybrid")
+  if (reused) return reused
 
   const ordered = [...eligible].sort((left, right) => {
     const leftLastUsed = left.lastUsed ?? 0
@@ -155,28 +162,13 @@ function resolveHybridSessionAccount(
   })
   if (ordered.length === 0) return undefined
 
+  const state = input.stickySessionState
+  if (!state) return undefined
   const index = state.cursor % ordered.length
   state.cursor = (state.cursor + 1) % ordered.length
   const selected = ordered[index]
   if (!selected) return undefined
-  if (selected.identityKey) {
-    state.bySessionKey.set(sessionKey, selected.identityKey)
-    const maxEntries = Math.max(1, Math.floor(state.maxEntries ?? DEFAULT_SESSION_ASSIGNMENT_MAX))
-    while (state.bySessionKey.size > maxEntries) {
-      const oldest = state.bySessionKey.keys().next().value as string | undefined
-      if (!oldest) break
-      state.bySessionKey.delete(oldest)
-    }
-  }
-  input.onDebug?.({
-    strategy: "hybrid",
-    decision: "hybrid-session-assign",
-    selectedIdentityKey: selected.identityKey,
-    activeIdentityKey: input.activeIdentityKey,
-    sessionKey,
-    eligibleCount: eligible.length,
-    extra: { sessionCursor: state.cursor }
-  })
+  assignSessionAccount(input, selected, "hybrid", { sessionCursor: state.cursor })
   return selected
 }
 
@@ -204,10 +196,12 @@ export function selectAccount(input: SelectAccountInput):
 
   if (strategy === "sticky") {
     const stickySessionAccount =
-      input.stickyPidOffset === true ? resolveStickySessionAccount(input, eligible) : undefined
+      resolveAssignedSessionAccount(input, eligible, "sticky") ??
+      (input.stickyPidOffset === true ? resolveStickySessionAccount(input, eligible) : undefined)
     if (stickySessionAccount) return stickySessionAccount
     if (activeIndex >= 0) {
       const selected = eligible[activeIndex]
+      assignSessionAccount(input, selected, "sticky")
       input.onDebug?.({
         strategy,
         decision: "sticky-active",
@@ -219,6 +213,7 @@ export function selectAccount(input: SelectAccountInput):
     }
     if (input.stickyPidOffset !== true) {
       const selected = eligible[0]
+      assignSessionAccount(input, selected, "sticky")
       input.onDebug?.({
         strategy,
         decision: "sticky-fallback-first",
@@ -230,6 +225,7 @@ export function selectAccount(input: SelectAccountInput):
     }
     const offsetIndex = resolveOffsetIndex(input, eligible.length)
     const selected = eligible[offsetIndex]
+    assignSessionAccount(input, selected, "sticky", { offsetIndex })
     input.onDebug?.({
       strategy,
       decision: "sticky-pid-offset",
@@ -242,12 +238,15 @@ export function selectAccount(input: SelectAccountInput):
   }
 
   if (strategy === "hybrid") {
+    const existingSession = resolveAssignedSessionAccount(input, eligible, "hybrid")
+    if (existingSession) return existingSession
     if (input.stickyPidOffset === true) {
       const sessionAccount = resolveHybridSessionAccount(input, eligible)
       if (sessionAccount) return sessionAccount
     }
     if (activeIndex >= 0) {
       const selected = eligible[activeIndex]
+      assignSessionAccount(input, selected, "hybrid")
       input.onDebug?.({
         strategy,
         decision: "hybrid-active",
@@ -271,6 +270,7 @@ export function selectAccount(input: SelectAccountInput):
         selectedLastUsed = candidateLastUsed
       }
     }
+    assignSessionAccount(input, selected, "hybrid", { lastUsed: selected.lastUsed ?? 0 })
     input.onDebug?.({
       strategy,
       decision: "hybrid-lru",

@@ -10,8 +10,10 @@ import {
   getCompatInputSanitizerEnabled,
   getCustomSettings,
   getDebugEnabled,
+  getHeaderTransformDebugEnabled,
   getHeaderSnapshotsEnabled,
   getMode,
+  getRotationStrategy,
   getPidOffsetEnabled,
   getPersonality,
   getProactiveRefreshBufferMs,
@@ -67,6 +69,16 @@ describe("config loading", () => {
     expect(getPidOffsetEnabled(disabled)).toBe(false)
   })
 
+  it("defaults rotation strategy to sticky", () => {
+    const cfg = resolveConfig({ env: {} })
+    expect(getRotationStrategy(cfg)).toBe("sticky")
+  })
+
+  it("parses rotation strategy from env", () => {
+    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY: "hybrid" } })
+    expect(getRotationStrategy(cfg)).toBe("hybrid")
+  })
+
   it("parses spoof mode from env", () => {
     const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_SPOOF_MODE: "codex" } })
     expect(getSpoofMode(cfg)).toBe("codex")
@@ -113,6 +125,11 @@ describe("config loading", () => {
   it("enables header snapshots from env flags", () => {
     const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS: "1" } })
     expect(getHeaderSnapshotsEnabled(cfg)).toBe(true)
+  })
+
+  it("enables header transform debug from env flags", () => {
+    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG: "1" } })
+    expect(getHeaderTransformDebugEnabled(cfg)).toBe(true)
   })
 
   it("reads personality + custom settings from file config", () => {
@@ -205,8 +222,10 @@ describe("config file loading", () => {
         },
         runtime: {
           mode: "codex",
+          rotationStrategy: "hybrid",
           sanitizeInputs: true,
           headerSnapshots: true,
+          headerTransformDebug: true,
           pidOffset: true
         },
         global: {
@@ -236,7 +255,9 @@ describe("config file loading", () => {
     expect(loaded.spoofMode).toBe("codex")
     expect(loaded.compatInputSanitizer).toBe(true)
     expect(loaded.headerSnapshots).toBe(true)
+    expect(loaded.headerTransformDebug).toBe(true)
     expect(loaded.pidOffsetEnabled).toBe(true)
+    expect(loaded.rotationStrategy).toBe("hybrid")
     expect(loaded.mode).toBe("codex")
     expect(loaded.customSettings?.thinkingSummaries).toBe(true)
     expect(loaded.customSettings?.options?.personality).toBe("friendly")
@@ -319,6 +340,7 @@ describe("config file loading", () => {
 
     expect(result.created).toBe(true)
     expect(raw).toContain("// default: \"native\"")
+    expect(raw).toContain("// default: \"sticky\"")
     expect(raw).toContain("// Thinking summaries behavior:")
     expect(written).toEqual(DEFAULT_CODEX_CONFIG)
   })

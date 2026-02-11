@@ -301,6 +301,38 @@ describe("FetchOrchestrator", () => {
     ).toBe(true)
   })
 
+  it("shows a resume toast for previously-seen sessions after restart", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn(async () => {})
+    const showToast = vi.fn(async () => {})
+    const sharedState = createFetchOrchestratorState()
+    sharedState.seenSessionKeys.set("ses_resume_1", Date.now())
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      state: sharedState
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      body: JSON.stringify({ prompt_cache_key: "ses_resume_1", input: "continue" })
+    })
+
+    expect(showToast).toHaveBeenCalledWith("Resuming chat: user@example.com (plus)", "info", false)
+    expect(
+      showToast.mock.calls.some((call) => call[0] === "New chat: user@example.com (plus)")
+    ).toBe(false)
+  })
+
   it("shows a toast when the account changes", async () => {
     const auths = [
       { access: "a1", identityKey: "id1", accountId: "acc1", accountLabel: "one@example.com (plus)" },

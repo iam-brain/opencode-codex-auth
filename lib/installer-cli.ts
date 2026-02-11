@@ -2,6 +2,7 @@ import path from "node:path"
 
 import { defaultOpencodeAgentsDir, installOrchestratorAgents } from "./orchestrator-agents.js"
 import { installCreatePersonalityCommand } from "./personality-command.js"
+import { installPersonalityBuilderSkill } from "./personality-skill.js"
 import { ensureDefaultConfigFile } from "./config.js"
 import {
   DEFAULT_PLUGIN_SPECIFIER,
@@ -78,7 +79,7 @@ function helpText(): string {
     "  opencode-codex-auth install-agents [--force] [--dir <path>]",
     "",
     "Commands:",
-    "  install         Install plugin entry in opencode.json, collab agents, and /create-personality command.",
+    "  install         Install plugin entry in opencode.json, collab agents, /create-personality command, and personality skill.",
     "  install-agents  Install local Codex collaboration agent templates.",
     "",
     "Options:",
@@ -126,6 +127,14 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
     io.out(
       `/create-personality synchronized: ${
         commandResult.created ? "created" : commandResult.updated ? "updated" : "unchanged"
+      }`
+    )
+
+    const skillResult = await installPersonalityBuilderSkill({ force: true })
+    io.out(`Skills directory: ${skillResult.skillsDir}`)
+    io.out(
+      `personality-builder skill synchronized: ${
+        skillResult.created ? "created" : skillResult.updated ? "updated" : "unchanged"
       }`
     )
   }

@@ -8,8 +8,10 @@
   },
   "runtime": {
     "mode": "native",
+    "rotationStrategy": "sticky",
     "sanitizeInputs": false,
     "headerSnapshots": false,
+    "headerTransformDebug": false,
     "pidOffset": false
   },
   "global": {

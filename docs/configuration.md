@@ -37,8 +37,10 @@ The plugin loads config in this order:
   },
   "runtime": {
     "mode": "native",
+    "rotationStrategy": "sticky",
     "sanitizeInputs": false,
     "headerSnapshots": false,
+    "headerTransformDebug": false,
     "pidOffset": false
   },
   "global": {
@@ -64,13 +66,19 @@ The plugin loads config in this order:
 ### Runtime
 
 - `runtime.mode: "native" | "codex" | "collab"`
-  - `native`: native OpenCode-style identity/headers.
-  - `codex`: codex-rs-style identity/headers.
+  - `native`: carbon-copy target of standard OpenCode native plugin identity/header behavior.
+  - `codex`: full codex-rs spoof identity/header behavior.
   - `collab`: codex collaboration profile hooks (WIP/untested).
+- `runtime.rotationStrategy: "sticky" | "hybrid" | "round_robin"`
+  - `sticky`: one active account until limits/health require change (default).
+  - `hybrid`: prefers active account, falls back to healthiest/LRU behavior.
+  - `round_robin`: rotates every message (higher token/cache churn).
 - `runtime.sanitizeInputs: boolean`
   - Sanitizes outbound payloads for provider-compat edge cases.
 - `runtime.headerSnapshots: boolean`
   - Writes before/after request header snapshots to debug logs.
+- `runtime.headerTransformDebug: boolean`
+  - Adds explicit `before-header-transform` and `after-header-transform` request snapshots for message fetches.
 - `runtime.pidOffset: boolean`
   - Enables session-aware offset behavior for account selection.
 
@@ -124,6 +132,10 @@ And a tool:
 
 - `create-personality`
 
+And a managed skill bundle:
+
+- `~/.config/opencode/skills/personality-builder/SKILL.md`
+
 Flow:
 
 1. Run `/create-personality`.
@@ -131,6 +143,11 @@ Flow:
 3. The assistant calls `create-personality`.
 4. A new profile is written under `personalities/<key>.md`.
 5. Set the key in `codex-config.json` via `global.personality` or `perModel`.
+
+Advanced path:
+
+1. Use the `personality-builder` skill when you want stricter voice/protocol extraction from source docs.
+2. Follow the skill workflow, then persist through `create-personality`.
 
 ## Why `runtime.mode` exists (and no `identityMode`)
 
@@ -155,16 +172,20 @@ Flow:
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`: integer ms.
 - `OPENCODE_OPENAI_MULTI_QUIET`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_PID_OFFSET`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY`: `sticky|hybrid|round_robin`.
 - `OPENCODE_OPENAI_MULTI_PERSONALITY`: personality key override.
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`: `1|0|true|false`.
 
 ### Debug/OAuth controls
 
 - `OPENCODE_OPENAI_MULTI_DEBUG=1`: plugin debug logs.
 - `DEBUG_CODEX_PLUGIN=1`: alternate debug flag.
-- `CODEX_AUTH_DEBUG=1`: verbose OAuth lifecycle logging.
+- `CODEX_AUTH_DEBUG=1`: verbose OAuth lifecycle logging (`oauth-lifecycle.log`).
+  - Accepted truthy values: `1`, `true`, `yes`, `on`.
+  - This flag is independent from general plugin debug flags.
 - `CODEX_OAUTH_CALLBACK_TIMEOUT_MS`: OAuth wait timeout (min `60000`).
 - `CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS`: success-page shutdown grace.
 - `CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS`: error-page shutdown grace.

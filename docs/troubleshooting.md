@@ -7,6 +7,9 @@
 3. Confirm auth files exist:
    - `~/.local/share/opencode/auth.json`
    - `~/.config/opencode/codex-accounts.json`
+4. Confirm cache files exist (created on demand):
+   - `~/.config/opencode/cache/codex-session-affinity.json`
+   - `~/.config/opencode/cache/codex-snapshots.json`
 
 ## Common issues
 
@@ -26,6 +29,11 @@
 - Re-run installer: `npx -y @iam-brain/opencode-codex-auth`
 - Verify file exists: `~/.config/opencode/commands/create-personality.md`
 - Restart OpenCode so command discovery refreshes.
+
+### `personality-builder` skill missing
+
+- Re-run installer: `npx -y @iam-brain/opencode-codex-auth`
+- Verify file exists: `~/.config/opencode/skills/personality-builder/SKILL.md`
 
 ### Quota output shows `Unknown`
 
@@ -68,11 +76,12 @@ Enable:
 
 - `OPENCODE_OPENAI_MULTI_DEBUG=1`
 - or `DEBUG_CODEX_PLUGIN=1`
-- `CODEX_AUTH_DEBUG=1` (OAuth lifecycle logs)
+- `CODEX_AUTH_DEBUG=1` (OAuth lifecycle logs; supports `true|yes|on`)
 
 Optional request/response snapshots:
 
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true`
+- `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG=true` (adds `before-header-transform` and `after-header-transform`)
 - output in `~/.config/opencode/logs/codex-plugin/`
 
 Optional OAuth timing controls:

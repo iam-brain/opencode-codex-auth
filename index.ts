@@ -13,8 +13,10 @@ import {
   getCompatInputSanitizerEnabled,
   getCustomSettings,
   getDebugEnabled,
+  getHeaderTransformDebugEnabled,
   getHeaderSnapshotsEnabled,
   getMode,
+  getRotationStrategy,
   getPidOffsetEnabled,
   getPersonality,
   getProactiveRefreshBufferMs,
@@ -29,6 +31,7 @@ import { reconcileOrchestratorAgentsState } from "./lib/orchestrator-agents"
 import { generatePersonaSpec } from "./lib/persona-tool"
 import { createPersonalityFile } from "./lib/personality-create"
 import { installCreatePersonalityCommand } from "./lib/personality-command"
+import { installPersonalityBuilderSkill } from "./lib/personality-skill"
 import { runOneProactiveRefreshTick } from "./lib/proactive-refresh"
 import { toolOutputForStatus } from "./lib/codex-status-tool"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage"
@@ -44,6 +47,7 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
 
   await ensureDefaultConfigFile({ env: process.env }).catch(() => {})
   await installCreatePersonalityCommand({ force: true }).catch(() => {})
+  await installPersonalityBuilderSkill({ force: true }).catch(() => {})
 
   const cfg = resolveConfig({
     env: process.env,
@@ -94,9 +98,11 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     mode: runtimeMode,
     quietMode: getQuietMode(cfg),
     pidOffsetEnabled: getPidOffsetEnabled(cfg),
+    rotationStrategy: getRotationStrategy(cfg),
     spoofMode: getSpoofMode(cfg),
     compatInputSanitizer: getCompatInputSanitizerEnabled(cfg),
     headerSnapshots: getHeaderSnapshotsEnabled(cfg),
+    headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
     customSettings: getCustomSettings(cfg)
   })
 

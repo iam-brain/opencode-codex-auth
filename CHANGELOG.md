@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Session affinity and cache-path hardening:
+  - Added persistent sticky/hybrid session affinity with deleted-session pruning.
+  - Moved plugin cache state to `~/.config/opencode/cache/` (`codex-session-affinity.json`, `codex-snapshots.json`).
+  - Excluded subagent sessions from affinity persistence to prevent cache growth.
+- Personality workflow expansion:
+  - Added managed `personality-builder` skill bundle install/sync.
+  - Kept `/create-personality` command + `create-personality` tool as primary user flow.
+- OAuth debug gating:
+  - Tightened `oauth-lifecycle.log` writes to explicit `CODEX_AUTH_DEBUG` truthy values only.
+  - Added regression coverage and docs clarifying flag behavior.
+
 - Account-manager UX hardening:
   - Browser login supports repeated multi-add in one session (`Add new account` returns to menu).
   - `Esc` exits cleanly from auth menu without falling into code-paste mode.

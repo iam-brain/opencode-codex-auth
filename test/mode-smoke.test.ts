@@ -20,13 +20,14 @@ describe("mode smoke: native vs codex", () => {
     await nativeHooks["chat.headers"]?.(input, nativeOut as any)
     await codexHooks["chat.headers"]?.(input, codexOut as any)
 
-    expect(nativeOut.headers.originator).toBeTruthy()
+    expect(nativeOut.headers.originator).toBe("opencode")
     expect(codexOut.headers.originator).toBeTruthy()
-    expect(nativeOut.headers["OpenAI-Beta"]).toBe("responses=experimental")
+    expect(nativeOut.headers["OpenAI-Beta"]).toBeUndefined()
     expect(codexOut.headers["OpenAI-Beta"]).toBeUndefined()
-    expect(nativeOut.headers["conversation_id"]).toBe("ses_mode_smoke_prompt")
+    expect(nativeOut.headers["session_id"]).toBe("ses_mode_smoke")
+    expect(nativeOut.headers["conversation_id"]).toBeUndefined()
     expect(codexOut.headers["conversation_id"]).toBeUndefined()
-    expect(nativeOut.headers["User-Agent"]).toContain("opencode-codex-auth")
+    expect(nativeOut.headers["User-Agent"]).toMatch(/^opencode\//)
     expect(codexOut.headers["User-Agent"]).toMatch(/^codex_cli_rs\//)
   })
 

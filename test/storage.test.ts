@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { defaultAuthPath } from "../lib/paths"
+import { defaultAuthPath, defaultSessionAffinityPath, defaultSnapshotsPath } from "../lib/paths"
 import {
   importLegacyInstallData,
   loadAuthStorage,
@@ -27,6 +27,18 @@ describe("auth storage", () => {
   it("defaultAuthPath points at ~/.config/opencode/codex-accounts.json", () => {
     expect(defaultAuthPath()).toBe(
       path.join(os.homedir(), ".config", "opencode", "codex-accounts.json")
+    )
+  })
+
+  it("defaultSessionAffinityPath points at ~/.config/opencode/cache/codex-session-affinity.json", () => {
+    expect(defaultSessionAffinityPath()).toBe(
+      path.join(os.homedir(), ".config", "opencode", "cache", "codex-session-affinity.json")
+    )
+  })
+
+  it("defaultSnapshotsPath points at ~/.config/opencode/cache/codex-snapshots.json", () => {
+    expect(defaultSnapshotsPath()).toBe(
+      path.join(os.homedir(), ".config", "opencode", "cache", "codex-snapshots.json")
     )
   })
 

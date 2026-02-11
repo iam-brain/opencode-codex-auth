@@ -21,6 +21,7 @@ What this does:
 - Installs Codex collab agents to `~/.config/opencode/agents/` as `*.md.disabled`
 - Creates `~/.config/opencode/codex-config.json` if missing
 - Synchronizes `/create-personality` command at `~/.config/opencode/commands/create-personality.md`
+- Synchronizes `personality-builder` skill at `~/.config/opencode/skills/personality-builder/SKILL.md`
 
 To install only the agent templates (no `opencode.json` edits):
 
@@ -116,6 +117,7 @@ Agent files are reconciled at plugin startup:
 - `collab`: Codex agents are enabled (`.md`)
 - non-collab: Codex agents are disabled (`.md.disabled`)
 - `/create-personality` command is refreshed to the managed latest template
+- `personality-builder` skill bundle is refreshed to the managed latest template
 
 ## Local development install
 

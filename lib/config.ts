@@ -2,6 +2,7 @@ import fs from "node:fs"
 import fsPromises from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import type { RotationStrategy } from "./types"
 
 export type PersonalityOption = string
 export type CodexSpoofMode = "native" | "codex"
@@ -34,9 +35,11 @@ export type PluginConfig = {
   pidOffsetEnabled?: boolean
   personality?: PersonalityOption
   mode?: PluginRuntimeMode
+  rotationStrategy?: RotationStrategy
   spoofMode?: CodexSpoofMode
   compatInputSanitizer?: boolean
   headerSnapshots?: boolean
+  headerTransformDebug?: boolean
   customSettings?: CustomSettings
 }
 
@@ -52,8 +55,10 @@ export const DEFAULT_CODEX_CONFIG = {
   },
   runtime: {
     mode: "native",
+    rotationStrategy: "sticky",
     sanitizeInputs: false,
     headerSnapshots: false,
+    headerTransformDebug: false,
     pidOffset: false
   },
   global: {
@@ -92,6 +97,11 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // default: "native"
     "mode": "native",
 
+    // Account rotation strategy.
+    // options: "sticky" | "hybrid" | "round_robin"
+    // default: "sticky"
+    "rotationStrategy": "sticky",
+
     // Input compatibility sanitizer for edge payloads.
     // options: true | false
     // default: false
@@ -101,6 +111,11 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // options: true | false
     // default: false
     "headerSnapshots": false,
+
+    // Capture inbound/outbound header transforms for message requests.
+    // options: true | false
+    // default: false
+    "headerTransformDebug": false,
 
     // Session-aware offset for account selection.
     // options: true | false
@@ -251,6 +266,15 @@ function parseRuntimeMode(value: unknown): PluginRuntimeMode | undefined {
   if (normalized === "native") return "native"
   if (normalized === "codex") return "codex"
   if (normalized === "collab") return "collab"
+  return undefined
+}
+
+function parseRotationStrategy(value: unknown): RotationStrategy | undefined {
+  if (typeof value !== "string") return undefined
+  const normalized = value.trim().toLowerCase()
+  if (normalized === "sticky" || normalized === "hybrid" || normalized === "round_robin") {
+    return normalized
+  }
   return undefined
 }
 
@@ -517,6 +541,9 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
       : undefined
   const quietMode = typeof raw.quiet === "boolean" ? raw.quiet : undefined
   const mode = parseRuntimeMode(isRecord(raw.runtime) ? raw.runtime.mode : undefined)
+  const rotationStrategy = parseRotationStrategy(
+    isRecord(raw.runtime) ? raw.runtime.rotationStrategy : undefined
+  )
   const spoofMode = mode === "native" ? "native" : mode === "codex" || mode === "collab" ? "codex" : undefined
   const compatInputSanitizer =
     isRecord(raw.runtime) && typeof raw.runtime.sanitizeInputs === "boolean"
@@ -525,6 +552,10 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
   const headerSnapshots =
     isRecord(raw.runtime) && typeof raw.runtime.headerSnapshots === "boolean"
       ? raw.runtime.headerSnapshots
+      : undefined
+  const headerTransformDebug =
+    isRecord(raw.runtime) && typeof raw.runtime.headerTransformDebug === "boolean"
+      ? raw.runtime.headerTransformDebug
       : undefined
   const pidOffsetEnabled =
     isRecord(raw.runtime) && typeof raw.runtime.pidOffset === "boolean"
@@ -539,9 +570,11 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     pidOffsetEnabled,
     personality: personalityFromTopLevel ?? personalityFromCustom,
     mode,
+    rotationStrategy,
     spoofMode,
     compatInputSanitizer,
     headerSnapshots,
+    headerTransformDebug,
     customSettings
   }
 }
@@ -623,6 +656,9 @@ export function resolveConfig(input: {
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_QUIET) ?? file.quietMode
   const pidOffsetEnabled =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_PID_OFFSET) ?? file.pidOffsetEnabled
+  const rotationStrategy =
+    parseRotationStrategy(env.OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY) ??
+    file.rotationStrategy
 
   const envPersonality = normalizePersonalityOption(env.OPENCODE_OPENAI_MULTI_PERSONALITY)
   const envThinkingSummaries = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES)
@@ -684,6 +720,8 @@ export function resolveConfig(input: {
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER) ?? file.compatInputSanitizer
   const headerSnapshots =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS) ?? file.headerSnapshots
+  const headerTransformDebug =
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG) ?? file.headerTransformDebug
 
   return {
     ...file,
@@ -694,9 +732,11 @@ export function resolveConfig(input: {
     pidOffsetEnabled,
     personality,
     mode,
+    rotationStrategy,
     spoofMode,
     compatInputSanitizer,
     headerSnapshots,
+    headerTransformDebug,
     customSettings: resolvedCustomSettings
   }
 }
@@ -736,12 +776,22 @@ export function getMode(cfg: PluginConfig): PluginRuntimeMode {
   return getSpoofMode(cfg) === "codex" ? "codex" : "native"
 }
 
+export function getRotationStrategy(cfg: PluginConfig): RotationStrategy {
+  return cfg.rotationStrategy === "hybrid" || cfg.rotationStrategy === "round_robin"
+    ? cfg.rotationStrategy
+    : "sticky"
+}
+
 export function getCompatInputSanitizerEnabled(cfg: PluginConfig): boolean {
   return cfg.compatInputSanitizer === true
 }
 
 export function getHeaderSnapshotsEnabled(cfg: PluginConfig): boolean {
   return cfg.headerSnapshots === true
+}
+
+export function getHeaderTransformDebugEnabled(cfg: PluginConfig): boolean {
+  return cfg.headerTransformDebug === true
 }
 
 export function getCustomSettings(cfg: PluginConfig): CustomSettings | undefined {

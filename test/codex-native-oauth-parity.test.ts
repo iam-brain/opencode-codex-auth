@@ -19,6 +19,21 @@ describe("codex-native oauth parity", () => {
     expect(url).not.toContain("openid+profile+email+offline_access")
   })
 
+  it("builds authorize URLs with OpenCode native originator for native mode", () => {
+    const url = __testOnly.buildAuthorizeUrl(
+      "http://localhost:1455/auth/callback",
+      {
+        verifier: "unused_for_url",
+        challenge: "abc123-_~"
+      },
+      "state_value",
+      "opencode"
+    )
+
+    expect(url).toContain("&originator=opencode")
+    expect(url).not.toContain("&originator=codex_cli_rs")
+  })
+
   it("generates codex-rs style PKCE lengths and charset", async () => {
     const pkce = await __testOnly.generatePKCE()
 

@@ -18,8 +18,10 @@ Top-level:
 - `refreshAhead.enabled: boolean`
 - `refreshAhead.bufferMs: number`
 - `runtime.mode: "native" | "codex" | "collab"`
+- `runtime.rotationStrategy: "sticky" | "hybrid" | "round_robin"`
 - `runtime.sanitizeInputs: boolean`
 - `runtime.headerSnapshots: boolean`
+- `runtime.headerTransformDebug: boolean`
 - `runtime.pidOffset: boolean`
 - `global.personality: string`
 - `global.thinkingSummaries: boolean`
@@ -42,8 +44,10 @@ Default generated values:
 - `refreshAhead.enabled: true`
 - `refreshAhead.bufferMs: 60000`
 - `runtime.mode: "native"`
+- `runtime.rotationStrategy: "sticky"`
 - `runtime.sanitizeInputs: false`
 - `runtime.headerSnapshots: false`
+- `runtime.headerTransformDebug: false`
 - `runtime.pidOffset: false`
 - `global.personality: "pragmatic"`
 - `perModel: {}`
@@ -74,8 +78,10 @@ Resolved by `resolveConfig`:
 - `DEBUG_CODEX_PLUGIN`
 - `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER`
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`
+- `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`
 - `OPENCODE_OPENAI_MULTI_QUIET`
 - `OPENCODE_OPENAI_MULTI_PID_OFFSET`
+- `OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY`
 - `OPENCODE_OPENAI_MULTI_PERSONALITY`
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH`

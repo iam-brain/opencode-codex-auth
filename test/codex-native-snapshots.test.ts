@@ -289,11 +289,12 @@ describe("codex-native snapshots", () => {
 
     const captureRequest = vi.fn(async () => {})
     const captureResponse = vi.fn(async () => {})
+    const createRequestSnapshots = vi.fn(() => ({
+      captureRequest,
+      captureResponse
+    }))
     vi.doMock("../lib/request-snapshots", () => ({
-      createRequestSnapshots: vi.fn(() => ({
-        captureRequest,
-        captureResponse
-      }))
+      createRequestSnapshots
     }))
 
     let seenInternalHeader = ""
@@ -304,7 +305,10 @@ describe("codex-native snapshots", () => {
     }))
 
     const { CodexAuthPlugin } = await import("../lib/codex-native")
-    const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex", headerSnapshots: true })
+    const hooks = await CodexAuthPlugin({} as never, {
+      spoofMode: "codex",
+      headerTransformDebug: true
+    })
     const loader = hooks.auth?.loader
     if (!loader) throw new Error("Missing auth loader")
 
@@ -329,7 +333,20 @@ describe("codex-native snapshots", () => {
       body: JSON.stringify({ model: "gpt-5.2-codex", input: "hi" })
     })
 
+    expect(createRequestSnapshots).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true
+      })
+    )
+    const beforeTransformCall = captureRequest.mock.calls.find(
+      (call) => call[0] === "before-header-transform"
+    )
+    const afterTransformCall = captureRequest.mock.calls.find(
+      (call) => call[0] === "after-header-transform"
+    )
     const beforeAuthCall = captureRequest.mock.calls.find((call) => call[0] === "before-auth")
+    expect(beforeTransformCall).toBeDefined()
+    expect(afterTransformCall?.[2]?.collaborationModeKind).toBe("plan")
     expect(beforeAuthCall?.[2]?.collaborationModeKind).toBe("plan")
     expect(seenInternalHeader).toBe("")
   })

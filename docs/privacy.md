@@ -6,6 +6,10 @@
   - plugin-owned OpenAI account rotation/auth state
 - `~/.local/share/opencode/auth.json`
   - OpenCode provider auth marker/state
+- `~/.config/opencode/cache/codex-session-affinity.json`
+  - sticky/hybrid session-to-account affinity state
+- `~/.config/opencode/cache/codex-snapshots.json`
+  - quota snapshot cache used by status/quota views
 - `~/.config/opencode/logs/codex-plugin/` (optional)
   - request/response snapshot logs when enabled
 

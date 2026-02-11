@@ -46,6 +46,7 @@ describe("installer cli", () => {
       expect(output).toContain("OpenCode config updated: yes")
       expect(output).toContain("Codex config:")
       expect(output).toContain("/create-personality synchronized: created")
+      expect(output).toContain("personality-builder skill synchronized: created")
       expect(output).toContain("Written: 6")
 
       const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
@@ -60,6 +61,12 @@ describe("installer cli", () => {
         "utf8"
       )
       expect(createPersonalityCommand).toContain("create-personality")
+
+      const skillFile = await fs.readFile(
+        path.join(root, "opencode", "skills", "personality-builder", "SKILL.md"),
+        "utf8"
+      )
+      expect(skillFile).toContain("name: personality-builder")
     } finally {
       if (previousXdg === undefined) {
         delete process.env.XDG_CONFIG_HOME

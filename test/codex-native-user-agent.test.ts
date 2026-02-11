@@ -14,10 +14,10 @@ describe("codex-native user-agent parity", () => {
     expect(ua).toMatch(/^codex_exec\/\d+\.\d+\.\d+/)
   })
 
-  it("keeps native mode UA as plugin-native and codex mode as codex-style", () => {
-    const nativeUa = __testOnly.resolveRequestUserAgent("native", "codex_cli_rs")
+  it("keeps native mode UA in opencode format and codex mode as codex-style", () => {
+    const nativeUa = __testOnly.resolveRequestUserAgent("native", "opencode")
     const codexUa = __testOnly.resolveRequestUserAgent("codex", "codex_cli_rs")
-    expect(nativeUa).toContain("opencode-codex-auth")
+    expect(nativeUa).toMatch(/^opencode\/\d+\.\d+\.\d+/)
     expect(codexUa).toMatch(/^codex_cli_rs\//)
   })
 })

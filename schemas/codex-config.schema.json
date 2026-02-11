@@ -36,10 +36,17 @@
           "type": "string",
           "enum": ["native", "codex", "collab"]
         },
+        "rotationStrategy": {
+          "type": "string",
+          "enum": ["sticky", "hybrid", "round_robin"]
+        },
         "sanitizeInputs": {
           "type": "boolean"
         },
         "headerSnapshots": {
+          "type": "boolean"
+        },
+        "headerTransformDebug": {
           "type": "boolean"
         },
         "pidOffset": {

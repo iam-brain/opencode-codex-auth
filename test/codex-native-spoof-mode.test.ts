@@ -767,11 +767,11 @@ describe("codex-native spoof + params hooks", () => {
     const output = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
-    expect(output.headers.originator).toBe("codex_cli_rs")
-    expect(output.headers["User-Agent"]).toContain("opencode-codex-auth")
-    expect(output.headers.session_id).toBe("ses_prompt_native")
-    expect(output.headers.conversation_id).toBe("ses_prompt_native")
-    expect(output.headers["OpenAI-Beta"]).toBe("responses=experimental")
+    expect(output.headers.originator).toBe("opencode")
+    expect(output.headers["User-Agent"]).toMatch(/^opencode\//)
+    expect(output.headers.session_id).toBe("ses_native")
+    expect(output.headers.conversation_id).toBeUndefined()
+    expect(output.headers["OpenAI-Beta"]).toBeUndefined()
   })
 
   it("omits conversation/session headers in native mode when prompt cache key is absent", async () => {
@@ -787,11 +787,11 @@ describe("codex-native spoof + params hooks", () => {
     const output = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
-    expect(output.headers.originator).toBe("codex_cli_rs")
-    expect(output.headers["User-Agent"]).toContain("opencode-codex-auth")
-    expect(output.headers.session_id).toBeUndefined()
+    expect(output.headers.originator).toBe("opencode")
+    expect(output.headers["User-Agent"]).toMatch(/^opencode\//)
+    expect(output.headers.session_id).toBe("ses_no_prompt_cache")
     expect(output.headers.conversation_id).toBeUndefined()
-    expect(output.headers["OpenAI-Beta"]).toBe("responses=experimental")
+    expect(output.headers["OpenAI-Beta"]).toBeUndefined()
   })
 
   it("uses codex-mode headers when configured", async () => {
