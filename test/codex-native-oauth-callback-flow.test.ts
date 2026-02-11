@@ -11,12 +11,26 @@ function buildJwt(payload: Record<string, unknown>): string {
   return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.${encode("sig")}`
 }
 
-async function httpGet(url: string): Promise<{ statusCode: number; location?: string; body: string }> {
+async function httpGet(url: string): Promise<{
+  statusCode: number
+  location?: string
+  body: string
+  headers: Record<string, string | undefined>
+}> {
   return new Promise((resolve, reject) => {
     const req = http.get(url, (res) => {
       const location = Array.isArray(res.headers.location)
         ? res.headers.location[0]
         : res.headers.location
+      const contentSecurityPolicy = Array.isArray(res.headers["content-security-policy"])
+        ? res.headers["content-security-policy"][0]
+        : res.headers["content-security-policy"]
+      const cacheControl = Array.isArray(res.headers["cache-control"])
+        ? res.headers["cache-control"][0]
+        : res.headers["cache-control"]
+      const referrerPolicy = Array.isArray(res.headers["referrer-policy"])
+        ? res.headers["referrer-policy"][0]
+        : res.headers["referrer-policy"]
       const chunks: Buffer[] = []
       res.on("data", (chunk) => {
         chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk)
@@ -25,7 +39,12 @@ async function httpGet(url: string): Promise<{ statusCode: number; location?: st
         resolve({
           statusCode: res.statusCode ?? 0,
           location,
-          body: Buffer.concat(chunks).toString("utf8")
+          body: Buffer.concat(chunks).toString("utf8"),
+          headers: {
+            "content-security-policy": contentSecurityPolicy,
+            "cache-control": cacheControl,
+            "referrer-policy": referrerPolicy
+          }
         })
       })
     })
@@ -179,6 +198,9 @@ describe("codex-native oauth callback flow", () => {
       )
       expect(callbackResponse.statusCode).toBe(302)
       expect(callbackResponse.location).toContain("/success?")
+      expect(callbackResponse.location).not.toContain("id_token=")
+      expect(callbackResponse.headers["cache-control"]).toBe("no-store")
+      expect(callbackResponse.headers["referrer-policy"]).toBe("no-referrer")
 
       const result = await flow.callback()
       expect(result.type).toBe("success")
@@ -186,6 +208,9 @@ describe("codex-native oauth callback flow", () => {
       const successResponse = await httpGet(callbackResponse.location)
       expect(successResponse.statusCode).toBe(200)
       expect(successResponse.body).toContain("Signed in to Codex")
+      expect(successResponse.headers["cache-control"]).toBe("no-store")
+      expect(successResponse.headers["referrer-policy"]).toBe("no-referrer")
+      expect(successResponse.headers["content-security-policy"]).toContain("default-src 'none'")
 
       const openai = storageState.openai as {
         native?: { accounts?: unknown[] }
@@ -236,6 +261,9 @@ describe("codex-native oauth callback flow", () => {
       expect(callbackResponse.body).toContain("Authorization Successful")
       expect(callbackResponse.body).toContain("return to OpenCode")
       expect(callbackResponse.body).not.toContain("Signed in to Codex")
+      expect(callbackResponse.headers["cache-control"]).toBe("no-store")
+      expect(callbackResponse.headers["referrer-policy"]).toBe("no-referrer")
+      expect(callbackResponse.headers["content-security-policy"]).toContain("default-src 'none'")
 
       const result = await flow.callback()
       expect(result.type).toBe("success")

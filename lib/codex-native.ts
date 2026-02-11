@@ -79,6 +79,10 @@ const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const ISSUER = "https://auth.openai.com"
 const CODEX_API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
 const OAUTH_PORT = 1455
+const OAUTH_LOOPBACK_HOST = "localhost"
+const OAUTH_CALLBACK_ORIGIN = `http://${OAUTH_LOOPBACK_HOST}:${OAUTH_PORT}`
+const OAUTH_CALLBACK_PATH = "/auth/callback"
+const OAUTH_CALLBACK_URI = `${OAUTH_CALLBACK_ORIGIN}${OAUTH_CALLBACK_PATH}`
 const OAUTH_DUMMY_KEY = "oauth_dummy_key"
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000
 const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
@@ -396,7 +400,6 @@ function composeCodexSuccessRedirectUrl(
     issuer === ISSUER ? "https://platform.openai.com" : "https://platform.api.openai.org"
 
   const params = new URLSearchParams({
-    id_token: tokens.id_token ?? "",
     needs_setup: String(needsSetup),
     org_id: getClaimString(idClaims, "organization_id"),
     project_id: getClaimString(idClaims, "project_id"),
@@ -539,26 +542,61 @@ function clearOAuthServerCloseTimer(): void {
   oauthServerCloseTimer = undefined
 }
 
+function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
+  if (!remoteAddress) return false
+  const normalized = remoteAddress.split("%")[0]?.toLowerCase()
+  return normalized === "127.0.0.1" || normalized === "::1" || normalized === "::ffff:127.0.0.1"
+}
+
+function setOAuthResponseHeaders(
+  res: http.ServerResponse,
+  options?: { contentType?: string; isHtml?: boolean }
+): void {
+  res.setHeader("Cache-Control", "no-store")
+  res.setHeader("Pragma", "no-cache")
+  res.setHeader("Referrer-Policy", "no-referrer")
+  res.setHeader("X-Content-Type-Options", "nosniff")
+  if (options?.contentType) {
+    res.setHeader("Content-Type", options.contentType)
+  }
+  if (options?.isHtml) {
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    )
+  }
+}
+
 async function startOAuthServer(): Promise<{ redirectUri: string }> {
   clearOAuthServerCloseTimer()
   if (oauthServer) {
     emitOAuthDebug("server_reuse", { port: OAUTH_PORT })
-    return { redirectUri: `http://localhost:${OAUTH_PORT}/auth/callback` }
+    return { redirectUri: OAUTH_CALLBACK_URI }
   }
 
   emitOAuthDebug("server_starting", { port: OAUTH_PORT })
   oauthServer = http.createServer((req, res) => {
     try {
-      const base = `http://${req.headers.host ?? `localhost:${OAUTH_PORT}`}`
-      const url = new URL(req.url ?? "/", base)
+      if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+        emitOAuthDebug("callback_rejected_non_loopback", {
+          remoteAddress: req.socket.remoteAddress
+        })
+        res.statusCode = 403
+        setOAuthResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
+        res.end("Forbidden")
+        return
+      }
+
+      const url = new URL(req.url ?? "/", OAUTH_CALLBACK_ORIGIN)
 
       const sendHtml = (status: number, html: string) => {
         res.statusCode = status
-        res.setHeader("Content-Type", "text/html")
+        setOAuthResponseHeaders(res, { contentType: "text/html; charset=utf-8", isHtml: true })
         res.end(html)
       }
       const redirect = (location: string) => {
         res.statusCode = 302
+        setOAuthResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
         res.setHeader("Location", location)
         res.end()
       }
@@ -604,7 +642,7 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
         const current = pendingOAuth
         pendingOAuth = undefined
         emitOAuthDebug("token_exchange_start", { authMode: current.authMode })
-        exchangeCodeForTokens(code, `http://localhost:${OAUTH_PORT}/auth/callback`, current.pkce)
+        exchangeCodeForTokens(code, OAUTH_CALLBACK_URI, current.pkce)
           .then((tokens) => {
             current.resolve(tokens)
             emitOAuthDebug("token_exchange_success", { authMode: current.authMode })
@@ -636,14 +674,17 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
         pendingOAuth?.reject(new Error("Login cancelled"))
         pendingOAuth = undefined
         res.statusCode = 200
+        setOAuthResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
         res.end("Login cancelled")
         return
       }
 
       res.statusCode = 404
+      setOAuthResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
       res.end("Not found")
     } catch (error) {
       res.statusCode = 500
+      setOAuthResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
       res.end(`Server error: ${(error as Error).message}`)
     }
   })
@@ -651,7 +692,7 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
   try {
     await new Promise<void>((resolve, reject) => {
       oauthServer?.once("error", reject)
-      oauthServer?.listen(OAUTH_PORT, () => resolve())
+      oauthServer?.listen(OAUTH_PORT, OAUTH_LOOPBACK_HOST, () => resolve())
     })
     emitOAuthDebug("server_started", { port: OAUTH_PORT })
   } catch (error) {
@@ -668,7 +709,7 @@ async function startOAuthServer(): Promise<{ redirectUri: string }> {
     throw error
   }
 
-  return { redirectUri: `http://localhost:${OAUTH_PORT}/auth/callback` }
+  return { redirectUri: OAUTH_CALLBACK_URI }
 }
 
 function stopOAuthServer(): void {

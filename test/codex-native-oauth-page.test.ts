@@ -58,7 +58,7 @@ describe("codex-native oauth callback page branding", () => {
     expect(parsed.searchParams.get("project_id")).toBe("proj_456")
     expect(parsed.searchParams.get("plan_type")).toBe("plus")
     expect(parsed.searchParams.get("platform_url")).toBe("https://platform.openai.com")
-    expect(parsed.searchParams.get("id_token")).toBe(idToken)
+    expect(parsed.searchParams.get("id_token")).toBeNull()
   })
 
   it("maps auth account domain from runtime mode", () => {

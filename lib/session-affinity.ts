@@ -1,3 +1,5 @@
+import lockfile from "proper-lockfile"
+
 import fs from "node:fs/promises"
 import path from "node:path"
 
@@ -221,8 +223,22 @@ export async function saveSessionAffinity(
   update: (current: SessionAffinityFile) => SessionAffinityFile | Promise<SessionAffinityFile>,
   filePath: string = defaultSessionAffinityPath()
 ): Promise<SessionAffinityFile> {
-  const current = await readUnlocked(filePath)
-  const next = sanitizeFile(await update(current))
-  await writeUnlocked(filePath, next)
-  return next
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  const release = await lockfile.lock(filePath, {
+    realpath: false,
+    retries: {
+      retries: 20,
+      minTimeout: 10,
+      maxTimeout: 100
+    }
+  })
+
+  try {
+    const current = await readUnlocked(filePath)
+    const next = sanitizeFile(await update(current))
+    await writeUnlocked(filePath, next)
+    return next
+  } finally {
+    await release()
+  }
 }

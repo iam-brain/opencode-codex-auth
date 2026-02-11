@@ -163,16 +163,14 @@ export const CODEX_OAUTH_SUCCESS_HTML = `<!DOCTYPE html>
         const orgId = params.get('org_id');
         const projectId = params.get('project_id');
         const planType = params.get('plan_type');
-        const idToken = params.get('id_token');
         // Show different message and optional redirect when setup is required
         if (needsSetup) {
           const setupBox = document.querySelector('.setup-box');
           setupBox.style.display = 'flex';
           const redirectUrlObj = new URL('/org-setup', platformUrl);
-          redirectUrlObj.searchParams.set('p', planType);
-          redirectUrlObj.searchParams.set('t', idToken);
-          redirectUrlObj.searchParams.set('with_org', orgId);
-          redirectUrlObj.searchParams.set('project_id', projectId);
+          if (planType) redirectUrlObj.searchParams.set('p', planType);
+          if (orgId) redirectUrlObj.searchParams.set('with_org', orgId);
+          if (projectId) redirectUrlObj.searchParams.set('project_id', projectId);
           const redirectUrl = redirectUrlObj.toString();
           const message = document.querySelector('.redirect-text');
           let countdown = 3;

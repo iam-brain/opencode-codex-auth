@@ -6,9 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    name: Test on Node.js ${{ matrix.node-version }}
+    name: Verify on Node.js ${{ matrix.node-version }}
     runs-on: ubuntu-latest
 
     strategy:
@@ -28,17 +31,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run type check
-        run: npm run typecheck
+      - name: Run verify
+        run: npm run verify
 
-      - name: Run tests
-        run: npm test
-
-      - name: Build
-        run: npm run build
-
-  lint:
-    name: Lint and Format Check
+  package-smoke:
+    name: Package Smoke Test
     runs-on: ubuntu-latest
 
     steps:
@@ -54,5 +51,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run type check
-        run: npm run typecheck
+      - name: Verify package contents
+        run: npm pack --silent
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

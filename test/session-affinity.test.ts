@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import lockfile from "proper-lockfile"
 
 import { describe, expect, it } from "vitest"
 
@@ -81,5 +82,34 @@ describe("session affinity storage", () => {
     expect(await exists("ses_real")).toBe(true)
     expect(await exists("ses_missing")).toBe(false)
     expect(await exists("../bad")).toBe(false)
+  })
+
+  it("does not write session affinity file until lock is acquired", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-session-affinity-"))
+    const filePath = path.join(root, "codex-session-affinity.json")
+
+    const release = await lockfile.lock(filePath, {
+      realpath: false,
+      retries: {
+        retries: 0
+      }
+    })
+
+    const pendingWrite = saveSessionAffinity(
+      async (current) =>
+        writeSessionAffinitySnapshot(current, "native", {
+          seenSessionKeys: new Map([["ses_lock", Date.now()]]),
+          stickyBySessionKey: new Map([["ses_lock", "id_lock"]]),
+          hybridBySessionKey: new Map()
+        }),
+      filePath
+    )
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await expect(fs.access(filePath)).rejects.toBeDefined()
+
+    await release()
+    await pendingWrite
+    await expect(fs.access(filePath)).resolves.toBeUndefined()
   })
 })
