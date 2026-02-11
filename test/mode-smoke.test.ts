@@ -85,7 +85,7 @@ describe("mode smoke: native vs codex", () => {
     await codexHooks["chat.params"]?.(input, codexNoHost as any)
 
     expect(nativeWithHost.options.instructions).toBe("OpenCode Host Instructions")
-    expect(codexWithHost.options.instructions).toBe("OpenCode Host Instructions")
+    expect(codexWithHost.options.instructions).toBe("Catalog Codex Instructions")
     expect(nativeNoHost.options.instructions).toBe("Catalog Codex Instructions")
     expect(codexNoHost.options.instructions).toBe("Catalog Codex Instructions")
     expect(nativeNoHost.options.reasoningSummary).toBe("experimental")

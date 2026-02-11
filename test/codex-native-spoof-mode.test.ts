@@ -144,7 +144,7 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.reasoningSummary).toBeUndefined()
   })
 
-  it("keeps explicit host options in chat.params", async () => {
+  it("keeps explicit host options in native chat.params", async () => {
     const hooks = await CodexAuthPlugin({} as never)
     const chatParams = hooks["chat.params"]
     expect(chatParams).toBeTypeOf("function")
@@ -190,6 +190,104 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.textVerbosity).toBe("high")
     expect(output.options.parallelToolCalls).toBe(false)
     expect(output.options.include).toEqual(["reasoning.encrypted_content"])
+  })
+
+  it("replaces host instructions with codex instructions in codex mode", async () => {
+    const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex" })
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_123",
+      agent: "default",
+      provider: {},
+      message: {},
+      model: {
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexInstructions: "Catalog instructions",
+          codexRuntimeDefaults: {
+            defaultReasoningEffort: "high",
+            supportsReasoningSummaries: true,
+            defaultVerbosity: "low"
+          }
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {
+        instructions: "Host instructions",
+        reasoningEffort: "minimal",
+        reasoningSummary: "none",
+        textVerbosity: "high",
+        parallelToolCalls: false,
+        include: ["reasoning.encrypted_content"]
+      }
+    }
+
+    await chatParams?.(input, output)
+
+    expect(output.options.instructions).toBe("Catalog instructions")
+    expect(output.options.reasoningEffort).toBe("minimal")
+    expect(output.options.reasoningSummary).toBeUndefined()
+    expect(output.options.textVerbosity).toBe("high")
+    expect(output.options.parallelToolCalls).toBe(false)
+    expect(output.options.include).toEqual(["reasoning.encrypted_content"])
+  })
+
+  it("re-renders catalog instructions with configured personality in codex mode even when host instructions are set", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      spoofMode: "codex",
+      customSettings: {
+        options: { personality: "codex_mode_regression_voice_123" }
+      }
+    })
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_123",
+      agent: "default",
+      provider: {},
+      message: {},
+      model: {
+        id: "gpt-5.3-codex",
+        api: { id: "gpt-5.3-codex" },
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexCatalogModel: {
+            slug: "gpt-5.3-codex",
+            model_messages: {
+              instructions_template: "Base {{ personality }}",
+              instructions_variables: {
+                personalities: {
+                  codex_mode_regression_voice_123: "Regression voice"
+                }
+              }
+            }
+          },
+          codexInstructions: "Catalog fallback instructions"
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {
+        instructions: "Host instructions"
+      }
+    }
+
+    await chatParams?.(input, output)
+    expect(output.options.instructions).toBe("Base Regression voice")
   })
 
   it("applies global custom_settings personality in chat.params", async () => {

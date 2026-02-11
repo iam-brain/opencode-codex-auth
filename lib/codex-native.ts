@@ -1702,6 +1702,7 @@ function applyCodexRuntimeDefaultsToParams(input: {
   modelOptions: Record<string, unknown>
   modelToolCallCapable: boolean | undefined
   thinkingSummariesOverride: boolean | undefined
+  preferCodexInstructions: boolean
   output: ChatParamsOutput
 }): void {
   const options = input.output.options
@@ -1709,7 +1710,7 @@ function applyCodexRuntimeDefaultsToParams(input: {
   const defaults = readModelRuntimeDefaults(modelOptions)
   const codexInstructions = asString(modelOptions.codexInstructions)
 
-  if (codexInstructions && asString(options.instructions) === undefined) {
+  if (codexInstructions && (input.preferCodexInstructions || asString(options.instructions) === undefined)) {
     options.instructions = codexInstructions
   }
 
@@ -2913,13 +2914,15 @@ export async function CodexAuthPlugin(
         modelCandidates,
         variantCandidates
       )
-      if (asString(output.options.instructions) === undefined && isRecord(modelOptions.codexCatalogModel)) {
+      if (isRecord(modelOptions.codexCatalogModel)) {
         const rendered = resolveInstructionsForModel(
           modelOptions.codexCatalogModel as CodexModelInfo,
           effectivePersonality
         )
         if (rendered) {
           modelOptions.codexInstructions = rendered
+        } else {
+          delete modelOptions.codexInstructions
         }
       }
       applyCodexRuntimeDefaultsToParams({
@@ -2927,6 +2930,7 @@ export async function CodexAuthPlugin(
         modelToolCallCapable: hookInput.model.capabilities?.toolcall,
         thinkingSummariesOverride:
           modelThinkingSummariesOverride ?? opts.customSettings?.thinkingSummaries,
+        preferCodexInstructions: spoofMode === "codex",
         output
       })
 
