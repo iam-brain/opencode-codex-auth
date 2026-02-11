@@ -86,6 +86,8 @@ describe("codex-native session affinity persistence", () => {
         update({})
       )
     }))
+    const pruneSessionAffinitySnapshot = vi.fn(async () => 0)
+
     vi.doMock("../lib/session-affinity", () => ({
       loadSessionAffinity: vi.fn(async () => ({ version: 1 })),
       saveSessionAffinity,
@@ -96,7 +98,7 @@ describe("codex-native session affinity persistence", () => {
       })),
       writeSessionAffinitySnapshot: vi.fn((current: { version: 1 }) => current),
       createSessionExistsFn: vi.fn(() => async () => true),
-      pruneSessionAffinitySnapshot: vi.fn(async () => 0)
+      pruneSessionAffinitySnapshot
     }))
 
     vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })))
@@ -115,7 +117,8 @@ describe("codex-native session affinity persistence", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-openai-subagent": "plan"
+        "x-openai-subagent": "plan",
+        session_id: "ses_subagent_1"
       },
       body: JSON.stringify({
         model: "gpt-5.2-codex",
@@ -129,7 +132,7 @@ describe("codex-native session affinity persistence", () => {
 
     await loaded.fetch?.("https://api.openai.com/v1/responses", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", session_id: "ses_normal_1" },
       body: JSON.stringify({
         model: "gpt-5.2-codex",
         input: "hello",
@@ -140,5 +143,11 @@ describe("codex-native session affinity persistence", () => {
     await vi.waitFor(() => {
       expect(saveSessionAffinity.mock.calls.length).toBeGreaterThan(0)
     })
+
+    expect(pruneSessionAffinitySnapshot).toHaveBeenCalled()
+    const pruneOptions = pruneSessionAffinitySnapshot.mock.calls[0]?.[2] as
+      | { missingGraceMs?: number }
+      | undefined
+    expect((pruneOptions?.missingGraceMs ?? 0) > 0).toBe(true)
   })
 })

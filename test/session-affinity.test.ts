@@ -34,6 +34,8 @@ describe("session affinity storage", () => {
     expect(snapshot.seenSessionKeys.get("ses_a")).toBe(1000)
     expect(snapshot.stickyBySessionKey.get("ses_a")).toBe("id_a")
     expect(snapshot.hybridBySessionKey.get("ses_b")).toBe("id_b")
+    const mode = (await fs.stat(filePath)).mode & 0o777
+    expect(mode).toBe(0o600)
   })
 
   it("tolerates missing or malformed files", async () => {
@@ -70,6 +72,36 @@ describe("session affinity storage", () => {
     expect(snapshot.seenSessionKeys.has("ses_drop")).toBe(false)
     expect(snapshot.stickyBySessionKey.has("ses_drop")).toBe(false)
     expect(snapshot.hybridBySessionKey.has("ses_drop")).toBe(false)
+  })
+
+  it("keeps recent missing sessions during grace window", async () => {
+    const snapshot = {
+      seenSessionKeys: new Map([
+        ["ses_recent", 1000],
+        ["ses_stale", 10]
+      ]),
+      stickyBySessionKey: new Map([
+        ["ses_recent", "id_recent"],
+        ["ses_stale", "id_stale"]
+      ]),
+      hybridBySessionKey: new Map([["ses_stale", "id_stale"]])
+    }
+
+    const removed = await pruneSessionAffinitySnapshot(
+      snapshot,
+      async () => false,
+      {
+        now: 1200,
+        missingGraceMs: 500
+      }
+    )
+
+    expect(removed).toBe(1)
+    expect(snapshot.seenSessionKeys.has("ses_recent")).toBe(true)
+    expect(snapshot.seenSessionKeys.has("ses_stale")).toBe(false)
+    expect(snapshot.stickyBySessionKey.has("ses_recent")).toBe(true)
+    expect(snapshot.stickyBySessionKey.has("ses_stale")).toBe(false)
+    expect(snapshot.hybridBySessionKey.has("ses_stale")).toBe(false)
   })
 
   it("checks opencode session files via XDG_DATA_HOME", async () => {
@@ -111,5 +143,52 @@ describe("session affinity storage", () => {
     await release()
     await pendingWrite
     await expect(fs.access(filePath)).resolves.toBeUndefined()
+  })
+
+  it("removes deleted session keys after grace window based on opencode storage", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-session-delete-"))
+    const sessionDir = path.join(root, "opencode", "storage", "session")
+    await fs.mkdir(sessionDir, { recursive: true })
+
+    await fs.writeFile(path.join(sessionDir, "ses_keep.json"), "{}", "utf8")
+    await fs.writeFile(path.join(sessionDir, "ses_drop.json"), "{}", "utf8")
+
+    const snapshot = {
+      seenSessionKeys: new Map([
+        ["ses_keep", 1_000],
+        ["ses_drop", 1_000]
+      ]),
+      stickyBySessionKey: new Map([
+        ["ses_keep", "id_keep"],
+        ["ses_drop", "id_drop"]
+      ]),
+      hybridBySessionKey: new Map([["ses_drop", "id_drop"]])
+    }
+
+    const exists = createSessionExistsFn({ XDG_DATA_HOME: root })
+
+    const initial = await pruneSessionAffinitySnapshot(snapshot, exists, {
+      now: 1_100,
+      missingGraceMs: 5_000
+    })
+    expect(initial).toBe(0)
+
+    await fs.unlink(path.join(sessionDir, "ses_drop.json"))
+
+    const withinGrace = await pruneSessionAffinitySnapshot(snapshot, exists, {
+      now: 1_300,
+      missingGraceMs: 5_000
+    })
+    expect(withinGrace).toBe(0)
+    expect(snapshot.seenSessionKeys.has("ses_drop")).toBe(true)
+
+    const afterGrace = await pruneSessionAffinitySnapshot(snapshot, exists, {
+      now: 7_000,
+      missingGraceMs: 5_000
+    })
+    expect(afterGrace).toBe(1)
+    expect(snapshot.seenSessionKeys.has("ses_drop")).toBe(false)
+    expect(snapshot.stickyBySessionKey.has("ses_drop")).toBe(false)
+    expect(snapshot.hybridBySessionKey.has("ses_drop")).toBe(false)
   })
 })

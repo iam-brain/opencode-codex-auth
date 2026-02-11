@@ -78,23 +78,8 @@ function normalizeSessionKey(value: unknown): string | null {
   return trimmed ? trimmed : null
 }
 
-function resolveSessionKey(body: Record<string, unknown> | undefined, headers: Headers): string | null {
-  const promptCacheKey = normalizeSessionKey(body?.prompt_cache_key)
-  if (promptCacheKey) return promptCacheKey
-
-  return normalizeSessionKey(headers.get("session_id"))
-}
-
-async function readRequestBody(baseRequest: Request): Promise<Record<string, unknown> | undefined> {
-  try {
-    const text = await baseRequest.clone().text()
-    if (!text) return undefined
-    const parsed = JSON.parse(text)
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined
-    return parsed as Record<string, unknown>
-  } catch {
-    return undefined
-  }
+async function resolveSessionKey(request: Request): Promise<string | null> {
+  return normalizeSessionKey(request.headers.get("session_id"))
 }
 
 function formatAccountLabel(auth: AuthData): string {
@@ -205,8 +190,7 @@ export class FetchOrchestrator {
     const nowFn = this.deps.now ?? Date.now
 
     const baseRequest = new Request(input, init)
-    const body = await readRequestBody(baseRequest)
-    const sessionKey = resolveSessionKey(body, baseRequest.headers)
+    const sessionKey = await resolveSessionKey(baseRequest)
     let sessionEvent: "new" | "resume" | "switch" | null = null
     if (sessionKey) {
       const sessionNow = nowFn()

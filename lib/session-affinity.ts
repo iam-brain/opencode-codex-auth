@@ -27,6 +27,10 @@ export type SessionAffinitySnapshot = {
 }
 
 export type SessionExistsFn = (sessionKey: string) => Promise<boolean>
+export type PruneSessionAffinityOptions = {
+  now?: number
+  missingGraceMs?: number
+}
 
 const DEFAULT_FILE: SessionAffinityFile = { version: 1 }
 
@@ -167,8 +171,11 @@ export function createSessionExistsFn(
 
 export async function pruneSessionAffinitySnapshot(
   snapshot: SessionAffinitySnapshot,
-  sessionExists: SessionExistsFn
+  sessionExists: SessionExistsFn,
+  options: PruneSessionAffinityOptions = {}
 ): Promise<number> {
+  const now = options.now ?? Date.now()
+  const missingGraceMs = Math.max(0, Math.floor(options.missingGraceMs ?? 0))
   const keySet = new Set<string>([
     ...snapshot.seenSessionKeys.keys(),
     ...snapshot.stickyBySessionKey.keys(),
@@ -179,6 +186,12 @@ export async function pruneSessionAffinitySnapshot(
   for (const sessionKey of keySet) {
     const exists = await sessionExists(sessionKey)
     if (exists) continue
+    const lastSeenAt = snapshot.seenSessionKeys.get(sessionKey)
+    if (missingGraceMs > 0 && typeof lastSeenAt === "number" && Number.isFinite(lastSeenAt)) {
+      if (now - lastSeenAt <= missingGraceMs) {
+        continue
+      }
+    }
     if (snapshot.seenSessionKeys.delete(sessionKey)) removed += 1
     snapshot.stickyBySessionKey.delete(sessionKey)
     snapshot.hybridBySessionKey.delete(sessionKey)

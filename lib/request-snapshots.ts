@@ -11,6 +11,14 @@ const REDACTED_HEADERS = new Set(["authorization", "cookie", "set-cookie", "prox
 const REDACTED_BODY_KEYS = new Set(["access_token", "refresh_token", "id_token", "authorization"])
 const LIVE_HEADERS_LOG_FILE = "live-headers.jsonl"
 
+async function enforceOwnerOnlyPermissions(filePath: string): Promise<void> {
+  try {
+    await fs.chmod(filePath, 0o600)
+  } catch {
+    // best-effort permissions
+  }
+}
+
 function sanitizeHeaderValue(name: string, value: string): string {
   const lower = name.toLowerCase()
   if (!REDACTED_HEADERS.has(lower)) return value
@@ -99,6 +107,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
       await ensureDir()
       const filePath = path.join(dir, `${runId}-${fileName}`)
       await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 })
+      await enforceOwnerOnlyPermissions(filePath)
     } catch (error) {
       input.log?.warn("failed to write request snapshot", {
         fileName,
@@ -112,6 +121,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
       await ensureDir()
       const filePath = path.join(dir, fileName)
       await fs.appendFile(filePath, `${JSON.stringify(payload)}\n`, { mode: 0o600 })
+      await enforceOwnerOnlyPermissions(filePath)
     } catch (error) {
       input.log?.warn("failed to append request snapshot line", {
         fileName,

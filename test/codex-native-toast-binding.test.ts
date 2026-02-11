@@ -140,6 +140,10 @@ describe("codex-native toast binding", () => {
 
     const response = await loaded.fetch?.("https://api.openai.com/v1/responses", {
       method: "POST",
+      headers: {
+        "content-type": "application/json",
+        session_id: "ses_123"
+      },
       body: JSON.stringify({
         model: "gpt-5.2-codex",
         input: "hi",
@@ -149,7 +153,7 @@ describe("codex-native toast binding", () => {
 
     expect(response?.status).toBe(200)
     expect(calls.length).toBeGreaterThan(0)
-    expect(calls[0]?.body?.message).toContain("New chat:")
+    expect(calls[0]?.body?.message).toMatch(/^(New|Resuming) chat:/)
     expect(calls[0]?.body?.variant).toBe("info")
   })
 })

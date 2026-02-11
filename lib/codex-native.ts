@@ -3,7 +3,7 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import http from "node:http"
 import os from "node:os"
 import { execFile, execFileSync } from "node:child_process"
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs"
+import { appendFileSync, chmodSync, mkdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
 
@@ -109,6 +109,7 @@ const OAUTH_DEBUG_LOG_FILE = path.join(OAUTH_DEBUG_LOG_DIR, "oauth-lifecycle.log
 const execFileAsync = promisify(execFile)
 const DEFAULT_PLUGIN_VERSION = "0.1.0"
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
+const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
 const CODEX_PLAN_MODE_INSTRUCTIONS = [
   "# Plan Mode",
   "",
@@ -531,6 +532,7 @@ function emitOAuthDebug(event: string, meta: Record<string, unknown> = {}): void
   try {
     mkdirSync(OAUTH_DEBUG_LOG_DIR, { recursive: true, mode: 0o700 })
     appendFileSync(OAUTH_DEBUG_LOG_FILE, `${line}\n`, { encoding: "utf8", mode: 0o600 })
+    chmodSync(OAUTH_DEBUG_LOG_FILE, 0o600)
   } catch {
     // best effort file logging
   }
@@ -1766,10 +1768,6 @@ function applyCodexRuntimeDefaultsToParams(input: {
   }
 }
 
-function resolvePromptCacheKey(options: Record<string, unknown>): string | undefined {
-  return asString(options.promptCacheKey)
-}
-
 async function sanitizeOutboundRequestIfNeeded(
   request: Request,
   enabled: boolean
@@ -2152,7 +2150,9 @@ export async function CodexAuthPlugin(
           authMode
         )
         const sessionExists = createSessionExistsFn(process.env)
-        await pruneSessionAffinitySnapshot(initialSessionAffinity, sessionExists).catch(() => 0)
+        await pruneSessionAffinitySnapshot(initialSessionAffinity, sessionExists, {
+          missingGraceMs: SESSION_AFFINITY_MISSING_GRACE_MS
+        }).catch(() => 0)
 
         const orchestratorState = createFetchOrchestratorState()
         orchestratorState.seenSessionKeys = initialSessionAffinity.seenSessionKeys
@@ -2172,7 +2172,10 @@ export async function CodexAuthPlugin(
                   stickyBySessionKey: stickySessionState.bySessionKey,
                   hybridBySessionKey: hybridSessionState.bySessionKey
                 },
-                sessionExists
+                sessionExists,
+                {
+                  missingGraceMs: SESSION_AFFINITY_MISSING_GRACE_MS
+                }
               )
               await saveSessionAffinity(
                 async (current) =>
@@ -2949,14 +2952,12 @@ export async function CodexAuthPlugin(
       const originator = resolveCodexOriginator(spoofMode)
       output.headers.originator = originator
       output.headers["User-Agent"] = resolveRequestUserAgent(spoofMode, originator)
-      const modelOptions = isRecord(hookInput.model.options) ? hookInput.model.options : {}
-      const promptCacheKey = resolvePromptCacheKey(modelOptions)
       if (spoofMode === "native") {
         output.headers.session_id = hookInput.sessionID
         delete output.headers["OpenAI-Beta"]
         delete output.headers.conversation_id
       } else {
-        output.headers.session_id = promptCacheKey ?? hookInput.sessionID
+        output.headers.session_id = hookInput.sessionID
         delete output.headers["OpenAI-Beta"]
         delete output.headers.conversation_id
         const subagentHeader = collaborationProfile.enabled ? resolveSubagentHeaderValue(hookInput.agent) : undefined

@@ -54,6 +54,11 @@ describe("request snapshots", () => {
     expect(liveHeaders).toHaveLength(1)
     expect(liveHeaders[0]?.headers.authorization).toBe("Bearer [redacted]")
     expect(liveHeaders[0]?.prompt_cache_key).toBe("ses_snap_1")
+
+    const requestMode = (await fs.stat(filePath)).mode & 0o777
+    const liveHeadersMode = (await fs.stat(path.join(root, "live-headers.jsonl"))).mode & 0o777
+    expect(requestMode).toBe(0o600)
+    expect(liveHeadersMode).toBe(0o600)
   })
 
   it("skips writing files when disabled", async () => {

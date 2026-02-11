@@ -254,6 +254,7 @@ describe("FetchOrchestrator", () => {
 
     await orch.execute("https://api.com", {
       method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_new_1" },
       body: JSON.stringify({ prompt_cache_key: "ses_new_1", input: "hi" })
     })
 
@@ -280,14 +281,17 @@ describe("FetchOrchestrator", () => {
 
     await orch.execute("https://api.com", {
       method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_alpha" },
       body: JSON.stringify({ prompt_cache_key: "ses_alpha", input: "one" })
     })
     await orch.execute("https://api.com", {
       method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_beta" },
       body: JSON.stringify({ prompt_cache_key: "ses_beta", input: "two" })
     })
     await orch.execute("https://api.com", {
       method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_alpha" },
       body: JSON.stringify({ prompt_cache_key: "ses_alpha", input: "three" })
     })
 
@@ -324,6 +328,7 @@ describe("FetchOrchestrator", () => {
 
     await orch.execute("https://api.com", {
       method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_resume_1" },
       body: JSON.stringify({ prompt_cache_key: "ses_resume_1", input: "continue" })
     })
 
@@ -417,6 +422,7 @@ describe("FetchOrchestrator", () => {
     })
     await first.execute("https://api.com", {
       method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_shared_1" },
       body: JSON.stringify({ prompt_cache_key: "ses_shared_1", input: "first" })
     })
 
@@ -428,6 +434,7 @@ describe("FetchOrchestrator", () => {
     })
     await second.execute("https://api.com", {
       method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_shared_1" },
       body: JSON.stringify({ prompt_cache_key: "ses_shared_1", input: "second" })
     })
 
@@ -459,11 +466,13 @@ describe("FetchOrchestrator", () => {
 
     await orch.execute("https://api.com", {
       method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_new_1" },
       body: JSON.stringify({ prompt_cache_key: "ses_new_1", input: "one" })
     })
     nowValue = 2_000
     await orch.execute("https://api.com", {
       method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_new_2" },
       body: JSON.stringify({ prompt_cache_key: "ses_new_2", input: "two" })
     })
 
@@ -531,6 +540,7 @@ describe("FetchOrchestrator", () => {
 
     await orch.execute("https://api.com", {
       method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_snap_1" },
       body: JSON.stringify({ prompt_cache_key: "ses_snap_1", input: "hi" })
     })
 
@@ -550,7 +560,7 @@ describe("FetchOrchestrator", () => {
     expect(requestArg.request.headers.get("ChatGPT-Account-Id")).toBe("acc1")
   })
 
-  it("falls back to session_id header when prompt_cache_key is missing", async () => {
+  it("does not emit session observation when session_id is missing", async () => {
     const acquireAuth = vi.fn(async () => ({
       access: "token_123",
       identityKey: "id1",
@@ -569,16 +579,42 @@ describe("FetchOrchestrator", () => {
 
     await orch.execute("https://api.com", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        session_id: "ses_from_header"
-      },
-      body: JSON.stringify({ input: "hello without prompt cache key" })
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ input: "hello without session id" })
+    })
+
+    expect(onSessionObserved).not.toHaveBeenCalled()
+  })
+
+  it("uses session_id as canonical session key", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "token_123",
+      identityKey: "id1",
+      accountId: "acc1"
+    }))
+    const setCooldown = vi.fn(async () => {})
+    const onSessionObserved = vi.fn(async () => {})
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      onSessionObserved
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_header" },
+      body: JSON.stringify({
+        input: "hello with mixed keys",
+        prompt_cache_key: "ses_prompt_cache"
+      })
     })
 
     expect(onSessionObserved).toHaveBeenCalledWith(
       expect.objectContaining({
-        sessionKey: "ses_from_header",
+        sessionKey: "ses_header",
         event: "new"
       })
     )

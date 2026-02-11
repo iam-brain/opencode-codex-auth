@@ -19,6 +19,8 @@ describe("codex-status storage", () => {
 
     const next = await loadSnapshots(p)
     expect(next["acc|u@e.com|plus"]?.limits[0]?.leftPct).toBe(50)
+    const mode = (await fs.stat(p)).mode & 0o777
+    expect(mode).toBe(0o600)
 
     // Cleanup
     await fs.rm(dir, { recursive: true, force: true })

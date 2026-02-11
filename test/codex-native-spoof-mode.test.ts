@@ -814,7 +814,7 @@ describe("codex-native spoof + params hooks", () => {
 
     expect(output.headers.originator).toBe("codex_cli_rs")
     expect(output.headers["User-Agent"]).toMatch(/^codex_cli_rs\//)
-    expect(output.headers.session_id).toBe("ses_prompt_key")
+    expect(output.headers.session_id).toBe("ses_strict")
     expect(output.headers["OpenAI-Beta"]).toBeUndefined()
     expect(output.headers.conversation_id).toBeUndefined()
   })
