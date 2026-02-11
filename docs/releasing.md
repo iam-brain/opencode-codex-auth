@@ -14,10 +14,17 @@ npm run release:major
 
 Each command:
 
-1. Runs tests (`npm test`)
-2. Bumps `package.json` version and creates a release commit + `v*` tag
-3. Builds artifacts
+1. Validates release preconditions (`main`, clean working tree)
+2. Runs full verification (`npm run verify`)
+3. Bumps `package.json` version and creates a release commit + `v*` tag
 4. Pushes `main` with tags
+5. Waits for GitHub Release visibility when `gh` CLI is installed and authenticated
+
+Internally these commands route through:
+
+```bash
+npm run release -- <patch|minor|major>
+```
 
 ## Safety rules
 

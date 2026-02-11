@@ -15,6 +15,16 @@ describe("release hygiene", () => {
     expect(existsSync(join(process.cwd(), "LICENSE"))).toBe(true)
     expect(existsSync(join(process.cwd(), "CHANGELOG.md"))).toBe(true)
   })
+
+  it("uses single-command automated release scripts", () => {
+    const pkgPath = join(process.cwd(), "package.json")
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
+    expect(pkg.scripts?.release).toBe("node scripts/release.js")
+    expect(pkg.scripts?.["release:patch"]).toBe("npm run release -- patch")
+    expect(pkg.scripts?.["release:minor"]).toBe("npm run release -- minor")
+    expect(pkg.scripts?.["release:major"]).toBe("npm run release -- major")
+    expect(existsSync(join(process.cwd(), "scripts", "release.js"))).toBe(true)
+  })
 })
 
 describe("package publish surface", () => {

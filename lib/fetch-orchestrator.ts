@@ -72,11 +72,17 @@ const DEFAULT_RATE_LIMIT_TOAST_DEBOUNCE_MS = 60_000
 const DEFAULT_SESSION_TOAST_DEBOUNCE_MS = 15_000
 const DEFAULT_ACCOUNT_SWITCH_TOAST_DEBOUNCE_MS = 15_000
 
-function resolveSessionKey(body: Record<string, unknown> | undefined): string | null {
-  const key = body?.prompt_cache_key
-  if (typeof key !== "string") return null
-  const trimmed = key.trim()
+function normalizeSessionKey(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
   return trimmed ? trimmed : null
+}
+
+function resolveSessionKey(body: Record<string, unknown> | undefined, headers: Headers): string | null {
+  const promptCacheKey = normalizeSessionKey(body?.prompt_cache_key)
+  if (promptCacheKey) return promptCacheKey
+
+  return normalizeSessionKey(headers.get("session_id"))
 }
 
 async function readRequestBody(baseRequest: Request): Promise<Record<string, unknown> | undefined> {
@@ -200,7 +206,7 @@ export class FetchOrchestrator {
 
     const baseRequest = new Request(input, init)
     const body = await readRequestBody(baseRequest)
-    const sessionKey = resolveSessionKey(body)
+    const sessionKey = resolveSessionKey(body, baseRequest.headers)
     let sessionEvent: "new" | "resume" | "switch" | null = null
     if (sessionKey) {
       const sessionNow = nowFn()

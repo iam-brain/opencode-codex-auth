@@ -39,9 +39,10 @@
     "test": "vitest run",
     "verify": "npm run typecheck && npm test && npm run build",
     "prepack": "npm run build",
-    "release:patch": "npm test && npm version patch -m \"release: v%s\" && npm run build && git push origin main --follow-tags",
-    "release:minor": "npm test && npm version minor -m \"release: v%s\" && npm run build && git push origin main --follow-tags",
-    "release:major": "npm test && npm version major -m \"release: v%s\" && npm run build && git push origin main --follow-tags"
+    "release": "node scripts/release.js",
+    "release:patch": "npm run release -- patch",
+    "release:minor": "npm run release -- minor",
+    "release:major": "npm run release -- major"
   },
   "files": [
     "dist/",

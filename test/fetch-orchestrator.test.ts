@@ -549,4 +549,38 @@ describe("FetchOrchestrator", () => {
     expect(requestArg.request.headers.get("Authorization")).toBe("Bearer token_123")
     expect(requestArg.request.headers.get("ChatGPT-Account-Id")).toBe("acc1")
   })
+
+  it("falls back to session_id header when prompt_cache_key is missing", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "token_123",
+      identityKey: "id1",
+      accountId: "acc1"
+    }))
+    const setCooldown = vi.fn(async () => {})
+    const onSessionObserved = vi.fn(async () => {})
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      onSessionObserved
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        session_id: "ses_from_header"
+      },
+      body: JSON.stringify({ input: "hello without prompt cache key" })
+    })
+
+    expect(onSessionObserved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "ses_from_header",
+        event: "new"
+      })
+    )
+  })
 })
