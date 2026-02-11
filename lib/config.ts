@@ -712,10 +712,13 @@ export function resolveConfig(input: {
     file.personality ??
     resolvedCustomSettings?.options?.personality
 
+  // Runtime mode is canonical; spoofMode remains a compatibility input only.
+  // If runtime mode is explicitly set via env, ignore spoof env for consistency.
   const spoofMode =
-    spoofModeFromEnv ??
-    file.spoofMode ??
-    (mode === "native" ? "native" : "codex")
+    modeFromEnv !== undefined
+      ? (mode === "native" ? "native" : "codex")
+      : (spoofModeFromEnv ??
+        (mode === "native" ? "native" : "codex"))
   const compatInputSanitizer =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER) ?? file.compatInputSanitizer
   const headerSnapshots =

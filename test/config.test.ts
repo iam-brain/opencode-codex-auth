@@ -114,7 +114,18 @@ describe("config loading", () => {
       file: { mode: "codex" }
     })
     expect(getMode(cfg)).toBe("native")
-    expect(getSpoofMode(cfg)).toBe("codex")
+    expect(getSpoofMode(cfg)).toBe("native")
+  })
+
+  it("uses runtime env mode over legacy file spoof mode", () => {
+    const cfg = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_MODE: "native"
+      },
+      file: { mode: "codex", spoofMode: "codex" }
+    })
+    expect(getMode(cfg)).toBe("native")
+    expect(getSpoofMode(cfg)).toBe("native")
   })
 
   it("parses compat input sanitizer from env", () => {
