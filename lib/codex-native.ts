@@ -22,7 +22,13 @@ import {
   isPluginFatalError,
   toSyntheticErrorResponse
 } from "./fatal-errors"
-import { buildIdentityKey, ensureIdentityKey, normalizeEmail, normalizePlan } from "./identity"
+import {
+  buildIdentityKey,
+  ensureIdentityKey,
+  normalizeEmail,
+  normalizePlan,
+  synchronizeIdentityKey
+} from "./identity"
 import { defaultSessionAffinityPath, defaultSnapshotsPath } from "./paths"
 import { createStickySessionState, selectAccount } from "./rotation"
 import {
@@ -869,7 +875,7 @@ export function upsertAccount(
   if (incoming.lastUsed !== undefined) target.lastUsed = incoming.lastUsed
   target.authTypes = normalizeAccountAuthTypes(incoming.authTypes ?? match?.authTypes)
 
-  ensureIdentityKey(target)
+  synchronizeIdentityKey(target)
   if (!target.identityKey && strictIdentityKey) target.identityKey = strictIdentityKey
 
   return target
@@ -1421,7 +1427,7 @@ function hydrateAccountIdentityFromAccessClaims(account: AccountRecord): void {
   account.plan = normalizePlan(account.plan)
   if (account.accountId) account.accountId = account.accountId.trim()
   ensureAccountAuthTypes(account)
-  ensureIdentityKey(account)
+  synchronizeIdentityKey(account)
 }
 
 export type CodexAuthPluginOptions = {

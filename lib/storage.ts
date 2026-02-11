@@ -6,7 +6,8 @@ import path from "node:path"
 import {
   ensureIdentityKey,
   normalizeEmail,
-  normalizePlan
+  normalizePlan,
+  synchronizeIdentityKey
 } from "./identity"
 import {
   extractAccountIdFromClaims,
@@ -100,7 +101,7 @@ function normalizeAccountRecord(account: AccountRecord, authMode?: OpenAIAuthMod
   account.email = normalizeEmail(account.email)
   account.plan = normalizePlan(account.plan)
   if (account.accountId) account.accountId = account.accountId.trim()
-  ensureIdentityKey(account)
+  synchronizeIdentityKey(account)
   if (authMode) {
     account.authTypes = [authMode]
   } else {

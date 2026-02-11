@@ -32,3 +32,28 @@ export function ensureIdentityKey(account: AccountRecord): AccountRecord {
   }
   return account
 }
+
+function isCanonicalIdentityKey(value: string): boolean {
+  const parts = value.split("|")
+  if (parts.length !== 3) return false
+  return parts.every((part) => part.trim().length > 0)
+}
+
+export function synchronizeIdentityKey(account: AccountRecord): AccountRecord {
+  const canonical = buildIdentityKey(account)
+  if (!canonical) return account
+
+  if (!account.identityKey) {
+    account.identityKey = canonical
+    return account
+  }
+
+  if (account.identityKey === canonical) {
+    return account
+  }
+
+  if (isCanonicalIdentityKey(account.identityKey)) {
+    account.identityKey = canonical
+  }
+  return account
+}
