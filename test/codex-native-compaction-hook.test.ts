@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { CodexAuthPlugin } from "../lib/codex-native"
 
 describe("codex-native compaction hook", () => {
-  it("swaps to codex compact prompt for openai sessions in codex mode", async () => {
+  it("defaults compaction override on in codex mode", async () => {
     const hooks = await CodexAuthPlugin(
       {
         client: {
@@ -29,7 +29,7 @@ describe("codex-native compaction hook", () => {
     expect(output.prompt).toContain("CONTEXT CHECKPOINT COMPACTION")
   })
 
-  it("does not swap compaction prompt in native mode", async () => {
+  it("allows compaction override in native mode when explicitly enabled", async () => {
     const hooks = await CodexAuthPlugin(
       {
         client: {
@@ -43,7 +43,7 @@ describe("codex-native compaction hook", () => {
           }
         }
       } as never,
-      { mode: "native" }
+      { mode: "native", codexCompactionOverride: true }
     )
 
     const compacting = hooks["experimental.session.compacting"]
@@ -51,6 +51,32 @@ describe("codex-native compaction hook", () => {
 
     const output: { context: string[]; prompt?: string } = { context: [], prompt: undefined }
     await compacting?.({ sessionID: "ses_openai_compact_native_mode" }, output)
+
+    expect(output.prompt).toContain("CONTEXT CHECKPOINT COMPACTION")
+  })
+
+  it("does not swap compaction prompt in codex mode when override is explicitly disabled", async () => {
+    const hooks = await CodexAuthPlugin(
+      {
+        client: {
+          session: {
+            messages: async () => ({
+              data: [
+                { info: { role: "assistant", providerID: "openai", modelID: "gpt-5.3-codex" } },
+                { info: { role: "user", model: { providerID: "openai", modelID: "gpt-5.3-codex" } } }
+              ]
+            })
+          }
+        }
+      } as never,
+      { mode: "codex", codexCompactionOverride: false }
+    )
+
+    const compacting = hooks["experimental.session.compacting"]
+    expect(compacting).toBeTypeOf("function")
+
+    const output: { context: string[]; prompt?: string } = { context: [], prompt: undefined }
+    await compacting?.({ sessionID: "ses_openai_compact_codex_no_override" }, output)
 
     expect(output.prompt).toBeUndefined()
   })
@@ -73,7 +99,7 @@ describe("codex-native compaction hook", () => {
           }
         }
       } as never,
-      { mode: "codex" }
+      { mode: "codex", codexCompactionOverride: true }
     )
 
     const compacting = hooks["experimental.session.compacting"]
@@ -96,7 +122,7 @@ describe("codex-native compaction hook", () => {
           }
         }
       } as never,
-      { mode: "codex" }
+      { mode: "codex", codexCompactionOverride: true }
     )
 
     const compacting = hooks["experimental.session.compacting"]
@@ -136,7 +162,7 @@ describe("codex-native compaction hook", () => {
           }
         }
       } as never,
-      { mode: "codex" }
+      { mode: "codex", codexCompactionOverride: true }
     )
 
     const compacting = hooks["experimental.session.compacting"]
@@ -189,7 +215,7 @@ describe("codex-native compaction hook", () => {
           }
         }
       } as never,
-      { mode: "codex" }
+      { mode: "codex", codexCompactionOverride: true }
     )
 
     const complete = hooks["experimental.text.complete"]

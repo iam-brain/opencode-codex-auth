@@ -4,10 +4,21 @@ This plugin can override OpenCode's stock compaction flow for OpenAI sessions.
 
 ## When it applies
 
-- `runtime.mode` must be `"codex"`.
+- `runtime.codexCompactionOverride` must be enabled.
 - The active session model provider must be `openai`.
 
-If either condition is not met, OpenCode keeps its native compaction behavior unchanged.
+Default behavior:
+
+- `runtime.mode: "codex"` => compaction override is on by default.
+- `runtime.mode: "native"` => compaction override is off by default.
+
+You can explicitly override either default with `runtime.codexCompactionOverride`.
+
+If override is disabled or provider is not `openai`, OpenCode keeps native compaction behavior unchanged.
+
+You can also enable/disable this via env override:
+
+- `OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE=1|0|true|false`
 
 ## What changes in codex mode
 

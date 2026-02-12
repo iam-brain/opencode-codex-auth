@@ -78,6 +78,10 @@ The plugin loads config in this order:
 - `runtime.developerMessagesToUser: boolean`
   - In `codex` mode, remaps non-permissions `developer` messages to `user` (`true` default).
   - Set to `false` to preserve all `developer` roles.
+- `runtime.codexCompactionOverride: boolean`
+  - Enables codex-rs compact prompt + `summary_prefix` handoff behavior for OpenAI sessions.
+  - Mode defaults: `true` in `codex`, `false` in `native`.
+  - Explicit boolean value overrides mode default.
 - `runtime.headerSnapshots: boolean`
   - Writes before/after request header snapshots to debug logs.
 - `runtime.headerTransformDebug: boolean`
@@ -181,6 +185,7 @@ Advanced path:
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`: `1|0|true|false`.
 

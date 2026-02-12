@@ -21,6 +21,7 @@ Top-level:
 - `runtime.rotationStrategy: "sticky" | "hybrid" | "round_robin"`
 - `runtime.sanitizeInputs: boolean`
 - `runtime.developerMessagesToUser: boolean`
+- `runtime.codexCompactionOverride: boolean`
 - `runtime.headerSnapshots: boolean`
 - `runtime.headerTransformDebug: boolean`
 - `runtime.pidOffset: boolean`
@@ -48,6 +49,7 @@ Default generated values:
 - `runtime.rotationStrategy: "sticky"`
 - `runtime.sanitizeInputs: false`
 - `runtime.developerMessagesToUser: true`
+- `runtime.codexCompactionOverride`: mode-derived when unset (`true` in `codex`, `false` in `native`)
 - `runtime.headerSnapshots: false`
 - `runtime.headerTransformDebug: false`
 - `runtime.pidOffset: false`
@@ -80,6 +82,7 @@ Resolved by `resolveConfig`:
 - `DEBUG_CODEX_PLUGIN`
 - `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER`
 - `OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER`
+- `OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE`
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`
 - `OPENCODE_OPENAI_MULTI_QUIET`

@@ -259,18 +259,27 @@ describe("config", () => {
     ).toBe(false)
   })
 
-  it("defaults codex compaction override to disabled", () => {
+  it("defaults codex compaction override by runtime mode", () => {
     expect(getCodexCompactionOverrideEnabled({ mode: "native" })).toBe(false)
-    expect(getCodexCompactionOverrideEnabled({ mode: "codex" })).toBe(false)
+    expect(getCodexCompactionOverrideEnabled({ mode: "codex" })).toBe(true)
   })
 
-  it("allows enabling codex compaction override in codex mode", () => {
+  it("allows enabling codex compaction override in native mode", () => {
     expect(
       getCodexCompactionOverrideEnabled({
-        mode: "codex",
+        mode: "native",
         codexCompactionOverride: true
       })
     ).toBe(true)
+  })
+
+  it("allows disabling codex compaction override in codex mode", () => {
+    expect(
+      getCodexCompactionOverrideEnabled({
+        mode: "codex",
+        codexCompactionOverride: false
+      })
+    ).toBe(false)
   })
 })
 

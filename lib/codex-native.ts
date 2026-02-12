@@ -849,7 +849,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     opts.mode === "codex" || opts.mode === "native" ? opts.mode : spoofMode === "codex" ? "codex" : "native"
   const authMode: OpenAIAuthMode = modeForRuntimeMode(runtimeMode)
   const remapDeveloperMessagesToUserEnabled = spoofMode === "codex" && opts.remapDeveloperMessagesToUser !== false
-  const codexCompactionOverrideEnabled = runtimeMode === "codex" && opts.codexCompactionOverride === true
+  const codexCompactionOverrideEnabled =
+    opts.codexCompactionOverride !== undefined ? opts.codexCompactionOverride : runtimeMode === "codex"
   void refreshCodexClientVersionFromGitHub(opts.log).catch(() => {})
   const resolveCatalogHeaders = (): {
     originator: string

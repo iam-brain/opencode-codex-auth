@@ -60,7 +60,6 @@ export const DEFAULT_CODEX_CONFIG = {
     rotationStrategy: "sticky",
     sanitizeInputs: false,
     developerMessagesToUser: true,
-    codexCompactionOverride: false,
     headerSnapshots: false,
     headerTransformDebug: false,
     pidOffset: false
@@ -116,12 +115,6 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // options: true | false
     // default: true
     "developerMessagesToUser": true,
-
-    // Enable codex-rs compaction prompt + summary_prefix override.
-    // Only applies when runtime.mode is "codex".
-    // options: true | false
-    // default: false
-    "codexCompactionOverride": false,
 
     // Write request header snapshots to plugin logs.
     // options: true | false
@@ -777,8 +770,9 @@ export function getRemapDeveloperMessagesToUserEnabled(cfg: PluginConfig): boole
 }
 
 export function getCodexCompactionOverrideEnabled(cfg: PluginConfig): boolean {
-  if (getMode(cfg) !== "codex") return false
-  return cfg.codexCompactionOverride === true
+  if (cfg.codexCompactionOverride === true) return true
+  if (cfg.codexCompactionOverride === false) return false
+  return getMode(cfg) === "codex"
 }
 
 export function getHeaderSnapshotsEnabled(cfg: PluginConfig): boolean {
