@@ -38,6 +38,7 @@ import type { CodexSpoofMode, CustomSettings, PersonalityOption, PluginRuntimeMo
 import { formatToastMessage } from "./toast"
 import { runAuthMenuOnce } from "./ui/auth-menu-runner"
 import type { AccountInfo, DeleteScope } from "./ui/auth-menu"
+import { shouldUseColor } from "./ui/tty/ansi"
 import {
   applyCodexCatalogToProviderModels,
   getCodexModelCatalog,
@@ -1011,7 +1012,10 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         handlers: {
           onCheckQuotas: async () => {
             await refreshQuotaSnapshotsForAuthMenu()
-            const report = await toolOutputForStatus()
+            const report = await toolOutputForStatus(undefined, undefined, {
+              style: "menu",
+              useColor: shouldUseColor()
+            })
             process.stdout.write(`\n${report}\n\n`)
           },
           onConfigureModels: async () => {

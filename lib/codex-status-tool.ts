@@ -1,7 +1,8 @@
 import { loadAuthStorage } from "./storage"
 import { loadSnapshots } from "./codex-status-storage"
-import { renderDashboard } from "./codex-status-ui"
+import { renderDashboard, type StatusRenderStyle } from "./codex-status-ui"
 import { defaultAuthPath, defaultSnapshotsPath } from "./paths"
+import { shouldUseColor } from "./ui/tty/ansi"
 
 /**
  * Returns a human-readable string summarizing the status of all Codex accounts.
@@ -9,19 +10,18 @@ import { defaultAuthPath, defaultSnapshotsPath } from "./paths"
  */
 export async function toolOutputForStatus(
   authPath: string = defaultAuthPath(),
-  snapshotsPath: string = defaultSnapshotsPath()
+  snapshotsPath: string = defaultSnapshotsPath(),
+  options: { style?: StatusRenderStyle; useColor?: boolean } = {}
 ): Promise<string> {
   const authFile = await loadAuthStorage(authPath)
   const snapshots = await loadSnapshots(snapshotsPath)
+  const style = options.style ?? "plain"
+  const useColor = options.useColor ?? (style === "menu" ? shouldUseColor() : false)
 
   const openai = authFile.openai
   if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
     return "No Codex accounts configured."
   }
-
-  const lines: string[] = []
-  lines.push("## Codex Status")
-  lines.push("")
 
   const displayAccounts = openai.accounts.map((acc) => ({
     identityKey: acc.identityKey,
@@ -38,9 +38,10 @@ export async function toolOutputForStatus(
     accounts: displayAccounts,
     activeIdentityKey: openai.activeIdentityKey,
     snapshots
+  }, {
+    style,
+    useColor
   })
 
-  lines.push(...dashboardLines)
-
-  return lines.join("\n").trim()
+  return dashboardLines.join("\n").trim()
 }

@@ -144,7 +144,7 @@ async function loadPluginWithMenu(input: {
       return snapshotStore
     }
   )
-  const toolOutputForStatus = vi.fn(async () => "## Codex Status\n")
+  const toolOutputForStatus = vi.fn(async () => "Quota snapshot\n")
   const fetchQuotaSnapshotFromBackend = vi.fn(async (args: { accountId?: string }) => {
     if (input.quotaSnapshotImpl) {
       return await input.quotaSnapshotImpl(args)
@@ -359,6 +359,11 @@ describe("codex-native auth menu wiring", () => {
       expect(fetchQuotaSnapshotFromBackend).toHaveBeenCalledTimes(1)
       expect(saveSnapshots).toHaveBeenCalledTimes(1)
       expect(toolOutputForStatus).toHaveBeenCalledTimes(1)
+      expect(toolOutputForStatus).toHaveBeenCalledWith(
+        undefined,
+        undefined,
+        expect.objectContaining({ style: "menu" })
+      )
       expect(snapshotStore["acc_1|one@example.com|plus"]).toEqual({
         updatedAt: 123,
         modelFamily: "gpt-5.3-codex",

@@ -1,7 +1,10 @@
 import type { CodexRateLimitSnapshot, AccountRecord, CodexLimit } from "./types"
+import { ANSI } from "./ui/tty/ansi"
 
 const FULL_BLOCK = "█"
 const EMPTY_BLOCK = "░"
+
+export type StatusRenderStyle = "plain" | "menu"
 
 function clampPct(value: number): number {
   if (!Number.isFinite(value)) return 0
@@ -14,6 +17,16 @@ function renderBar(leftPct: number, width = 20): string {
   const safePct = clampPct(leftPct)
   const filled = Math.round((safePct / 100) * width)
   return `${FULL_BLOCK.repeat(filled)}${EMPTY_BLOCK.repeat(Math.max(0, width - filled))}`
+}
+
+function colorize(text: string, color: string, useColor: boolean): string {
+  return useColor ? `${color}${text}${ANSI.reset}` : text
+}
+
+function colorForPct(pct: number): string {
+  if (pct <= 10) return ANSI.red
+  if (pct < 40) return ANSI.yellow
+  return ANSI.green
 }
 
 function formatResetTimestamp(resetsAt: number | undefined, now = Date.now()): string | undefined {
@@ -49,11 +62,45 @@ function resolveQuotaRows(snap: CodexRateLimitSnapshot | undefined): {
   return { fiveHour, weekly }
 }
 
-function renderQuotaLine(input: { label: string; leftPct: number; resetText?: string }): string {
+function formatAccountLabel(input: {
+  account: AccountRecord
+  activeIdentityKey?: string
+  useColor: boolean
+  withBadges: boolean
+}): string {
+  const label = input.account.email ?? input.account.identityKey ?? "account"
+  const plan = input.account.plan ? ` (${input.account.plan})` : ""
+  if (!input.withBadges) return `${label}${plan}`
+
+  const badges: string[] = []
+  if (input.account.enabled === false) {
+    badges.push(colorize("[disabled]", ANSI.red, input.useColor))
+  } else {
+    badges.push(colorize("[enabled]", ANSI.green, input.useColor))
+  }
+
+  if (input.account.identityKey && input.activeIdentityKey === input.account.identityKey) {
+    badges.push(colorize("[last active]", ANSI.cyan, input.useColor))
+  }
+
+  const suffix = badges.length > 0 ? ` ${badges.join(" ")}` : ""
+  return `${label}${plan}${suffix}`
+}
+
+function renderQuotaLine(input: {
+  prefix: string
+  label: string
+  leftPct: number
+  resetText?: string
+  useColor: boolean
+}): string {
   const pct = clampPct(input.leftPct)
   const pctText = `${String(pct).padStart(3, " ")}%`
   const resetSuffix = input.resetText ? ` (${input.resetText})` : ""
-  return `  ● ${input.label.padEnd(10)} [${renderBar(pct)}] ${pctText} left${resetSuffix}`
+  const color = colorForPct(pct)
+  const barText = colorize(`[${renderBar(pct)}]`, color, input.useColor)
+  const coloredPctText = colorize(pctText, color, input.useColor)
+  return `${input.prefix}${input.label.padEnd(7)} ${barText} ${coloredPctText} left${resetSuffix}`
 }
 
 function fallbackResetLabel(expired: boolean): string {
@@ -75,38 +122,87 @@ export function renderDashboard(input: {
   accounts: AccountRecord[]
   activeIdentityKey?: string
   snapshots: Record<string, CodexRateLimitSnapshot | undefined>
-}): string[] {
+}, options: { style?: StatusRenderStyle; useColor?: boolean } = {}): string[] {
+  const style = options.style ?? "plain"
+  const useColor = options.useColor === true
   const lines: string[] = []
+
+  if (style === "plain") {
+    lines.push("Codex quotas")
+    lines.push("")
+  } else {
+    lines.push(`${colorize("┌", ANSI.dim, useColor)}  Quota snapshot`)
+    lines.push(colorize("│", ANSI.cyan, useColor))
+    lines.push(`${colorize("◆", ANSI.cyan, useColor)}  Accounts`)
+    lines.push(colorize("│", ANSI.cyan, useColor))
+  }
+
+  if (input.accounts.length === 0) {
+    if (style === "menu") {
+      lines.push(`${colorize("│", ANSI.cyan, useColor)}  No Codex accounts configured.`)
+      lines.push(colorize("└", ANSI.cyan, useColor))
+      return lines
+    }
+    lines.push("No Codex accounts configured.")
+    return lines
+  }
+
   for (const acc of input.accounts) {
     const key = acc.identityKey
     if (!key) continue
 
     const snap = input.snapshots[key]
-    const active = input.activeIdentityKey === key ? "*" : " "
-    const label = acc.email ?? key
+    const accountLabel = formatAccountLabel({
+      account: acc,
+      activeIdentityKey: input.activeIdentityKey,
+      useColor,
+      withBadges: style === "menu"
+    })
 
-    lines.push(`${active} ${label} (${acc.plan ?? "unknown"})`)
+    if (style === "menu") {
+      lines.push(`${colorize("│", ANSI.cyan, useColor)}  ${colorize("●", ANSI.green, useColor)} ${accountLabel}`)
+    } else {
+      lines.push(accountLabel)
+    }
 
     const expired = typeof acc.expires === "number" && Number.isFinite(acc.expires) && acc.expires <= Date.now()
 
     const rows = resolveQuotaRows(snap)
     lines.push(
       renderQuotaLine({
+        prefix: style === "menu" ? `${colorize("│", ANSI.cyan, useColor)}  ├─ ` : "├─ ",
         label: "5h",
         leftPct: rows.fiveHour?.leftPct ?? 0,
-        resetText: rows.fiveHour
-          ? (formatResetTimestamp(rows.fiveHour.resetsAt) ?? "Unknown")
-          : fallbackResetLabel(expired)
+        resetText: rows.fiveHour ? formatResetTimestamp(rows.fiveHour.resetsAt) ?? "Unknown" : fallbackResetLabel(expired),
+        useColor
       })
     )
     lines.push(
       renderQuotaLine({
+        prefix: style === "menu" ? `${colorize("│", ANSI.cyan, useColor)}  ├─ ` : "├─ ",
         label: "Weekly",
         leftPct: rows.weekly?.leftPct ?? 0,
-        resetText: rows.weekly ? (formatResetTimestamp(rows.weekly.resetsAt) ?? "Unknown") : fallbackResetLabel(expired)
+        resetText: rows.weekly ? formatResetTimestamp(rows.weekly.resetsAt) ?? "Unknown" : fallbackResetLabel(expired),
+        useColor
       })
     )
-    lines.push(`  ● Credits    ${formatCredits(snap)}`)
+    const creditsText = formatCredits(snap)
+    const creditsColor =
+      creditsText === "0 credits" ? ANSI.red : creditsText === "unlimited" ? ANSI.cyan : ANSI.green
+    const colorizedCredits = colorize(creditsText, creditsColor, useColor)
+    lines.push(`${style === "menu" ? `${colorize("│", ANSI.cyan, useColor)}  └─ ` : "└─ "}Credits ${colorizedCredits}`)
+
+    if (style === "menu") {
+      lines.push(colorize("│", ANSI.cyan, useColor))
+    } else {
+      lines.push("")
+    }
+  }
+
+  if (style === "menu") {
+    lines.push(colorize("└", ANSI.cyan, useColor))
+  } else if (lines[lines.length - 1] === "") {
+    lines.pop()
   }
   return lines
 }
