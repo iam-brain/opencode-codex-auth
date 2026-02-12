@@ -64,6 +64,7 @@ import type { AccountInfo, DeleteScope } from "./ui/auth-menu"
 import {
   applyCodexCatalogToProviderModels,
   getCodexModelCatalog,
+  getRuntimeDefaultsForModel,
   resolveInstructionsForModel,
   type CodexModelInfo
 } from "./model-catalog"
@@ -1605,6 +1606,33 @@ function getVariantLookupCandidates(input: {
   return out
 }
 
+const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
+
+function stripEffortSuffix(value: string): string {
+  return value.replace(EFFORT_SUFFIX_REGEX, "")
+}
+
+function findCatalogModelForCandidates(
+  catalogModels: CodexModelInfo[] | undefined,
+  modelCandidates: string[]
+): CodexModelInfo | undefined {
+  if (!catalogModels || catalogModels.length === 0) return undefined
+
+  const wanted = new Set<string>()
+  for (const candidate of modelCandidates) {
+    const normalized = candidate.trim().toLowerCase()
+    if (!normalized) continue
+    wanted.add(normalized)
+    wanted.add(stripEffortSuffix(normalized))
+  }
+
+  return catalogModels.find((model) => {
+    const slug = model.slug.trim().toLowerCase()
+    if (!slug) return false
+    return wanted.has(slug) || wanted.has(stripEffortSuffix(slug))
+  })
+}
+
 function resolveCaseInsensitiveEntry<T>(
   entries: Record<string, T> | undefined,
   candidate: string
@@ -1844,6 +1872,7 @@ export async function CodexAuthPlugin(
     enabled: opts.headerSnapshots === true || opts.headerTransformDebug === true,
     log: opts.log
   })
+  let lastCatalogModels: CodexModelInfo[] | undefined
   const showToast = async (
     message: string,
     variant: "info" | "success" | "warning" | "error" = "info",
@@ -2210,6 +2239,7 @@ export async function CodexAuthPlugin(
           ...resolveCatalogHeaders(),
           onEvent: (event) => opts.log?.debug("codex model catalog", event)
         })
+        lastCatalogModels = catalogModels
 
         applyCodexCatalogToProviderModels({
           providerModels: provider.models as Record<string, Record<string, unknown>>,
@@ -2903,6 +2933,7 @@ export async function CodexAuthPlugin(
         message: hookInput.message,
         modelCandidates
       })
+      const catalogModelFallback = findCatalogModelForCandidates(lastCatalogModels, modelCandidates)
       const effectivePersonality = resolvePersonalityForModel({
         customSettings: opts.customSettings,
         modelCandidates,
@@ -2923,6 +2954,23 @@ export async function CodexAuthPlugin(
           modelOptions.codexInstructions = rendered
         } else {
           delete modelOptions.codexInstructions
+        }
+      } else if (catalogModelFallback) {
+        modelOptions.codexCatalogModel = catalogModelFallback
+        const rendered = resolveInstructionsForModel(catalogModelFallback, effectivePersonality)
+        if (rendered) {
+          modelOptions.codexInstructions = rendered
+        } else {
+          delete modelOptions.codexInstructions
+        }
+        const defaults = getRuntimeDefaultsForModel(catalogModelFallback)
+        if (defaults) {
+          modelOptions.codexRuntimeDefaults = defaults
+        }
+      } else if (asString(modelOptions.codexInstructions) === undefined) {
+        const directModelInstructions = asString((hookInput.model as Record<string, unknown>).instructions)
+        if (directModelInstructions) {
+          modelOptions.codexInstructions = directModelInstructions
         }
       }
       applyCodexRuntimeDefaultsToParams({
