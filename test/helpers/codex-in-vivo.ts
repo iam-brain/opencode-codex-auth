@@ -11,6 +11,9 @@ type InVivoProbeInput = {
   personalityKey: string
   personalityText: string
   modelSlug?: string
+  stripModelOptionsBeforeParams?: boolean
+  modelInstructionsFallback?: string
+  omitModelIdentityBeforeParams?: boolean
 }
 
 type InVivoProbeOutput = {
@@ -194,11 +197,12 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
         provider: {},
         message: {},
         model: {
-          id: modelSlug,
-          api: { id: modelSlug },
+          id: input.omitModelIdentityBeforeParams === true ? undefined : modelSlug,
+          api: input.omitModelIdentityBeforeParams === true ? undefined : { id: modelSlug },
+          instructions: input.modelInstructionsFallback,
           providerID: "openai",
           capabilities: { toolcall: true },
-          options: modelOptions
+          options: input.stripModelOptionsBeforeParams === true ? {} : modelOptions
         }
       } as never,
       paramsOutput as never

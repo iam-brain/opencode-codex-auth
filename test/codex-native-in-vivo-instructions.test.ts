@@ -17,4 +17,19 @@ describe("codex-native in-vivo instruction injection", () => {
     expect(result.outboundOriginator).toMatch(/^codex_/)
     expect(result.outboundUserAgent).toMatch(/^codex_/)
   })
+
+  it("replaces host instructions at outbound even when model options are stripped", async () => {
+    const result = await runCodexInVivoInstructionProbe({
+      hostInstructions: "OpenCode Host Instructions",
+      personalityKey: "vivo_persona",
+      personalityText: "Vivo Persona Voice",
+      stripModelOptionsBeforeParams: true,
+      modelInstructionsFallback: "OpenCode Host Instructions",
+      omitModelIdentityBeforeParams: true
+    })
+
+    expect(result.preflightInstructions).toBe("OpenCode Host Instructions")
+    expect(result.outboundInstructions).toBe("Base Vivo Persona Voice")
+    expect(result.outboundInstructions).not.toBe("OpenCode Host Instructions")
+  })
 })

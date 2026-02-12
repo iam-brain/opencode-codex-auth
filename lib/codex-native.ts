@@ -1838,6 +1838,91 @@ async function sanitizeOutboundRequestIfNeeded(
   return { request: sanitizedRequest, changed: true }
 }
 
+function getVariantCandidatesFromBody(input: {
+  body: Record<string, unknown>
+  modelSlug: string
+}): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const add = (value: string | undefined) => {
+    const trimmed = value?.trim().toLowerCase()
+    if (!trimmed) return
+    if (seen.has(trimmed)) return
+    seen.add(trimmed)
+    out.push(trimmed)
+  }
+
+  const reasoning = isRecord(input.body.reasoning) ? input.body.reasoning : undefined
+  add(asString(reasoning?.effort))
+
+  const normalizedSlug = input.modelSlug.trim().toLowerCase()
+  const suffix = normalizedSlug.match(EFFORT_SUFFIX_REGEX)?.[1]
+  add(suffix)
+
+  return out
+}
+
+async function applyCatalogInstructionOverrideToRequest(input: {
+  request: Request
+  enabled: boolean
+  catalogModels: CodexModelInfo[] | undefined
+  customSettings: CustomSettings | undefined
+  fallbackPersonality: PersonalityOption | undefined
+}): Promise<{ request: Request; changed: boolean }> {
+  if (!input.enabled) return { request: input.request, changed: false }
+
+  const method = input.request.method.toUpperCase()
+  if (method !== "POST") return { request: input.request, changed: false }
+
+  let payload: unknown
+  try {
+    const raw = await input.request.clone().text()
+    if (!raw) return { request: input.request, changed: false }
+    payload = JSON.parse(raw)
+  } catch {
+    return { request: input.request, changed: false }
+  }
+
+  if (!isRecord(payload)) return { request: input.request, changed: false }
+  const modelSlugRaw = asString(payload.model)
+  if (!modelSlugRaw) return { request: input.request, changed: false }
+
+  const modelCandidates = getModelLookupCandidates({
+    id: modelSlugRaw,
+    api: { id: modelSlugRaw }
+  })
+  const variantCandidates = getVariantCandidatesFromBody({
+    body: payload,
+    modelSlug: modelSlugRaw
+  })
+  const effectivePersonality = resolvePersonalityForModel({
+    customSettings: input.customSettings,
+    modelCandidates,
+    variantCandidates,
+    fallback: input.fallbackPersonality
+  })
+  const catalogModel = findCatalogModelForCandidates(input.catalogModels, modelCandidates)
+  if (!catalogModel) return { request: input.request, changed: false }
+
+  const rendered = resolveInstructionsForModel(catalogModel, effectivePersonality)
+  if (!rendered) return { request: input.request, changed: false }
+
+  if (asString(payload.instructions) === rendered) {
+    return { request: input.request, changed: false }
+  }
+
+  payload.instructions = rendered
+  const headers = new Headers(input.request.headers)
+  headers.set("content-type", "application/json")
+  const updatedRequest = new Request(input.request.url, {
+    method: input.request.method,
+    headers,
+    body: JSON.stringify(payload),
+    redirect: input.request.redirect
+  })
+  return { request: updatedRequest, changed: true }
+}
+
 export async function CodexAuthPlugin(
   input: PluginInput,
   opts: CodexAuthPluginOptions = {}
@@ -2262,7 +2347,7 @@ export async function CodexAuthPlugin(
                   : {})
               })
             }
-            const outbound = new Request(rewriteUrl(baseRequest), baseRequest)
+            let outbound = new Request(rewriteUrl(baseRequest), baseRequest)
             const inboundOriginator = outbound.headers.get("originator")?.trim()
             const outboundOriginator =
               inboundOriginator === "opencode" ||
@@ -2284,11 +2369,20 @@ export async function CodexAuthPlugin(
             if (collaborationModeKind) {
               outbound.headers.delete(INTERNAL_COLLABORATION_MODE_HEADER)
             }
+            const instructionOverride = await applyCatalogInstructionOverrideToRequest({
+              request: outbound,
+              enabled: spoofMode === "codex",
+              catalogModels: lastCatalogModels,
+              customSettings: opts.customSettings,
+              fallbackPersonality: opts.personality
+            })
+            outbound = instructionOverride.request
             const subagentHeader = outbound.headers.get("x-openai-subagent")?.trim()
             const isSubagentRequest = Boolean(subagentHeader)
             if (opts.headerTransformDebug === true) {
               await requestSnapshots.captureRequest("after-header-transform", outbound, {
                 spoofMode,
+                instructionsOverridden: instructionOverride.changed,
                 ...(collaborationModeKind ? { collaborationModeKind } : {}),
                 ...(isSubagentRequest ? { subagent: subagentHeader } : {})
               })
