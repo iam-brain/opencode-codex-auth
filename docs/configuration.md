@@ -1,28 +1,29 @@
 # Configuration
 
-This plugin uses one runtime config file:
+Canonical implementation source: `lib/config.ts`.
 
-- `~/.config/opencode/codex-config.json`
+## Config files
 
-If it does not exist, the plugin creates it with defaults on startup.
+- Runtime config: `~/.config/opencode/codex-config.json`
+- Plugin registration: `~/.config/opencode/opencode.json`
 
-## JSON schemas
+If `codex-config.json` does not exist, the plugin creates a default file (`ensureDefaultConfigFile` in `lib/config.ts`).
 
-Use these schemas for validation/autocomplete:
+## Schemas
 
-- `schemas/codex-config.schema.json` -> `codex-config.json`
-- `schemas/opencode.schema.json` -> `opencode.json`
-- `schemas/codex-accounts.schema.json` -> `codex-accounts.json` (advanced/manual recovery only)
+- `schemas/codex-config.schema.json` for `codex-config.json`
+- `schemas/opencode.schema.json` for `opencode.json`
+- `schemas/codex-accounts.schema.json` for advanced/manual account-store recovery
 
-## Config path resolution
+## Path resolution order
 
-The plugin loads config in this order:
+`codex-config.json` load order (`loadConfigFile` in `lib/config.ts`):
 
 1. `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
 2. `$XDG_CONFIG_HOME/opencode/codex-config.json`
 3. `~/.config/opencode/codex-config.json`
 
-`codex-config.json` supports JSON comments (`//` and `/* ... */`) for readability.
+`codex-config.json` accepts JSON comments (`//`, `/* ... */`).
 
 ## Default generated config
 
@@ -50,52 +51,36 @@ The plugin loads config in this order:
 }
 ```
 
-## Settings reference
+Defaults are implemented in `DEFAULT_CODEX_CONFIG` in `lib/config.ts` and validated in `test/config.test.ts`.
 
-### Top-level
+## Runtime keys
+
+Top-level:
 
 - `debug: boolean`
-  - Enables plugin debug logging (`false` default).
 - `quiet: boolean`
-  - Suppresses plugin toast/UI notifications (`false` default).
 - `refreshAhead.enabled: boolean`
-  - Enables proactive token refresh (`true` default).
 - `refreshAhead.bufferMs: number`
-  - Refresh lead time in milliseconds before expiry (`60000` default).
 
-### Runtime
+Runtime section:
 
-- `runtime.mode: "native" | "codex" | "collab"`
-  - `native`: carbon-copy target of standard OpenCode native plugin identity/header behavior.
-  - `codex`: full codex-rs spoof identity/header behavior.
-  - `collab`: codex collaboration profile hooks (WIP/untested).
+- `runtime.mode: "native" | "codex"`
 - `runtime.rotationStrategy: "sticky" | "hybrid" | "round_robin"`
-  - `sticky`: one active account until limits/health require change (default).
-  - `hybrid`: prefers active account, falls back to healthiest/LRU behavior.
-  - `round_robin`: rotates every message (higher token/cache churn).
 - `runtime.sanitizeInputs: boolean`
-  - Sanitizes outbound payloads for provider-compat edge cases.
 - `runtime.headerSnapshots: boolean`
-  - Writes before/after request header snapshots to debug logs.
 - `runtime.headerTransformDebug: boolean`
-  - Adds explicit `before-header-transform` and `after-header-transform` request snapshots for message fetches.
 - `runtime.pidOffset: boolean`
-  - Enables session-aware offset behavior for account selection.
 
-### Model behavior
+Model behavior:
 
 - `global.personality: string`
-  - Personality key applied to all models unless overridden.
 - `global.thinkingSummaries: boolean`
-  - Global thinking-summary preference. Omit to use model/catalog default.
 - `perModel.<model>.personality: string`
-  - Model-specific personality override.
 - `perModel.<model>.thinkingSummaries: boolean`
-  - Model-specific summary override (`true` force-on, `false` force-off).
 - `perModel.<model>.variants.<variant>.personality: string`
-  - Variant-level personality override.
 - `perModel.<model>.variants.<variant>.thinkingSummaries: boolean`
-  - Variant-level summary override (`true` force-on, `false` force-off).
+
+## Model behavior precedence
 
 Precedence for `personality` and `thinkingSummaries`:
 
@@ -103,98 +88,56 @@ Precedence for `personality` and `thinkingSummaries`:
 2. `perModel.<model>`
 3. `global`
 
-## Personality system
-
-Built-in personalities from model metadata:
-
-- `friendly`
-- `pragmatic`
-
-Custom personalities:
-
-- Store files in:
-  - project-local: `.opencode/personalities/<key>.md`
-  - global: `~/.config/opencode/personalities/<key>.md`
-- Key format:
-  - lowercase safe slug (no `/`, `\`, or `..`)
-- Pattern recommendation (same shape as native-friendly/pragmatic behavior):
-  - keep a stable "core assistant contract" (coding agent, safety, correctness, no fabricated output)
-  - layer style/tone/collaboration preferences under separate sections
-  - add explicit guardrails and anti-patterns
-
-### `/create-personality` workflow
-
-Installer and startup bootstrap a slash command:
-
-- `/create-personality`
-
-And a tool:
-
-- `create-personality`
-
-And a managed skill bundle:
-
-- `~/.config/opencode/skills/personality-builder/SKILL.md`
-
-Flow:
-
-1. Run `/create-personality`.
-2. The assistant interviews you (inspiration, tone, coding style, guardrails, examples).
-3. The assistant calls `create-personality`.
-4. A new profile is written under `personalities/<key>.md`.
-5. Set the key in `codex-config.json` via `global.personality` or `perModel`.
-
-Advanced path:
-
-1. Use the `personality-builder` skill when you want stricter voice/protocol extraction from source docs.
-2. Follow the skill workflow, then persist through `create-personality`.
-
-## Why `runtime.mode` exists (and no `identityMode`)
-
-- `runtime.mode` is the only canonical mode setting.
-- Identity behavior is derived from mode:
-  - `native` -> native identity
-  - `codex|collab` -> codex identity
-- `spoofMode` is internal compatibility plumbing (and env override support), not a user-facing canonical config key.
+Implementation: `resolvePersonalityForModel` and `getModelThinkingSummariesOverride` in `lib/codex-native/request-transform.ts`.
 
 ## Environment variables
 
-### Config/mode overrides
+Config and mode:
 
-- `OPENCODE_OPENAI_MULTI_CONFIG_PATH`: absolute config file path.
-- `OPENCODE_OPENAI_MULTI_MODE`: `native|codex|collab`.
-- `OPENCODE_OPENAI_MULTI_SPOOF_MODE`: advanced identity override (`native|codex`).
-- `XDG_CONFIG_HOME`: changes config/agents/personality roots.
+- `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
+- `OPENCODE_OPENAI_MULTI_MODE` (`native|codex`)
+- `OPENCODE_OPENAI_MULTI_SPOOF_MODE` (`native|codex`, compatibility path)
+- `XDG_CONFIG_HOME`
 
-### Runtime overrides
+Runtime overrides:
 
-- `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH`: `1|0|true|false`.
-- `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`: integer ms.
-- `OPENCODE_OPENAI_MULTI_QUIET`: `1|0|true|false`.
-- `OPENCODE_OPENAI_MULTI_PID_OFFSET`: `1|0|true|false`.
-- `OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY`: `sticky|hybrid|round_robin`.
-- `OPENCODE_OPENAI_MULTI_PERSONALITY`: personality key override.
-- `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`: `1|0|true|false`.
-- `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER`: `1|0|true|false`.
-- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`: `1|0|true|false`.
-- `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH`
+- `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`
+- `OPENCODE_OPENAI_MULTI_QUIET`
+- `OPENCODE_OPENAI_MULTI_PID_OFFSET`
+- `OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY`
+- `OPENCODE_OPENAI_MULTI_PERSONALITY`
+- `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`
+- `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER`
+- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`
+- `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`
 
-### Debug/OAuth controls
+OAuth/debug:
 
-- `OPENCODE_OPENAI_MULTI_DEBUG=1`: plugin debug logs.
-- `DEBUG_CODEX_PLUGIN=1`: alternate debug flag.
-- `CODEX_AUTH_DEBUG=1`: verbose OAuth lifecycle logging (`oauth-lifecycle.log`).
-  - Accepted truthy values: `1`, `true`, `yes`, `on`.
-  - This flag is independent from general plugin debug flags.
-- `CODEX_OAUTH_CALLBACK_TIMEOUT_MS`: OAuth wait timeout (min `60000`).
-- `CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS`: success-page shutdown grace.
-- `CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS`: error-page shutdown grace.
-- `OPENCODE_NO_BROWSER=1`: disables browser auto-open.
-- `NO_COLOR=1`: disables ANSI color blocks in quota UI.
+- `OPENCODE_OPENAI_MULTI_DEBUG=1`
+- `DEBUG_CODEX_PLUGIN=1`
+- `CODEX_AUTH_DEBUG=1|true|yes|on`
+- `CODEX_OAUTH_CALLBACK_TIMEOUT_MS` (minimum `60000`)
+- `CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS`
+- `CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS`
+- `OPENCODE_NO_BROWSER=1`
+- `NO_COLOR=1`
 
-## Compatibility keys (parsed, non-canonical)
+Sources: `lib/config.ts`, `lib/codex-native.ts`, `lib/codex-native/oauth-server.ts`.
 
-Accepted for migration compatibility:
+## Source precedence
+
+Overall precedence in `resolveConfig` (`lib/config.ts`):
+
+1. Environment variables
+2. Config file values
+3. Built-in defaults
+
+Coverage: `test/config.test.ts`.
+
+## Compatibility keys
+
+The parser accepts legacy keys for migration compatibility, but they are non-canonical for new edits:
 
 - top-level `personality`
 - top-level `customSettings`
@@ -202,4 +145,4 @@ Accepted for migration compatibility:
 - `customSettings.options.personality`
 - `customSettings.models`
 
-Prefer canonical keys (`global`, `perModel`) for all new edits.
+Use canonical `global` and `perModel` keys for all new configuration.

@@ -3,123 +3,70 @@
 [![CI](https://github.com/iam-brain/opencode-codex-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/iam-brain/opencode-codex-auth/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40iam-brain%2Fopencode-codex-auth.svg)](https://www.npmjs.com/package/@iam-brain/opencode-codex-auth)
 
-OpenCode plugin for OpenAI ChatGPT OAuth with multi-account management, Codex-compatible request modes, and dynamic model behavior controls.
+OpenCode plugin that authenticates OpenAI provider traffic with ChatGPT OAuth and routes requests through Codex backend endpoints.
 
-Quick links: `docs/getting-started.md` · `docs/configuration.md` · `docs/multi-account.md` · `docs/troubleshooting.md`
-
-## Why this plugin
-
-- Uses ChatGPT OAuth instead of API keys for OpenAI provider flows.
-- Keeps account rotation state in a plugin-owned store (`codex-accounts.json`).
-- Supports `native`, `codex`, and experimental `collab` runtime modes.
-- Adds account-manager UX to `opencode auth login` (quotas, toggles, scoped deletes, transfer).
+Quick links: [Getting Started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Accounts and Rotation](docs/accounts-and-rotation.md) · [Troubleshooting](docs/troubleshooting.md)
 
 ## Quick start
 
-Install and register the plugin (recommended):
+Install and register the plugin:
 
 ```bash
 npx -y @iam-brain/opencode-codex-auth
 ```
 
-Then authenticate:
+Authenticate:
 
 ```bash
 opencode auth login
 ```
 
-Use an OpenAI model through OpenCode:
+Run one request:
 
 ```bash
-opencode run "say hi" --model=openai/gpt-5.2
+opencode run "say hi" --model=openai/gpt-5.3-codex
 ```
 
-## Usage notice
+If `openai/gpt-5.3-codex` is not available on your account, use another available `openai/*` model.
 
-This plugin is intended for personal development use with your own ChatGPT account. For production multi-user systems, use the OpenAI Platform API.
+## What the installer changes
 
-## Install behavior
+`npx -y @iam-brain/opencode-codex-auth` runs `install` by default (`bin/opencode-codex-auth.ts`, `lib/installer-cli.ts`).
 
-By default, `npx -y @iam-brain/opencode-codex-auth` runs the installer.
+Installer actions:
 
-The installer does two things:
+1. Ensures `@iam-brain/opencode-codex-auth@latest` exists in `~/.config/opencode/opencode.json` (`lib/opencode-install.ts`).
+2. Creates `~/.config/opencode/codex-config.json` if missing (`lib/config.ts`).
+3. Synchronizes `/create-personality` command template (`lib/personality-command.ts`).
+4. Synchronizes `personality-builder` skill files (`lib/personality-skill.ts`).
 
-1. Ensures `@iam-brain/opencode-codex-auth@latest` is present in `~/.config/opencode/opencode.json`.
-2. Installs Codex collaboration agent templates in `~/.config/opencode/agents/` as disabled files:
-   - `Codex Orchestrator.md.disabled`
-   - `Codex Default.md.disabled`
-   - `Codex Plan.md.disabled`
-   - `Codex Execute.md.disabled`
-   - `Codex Review.md.disabled`
-   - `Codex Compact.md.disabled`
-3. Creates `~/.config/opencode/codex-config.json` with defaults when missing.
-4. Synchronizes `~/.config/opencode/commands/create-personality.md` for `/create-personality` (created/updated as needed).
-5. Synchronizes `~/.config/opencode/skills/personality-builder/SKILL.md` (plus references) for skill-driven personality workflows.
-
-At plugin startup, files are reconciled against runtime mode:
-
-- `mode: "collab"` -> `.md.disabled` files are activated to `.md`
-- `mode: "native"` or `mode: "codex"` -> Codex agents are disabled to `.md.disabled`
-- `/create-personality` command template is synchronized to the latest managed version.
-- `personality-builder` skill template bundle is synchronized to the latest managed version.
-
-To install only the agent templates (no `opencode.json` edits):
+Re-run installer safely:
 
 ```bash
-npx -y @iam-brain/opencode-codex-auth install-agents
-```
-
-## Config split
-
-Keep `opencode.json` minimal (plugin enablement only). Put runtime behavior in:
-
-- `~/.config/opencode/codex-config.json`
-
-Canonical config/env docs (complete key + variable reference) are in `docs/configuration.md`.
-
-Schemas for user-edited JSON files are in:
-
-- `schemas/codex-config.schema.json`
-- `schemas/opencode.schema.json`
-- `schemas/codex-accounts.schema.json` (advanced/manual recovery)
-
-Personality files live in lowercase directories:
-
-- project-local: `.opencode/personalities/`
-- global: `~/.config/opencode/personalities/`
-
-Create guided custom personalities with:
-
-```bash
-/create-personality
+npx -y @iam-brain/opencode-codex-auth install
 ```
 
 ## Runtime modes
 
-- `native`: native-plugin style identity/headers.
-- `codex`: codex-rs style identity/headers.
-- `collab`: Codex collaboration profile wiring (WIP / untested; not recommended for production).
+- `native` (default): native OpenCode-style identity/header path.
+- `codex`: codex-style identity/header path.
 
-## Account storage
+Mode behavior source of truth: `lib/config.ts` and `lib/codex-native.ts`.
 
-- Provider auth marker: `~/.local/share/opencode/auth.json`
-- Plugin multi-account store: `~/.config/opencode/codex-accounts.json`
-- Session affinity cache: `~/.config/opencode/cache/codex-session-affinity.json`
-- Quota snapshot cache: `~/.config/opencode/cache/codex-snapshots.json`
+## Storage files
 
-Legacy sources can be imported explicitly from the auth menu:
-
-- `~/.config/opencode/openai-codex-accounts.json`
-- `~/.local/share/opencode/auth.json`
+- Plugin account store: `~/.config/opencode/codex-accounts.json` (`lib/storage.ts`).
+- Plugin config: `~/.config/opencode/codex-config.json` (`lib/config.ts`).
+- Session affinity cache: `~/.config/opencode/cache/codex-session-affinity.json` (`lib/session-affinity.ts`).
+- Quota snapshot cache: `~/.config/opencode/cache/codex-snapshots.json` (`lib/codex-status-storage.ts`).
+- OpenCode provider marker: `~/.local/share/opencode/auth.json` (read for transfer checks in `lib/storage.ts`).
 
 ## Documentation
 
-- Docs portal: `docs/README.md`
-- Getting started: `docs/getting-started.md`
-- Configuration: `docs/configuration.md`
-- Multi-account: `docs/multi-account.md`
-- Troubleshooting: `docs/troubleshooting.md`
-- Development docs: `docs/development/`
+- Docs index: `docs/README.md`
+- User docs: `docs/getting-started.md`, `docs/configuration.md`, `docs/accounts-and-rotation.md`, `docs/troubleshooting.md`, `docs/privacy-and-data-handling.md`
+- Maintainer docs: `docs/maintainers/releasing.md`, `docs/maintainers/documentation-standards.md`
+- Development internals: `docs/development/`
 
 ## Development
 
@@ -127,3 +74,7 @@ Legacy sources can be imported explicitly from the auth menu:
 npm install
 npm run verify
 ```
+
+## Usage notice
+
+This plugin is intended for personal development use with your own ChatGPT account. For production multi-user systems, use the OpenAI Platform API.
