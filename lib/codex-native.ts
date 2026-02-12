@@ -1,16 +1,10 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 
-import {
-  extractAccountIdFromClaims as extractAccountIdFromClaimsBase,
-  extractEmailFromClaims,
-  extractPlanFromClaims,
-  parseJwtClaims,
-  type IdTokenClaims
-} from "./claims"
+import { extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "./claims"
 import { CodexStatus, type HeaderMap } from "./codex-status"
 import { loadSnapshots, saveSnapshots } from "./codex-status-storage"
 import { PluginFatalError, formatWaitTime, isPluginFatalError, toSyntheticErrorResponse } from "./fatal-errors"
-import { buildIdentityKey, ensureIdentityKey, normalizeEmail, normalizePlan, synchronizeIdentityKey } from "./identity"
+import { buildIdentityKey, ensureIdentityKey, normalizeEmail, normalizePlan } from "./identity"
 import { defaultSessionAffinityPath, defaultSnapshotsPath } from "./paths"
 import { createStickySessionState, selectAccount } from "./rotation"
 import {
@@ -25,19 +19,11 @@ import {
 } from "./storage"
 import { toolOutputForStatus } from "./codex-status-tool"
 import type { Logger } from "./logger"
-import type {
-  AccountAuthType,
-  AccountRecord,
-  AuthFile,
-  OpenAIAuthMode,
-  OpenAIOAuthDomain,
-  RotationStrategy
-} from "./types"
+import type { AccountRecord, AuthFile, OpenAIAuthMode, OpenAIOAuthDomain, RotationStrategy } from "./types"
 import { FetchOrchestrator, createFetchOrchestratorState } from "./fetch-orchestrator"
 import type { CodexSpoofMode, CustomSettings, PersonalityOption, PluginRuntimeMode } from "./config"
 import { formatToastMessage } from "./toast"
 import { runAuthMenuOnce } from "./ui/auth-menu-runner"
-import type { AccountInfo, DeleteScope } from "./ui/auth-menu"
 import { shouldUseColor } from "./ui/tty/ansi"
 import {
   applyCodexCatalogToProviderModels,
@@ -48,7 +34,6 @@ import {
 } from "./model-catalog"
 import { fetchQuotaSnapshotFromBackend } from "./codex-quota-fetch"
 import { createRequestSnapshots } from "./request-snapshots"
-import { CODEX_OAUTH_SUCCESS_HTML } from "./oauth-pages"
 import {
   applyCatalogInstructionOverrideToRequest,
   applyCodexRuntimeDefaultsToParams,
@@ -78,50 +63,59 @@ import {
   resolveRequestUserAgent
 } from "./codex-native/client-identity"
 import { createOAuthServerController } from "./codex-native/oauth-server"
+import {
+  buildAuthMenuAccounts,
+  ensureAccountAuthTypes,
+  findDomainAccountIndex,
+  formatAccountLabel,
+  hydrateAccountIdentityFromAccessClaims,
+  reconcileActiveIdentityKey,
+  upsertAccount
+} from "./codex-native/accounts"
+import {
+  buildAuthorizeUrl,
+  buildOAuthErrorHtml,
+  buildOAuthSuccessHtml,
+  CLIENT_ID,
+  composeCodexSuccessRedirectUrl,
+  exchangeCodeForTokens,
+  extractAccountId,
+  extractAccountIdFromClaims,
+  fetchWithTimeout,
+  generatePKCE,
+  generateState,
+  ISSUER,
+  OAUTH_CALLBACK_ORIGIN,
+  OAUTH_CALLBACK_PATH,
+  OAUTH_CALLBACK_TIMEOUT_MS,
+  OAUTH_CALLBACK_URI,
+  OAUTH_DEVICE_AUTH_TIMEOUT_MS,
+  OAUTH_DUMMY_KEY,
+  OAUTH_HTTP_TIMEOUT_MS,
+  OAUTH_LOOPBACK_HOST,
+  OAUTH_POLLING_SAFETY_MARGIN_MS,
+  OAUTH_PORT,
+  OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS,
+  OAUTH_SERVER_SHUTDOWN_GRACE_MS,
+  refreshAccessToken,
+  sleep,
+  type OAuthTokenRefreshError,
+  type PkceCodes,
+  type TokenResponse
+} from "./codex-native/oauth-utils"
+import {
+  asString,
+  getMessageProviderID,
+  isRecord,
+  readSessionMessageInfo,
+  sessionUsesOpenAIProvider
+} from "./codex-native/session-messages"
+import { assertAllowedOutboundUrl, rewriteUrl } from "./codex-native/request-routing"
 export { browserOpenInvocationFor } from "./codex-native/browser"
+export { upsertAccount }
+export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken }
 
-const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-const ISSUER = "https://auth.openai.com"
-const CODEX_API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
-const OAUTH_PORT = 1455
-const OAUTH_LOOPBACK_HOST = "127.0.0.1"
-const OAUTH_CALLBACK_ORIGIN = `http://${OAUTH_LOOPBACK_HOST}:${OAUTH_PORT}`
-const OAUTH_CALLBACK_PATH = "/auth/callback"
-const OAUTH_CALLBACK_URI = `${OAUTH_CALLBACK_ORIGIN}${OAUTH_CALLBACK_PATH}`
-const OAUTH_DUMMY_KEY = "oauth_dummy_key"
-const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000
 const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
-const OAUTH_HTTP_TIMEOUT_MS = (() => {
-  const raw = process.env.CODEX_OAUTH_HTTP_TIMEOUT_MS
-  if (!raw) return 15_000
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed >= 1_000 ? parsed : 15_000
-})()
-const OAUTH_DEVICE_AUTH_TIMEOUT_MS = (() => {
-  const raw = process.env.CODEX_DEVICE_AUTH_TIMEOUT_MS
-  if (!raw) return 10 * 60 * 1000
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed >= 1_000 ? parsed : 10 * 60 * 1000
-})()
-const OAUTH_CALLBACK_TIMEOUT_MS = (() => {
-  const raw = process.env.CODEX_OAUTH_CALLBACK_TIMEOUT_MS
-  if (!raw) return 10 * 60 * 1000
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed >= 60_000 ? parsed : 10 * 60 * 1000
-})()
-const OAUTH_SERVER_SHUTDOWN_GRACE_MS = (() => {
-  const raw = process.env.CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS
-  if (!raw) return 2000
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 2000
-})()
-const OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS = (() => {
-  const raw = process.env.CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS
-  if (!raw) return 60_000
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 60_000
-})()
-const OPENAI_OUTBOUND_HOST_ALLOWLIST = new Set(["api.openai.com", "auth.openai.com", "chat.openai.com", "chatgpt.com"])
 const AUTH_MENU_QUOTA_SNAPSHOT_TTL_MS = 60_000
 const AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS = 30_000
 const AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS = 5000
@@ -151,29 +145,6 @@ Be concise, structured, and focused on helping the next LLM seamlessly continue 
 const CODEX_RS_COMPACT_SUMMARY_PREFIX =
   "Another language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:"
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function fetchWithTimeout(
-  input: string | URL | Request,
-  init: RequestInit,
-  timeoutMs: number
-): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), Math.max(1, Math.floor(timeoutMs)))
-  try {
-    return await fetch(input, { ...init, signal: controller.signal })
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`OAuth request timed out after ${timeoutMs}ms`)
-    }
-    throw error
-  } finally {
-    clearTimeout(timeout)
-  }
-}
-
 export async function tryOpenUrlInBrowser(url: string, log?: Logger): Promise<boolean> {
   return openUrlInBrowser({
     url,
@@ -182,97 +153,8 @@ export async function tryOpenUrlInBrowser(url: string, log?: Logger): Promise<bo
   })
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-}
-
-type PkceCodes = {
-  verifier: string
-  challenge: string
-}
-
-async function generatePKCE(): Promise<PkceCodes> {
-  const verifier = base64UrlEncode(crypto.getRandomValues(new Uint8Array(64)))
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
-  const challenge = base64UrlEncode(new Uint8Array(hash))
-  return { verifier, challenge }
-}
-
-function base64UrlEncode(bytes: Uint8Array): string {
-  return Buffer.from(bytes).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
-}
-
-function generateState(): string {
-  return base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)))
-}
-
-export function extractAccountIdFromClaims(claims: IdTokenClaims | undefined): string | undefined {
-  return extractAccountIdFromClaimsBase(claims)
-}
-
-type TokensWithClaims = {
-  id_token?: string
-  access_token?: string
-}
-
-export function extractAccountId(tokens: TokensWithClaims | undefined): string | undefined {
-  if (!tokens) return undefined
-
-  if (tokens.id_token) {
-    const accountId = extractAccountIdFromClaims(parseJwtClaims(tokens.id_token))
-    if (accountId) return accountId
-  }
-
-  if (tokens.access_token) {
-    return extractAccountIdFromClaims(parseJwtClaims(tokens.access_token))
-  }
-
-  return undefined
-}
-
-export type TokenResponse = {
-  id_token?: string
-  access_token: string
-  refresh_token: string
-  expires_in?: number
-}
-
-type OAuthTokenRefreshError = Error & {
-  status?: number
-  oauthCode?: string
-}
-
 function isOAuthTokenRefreshError(value: unknown): value is OAuthTokenRefreshError {
   return value instanceof Error && ("status" in value || "oauthCode" in value)
-}
-
-function buildAuthorizeUrl(
-  redirectUri: string,
-  pkce: PkceCodes,
-  state: string,
-  originator: "opencode" | "codex_cli_rs"
-): string {
-  const query = [
-    ["response_type", "code"],
-    ["client_id", CLIENT_ID],
-    ["redirect_uri", redirectUri],
-    ["scope", "openid profile email offline_access"],
-    ["code_challenge", pkce.challenge],
-    ["code_challenge_method", "S256"],
-    ["id_token_add_organizations", "true"],
-    ["codex_cli_simplified_flow", "true"],
-    ["state", state],
-    ["originator", originator]
-  ]
-    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-    .join("&")
-
-  return `${ISSUER}/oauth/authorize?${query}`
 }
 
 export const __testOnly = {
@@ -288,203 +170,6 @@ export const __testOnly = {
   refreshCodexClientVersionFromGitHub,
   isOAuthDebugEnabled,
   stopOAuthServer
-}
-
-async function exchangeCodeForTokens(code: string, redirectUri: string, pkce: PkceCodes): Promise<TokenResponse> {
-  const response = await fetchWithTimeout(
-    `${ISSUER}/oauth/token`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
-        client_id: CLIENT_ID,
-        code_verifier: pkce.verifier
-      }).toString()
-    },
-    OAUTH_HTTP_TIMEOUT_MS
-  )
-
-  if (!response.ok) {
-    throw new Error(`Token exchange failed: ${response.status}`)
-  }
-  return (await response.json()) as TokenResponse
-}
-
-export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
-  const response = await fetchWithTimeout(
-    `${ISSUER}/oauth/token`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-        client_id: CLIENT_ID
-      }).toString()
-    },
-    OAUTH_HTTP_TIMEOUT_MS
-  )
-
-  if (!response.ok) {
-    let oauthCode: string | undefined
-    let oauthDescription: string | undefined
-    try {
-      const raw = await response.text()
-      if (raw) {
-        const payload = JSON.parse(raw) as Record<string, unknown>
-        if (typeof payload.error === "string") oauthCode = payload.error
-        if (typeof payload.error_description === "string") {
-          oauthDescription = payload.error_description
-        }
-      }
-    } catch {
-      // Best effort parse only.
-    }
-
-    const detail = oauthCode
-      ? `${oauthCode}${oauthDescription ? `: ${oauthDescription}` : ""}`
-      : `status ${response.status}`
-    const error = new Error(`Token refresh failed (${detail})`) as OAuthTokenRefreshError
-    error.status = response.status
-    error.oauthCode = oauthCode
-    throw error
-  }
-  return (await response.json()) as TokenResponse
-}
-
-function getOpenAIAuthClaims(token: string | undefined): Record<string, unknown> {
-  if (!token) return {}
-  const claims = parseJwtClaims(token)
-  const authClaims = claims?.["https://api.openai.com/auth"]
-  if (!authClaims || typeof authClaims !== "object" || Array.isArray(authClaims)) {
-    return {}
-  }
-  return authClaims as Record<string, unknown>
-}
-
-function getClaimString(claims: Record<string, unknown>, key: string): string {
-  const value = claims[key]
-  return typeof value === "string" ? value : ""
-}
-
-function getClaimBoolean(claims: Record<string, unknown>, key: string): boolean {
-  const value = claims[key]
-  return typeof value === "boolean" ? value : false
-}
-
-function composeCodexSuccessRedirectUrl(
-  tokens: TokenResponse,
-  options: { issuer?: string; port?: number } = {}
-): string {
-  const issuer = options.issuer ?? ISSUER
-  const port = options.port ?? OAUTH_PORT
-  const idClaims = getOpenAIAuthClaims(tokens.id_token)
-  const accessClaims = getOpenAIAuthClaims(tokens.access_token)
-
-  const needsSetup =
-    !getClaimBoolean(idClaims, "completed_platform_onboarding") && getClaimBoolean(idClaims, "is_org_owner")
-
-  const platformUrl = issuer === ISSUER ? "https://platform.openai.com" : "https://platform.api.openai.org"
-
-  const params = new URLSearchParams({
-    needs_setup: String(needsSetup),
-    org_id: getClaimString(idClaims, "organization_id"),
-    project_id: getClaimString(idClaims, "project_id"),
-    plan_type: getClaimString(accessClaims, "chatgpt_plan_type"),
-    platform_url: platformUrl
-  })
-
-  return `http://localhost:${port}/success?${params.toString()}`
-}
-
-function buildOAuthSuccessHtml(mode: CodexSpoofMode = "codex"): string {
-  if (mode === "codex") return CODEX_OAUTH_SUCCESS_HTML
-
-  return `<!doctype html>
-<html>
-  <head>
-    <title>OpenCode - Codex Authorization Successful</title>
-    <style>
-      body {
-        font-family: system-ui, -apple-system, sans-serif;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        margin: 0;
-        background: #131010;
-        color: #f1ecec;
-      }
-      .container {
-        text-align: center;
-        padding: 2rem;
-      }
-      h1 {
-        color: #f1ecec;
-        margin-bottom: 1rem;
-      }
-      p {
-        color: #b7b1b1;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>Authorization Successful</h1>
-      <p>You can close this window and return to OpenCode.</p>
-    </div>
-    <script>
-      setTimeout(() => window.close(), 2000)
-    </script>
-  </body>
-</html>`
-}
-
-function buildOAuthErrorHtml(error: string): string {
-  return `<!doctype html>
-<html>
-  <head>
-    <title>Sign into Codex</title>
-    <style>
-      body {
-        font-family: system-ui, -apple-system, sans-serif;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        margin: 0;
-        background: #131010;
-        color: #f1ecec;
-      }
-      .container {
-        text-align: center;
-        padding: 2rem;
-      }
-      h1 {
-        color: #fc533a;
-        margin-bottom: 1rem;
-      }
-      .error {
-        color: #ff917b;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        margin-top: 1rem;
-        padding: 1rem;
-        background: #3c140d;
-        border-radius: 0.5rem;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>Sign-in failed</h1>
-      <p>An error occurred during authorization.</p>
-      <div class="error">${escapeHtml(error)}</div>
-    </div>
-  </body>
-</html>`
 }
 
 const oauthServerController = createOAuthServerController<PkceCodes, TokenResponse>({
@@ -527,331 +212,6 @@ function modeForRuntimeMode(runtimeMode: PluginRuntimeMode): OpenAIAuthMode {
   return runtimeMode === "native" ? "native" : "codex"
 }
 
-const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
-
-function normalizeAccountAuthTypes(input: unknown): AccountAuthType[] {
-  const source = Array.isArray(input) ? input : ["native"]
-  const seen = new Set<AccountAuthType>()
-  const out: AccountAuthType[] = []
-
-  for (const rawType of source) {
-    const type = rawType === "codex" ? "codex" : rawType === "native" ? "native" : undefined
-    if (!type || seen.has(type)) continue
-    seen.add(type)
-    out.push(type)
-  }
-
-  if (out.length === 0) out.push("native")
-  out.sort((a, b) => ACCOUNT_AUTH_TYPE_ORDER.indexOf(a) - ACCOUNT_AUTH_TYPE_ORDER.indexOf(b))
-  return out
-}
-
-function mergeAccountAuthTypes(existing: unknown, incoming: unknown): AccountAuthType[] {
-  const merged = [...normalizeAccountAuthTypes(existing), ...normalizeAccountAuthTypes(incoming)]
-  return normalizeAccountAuthTypes(merged)
-}
-
-function removeAccountAuthType(existing: unknown, scope: Exclude<DeleteScope, "both">): AccountAuthType[] {
-  return normalizeAccountAuthTypes(existing).filter((type) => type !== scope)
-}
-
-export function upsertAccount(openai: OpenAIOAuthDomain, incoming: AccountRecord): AccountRecord {
-  const normalizedEmail = normalizeEmail(incoming.email)
-  const normalizedPlan = normalizePlan(incoming.plan)
-  const normalizedAccountId = incoming.accountId?.trim()
-  const strictIdentityKey = buildIdentityKey({
-    accountId: normalizedAccountId,
-    email: normalizedEmail,
-    plan: normalizedPlan
-  })
-  const strictMatch = strictIdentityKey
-    ? openai.accounts.find((existing) => {
-        const existingAccountId = existing.accountId?.trim()
-        const existingEmail = normalizeEmail(existing.email)
-        const existingPlan = normalizePlan(existing.plan)
-        return (
-          existingAccountId === normalizedAccountId &&
-          existingEmail === normalizedEmail &&
-          existingPlan === normalizedPlan
-        )
-      })
-    : undefined
-
-  const refreshFallbackMatch =
-    strictMatch || !incoming.refresh
-      ? undefined
-      : openai.accounts.find((existing) => existing.refresh === incoming.refresh)
-
-  const match = strictMatch ?? refreshFallbackMatch
-  const matchedByRefreshFallback = refreshFallbackMatch !== undefined && strictMatch === undefined
-  const requiresInsert =
-    matchedByRefreshFallback &&
-    strictIdentityKey !== undefined &&
-    match?.identityKey !== undefined &&
-    match.identityKey !== strictIdentityKey
-
-  const target = !match || requiresInsert ? ({} as AccountRecord) : match
-  if (!match || requiresInsert) {
-    openai.accounts.push(target)
-  }
-
-  if (!matchedByRefreshFallback || requiresInsert) {
-    if (normalizedAccountId) target.accountId = normalizedAccountId
-    if (normalizedEmail) target.email = normalizedEmail
-    if (normalizedPlan) target.plan = normalizedPlan
-  }
-
-  if (incoming.enabled !== undefined) target.enabled = incoming.enabled
-  if (incoming.refresh) target.refresh = incoming.refresh
-  if (incoming.access) target.access = incoming.access
-  if (incoming.expires !== undefined) target.expires = incoming.expires
-  if (incoming.lastUsed !== undefined) target.lastUsed = incoming.lastUsed
-  target.authTypes = normalizeAccountAuthTypes(incoming.authTypes ?? match?.authTypes)
-
-  synchronizeIdentityKey(target)
-  if (!target.identityKey && strictIdentityKey) target.identityKey = strictIdentityKey
-
-  return target
-}
-
-function rewriteUrl(requestInput: string | URL | Request): URL {
-  const parsed =
-    requestInput instanceof URL
-      ? requestInput
-      : new URL(typeof requestInput === "string" ? requestInput : requestInput.url)
-
-  if (parsed.pathname.includes("/v1/responses") || parsed.pathname.includes("/chat/completions")) {
-    return new URL(CODEX_API_ENDPOINT)
-  }
-
-  return parsed
-}
-
-function isAllowedOpenAIOutboundHost(hostname: string): boolean {
-  const normalized = hostname.trim().toLowerCase()
-  if (!normalized) return false
-  if (OPENAI_OUTBOUND_HOST_ALLOWLIST.has(normalized)) return true
-  return normalized.endsWith(".openai.com") || normalized.endsWith(".chatgpt.com")
-}
-
-function assertAllowedOutboundUrl(url: URL): void {
-  const protocol = url.protocol.trim().toLowerCase()
-  if (protocol !== "https:") {
-    throw new PluginFatalError({
-      message:
-        `Blocked outbound request with unsupported protocol "${protocol || "unknown"}". ` +
-        "This plugin only proxies HTTPS requests to OpenAI/ChatGPT backends.",
-      status: 400,
-      type: "disallowed_outbound_protocol",
-      param: "request"
-    })
-  }
-
-  if (isAllowedOpenAIOutboundHost(url.hostname)) return
-
-  throw new PluginFatalError({
-    message:
-      `Blocked outbound request to "${url.hostname}". ` + "This plugin only proxies OpenAI/ChatGPT backend traffic.",
-    status: 400,
-    type: "disallowed_outbound_host",
-    param: "request"
-  })
-}
-
-async function sessionUsesOpenAIProvider(
-  client: PluginInput["client"] | undefined,
-  sessionID: string
-): Promise<boolean> {
-  const rows = await readSessionMessageRows(client, sessionID)
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const row = rows[index]
-    if (!isRecord(row) || !isRecord(row.info)) continue
-    const info = row.info
-    if (asString(info.role) !== "user") continue
-    const providerID = getMessageProviderID(info)
-    if (!providerID) continue
-    return providerID === "openai"
-  }
-
-  return false
-}
-
-function getMessageProviderID(info: Record<string, unknown>): string | undefined {
-  const model = isRecord(info.model) ? info.model : undefined
-  return model ? asString(model.providerID) : asString(info.providerID)
-}
-
-async function readSessionMessageRows(
-  client: PluginInput["client"] | undefined,
-  sessionID: string
-): Promise<unknown[]> {
-  const sessionApi = client?.session as { messages: (input: unknown) => Promise<unknown> } | undefined
-  if (!sessionApi || typeof sessionApi.messages !== "function") return []
-
-  try {
-    const response = await sessionApi.messages({ sessionID, limit: 100 })
-    return isRecord(response) && Array.isArray(response.data) ? response.data : []
-  } catch {
-    return []
-  }
-}
-
-async function readSessionMessageInfo(
-  client: PluginInput["client"] | undefined,
-  sessionID: string,
-  messageID: string
-): Promise<Record<string, unknown> | undefined> {
-  const rows = await readSessionMessageRows(client, sessionID)
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const row = rows[index]
-    if (!isRecord(row) || !isRecord(row.info)) continue
-    const info = row.info
-    if (asString(info.id) !== messageID) continue
-    return info
-  }
-
-  return undefined
-}
-
-function formatAccountLabel(
-  account: { email?: string; plan?: string; accountId?: string } | undefined,
-  index: number
-): string {
-  const email = account?.email?.trim()
-  const plan = account?.plan?.trim()
-  const accountId = account?.accountId?.trim()
-  const idSuffix = accountId ? (accountId.length > 6 ? accountId.slice(-6) : accountId) : null
-
-  if (email && plan) return `${email} (${plan})`
-  if (email) return email
-  if (idSuffix) return `id:${idSuffix}`
-  return `Account ${index + 1}`
-}
-
-function hasActiveCooldown(account: AccountRecord, now: number): boolean {
-  return (
-    typeof account.cooldownUntil === "number" && Number.isFinite(account.cooldownUntil) && account.cooldownUntil > now
-  )
-}
-
-function ensureAccountAuthTypes(account: AccountRecord): AccountAuthType[] {
-  const normalized = normalizeAccountAuthTypes(account.authTypes)
-  account.authTypes = normalized
-  return normalized
-}
-
-function reconcileActiveIdentityKey(openai: OpenAIOAuthDomain): void {
-  if (
-    openai.activeIdentityKey &&
-    openai.accounts.some((account) => account.identityKey === openai.activeIdentityKey && account.enabled !== false)
-  ) {
-    return
-  }
-
-  const fallback = openai.accounts.find((account) => account.enabled !== false && account.identityKey)
-  openai.activeIdentityKey = fallback?.identityKey
-}
-
-function findDomainAccountIndex(domain: OpenAIOAuthDomain, account: AccountInfo): number {
-  if (account.identityKey) {
-    const byIdentity = domain.accounts.findIndex((entry) => entry.identityKey === account.identityKey)
-    if (byIdentity >= 0) return byIdentity
-  }
-  return domain.accounts.findIndex((entry) => {
-    const sameId = (entry.accountId?.trim() ?? "") === (account.accountId?.trim() ?? "")
-    const sameEmail = normalizeEmail(entry.email) === normalizeEmail(account.email)
-    const samePlan = normalizePlan(entry.plan) === normalizePlan(account.plan)
-    return sameId && sameEmail && samePlan
-  })
-}
-
-function buildAuthMenuAccounts(input: {
-  native?: OpenAIOAuthDomain
-  codex?: OpenAIOAuthDomain
-  activeMode: OpenAIAuthMode
-}): AccountInfo[] {
-  const now = Date.now()
-  const rows = new Map<string, AccountInfo>()
-
-  const mergeFromDomain = (authMode: OpenAIAuthMode, domain?: OpenAIOAuthDomain) => {
-    if (!domain) return
-    for (const account of domain.accounts) {
-      const normalizedTypes = ensureAccountAuthTypes(account)
-      const identity =
-        account.identityKey ??
-        buildIdentityKey({
-          accountId: account.accountId,
-          email: normalizeEmail(account.email),
-          plan: normalizePlan(account.plan)
-        }) ??
-        `${authMode}:${account.accountId ?? account.email ?? account.plan ?? "unknown"}`
-
-      const existing = rows.get(identity)
-      const currentStatus: AccountInfo["status"] = hasActiveCooldown(account, now)
-        ? "rate-limited"
-        : typeof account.expires === "number" && Number.isFinite(account.expires) && account.expires <= now
-          ? "expired"
-          : "unknown"
-
-      if (!existing) {
-        const isCurrentAccount =
-          authMode === input.activeMode &&
-          Boolean(domain.activeIdentityKey && account.identityKey === domain.activeIdentityKey)
-        rows.set(identity, {
-          identityKey: account.identityKey,
-          index: rows.size,
-          accountId: account.accountId,
-          email: account.email,
-          plan: account.plan,
-          authTypes: [authMode],
-          lastUsed: account.lastUsed,
-          enabled: account.enabled,
-          status: isCurrentAccount ? "active" : currentStatus,
-          isCurrentAccount
-        })
-        continue
-      }
-
-      existing.authTypes = normalizeAccountAuthTypes([...(existing.authTypes ?? []), authMode])
-      if (typeof account.lastUsed === "number" && (!existing.lastUsed || account.lastUsed > existing.lastUsed)) {
-        existing.lastUsed = account.lastUsed
-      }
-      if (existing.enabled === false && account.enabled !== false) {
-        existing.enabled = true
-      }
-      if (existing.status !== "rate-limited" && currentStatus === "rate-limited") {
-        existing.status = "rate-limited"
-      } else if (existing.status !== "rate-limited" && existing.status !== "expired" && currentStatus === "expired") {
-        existing.status = "expired"
-      }
-      const isCurrentAccount =
-        authMode === input.activeMode &&
-        Boolean(domain.activeIdentityKey && account.identityKey === domain.activeIdentityKey)
-      if (isCurrentAccount) {
-        existing.isCurrentAccount = true
-        existing.status = "active"
-      }
-    }
-  }
-
-  mergeFromDomain("native", input.native)
-  mergeFromDomain("codex", input.codex)
-  return Array.from(rows.values()).map((row, index) => ({ ...row, index }))
-}
-
-function hydrateAccountIdentityFromAccessClaims(account: AccountRecord): void {
-  const claims =
-    typeof account.access === "string" && account.access.length > 0 ? parseJwtClaims(account.access) : undefined
-  if (!account.accountId) account.accountId = extractAccountIdFromClaims(claims)
-  if (!account.email) account.email = extractEmailFromClaims(claims)
-  if (!account.plan) account.plan = extractPlanFromClaims(claims)
-  account.email = normalizeEmail(account.email)
-  account.plan = normalizePlan(account.plan)
-  if (account.accountId) account.accountId = account.accountId.trim()
-  ensureAccountAuthTypes(account)
-  synchronizeIdentityKey(account)
-}
-
 export type CodexAuthPluginOptions = {
   log?: Logger
   personality?: PersonalityOption
@@ -868,15 +228,6 @@ export type CodexAuthPluginOptions = {
   headerTransformDebug?: boolean
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-function asString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined
-  const trimmed = value.trim()
-  return trimmed ? trimmed : undefined
-}
 export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginOptions = {}): Promise<Hooks> {
   opts.log?.debug("codex-native init")
   const codexCompactionSummaryPrefixSessions = new Set<string>()
