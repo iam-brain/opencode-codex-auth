@@ -93,6 +93,7 @@ export type ApplyCodexCatalogInput = {
 const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
 const DEFAULT_CACHE_DIR = path.join(os.homedir(), ".config", "opencode", "cache")
 const OPENCODE_MODELS_CACHE_PREFIX = "codex-models-cache"
+const CODEX_AUTH_MODELS_CACHE_PREFIX = "codex-auth-models-"
 const DEFAULT_CLIENT_VERSION = "0.97.0"
 const CACHE_TTL_MS = 15 * 60 * 1000
 const FETCH_TIMEOUT_MS = 5000
@@ -281,7 +282,10 @@ async function readCatalogFromDisk(cacheDir: string, accountId?: string): Promis
 async function readCatalogFromOpencodeCache(cacheDir: string): Promise<CodexModelsCache | undefined> {
   try {
     const entries = await fs.readdir(cacheDir)
-    const candidates = entries.filter((name) => name.startsWith(OPENCODE_MODELS_CACHE_PREFIX) && name.endsWith(".json"))
+    const candidates = entries.filter((name) => {
+      if (!name.endsWith(".json")) return false
+      return name.startsWith(OPENCODE_MODELS_CACHE_PREFIX) || name.startsWith(CODEX_AUTH_MODELS_CACHE_PREFIX)
+    })
     if (candidates.length === 0) return undefined
 
     let best: CodexModelsCache | undefined
@@ -305,6 +309,36 @@ async function readCatalogFromOpencodeCache(cacheDir: string): Promise<CodexMode
     }
 
     return best
+  } catch {
+    return undefined
+  }
+}
+
+function parseFetchedAtFromUnknown(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === "string") {
+    const parsed = Date.parse(value)
+    if (!Number.isNaN(parsed)) {
+      return parsed
+    }
+  }
+  return 0
+}
+
+async function readCatalogFromCodexCliCache(): Promise<CodexModelsCache | undefined> {
+  try {
+    const file = path.join(os.homedir(), ".codex", "models_cache.json")
+    const raw = await fs.readFile(file, "utf8")
+    const parsed = JSON.parse(raw) as unknown
+    if (!isRecord(parsed)) return undefined
+    const models = parseCatalogResponse({ models: parsed.models })
+    if (models.length === 0) return undefined
+    return {
+      fetchedAt: parseFetchedAtFromUnknown(parsed.fetched_at ?? parsed.fetchedAt),
+      models
+    }
   } catch {
     return undefined
   }
@@ -368,6 +402,7 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
 
   const disk = await readCatalogFromDisk(cacheDir, input.accountId)
   const opencodeCacheFallback = await readCatalogFromOpencodeCache(cacheDir)
+  const codexCliCacheFallback = await readCatalogFromCodexCliCache()
   const hasFreshDisk = !!disk && isFresh(disk, now)
   if (hasFreshDisk && !input.forceRefresh) {
     inMemoryCatalog.set(key, disk)
@@ -385,6 +420,11 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
       emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
       inMemoryCatalog.set(key, opencodeCacheFallback)
       return opencodeCacheFallback.models
+    }
+    if (codexCliCacheFallback) {
+      emitEvent(input, { type: "stale_cache_used", reason: "codex_cli_cache_fallback" })
+      inMemoryCatalog.set(key, codexCliCacheFallback)
+      return codexCliCacheFallback.models
     }
     emitEvent(input, { type: "catalog_unavailable", reason: "missing_access_token" })
     return undefined
@@ -457,6 +497,11 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
         inMemoryCatalog.set(key, opencodeCacheFallback)
         emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
         return opencodeCacheFallback.models
+      }
+      if (codexCliCacheFallback) {
+        inMemoryCatalog.set(key, codexCliCacheFallback)
+        emitEvent(input, { type: "stale_cache_used", reason: "codex_cli_cache_fallback" })
+        return codexCliCacheFallback.models
       }
       emitEvent(input, { type: "catalog_unavailable", reason: "network_fetch_failed" })
       return undefined
