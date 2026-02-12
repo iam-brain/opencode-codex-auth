@@ -1868,24 +1868,24 @@ async function applyCatalogInstructionOverrideToRequest(input: {
   catalogModels: CodexModelInfo[] | undefined
   customSettings: CustomSettings | undefined
   fallbackPersonality: PersonalityOption | undefined
-}): Promise<{ request: Request; changed: boolean }> {
-  if (!input.enabled) return { request: input.request, changed: false }
+}): Promise<{ request: Request; changed: boolean; reason: string }> {
+  if (!input.enabled) return { request: input.request, changed: false, reason: "disabled" }
 
   const method = input.request.method.toUpperCase()
-  if (method !== "POST") return { request: input.request, changed: false }
+  if (method !== "POST") return { request: input.request, changed: false, reason: "non_post" }
 
   let payload: unknown
   try {
     const raw = await input.request.clone().text()
-    if (!raw) return { request: input.request, changed: false }
+    if (!raw) return { request: input.request, changed: false, reason: "empty_body" }
     payload = JSON.parse(raw)
   } catch {
-    return { request: input.request, changed: false }
+    return { request: input.request, changed: false, reason: "invalid_json" }
   }
 
-  if (!isRecord(payload)) return { request: input.request, changed: false }
+  if (!isRecord(payload)) return { request: input.request, changed: false, reason: "non_object_body" }
   const modelSlugRaw = asString(payload.model)
-  if (!modelSlugRaw) return { request: input.request, changed: false }
+  if (!modelSlugRaw) return { request: input.request, changed: false, reason: "missing_model" }
 
   const modelCandidates = getModelLookupCandidates({
     id: modelSlugRaw,
@@ -1902,13 +1902,13 @@ async function applyCatalogInstructionOverrideToRequest(input: {
     fallback: input.fallbackPersonality
   })
   const catalogModel = findCatalogModelForCandidates(input.catalogModels, modelCandidates)
-  if (!catalogModel) return { request: input.request, changed: false }
+  if (!catalogModel) return { request: input.request, changed: false, reason: "catalog_model_not_found" }
 
   const rendered = resolveInstructionsForModel(catalogModel, effectivePersonality)
-  if (!rendered) return { request: input.request, changed: false }
+  if (!rendered) return { request: input.request, changed: false, reason: "rendered_empty_or_unsafe" }
 
   if (asString(payload.instructions) === rendered) {
-    return { request: input.request, changed: false }
+    return { request: input.request, changed: false, reason: "already_matches" }
   }
 
   payload.instructions = rendered
@@ -1920,7 +1920,7 @@ async function applyCatalogInstructionOverrideToRequest(input: {
     body: JSON.stringify(payload),
     redirect: input.request.redirect
   })
-  return { request: updatedRequest, changed: true }
+  return { request: updatedRequest, changed: true, reason: "updated" }
 }
 
 export async function CodexAuthPlugin(
@@ -2324,14 +2324,32 @@ export async function CodexAuthPlugin(
           ...resolveCatalogHeaders(),
           onEvent: (event) => opts.log?.debug("codex model catalog", event)
         })
-        lastCatalogModels = catalogModels
-
-        applyCodexCatalogToProviderModels({
-          providerModels: provider.models as Record<string, Record<string, unknown>>,
-          catalogModels,
-          fallbackModels: STATIC_FALLBACK_MODELS,
-          personality: opts.personality
-        })
+        const applyCatalogModels = (models: CodexModelInfo[] | undefined): void => {
+          if (models) {
+            lastCatalogModels = models
+          }
+          applyCodexCatalogToProviderModels({
+            providerModels: provider.models as Record<string, Record<string, unknown>>,
+            catalogModels: models ?? lastCatalogModels,
+            fallbackModels: STATIC_FALLBACK_MODELS,
+            personality: opts.personality
+          })
+        }
+        applyCatalogModels(catalogModels)
+        const syncCatalogFromAuth = async (auth: {
+          accessToken?: string
+          accountId?: string
+        }): Promise<CodexModelInfo[] | undefined> => {
+          if (!auth.accessToken) return undefined
+          const refreshedCatalog = await getCodexModelCatalog({
+            accessToken: auth.accessToken,
+            accountId: auth.accountId,
+            ...resolveCatalogHeaders(),
+            onEvent: (event) => opts.log?.debug("codex model catalog", event)
+          })
+          applyCatalogModels(refreshedCatalog)
+          return refreshedCatalog
+        }
 
         return {
           apiKey: OAUTH_DUMMY_KEY,
@@ -2383,6 +2401,7 @@ export async function CodexAuthPlugin(
               await requestSnapshots.captureRequest("after-header-transform", outbound, {
                 spoofMode,
                 instructionsOverridden: instructionOverride.changed,
+                instructionOverrideReason: instructionOverride.reason,
                 ...(collaborationModeKind ? { collaborationModeKind } : {}),
                 ...(isSubagentRequest ? { subagent: subagentHeader } : {})
               })
@@ -2661,12 +2680,20 @@ export async function CodexAuthPlugin(
                   })
                 }
 
-                void getCodexModelCatalog({
-                  accessToken: access,
-                  accountId,
-                  ...resolveCatalogHeaders(),
-                  onEvent: (event) => opts.log?.debug("codex model catalog", event)
-                }).catch(() => {})
+                if (spoofMode === "codex") {
+                  const shouldAwaitCatalog = !lastCatalogModels || lastCatalogModels.length === 0
+                  if (shouldAwaitCatalog) {
+                    try {
+                      await syncCatalogFromAuth({ accessToken: access, accountId })
+                    } catch {
+                      // best-effort catalog load; request can still proceed
+                    }
+                  } else {
+                    void syncCatalogFromAuth({ accessToken: access, accountId }).catch(() => {})
+                  }
+                } else {
+                  void syncCatalogFromAuth({ accessToken: access, accountId }).catch(() => {})
+                }
 
                 selectedIdentityKey = identityKey
                 return { access, accountId, identityKey, accountLabel, email, plan }
@@ -2689,14 +2716,24 @@ export async function CodexAuthPlugin(
               },
               showToast,
               onAttemptRequest: async ({ attempt, maxAttempts, request, auth, sessionKey }) => {
-                await requestSnapshots.captureRequest("outbound-attempt", request, {
+                const instructionOverride = await applyCatalogInstructionOverrideToRequest({
+                  request,
+                  enabled: spoofMode === "codex",
+                  catalogModels: lastCatalogModels,
+                  customSettings: opts.customSettings,
+                  fallbackPersonality: opts.personality
+                })
+                await requestSnapshots.captureRequest("outbound-attempt", instructionOverride.request, {
                   attempt: attempt + 1,
                   maxAttempts,
                   sessionKey,
                   identityKey: auth.identityKey,
                   accountLabel: auth.accountLabel,
+                  instructionsOverridden: instructionOverride.changed,
+                  instructionOverrideReason: instructionOverride.reason,
                   ...(collaborationModeKind ? { collaborationModeKind } : {})
                 })
+                return instructionOverride.request
               },
               onAttemptResponse: async ({ attempt, maxAttempts, response, auth, sessionKey }) => {
                 await requestSnapshots.captureResponse("outbound-response", response, {

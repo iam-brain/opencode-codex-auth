@@ -560,6 +560,50 @@ describe("FetchOrchestrator", () => {
     expect(requestArg.request.headers.get("ChatGPT-Account-Id")).toBe("acc1")
   })
 
+  it("sends onAttemptRequest replacement request when provided", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "token_abc",
+      identityKey: "id1",
+      accountId: "acc1"
+    }))
+    const setCooldown = vi.fn(async () => {})
+    const onAttemptRequest = vi.fn(async ({ request }: { request: Request }) => {
+      const payload = JSON.parse(await request.clone().text()) as Record<string, unknown>
+      payload.instructions = "Overridden instructions"
+      return new Request(request, {
+        method: request.method,
+        headers: request.headers,
+        body: JSON.stringify(payload)
+      })
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init)
+      const payload = JSON.parse(await request.text()) as Record<string, unknown>
+      expect(payload.instructions).toBe("Overridden instructions")
+      expect(request.headers.get("Authorization")).toBe("Bearer token_abc")
+      expect(request.headers.get("ChatGPT-Account-Id")).toBe("acc1")
+      return new Response("OK", { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      onAttemptRequest
+    })
+
+    const response = await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_replace_1" },
+      body: JSON.stringify({ instructions: "Host instructions", input: "hello" })
+    })
+
+    expect(response.status).toBe(200)
+    expect(onAttemptRequest).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it("does not emit session observation when session_id is missing", async () => {
     const acquireAuth = vi.fn(async () => ({
       access: "token_123",

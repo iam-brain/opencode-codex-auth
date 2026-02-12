@@ -51,7 +51,7 @@ export type FetchOrchestratorDeps = {
     request: Request
     auth: AuthData
     sessionKey: string | null
-  }) => Promise<void> | void
+  }) => Promise<Request | void> | Request | void
   onAttemptResponse?: (input: {
     attempt: number
     maxAttempts: number
@@ -252,20 +252,23 @@ export class FetchOrchestrator {
       }
       this.state.lastAccountKey = accountKey
       
-      const request = baseRequest.clone()
+      let request = baseRequest.clone()
       request.headers.set("Authorization", `Bearer ${auth.access}`)
       if (auth.accountId) {
         request.headers.set("ChatGPT-Account-Id", auth.accountId)
       }
       if (this.deps.onAttemptRequest) {
         try {
-          await this.deps.onAttemptRequest({
+          const maybeRequest = await this.deps.onAttemptRequest({
             attempt,
             maxAttempts,
             request,
             auth,
             sessionKey
           })
+          if (maybeRequest instanceof Request) {
+            request = maybeRequest
+          }
         } catch {
           // Snapshot/debug hooks should never block request execution.
         }
