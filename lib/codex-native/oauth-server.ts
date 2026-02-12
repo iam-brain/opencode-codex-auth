@@ -1,7 +1,7 @@
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { appendFileSync, chmodSync, mkdirSync } from "node:fs"
+import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs"
 
 import type { OpenAIAuthMode } from "../types"
 
@@ -30,6 +30,32 @@ type PendingOAuth<TPkce, TTokens> = {
   reject: (error: Error) => void
 }
 
+const DEFAULT_DEBUG_LOG_MAX_BYTES = 1_000_000
+
+function resolveDebugLogMaxBytes(): number {
+  const raw = process.env.CODEX_AUTH_DEBUG_MAX_BYTES
+  if (!raw) return DEFAULT_DEBUG_LOG_MAX_BYTES
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return DEFAULT_DEBUG_LOG_MAX_BYTES
+  return Math.max(16_384, Math.floor(parsed))
+}
+
+function rotateDebugLogIfNeeded(debugLogFile: string, maxBytes: number): void {
+  try {
+    const stat = statSync(debugLogFile)
+    if (stat.size < maxBytes) return
+    const rotatedPath = `${debugLogFile}.1`
+    try {
+      unlinkSync(rotatedPath)
+    } catch {
+      // ignore missing previous rotation file
+    }
+    renameSync(debugLogFile, rotatedPath)
+  } catch {
+    // ignore when file does not exist or cannot be inspected
+  }
+}
+
 export function createOAuthServerController<TPkce, TTokens>(
   input: OAuthServerControllerInput<TPkce, TTokens>
 ): {
@@ -42,6 +68,7 @@ export function createOAuthServerController<TPkce, TTokens>(
 } {
   const debugLogDir = input.debugLogDir ?? path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
   const debugLogFile = input.debugLogFile ?? path.join(debugLogDir, "oauth-lifecycle.log")
+  const debugLogMaxBytes = resolveDebugLogMaxBytes()
 
   let oauthServer: http.Server | undefined
   let pendingOAuth: PendingOAuth<TPkce, TTokens> | undefined
@@ -68,6 +95,7 @@ export function createOAuthServerController<TPkce, TTokens>(
     }
     try {
       mkdirSync(debugLogDir, { recursive: true, mode: 0o700 })
+      rotateDebugLogIfNeeded(debugLogFile, debugLogMaxBytes)
       appendFileSync(debugLogFile, `${line}\n`, { encoding: "utf8", mode: 0o600 })
       chmodSync(debugLogFile, 0o600)
     } catch {

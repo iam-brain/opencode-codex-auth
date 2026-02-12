@@ -24,6 +24,7 @@
 - Debug logging is opt-in.
 - Snapshot logging is opt-in.
 - Snapshot writer redacts sensitive auth headers/tokens before persistence.
+- OAuth debug lifecycle logs rotate at a configurable size cap.
 
 ## Legacy import
 

@@ -66,6 +66,8 @@ type SnapshotWriterInput = {
   enabled: boolean
   dir?: string
   log?: Logger
+  maxSnapshotFiles?: number
+  maxLiveHeadersBytes?: number
 }
 
 type SnapshotMeta = Record<string, unknown> | undefined
@@ -90,6 +92,14 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
   }
 
   const dir = input.dir ?? DEFAULT_LOG_DIR
+  const maxSnapshotFiles =
+    typeof input.maxSnapshotFiles === "number" && Number.isFinite(input.maxSnapshotFiles)
+      ? Math.max(1, Math.floor(input.maxSnapshotFiles))
+      : 200
+  const maxLiveHeadersBytes =
+    typeof input.maxLiveHeadersBytes === "number" && Number.isFinite(input.maxLiveHeadersBytes)
+      ? Math.max(1, Math.floor(input.maxLiveHeadersBytes))
+      : 1_000_000
   const runId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}-${randomUUID().slice(0, 8)}`
   let requestCounter = 0
   let responseCounter = 0
@@ -98,12 +108,37 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
     await fs.mkdir(dir, { recursive: true })
   }
 
+  const pruneSnapshotFiles = async (): Promise<void> => {
+    try {
+      const entries = await fs.readdir(dir)
+      const snapshots = entries
+        .filter((name) => name.includes("-request-") || name.includes("-response-"))
+        .map((name) => path.join(dir, name))
+
+      if (snapshots.length <= maxSnapshotFiles) return
+
+      const withMtime = await Promise.all(
+        snapshots.map(async (filePath) => {
+          const stat = await fs.stat(filePath)
+          return { filePath, mtimeMs: stat.mtimeMs }
+        })
+      )
+
+      withMtime.sort((left, right) => left.mtimeMs - right.mtimeMs)
+      const remove = withMtime.slice(0, withMtime.length - maxSnapshotFiles)
+      await Promise.all(remove.map(({ filePath }) => fs.unlink(filePath).catch(() => {})))
+    } catch {
+      // best-effort cleanup
+    }
+  }
+
   const writeJson = async (fileName: string, payload: Record<string, unknown>): Promise<void> => {
     try {
       await ensureDir()
       const filePath = path.join(dir, `${runId}-${fileName}`)
       await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 })
       await enforceOwnerOnlyPermissions(filePath)
+      await pruneSnapshotFiles()
     } catch (error) {
       input.log?.warn("failed to write request snapshot", {
         fileName,
@@ -116,6 +151,17 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
     try {
       await ensureDir()
       const filePath = path.join(dir, fileName)
+      const rotatedPath = `${filePath}.1`
+      try {
+        const stat = await fs.stat(filePath)
+        if (stat.size >= maxLiveHeadersBytes) {
+          await fs.unlink(rotatedPath).catch(() => {})
+          await fs.rename(filePath, rotatedPath)
+          await enforceOwnerOnlyPermissions(rotatedPath)
+        }
+      } catch {
+        // ignore when file does not exist or cannot be stat'ed
+      }
       await fs.appendFile(filePath, `${JSON.stringify(payload)}\n`, { mode: 0o600 })
       await enforceOwnerOnlyPermissions(filePath)
     } catch (error) {

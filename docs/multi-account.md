@@ -47,7 +47,7 @@ Configured in `runtime.rotationStrategy`:
 ### sticky
 
 - Reuses active account while healthy.
-- With PID/session offset enabled, assigns new session keys (`promptCacheKey`) across healthy accounts.
+- With PID/session offset enabled, assigns new `session_id` values across healthy accounts.
 
 ### hybrid
 

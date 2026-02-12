@@ -9,6 +9,9 @@ describe("release hygiene", () => {
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
     expect(pkg.scripts?.verify).toBe("npm run typecheck && npm test && npm run build")
     expect(pkg.scripts?.prepack).toBe("npm run build")
+    expect(pkg.scripts?.build).toBe("npm run clean:dist && tsc")
+    expect(pkg.scripts?.["clean:dist"]).toBe("node scripts/clean-dist.js")
+    expect(existsSync(join(process.cwd(), "scripts", "clean-dist.js"))).toBe(true)
   })
 
   it("includes license and changelog files", () => {
@@ -35,5 +38,11 @@ describe("package publish surface", () => {
     expect(pkg.files).toContain("dist/")
     expect(pkg.files).toContain("README.md")
     expect(pkg.files).toContain("LICENSE")
+  })
+
+  it("release workflow enforces full verify gate", () => {
+    const workflowPath = join(process.cwd(), ".github", "workflows", "release.yml")
+    const workflow = readFileSync(workflowPath, "utf-8")
+    expect(workflow).toContain("run: npm run verify")
   })
 })

@@ -91,6 +91,18 @@ const OAUTH_CALLBACK_URI = `${OAUTH_CALLBACK_ORIGIN}${OAUTH_CALLBACK_PATH}`
 const OAUTH_DUMMY_KEY = "oauth_dummy_key"
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000
 const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
+const OAUTH_HTTP_TIMEOUT_MS = (() => {
+  const raw = process.env.CODEX_OAUTH_HTTP_TIMEOUT_MS
+  if (!raw) return 15_000
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 1_000 ? parsed : 15_000
+})()
+const OAUTH_DEVICE_AUTH_TIMEOUT_MS = (() => {
+  const raw = process.env.CODEX_DEVICE_AUTH_TIMEOUT_MS
+  if (!raw) return 10 * 60 * 1000
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 1_000 ? parsed : 10 * 60 * 1000
+})()
 const OAUTH_CALLBACK_TIMEOUT_MS = (() => {
   const raw = process.env.CODEX_OAUTH_CALLBACK_TIMEOUT_MS
   if (!raw) return 10 * 60 * 1000
@@ -141,6 +153,25 @@ const CODEX_RS_COMPACT_SUMMARY_PREFIX =
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function fetchWithTimeout(
+  input: string | URL | Request,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, Math.floor(timeoutMs)))
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`OAuth request timed out after ${timeoutMs}ms`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export async function tryOpenUrlInBrowser(url: string, log?: Logger): Promise<boolean> {
@@ -260,17 +291,21 @@ export const __testOnly = {
 }
 
 async function exchangeCodeForTokens(code: string, redirectUri: string, pkce: PkceCodes): Promise<TokenResponse> {
-  const response = await fetch(`${ISSUER}/oauth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: redirectUri,
-      client_id: CLIENT_ID,
-      code_verifier: pkce.verifier
-    }).toString()
-  })
+  const response = await fetchWithTimeout(
+    `${ISSUER}/oauth/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+        client_id: CLIENT_ID,
+        code_verifier: pkce.verifier
+      }).toString()
+    },
+    OAUTH_HTTP_TIMEOUT_MS
+  )
 
   if (!response.ok) {
     throw new Error(`Token exchange failed: ${response.status}`)
@@ -279,15 +314,19 @@ async function exchangeCodeForTokens(code: string, redirectUri: string, pkce: Pk
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
-  const response = await fetch(`${ISSUER}/oauth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-      client_id: CLIENT_ID
-    }).toString()
-  })
+  const response = await fetchWithTimeout(
+    `${ISSUER}/oauth/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: CLIENT_ID
+      }).toString()
+    },
+    OAUTH_HTTP_TIMEOUT_MS
+  )
 
   if (!response.ok) {
     let oauthCode: string | undefined
@@ -1881,14 +1920,18 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           label: "ChatGPT Pro/Plus (headless)",
           type: "oauth",
           authorize: async () => {
-            const deviceResponse = await fetch(`${ISSUER}/api/accounts/deviceauth/usercode`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "User-Agent": resolveRequestUserAgent(spoofMode, resolveCodexOriginator(spoofMode))
+            const deviceResponse = await fetchWithTimeout(
+              `${ISSUER}/api/accounts/deviceauth/usercode`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "User-Agent": resolveRequestUserAgent(spoofMode, resolveCodexOriginator(spoofMode))
+                },
+                body: JSON.stringify({ client_id: CLIENT_ID })
               },
-              body: JSON.stringify({ client_id: CLIENT_ID })
-            })
+              OAUTH_HTTP_TIMEOUT_MS
+            )
 
             if (!deviceResponse.ok) {
               throw new Error("Failed to initiate device authorization")
@@ -1907,18 +1950,27 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
               instructions: `Enter code: ${deviceData.user_code}`,
               method: "auto" as const,
               async callback() {
+                const startedAt = Date.now()
                 while (true) {
-                  const response = await fetch(`${ISSUER}/api/accounts/deviceauth/token`, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "User-Agent": resolveRequestUserAgent(spoofMode, resolveCodexOriginator(spoofMode))
+                  if (Date.now() - startedAt > OAUTH_DEVICE_AUTH_TIMEOUT_MS) {
+                    return { type: "failed" as const }
+                  }
+
+                  const response = await fetchWithTimeout(
+                    `${ISSUER}/api/accounts/deviceauth/token`,
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "User-Agent": resolveRequestUserAgent(spoofMode, resolveCodexOriginator(spoofMode))
+                      },
+                      body: JSON.stringify({
+                        device_auth_id: deviceData.device_auth_id,
+                        user_code: deviceData.user_code
+                      })
                     },
-                    body: JSON.stringify({
-                      device_auth_id: deviceData.device_auth_id,
-                      user_code: deviceData.user_code
-                    })
-                  })
+                    OAUTH_HTTP_TIMEOUT_MS
+                  )
 
                   if (response.ok) {
                     const data = (await response.json()) as {
@@ -1926,17 +1978,21 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
                       code_verifier: string
                     }
 
-                    const tokenResponse = await fetch(`${ISSUER}/oauth/token`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                      body: new URLSearchParams({
-                        grant_type: "authorization_code",
-                        code: data.authorization_code,
-                        redirect_uri: `${ISSUER}/deviceauth/callback`,
-                        client_id: CLIENT_ID,
-                        code_verifier: data.code_verifier
-                      }).toString()
-                    })
+                    const tokenResponse = await fetchWithTimeout(
+                      `${ISSUER}/oauth/token`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: new URLSearchParams({
+                          grant_type: "authorization_code",
+                          code: data.authorization_code,
+                          redirect_uri: `${ISSUER}/deviceauth/callback`,
+                          client_id: CLIENT_ID,
+                          code_verifier: data.code_verifier
+                        }).toString()
+                      },
+                      OAUTH_HTTP_TIMEOUT_MS
+                    )
 
                     if (!tokenResponse.ok) {
                       throw new Error(`Token exchange failed: ${tokenResponse.status}`)

@@ -63,7 +63,7 @@ GitHub Actions handle verification and publish automation:
 - `.github/workflows/ci.yml`
   - runs verify checks on pushes and pull requests
 - `.github/workflows/release.yml`
-  - on `v*` tag push, installs dependencies, tests/builds, publishes to npm with Trusted Publishing, and creates GitHub Release
+  - on `v*` tag push, installs dependencies, runs `npm run verify`, publishes to npm with Trusted Publishing, and creates GitHub Release
 
 ## Manual smoke checklist
 

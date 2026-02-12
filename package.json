@@ -34,7 +34,8 @@
     "url": "https://github.com/iam-brain/opencode-codex-auth/issues"
   },
   "scripts": {
-    "build": "tsc",
+    "clean:dist": "node scripts/clean-dist.js",
+    "build": "npm run clean:dist && tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "verify": "npm run typecheck && npm test && npm run build",

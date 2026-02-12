@@ -70,4 +70,49 @@ describe("request snapshots", () => {
     const files = await fs.readdir(root)
     expect(files).toHaveLength(0)
   })
+
+  it("prunes old snapshot files when retention cap is exceeded", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
+    const snapshots = createRequestSnapshots({
+      enabled: true,
+      dir: root,
+      maxSnapshotFiles: 2
+    })
+
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5.3-codex" })
+    })
+
+    await snapshots.captureRequest("one", request)
+    await snapshots.captureRequest("two", request)
+    await snapshots.captureRequest("three", request)
+
+    const files = (await fs.readdir(root)).filter((file) => file.includes("request-"))
+    expect(files.length).toBeLessThanOrEqual(2)
+    expect(files.some((file) => file.includes("three"))).toBe(true)
+  })
+
+  it("rotates live headers log when size cap is exceeded", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
+    const snapshots = createRequestSnapshots({
+      enabled: true,
+      dir: root,
+      maxLiveHeadersBytes: 10
+    })
+
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5.3-codex" })
+    })
+
+    await snapshots.captureRequest("one", request)
+    await snapshots.captureRequest("two", request)
+
+    const files = await fs.readdir(root)
+    expect(files).toContain("live-headers.jsonl")
+    expect(files).toContain("live-headers.jsonl.1")
+  })
 })

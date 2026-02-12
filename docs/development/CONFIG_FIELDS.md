@@ -96,9 +96,12 @@ Resolved by `resolveConfig`:
 Resolved by auth/runtime code (`lib/codex-native.ts`):
 
 - `CODEX_AUTH_DEBUG`
+- `CODEX_AUTH_DEBUG_MAX_BYTES`
 - `CODEX_OAUTH_CALLBACK_TIMEOUT_MS`
 - `CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS`
 - `CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS`
+- `CODEX_OAUTH_HTTP_TIMEOUT_MS`
+- `CODEX_DEVICE_AUTH_TIMEOUT_MS`
 - `OPENCODE_NO_BROWSER`
 
 Path and UI variables used by helpers:

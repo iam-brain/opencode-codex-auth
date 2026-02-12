@@ -27,10 +27,8 @@ jobs:
         run: npm ci
       - name: Verify npm version
         run: npm --version
-      - name: Run tests
-        run: npm test
-      - name: Build
-        run: npm run build
+      - name: Run verify
+        run: npm run verify
       - name: Publish to npm (Trusted Publishing)
         run: npm publish
 

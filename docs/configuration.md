@@ -196,9 +196,12 @@ Advanced path:
 - `CODEX_AUTH_DEBUG=1`: verbose OAuth lifecycle logging (`oauth-lifecycle.log`).
   - Accepted truthy values: `1`, `true`, `yes`, `on`.
   - This flag is independent from general plugin debug flags.
+- `CODEX_AUTH_DEBUG_MAX_BYTES`: max size for `oauth-lifecycle.log` before rotation to `oauth-lifecycle.log.1`.
 - `CODEX_OAUTH_CALLBACK_TIMEOUT_MS`: OAuth wait timeout (min `60000`).
 - `CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS`: success-page shutdown grace.
 - `CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS`: error-page shutdown grace.
+- `CODEX_OAUTH_HTTP_TIMEOUT_MS`: timeout for OAuth HTTP calls (ms, min `1000`).
+- `CODEX_DEVICE_AUTH_TIMEOUT_MS`: max total device-auth polling time (ms, min `1000`).
 - `OPENCODE_NO_BROWSER=1`: disables browser auto-open.
 - `NO_COLOR=1`: disables ANSI color blocks in quota UI.
 
