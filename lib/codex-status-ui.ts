@@ -147,7 +147,9 @@ export function renderDashboard(input: {
     return lines
   }
 
-  for (const acc of input.accounts) {
+  const renderableAccounts = input.accounts.filter((acc) => Boolean(acc.identityKey))
+  for (let i = 0; i < renderableAccounts.length; i += 1) {
+    const acc = renderableAccounts[i]
     const key = acc.identityKey
     if (!key) continue
 
@@ -192,7 +194,7 @@ export function renderDashboard(input: {
     const colorizedCredits = colorize(creditsText, creditsColor, useColor)
     lines.push(`${style === "menu" ? `${colorize("│", ANSI.cyan, useColor)}  └─ ` : "└─ "}Credits ${colorizedCredits}`)
 
-    if (style === "menu") {
+    if (style === "menu" && i < renderableAccounts.length - 1) {
       lines.push(colorize("│", ANSI.cyan, useColor))
     } else {
       lines.push("")
