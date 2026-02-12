@@ -1,8 +1,9 @@
 import type { CodexLimit, CodexRateLimitSnapshot } from "./types"
 import type { Logger } from "./logger"
 
-const WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
-const CODEX_USAGE_URL = "https://api.openai.com/api/codex/usage"
+const DEFAULT_CHATGPT_BASE_URL = "https://chatgpt.com/backend-api"
+const WHAM_USAGE_PATH = "/wham/usage"
+const CODEX_USAGE_PATH = "/api/codex/usage"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -48,6 +49,27 @@ function asString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : undefined
+}
+
+function normalizeBaseUrl(baseUrl: string): string {
+  let normalized = baseUrl.trim()
+  while (normalized.endsWith("/")) normalized = normalized.slice(0, -1)
+
+  if (
+    (normalized.startsWith("https://chatgpt.com") ||
+      normalized.startsWith("https://chat.openai.com")) &&
+    !normalized.includes("/backend-api")
+  ) {
+    normalized = `${normalized}/backend-api`
+  }
+
+  return normalized
+}
+
+function resolveQuotaUsageUrl(baseUrl?: string): string {
+  const normalized = normalizeBaseUrl(baseUrl ?? DEFAULT_CHATGPT_BASE_URL)
+  const useChatGptPathStyle = normalized.includes("/backend-api")
+  return `${normalized}${useChatGptPathStyle ? WHAM_USAGE_PATH : CODEX_USAGE_PATH}`
 }
 
 function snapshotFromUsagePayload(input: {
@@ -124,43 +146,43 @@ function snapshotFromUsagePayload(input: {
 export async function fetchQuotaSnapshotFromBackend(input: {
   accessToken: string
   accountId?: string
+  baseUrl?: string
   now?: number
   modelFamily?: string
   userAgent?: string
   log?: Logger
 }): Promise<CodexRateLimitSnapshot | null> {
-  const isChatgptToken = input.accessToken.split(".").length === 3
-  const endpoints = isChatgptToken
-    ? [WHAM_USAGE_URL, CODEX_USAGE_URL]
-    : [CODEX_USAGE_URL, WHAM_USAGE_URL]
+  const endpoint = resolveQuotaUsageUrl(input.baseUrl)
 
-  for (const endpoint of endpoints) {
-    try {
-      const response = await fetch(endpoint, {
-        headers: {
-          Authorization: `Bearer ${input.accessToken}`,
-          "OpenAI-Account-Id": input.accountId ?? "",
-          Accept: "application/json",
-          "User-Agent": input.userAgent ?? "codex_cli_rs",
-          Origin: "https://chatgpt.com"
-        }
-      })
+  try {
+    const response = await fetch(endpoint, {
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        ...(input.accountId ? { "ChatGPT-Account-Id": input.accountId } : {}),
+        Accept: "application/json",
+        "User-Agent": input.userAgent ?? "codex_cli_rs"
+      }
+    })
 
-      if (!response.ok) continue
-
-      const payload = (await response.json()) as unknown
-      const snapshot = snapshotFromUsagePayload({
-        payload,
-        now: input.now ?? Date.now(),
-        modelFamily: input.modelFamily ?? "gpt-5.3-codex"
-      })
-      if (snapshot) return snapshot
-    } catch (error) {
+    if (!response.ok) {
       input.log?.debug("quota fetch failed", {
         endpoint,
-        error: error instanceof Error ? error.message : String(error)
+        status: response.status
       })
+      return null
     }
+
+    const payload = (await response.json()) as unknown
+    return snapshotFromUsagePayload({
+      payload,
+      now: input.now ?? Date.now(),
+      modelFamily: input.modelFamily ?? "gpt-5.3-codex"
+    })
+  } catch (error) {
+    input.log?.debug("quota fetch failed", {
+      endpoint,
+      error: error instanceof Error ? error.message : String(error)
+    })
   }
 
   return null

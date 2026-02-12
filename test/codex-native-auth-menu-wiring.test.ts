@@ -20,6 +20,10 @@ async function loadPluginWithMenu(input: {
     }
   }) => Promise<"add" | "continue" | "exit">
   quotaSnapshot?: { updatedAt: number; modelFamily: string; limits: Array<{ name: string; leftPct: number }> }
+  quotaSnapshotImpl?: (args: { accountId?: string }) =>
+    | Promise<{ updatedAt: number; modelFamily: string; limits: Array<{ name: string; leftPct: number }> } | null>
+    | { updatedAt: number; modelFamily: string; limits: Array<{ name: string; leftPct: number }> }
+    | null
 }) {
   vi.resetModules()
 
@@ -136,7 +140,12 @@ async function loadPluginWithMenu(input: {
     return snapshotStore
   })
   const toolOutputForStatus = vi.fn(async () => "## Codex Status\n")
-  const fetchQuotaSnapshotFromBackend = vi.fn(async () => input.quotaSnapshot ?? null)
+  const fetchQuotaSnapshotFromBackend = vi.fn(async (args: { accountId?: string }) => {
+    if (input.quotaSnapshotImpl) {
+      return await input.quotaSnapshotImpl(args)
+    }
+    return input.quotaSnapshot ?? null
+  })
 
   vi.doMock("../lib/codex-status-storage", () => ({
     saveSnapshots
@@ -348,6 +357,96 @@ describe("codex-native auth menu wiring", () => {
         updatedAt: 123,
         modelFamily: "gpt-5.3-codex",
         limits: [{ name: "requests", leftPct: 88 }]
+      })
+    } finally {
+      stdin.isTTY = prevIn
+      stdout.isTTY = prevOut
+    }
+  })
+
+  it("keeps same-email plus/team quota snapshots isolated during check quotas action", async () => {
+    const { hooks, fetchQuotaSnapshotFromBackend, snapshotStore } =
+      await loadPluginWithMenu({
+        offerLegacyTransfer: false,
+        authFile: {
+          openai: {
+            type: "oauth",
+            accounts: [
+              {
+                identityKey: "acc_live_plus|same@example.com|plus",
+                accountId: "acc_live_plus",
+                email: "same@example.com",
+                plan: "plus",
+                authTypes: ["native", "codex"],
+                enabled: true,
+                access: "at_plus",
+                refresh: "rt_plus",
+                expires: Date.now() + 60_000
+              },
+              {
+                identityKey: "acc_live_team|same@example.com|team",
+                accountId: "acc_live_team",
+                email: "same@example.com",
+                plan: "team",
+                authTypes: ["native", "codex"],
+                enabled: true,
+                access: "at_team",
+                refresh: "rt_team",
+                expires: Date.now() + 60_000
+              }
+            ],
+            activeIdentityKey: "acc_live_team|same@example.com|team"
+          }
+        },
+        runAuthMenuOnceImpl: async (args) => {
+          await args.handlers.onCheckQuotas()
+          return "exit"
+        },
+        quotaSnapshotImpl: async ({ accountId }) => {
+          if (accountId === "acc_live_plus") {
+            return {
+              updatedAt: 300,
+              modelFamily: "gpt-5.3-codex",
+              limits: [{ name: "requests", leftPct: 78 }]
+            }
+          }
+          if (accountId === "acc_live_team") {
+            return {
+              updatedAt: 301,
+              modelFamily: "gpt-5.3-codex",
+              limits: [{ name: "requests", leftPct: 12 }]
+            }
+          }
+          return null
+        }
+      })
+
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const prevIn = stdin.isTTY
+    const prevOut = stdout.isTTY
+    stdin.isTTY = true
+    stdout.isTTY = true
+
+    try {
+      await browserMethod.authorize({})
+
+      const requestedAccountIds = new Set(
+        fetchQuotaSnapshotFromBackend.mock.calls.map((call) => (call[0] as { accountId?: string })?.accountId)
+      )
+      expect(requestedAccountIds).toEqual(new Set(["acc_live_plus", "acc_live_team"]))
+      expect(snapshotStore["acc_live_plus|same@example.com|plus"]).toEqual({
+        updatedAt: 300,
+        modelFamily: "gpt-5.3-codex",
+        limits: [{ name: "requests", leftPct: 78 }]
+      })
+      expect(snapshotStore["acc_live_team|same@example.com|team"]).toEqual({
+        updatedAt: 301,
+        modelFamily: "gpt-5.3-codex",
+        limits: [{ name: "requests", leftPct: 12 }]
       })
     } finally {
       stdin.isTTY = prevIn
