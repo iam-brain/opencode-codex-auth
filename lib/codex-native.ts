@@ -154,6 +154,9 @@ const STATIC_FALLBACK_MODELS = [
   "gpt-5.1-codex"
 ]
 
+const CODEX_RS_COMPACT_SUMMARY_PREFIX =
+  "Another language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:"
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -641,27 +644,55 @@ async function sessionUsesOpenAIProvider(
   client: PluginInput["client"] | undefined,
   sessionID: string
 ): Promise<boolean> {
-  const sessionApi = client?.session as { messages: (input: unknown) => Promise<unknown> } | undefined
-  if (!sessionApi || typeof sessionApi.messages !== "function") return false
-
-  try {
-    const response = await sessionApi.messages({ sessionID, limit: 100 })
-    const rows = isRecord(response) && Array.isArray(response.data) ? response.data : []
-    for (let index = rows.length - 1; index >= 0; index -= 1) {
-      const row = rows[index]
-      if (!isRecord(row) || !isRecord(row.info)) continue
-      const info = row.info
-      if (asString(info.role) !== "user") continue
-      const model = isRecord(info.model) ? info.model : undefined
-      const providerID = model ? asString(model.providerID) : asString(info.providerID)
-      if (!providerID) continue
-      return providerID === "openai"
-    }
-  } catch {
-    return false
+  const rows = await readSessionMessageRows(client, sessionID)
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index]
+    if (!isRecord(row) || !isRecord(row.info)) continue
+    const info = row.info
+    if (asString(info.role) !== "user") continue
+    const providerID = getMessageProviderID(info)
+    if (!providerID) continue
+    return providerID === "openai"
   }
 
   return false
+}
+
+function getMessageProviderID(info: Record<string, unknown>): string | undefined {
+  const model = isRecord(info.model) ? info.model : undefined
+  return model ? asString(model.providerID) : asString(info.providerID)
+}
+
+async function readSessionMessageRows(
+  client: PluginInput["client"] | undefined,
+  sessionID: string
+): Promise<unknown[]> {
+  const sessionApi = client?.session as { messages: (input: unknown) => Promise<unknown> } | undefined
+  if (!sessionApi || typeof sessionApi.messages !== "function") return []
+
+  try {
+    const response = await sessionApi.messages({ sessionID, limit: 100 })
+    return isRecord(response) && Array.isArray(response.data) ? response.data : []
+  } catch {
+    return []
+  }
+}
+
+async function readSessionMessageInfo(
+  client: PluginInput["client"] | undefined,
+  sessionID: string,
+  messageID: string
+): Promise<Record<string, unknown> | undefined> {
+  const rows = await readSessionMessageRows(client, sessionID)
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index]
+    if (!isRecord(row) || !isRecord(row.info)) continue
+    const info = row.info
+    if (asString(info.id) !== messageID) continue
+    return info
+  }
+
+  return undefined
 }
 
 function formatAccountLabel(
@@ -828,6 +859,7 @@ function asString(value: unknown): string | undefined {
 }
 export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginOptions = {}): Promise<Hooks> {
   opts.log?.debug("codex-native init")
+  const codexCompactionSummaryPrefixSessions = new Set<string>()
   const spoofMode: CodexSpoofMode =
     (opts.spoofMode as string | undefined) === "codex" || (opts.spoofMode as string | undefined) === "strict"
       ? "codex"
@@ -2078,11 +2110,29 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         }
       }
     },
-    "experimental.session.compacting": async (hookInput, output) => {
-      if (await sessionUsesOpenAIProvider(input.client, hookInput.sessionID)) {
-        output.prompt = CODEX_RS_COMPACT_PROMPT
-      }
-    }
+"experimental.session.compacting": async (hookInput, output) => {
+  if (runtimeMode !== "codex") return
+  if (await sessionUsesOpenAIProvider(input.client, hookInput.sessionID)) {
+    output.prompt = CODEX_RS_COMPACT_PROMPT
+    codexCompactionSummaryPrefixSessions.add(hookInput.sessionID)
+  }
+},
+"experimental.text.complete": async (hookInput, output) => {
+  if (runtimeMode !== "codex") return
+  if (!codexCompactionSummaryPrefixSessions.has(hookInput.sessionID)) return
+
+  const info = await readSessionMessageInfo(input.client, hookInput.sessionID, hookInput.messageID)
+  codexCompactionSummaryPrefixSessions.delete(hookInput.sessionID)
+  if (!info) return
+  if (asString(info.role) !== "assistant") return
+  if (asString(info.agent) !== "compaction") return
+  if (info.summary !== true) return
+  if (getMessageProviderID(info) !== "openai") return
+  if (output.text.startsWith(CODEX_RS_COMPACT_SUMMARY_PREFIX)) return
+
+  output.text = `${CODEX_RS_COMPACT_SUMMARY_PREFIX}\n${output.text.trimStart()}`
+}
+
   }
 
   async function persistOAuthTokens(tokens: TokenResponse): Promise<void> {
