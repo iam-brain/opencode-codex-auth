@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Documentation rewrite for production readiness:
+  - Replaced user and maintainer docs with code/test-grounded content.
+  - Removed outdated references to `collab` mode and `install-agents` flow.
+  - Consolidated duplicate docs into role-based structure under `docs/`.
 - Session affinity and cache-path hardening:
   - Added persistent sticky/hybrid session affinity with deleted-session pruning.
   - Moved plugin cache state to `~/.config/opencode/cache/` (`codex-session-affinity.json`, `codex-snapshots.json`).
