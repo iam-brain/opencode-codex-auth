@@ -19,10 +19,19 @@ async function makeCacheDir(): Promise<string> {
 describe("model catalog", () => {
   it("fetches /codex/models with auth headers", async () => {
     const cacheDir = await makeCacheDir()
-    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const endpoint =
+        typeof url === "string"
+          ? url
+          : url instanceof URL
+            ? url.toString()
+            : new URL(url.url).toString()
+      expect(endpoint).toContain("/backend-api/codex/models")
+      expect(endpoint).toContain("client_version=0.97.0")
       const headers = init?.headers as Record<string, string>
       expect(headers.authorization).toBe("Bearer at")
       expect(headers["chatgpt-account-id"]).toBe("acc_123")
+      expect(headers.version).toBe("0.97.0")
 
       return new Response(
         JSON.stringify({
@@ -41,18 +50,70 @@ describe("model catalog", () => {
       now: () => 1000
     })
 
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => {
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+    })
     expect(result?.map((m) => m.slug)).toEqual(["gpt-5.1-codex-mini", "gpt-5.2-codex", "gpt-5.4-codex"])
+  })
+
+  it("deduplicates concurrent network catalog fetches for the same cache key", async () => {
+    const cacheDir = await makeCacheDir()
+    let resolveFetch: ((value: Response) => void) | undefined
+    const pendingFetch = new Promise<Response>((resolve) => {
+      resolveFetch = resolve
+    })
+    const fetchImpl = vi.fn(async () => pendingFetch)
+
+    const first = getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      fetchImpl,
+      forceRefresh: true,
+      cacheDir,
+      now: () => 1000
+    })
+    const second = getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      fetchImpl,
+      forceRefresh: true,
+      cacheDir,
+      now: () => 1000
+    })
+
+    await vi.waitFor(() => {
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+    })
+    resolveFetch?.(
+      new Response(
+        JSON.stringify({
+          models: [{ slug: "gpt-5.4-codex" }, { slug: "gpt-5.2-codex" }]
+        }),
+        { status: 200 }
+      )
+    )
+
+    const [firstResult, secondResult] = await Promise.all([first, second])
+    expect(firstResult?.map((m) => m.slug)).toEqual(["gpt-5.2-codex", "gpt-5.4-codex"])
+    expect(secondResult?.map((m) => m.slug)).toEqual(["gpt-5.2-codex", "gpt-5.4-codex"])
   })
 
   it("honors caller-provided originator/user-agent/beta headers", async () => {
     const cacheDir = await makeCacheDir()
-    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const endpoint =
+        typeof url === "string"
+          ? url
+          : url instanceof URL
+            ? url.toString()
+            : new URL(url.url).toString()
+      expect(endpoint).toContain("client_version=9.9.9")
       const headers = init?.headers as Record<string, string>
       expect(headers.originator).toBe("codex_exec")
       expect(headers["user-agent"]).toBe("codex_exec/0.1.0 (Mac OS 26.3; arm64) ghostty/1.2.3")
       expect(headers["openai-beta"]).toBeUndefined()
       expect(headers.authorization).toBe("Bearer at")
+      expect(headers.version).toBe("9.9.8")
       return new Response(JSON.stringify({ models: [{ slug: "gpt-5.4-codex" }] }), {
         status: 200
       })
@@ -63,6 +124,8 @@ describe("model catalog", () => {
       accountId: "acc_123",
       originator: "codex_exec",
       userAgent: "codex_exec/0.1.0 (Mac OS 26.3; arm64) ghostty/1.2.3",
+      clientVersion: "9.9.9",
+      versionHeader: "9.9.8",
       fetchImpl,
       forceRefresh: true,
       cacheDir,
@@ -103,6 +166,53 @@ describe("model catalog", () => {
 
     expect(stale?.map((model) => model.slug)).toEqual(["gpt-5.4-codex"])
     expect(staleEvents.some((event) => event.type === "stale_cache_used")).toBe(true)
+  })
+
+  it("falls back to OpenCode codex-models cache when network fetch fails", async () => {
+    const cacheDir = await makeCacheDir()
+    const fallbackFile = path.join(cacheDir, "codex-models-cache-test.json")
+    await fs.writeFile(
+      fallbackFile,
+      JSON.stringify(
+        {
+          fetchedAt: 1234,
+          models: [
+            {
+              slug: "gpt-5.3-codex",
+              model_messages: {
+                instructions_template: "Base {{ personality }}",
+                instructions_variables: {
+                  personality_default: "Default voice"
+                }
+              }
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    )
+
+    const events: CodexModelCatalogEvent[] = []
+    const models = await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      cacheDir,
+      forceRefresh: true,
+      fetchImpl: async () => {
+        throw new Error("network down")
+      },
+      onEvent: (event) => events.push(event)
+    })
+
+    expect(models?.map((model) => model.slug)).toEqual(["gpt-5.3-codex"])
+    expect(events.some((event) => event.type === "network_fetch_failed")).toBe(true)
+    expect(
+      events.some(
+        (event) => event.type === "stale_cache_used" && event.reason === "opencode_cache_fallback"
+      )
+    ).toBe(true)
   })
 
   it("renders personality in model instructions template", async () => {

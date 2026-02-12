@@ -68,6 +68,7 @@ describe("codex-native snapshots", () => {
       shouldOfferLegacyTransfer: vi.fn(async () => false)
     }))
     vi.doMock("../lib/codex-status-storage", () => ({
+      loadSnapshots: vi.fn(async () => ({})),
       saveSnapshots
     }))
 
@@ -171,6 +172,7 @@ describe("codex-native snapshots", () => {
       shouldOfferLegacyTransfer: vi.fn(async () => false)
     }))
     vi.doMock("../lib/codex-status-storage", () => ({
+      loadSnapshots: vi.fn(async () => ({})),
       saveSnapshots: vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) =>
         update({})
       )
@@ -286,6 +288,7 @@ describe("codex-native snapshots", () => {
       shouldOfferLegacyTransfer: vi.fn(async () => false)
     }))
     vi.doMock("../lib/codex-status-storage", () => ({
+      loadSnapshots: vi.fn(async () => ({})),
       saveSnapshots: vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) =>
         update({})
       )
@@ -400,6 +403,7 @@ describe("codex-native snapshots", () => {
       shouldOfferLegacyTransfer: vi.fn(async () => false)
     }))
     vi.doMock("../lib/codex-status-storage", () => ({
+      loadSnapshots: vi.fn(async () => ({})),
       saveSnapshots: vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) =>
         update({})
       )

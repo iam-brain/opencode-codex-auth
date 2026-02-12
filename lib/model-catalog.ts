@@ -71,6 +71,8 @@ export type CodexModelCatalogEvent = {
 export type GetCodexModelCatalogInput = {
   accessToken?: string
   accountId?: string
+  clientVersion?: string
+  versionHeader?: string
   originator?: string
   userAgent?: string
   openaiBeta?: string
@@ -90,6 +92,8 @@ export type ApplyCodexCatalogInput = {
 
 const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
 const DEFAULT_CACHE_DIR = path.join(os.homedir(), ".config", "opencode", "cache")
+const OPENCODE_MODELS_CACHE_PREFIX = "codex-models-cache"
+const DEFAULT_CLIENT_VERSION = "0.97.0"
 const CACHE_TTL_MS = 15 * 60 * 1000
 const FETCH_TIMEOUT_MS = 5000
 const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
@@ -115,6 +119,7 @@ const REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "
 const TEXT_VERBOSITY = new Set(["low", "medium", "high"])
 
 const inMemoryCatalog = new Map<string, CodexModelsCache>()
+const inFlightCatalogFetches = new Map<string, Promise<CodexModelInfo[] | undefined>>()
 
 function normalizeAccountId(accountId?: string): string | undefined {
   const next = accountId?.trim()
@@ -277,6 +282,40 @@ async function readCatalogFromDisk(cacheDir: string, accountId?: string): Promis
   })
 }
 
+async function readCatalogFromOpencodeCache(cacheDir: string): Promise<CodexModelsCache | undefined> {
+  try {
+    const entries = await fs.readdir(cacheDir)
+    const candidates = entries.filter(
+      (name) => name.startsWith(OPENCODE_MODELS_CACHE_PREFIX) && name.endsWith(".json")
+    )
+    if (candidates.length === 0) return undefined
+
+    let best: CodexModelsCache | undefined
+    for (const fileName of candidates) {
+      try {
+        const raw = await fs.readFile(path.join(cacheDir, fileName), "utf8")
+        const parsed = JSON.parse(raw) as unknown
+        if (!isRecord(parsed)) continue
+        const models = parseCatalogResponse({ models: parsed.models })
+        if (models.length === 0) continue
+        const fetchedAt = typeof parsed.fetchedAt === "number" ? parsed.fetchedAt : 0
+        if (!best || fetchedAt > best.fetchedAt) {
+          best = {
+            fetchedAt,
+            models
+          }
+        }
+      } catch {
+        // Best effort parse; skip malformed cache files.
+      }
+    }
+
+    return best
+  } catch {
+    return undefined
+  }
+}
+
 async function writeCatalogToDisk(cacheDir: string, accountId: string | undefined, cache: CodexModelsCache): Promise<void> {
   await withCacheLock(cacheDir, async () => {
     const file = cachePath(cacheDir, accountId)
@@ -306,6 +345,18 @@ function deriveReason(value: unknown): string {
   return "error"
 }
 
+function normalizeClientVersion(value: string | undefined, fallback?: string): string {
+  const trimmed = value?.trim()
+  if (trimmed) return trimmed
+  const fallbackTrimmed = fallback?.trim()
+  return fallbackTrimmed || DEFAULT_CLIENT_VERSION
+}
+
+function buildModelsEndpoint(clientVersion: string): string {
+  const separator = CODEX_MODELS_ENDPOINT.includes("?") ? "&" : "?"
+  return `${CODEX_MODELS_ENDPOINT}${separator}client_version=${encodeURIComponent(clientVersion)}`
+}
+
 export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Promise<CodexModelInfo[] | undefined> {
   const now = (input.now ?? Date.now)()
   const cacheDir = input.cacheDir ?? DEFAULT_CACHE_DIR
@@ -318,6 +369,7 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   }
 
   const disk = await readCatalogFromDisk(cacheDir, input.accountId)
+  const opencodeCacheFallback = await readCatalogFromOpencodeCache(cacheDir)
   const hasFreshDisk = !!disk && isFresh(disk, now)
   if (hasFreshDisk && !input.forceRefresh) {
     inMemoryCatalog.set(key, disk)
@@ -331,6 +383,11 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
       inMemoryCatalog.set(key, disk)
       return disk.models
     }
+    if (opencodeCacheFallback) {
+      emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
+      inMemoryCatalog.set(key, opencodeCacheFallback)
+      return opencodeCacheFallback.models
+    }
     emitEvent(input, { type: "catalog_unavailable", reason: "missing_access_token" })
     return undefined
   }
@@ -339,6 +396,9 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
     authorization: `Bearer ${input.accessToken}`,
     originator: input.originator?.trim() || "opencode"
   }
+  const clientVersion = normalizeClientVersion(input.clientVersion, input.versionHeader)
+  const versionHeader = normalizeClientVersion(input.versionHeader, input.clientVersion)
+  if (versionHeader) headers.version = versionHeader
   const userAgent = input.userAgent?.trim()
   if (userAgent) headers["user-agent"] = userAgent
   const betaValue = input.openaiBeta?.trim()
@@ -348,49 +408,69 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
     headers["chatgpt-account-id"] = accountId
   }
 
-  const fetchImpl = input.fetchImpl ?? fetch
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-    let response: Response
-    try {
-      response = await fetchImpl(CODEX_MODELS_ENDPOINT, {
-        method: "GET",
-        headers,
-        signal: controller.signal
-      })
-    } finally {
-      clearTimeout(timeout)
-    }
-
-    if (!response.ok) {
-      throw new Error(`codex models request failed with status ${response.status}`)
-    }
-
-    const payload = (await response.json()) as unknown
-    const models = parseCatalogResponse(payload)
-    if (models.length === 0) {
-      throw new Error("codex models response did not contain usable models")
-    }
-
-    const nextCache: CodexModelsCache = {
-      fetchedAt: now,
-      models
-    }
-    inMemoryCatalog.set(key, nextCache)
-    await writeCatalogToDisk(cacheDir, accountId, nextCache)
-    emitEvent(input, { type: "network_fetch_success" })
-    return nextCache.models
-  } catch (error) {
-    emitEvent(input, { type: "network_fetch_failed", reason: deriveReason(error) })
-    if (disk) {
-      inMemoryCatalog.set(key, disk)
-      emitEvent(input, { type: "stale_cache_used", reason: "network_fetch_failed" })
-      return disk.models
-    }
-    emitEvent(input, { type: "catalog_unavailable", reason: "network_fetch_failed" })
-    return undefined
+  const existingInFlight = inFlightCatalogFetches.get(key)
+  if (existingInFlight) {
+    return existingInFlight
   }
+
+  const fetchImpl = input.fetchImpl ?? fetch
+  const inFlight = (async (): Promise<CodexModelInfo[] | undefined> => {
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+      let response: Response
+      try {
+        const endpoint = buildModelsEndpoint(clientVersion)
+        response = await fetchImpl(endpoint, {
+          method: "GET",
+          headers,
+          signal: controller.signal
+        })
+      } finally {
+        clearTimeout(timeout)
+      }
+
+      if (!response.ok) {
+        throw new Error(`codex models request failed with status ${response.status}`)
+      }
+
+      const payload = (await response.json()) as unknown
+      const models = parseCatalogResponse(payload)
+      if (models.length === 0) {
+        throw new Error("codex models response did not contain usable models")
+      }
+
+      const nextCache: CodexModelsCache = {
+        fetchedAt: now,
+        models
+      }
+      inMemoryCatalog.set(key, nextCache)
+      await writeCatalogToDisk(cacheDir, accountId, nextCache)
+      emitEvent(input, { type: "network_fetch_success" })
+      return nextCache.models
+    } catch (error) {
+      emitEvent(input, { type: "network_fetch_failed", reason: deriveReason(error) })
+      if (disk) {
+        inMemoryCatalog.set(key, disk)
+        emitEvent(input, { type: "stale_cache_used", reason: "network_fetch_failed" })
+        return disk.models
+      }
+      if (opencodeCacheFallback) {
+        inMemoryCatalog.set(key, opencodeCacheFallback)
+        emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
+        return opencodeCacheFallback.models
+      }
+      emitEvent(input, { type: "catalog_unavailable", reason: "network_fetch_failed" })
+      return undefined
+    }
+  })()
+
+  inFlightCatalogFetches.set(key, inFlight)
+  return inFlight.finally(() => {
+    if (inFlightCatalogFetches.get(key) === inFlight) {
+      inFlightCatalogFetches.delete(key)
+    }
+  })
 }
 
 function cloneModelTemplate(template: Record<string, unknown>, slug: string): Record<string, unknown> {

@@ -24,6 +24,7 @@ async function loadPluginWithMenu(input: {
     | Promise<{ updatedAt: number; modelFamily: string; limits: Array<{ name: string; leftPct: number }> } | null>
     | { updatedAt: number; modelFamily: string; limits: Array<{ name: string; leftPct: number }> }
     | null
+  initialSnapshots?: Record<string, unknown>
 }) {
   vi.resetModules()
 
@@ -133,7 +134,9 @@ async function loadPluginWithMenu(input: {
     )
   }))
 
-  const snapshotStore: Record<string, unknown> = {}
+  const snapshotStore: Record<string, unknown> = {
+    ...(input.initialSnapshots ?? {})
+  }
   const saveSnapshots = vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>) => {
     const next = await update(snapshotStore)
     Object.assign(snapshotStore, next)
@@ -148,6 +151,7 @@ async function loadPluginWithMenu(input: {
   })
 
   vi.doMock("../lib/codex-status-storage", () => ({
+    loadSnapshots: vi.fn(async () => snapshotStore),
     saveSnapshots
   }))
   vi.doMock("../lib/codex-status-tool", () => ({
@@ -361,6 +365,68 @@ describe("codex-native auth menu wiring", () => {
     } finally {
       stdin.isTTY = prevIn
       stdout.isTTY = prevOut
+    }
+  })
+
+  it("reuses fresh quota snapshots from storage without hitting network", async () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-12T01:00:00.000Z")
+    vi.setSystemTime(now)
+
+    const identityKey = "acc_1|one@example.com|plus"
+    const { hooks, fetchQuotaSnapshotFromBackend, saveSnapshots, toolOutputForStatus } =
+      await loadPluginWithMenu({
+        offerLegacyTransfer: false,
+        authFile: {
+          openai: {
+            type: "oauth",
+            accounts: [
+              {
+                identityKey,
+                accountId: "acc_1",
+                email: "one@example.com",
+                plan: "plus",
+                enabled: true,
+                access: "at_1",
+                refresh: "rt_1",
+                expires: Date.now() + 60_000
+              }
+            ],
+            activeIdentityKey: identityKey
+          }
+        },
+        runAuthMenuOnceImpl: async (args) => {
+          await args.handlers.onCheckQuotas()
+          return "exit"
+        },
+        initialSnapshots: {
+          [identityKey]: {
+            updatedAt: Date.now() - 10_000,
+            modelFamily: "gpt-5.3-codex",
+            limits: [{ name: "requests", leftPct: 42 }]
+          }
+        }
+      })
+
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const prevIn = stdin.isTTY
+    const prevOut = stdout.isTTY
+    stdin.isTTY = true
+    stdout.isTTY = true
+
+    try {
+      await browserMethod.authorize({})
+      expect(fetchQuotaSnapshotFromBackend).not.toHaveBeenCalled()
+      expect(saveSnapshots).not.toHaveBeenCalled()
+      expect(toolOutputForStatus).toHaveBeenCalledTimes(1)
+    } finally {
+      stdin.isTTY = prevIn
+      stdout.isTTY = prevOut
+      vi.useRealTimers()
     }
   })
 

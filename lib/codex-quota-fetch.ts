@@ -4,6 +4,7 @@ import type { Logger } from "./logger"
 const DEFAULT_CHATGPT_BASE_URL = "https://chatgpt.com/backend-api"
 const WHAM_USAGE_PATH = "/wham/usage"
 const CODEX_USAGE_PATH = "/api/codex/usage"
+const DEFAULT_FETCH_TIMEOUT_MS = 5000
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -151,18 +152,25 @@ export async function fetchQuotaSnapshotFromBackend(input: {
   modelFamily?: string
   userAgent?: string
   log?: Logger
+  fetchImpl?: typeof fetch
+  timeoutMs?: number
 }): Promise<CodexRateLimitSnapshot | null> {
   const endpoint = resolveQuotaUsageUrl(input.baseUrl)
+  const fetchImpl = input.fetchImpl ?? fetch
+  const timeoutMs = Math.max(1, Math.floor(input.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS))
 
   try {
-    const response = await fetch(endpoint, {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    const response = await fetchImpl(endpoint, {
       headers: {
         Authorization: `Bearer ${input.accessToken}`,
         ...(input.accountId ? { "ChatGPT-Account-Id": input.accountId } : {}),
         Accept: "application/json",
         "User-Agent": input.userAgent ?? "codex_cli_rs"
-      }
-    })
+      },
+      signal: controller.signal
+    }).finally(() => clearTimeout(timeout))
 
     if (!response.ok) {
       input.log?.debug("quota fetch failed", {

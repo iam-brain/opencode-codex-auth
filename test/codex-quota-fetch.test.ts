@@ -162,4 +162,31 @@ describe("codex quota fetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(snapshot).toBeNull()
   })
+
+  it("aborts quota fetch when timeout elapses and returns null", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const signal = init?.signal
+      return await new Promise<Response>((_resolve, reject) => {
+        if (!signal) {
+          reject(new Error("missing signal"))
+          return
+        }
+        signal.addEventListener(
+          "abort",
+          () => reject(new Error("aborted")),
+          { once: true }
+        )
+      })
+    })
+
+    const snapshot = await fetchQuotaSnapshotFromBackend({
+      accessToken: "ey.a.jwt",
+      accountId: "acc_1",
+      timeoutMs: 1,
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    })
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(snapshot).toBeNull()
+  })
 })

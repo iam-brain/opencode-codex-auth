@@ -82,6 +82,7 @@ describe("codex-native session affinity persistence", () => {
       resolveInstructionsForModel: vi.fn(() => undefined)
     }))
     vi.doMock("../lib/codex-status-storage", () => ({
+      loadSnapshots: vi.fn(async () => ({})),
       saveSnapshots: vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) =>
         update({})
       )

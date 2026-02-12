@@ -176,6 +176,40 @@ describe("codex-native fatal responses", () => {
     expect(fetchImpl).toHaveBeenCalled()
   })
 
+  it("blocks outbound requests to non-openai hosts before network dispatch", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal("fetch", fetchImpl)
+
+    const { loaded } = await loadPluginForAuth({
+      openai: {
+        type: "oauth",
+        activeIdentityKey: "acc|user@example.com|plus",
+        accounts: [
+          {
+            identityKey: "acc|user@example.com|plus",
+            accountId: "acc",
+            email: "user@example.com",
+            plan: "plus",
+            enabled: true,
+            access: "access_token",
+            refresh: "refresh_token",
+            expires: Date.now() + 60_000
+          }
+        ]
+      }
+    })
+
+    const response = await loaded.fetch?.("https://example.com/v1/models", {
+      method: "GET"
+    })
+
+    expect(response?.status).toBe(400)
+    const body = await response?.json()
+    expect(body.error.type).toBe("disallowed_outbound_host")
+    expect(body.error.message).toContain("example.com")
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
   it("returns synthetic cooldown hard-stop with wait guidance", async () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-08T12:00:00.000Z")

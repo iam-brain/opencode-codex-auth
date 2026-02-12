@@ -3,7 +3,7 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import http from "node:http"
 import os from "node:os"
 import { execFile, execFileSync } from "node:child_process"
-import { appendFileSync, chmodSync, mkdirSync, readFileSync } from "node:fs"
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
 
@@ -15,7 +15,7 @@ import {
   type IdTokenClaims
 } from "./claims"
 import { CodexStatus, type HeaderMap } from "./codex-status"
-import { saveSnapshots } from "./codex-status-storage"
+import { loadSnapshots, saveSnapshots } from "./codex-status-storage"
 import {
   PluginFatalError,
   formatWaitTime,
@@ -29,7 +29,7 @@ import {
   normalizePlan,
   synchronizeIdentityKey
 } from "./identity"
-import { defaultSessionAffinityPath, defaultSnapshotsPath } from "./paths"
+import { defaultOpencodeCachePath, defaultSessionAffinityPath, defaultSnapshotsPath } from "./paths"
 import { createStickySessionState, selectAccount } from "./rotation"
 import {
   ensureOpenAIOAuthDomain,
@@ -115,6 +115,21 @@ const OAUTH_DEBUG_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs
 const OAUTH_DEBUG_LOG_FILE = path.join(OAUTH_DEBUG_LOG_DIR, "oauth-lifecycle.log")
 const execFileAsync = promisify(execFile)
 const DEFAULT_PLUGIN_VERSION = "0.1.0"
+const DEFAULT_CODEX_CLIENT_VERSION = "0.97.0"
+const CODEX_CLIENT_VERSION_CACHE_FILE = path.join(defaultOpencodeCachePath(), "codex-client-version.json")
+const CODEX_CLIENT_VERSION_TTL_MS = 60 * 60 * 1000
+const CODEX_CLIENT_VERSION_FETCH_TIMEOUT_MS = 5000
+const CODEX_GITHUB_RELEASES_API = "https://api.github.com/repos/openai/codex/releases/latest"
+const CODEX_GITHUB_RELEASES_HTML = "https://github.com/openai/codex/releases/latest"
+const OPENAI_OUTBOUND_HOST_ALLOWLIST = new Set([
+  "api.openai.com",
+  "auth.openai.com",
+  "chat.openai.com",
+  "chatgpt.com"
+])
+const AUTH_MENU_QUOTA_SNAPSHOT_TTL_MS = 60_000
+const AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS = 30_000
+const AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS = 5000
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
 const CODEX_PLAN_MODE_INSTRUCTIONS = [
@@ -303,6 +318,8 @@ export const __testOnly = {
   modeForRuntimeMode,
   buildCodexUserAgent,
   resolveRequestUserAgent,
+  resolveCodexClientVersion,
+  refreshCodexClientVersionFromGitHub,
   resolveHookAgentName,
   resolveCollaborationModeKind,
   resolveSubagentHeaderValue,
@@ -898,6 +915,38 @@ function rewriteUrl(requestInput: string | URL | Request): URL {
   return parsed
 }
 
+function isAllowedOpenAIOutboundHost(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase()
+  if (!normalized) return false
+  if (OPENAI_OUTBOUND_HOST_ALLOWLIST.has(normalized)) return true
+  return normalized.endsWith(".openai.com") || normalized.endsWith(".chatgpt.com")
+}
+
+function assertAllowedOutboundUrl(url: URL): void {
+  const protocol = url.protocol.trim().toLowerCase()
+  if (protocol !== "https:") {
+    throw new PluginFatalError({
+      message:
+        `Blocked outbound request with unsupported protocol "${protocol || "unknown"}". ` +
+        "This plugin only proxies HTTPS requests to OpenAI/ChatGPT backends.",
+      status: 400,
+      type: "disallowed_outbound_protocol",
+      param: "request"
+    })
+  }
+
+  if (isAllowedOpenAIOutboundHost(url.hostname)) return
+
+  throw new PluginFatalError({
+    message:
+      `Blocked outbound request to "${url.hostname}". ` +
+      "This plugin only proxies OpenAI/ChatGPT backend traffic.",
+    status: 400,
+    type: "disallowed_outbound_host",
+    param: "request"
+  })
+}
+
 function opencodeUserAgent(): string {
   const version = resolvePluginVersion()
   return `opencode/${version} (${os.platform()} ${os.release()}; ${os.arch()})`
@@ -908,6 +957,8 @@ type CodexOriginator = "opencode" | "codex_cli_rs" | "codex_exec"
 let cachedPluginVersion: string | undefined
 let cachedMacProductVersion: string | undefined
 let cachedTerminalUserAgentToken: string | undefined
+let cachedCodexClientVersion: string | undefined
+let codexClientVersionRefreshPromise: Promise<string> | undefined
 
 function isPrintableAscii(value: string): boolean {
   if (!value) return false
@@ -1069,6 +1120,163 @@ function resolvePluginVersion(): string {
 
   cachedPluginVersion = DEFAULT_PLUGIN_VERSION
   return cachedPluginVersion
+}
+
+function normalizeCodexClientVersion(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+type CodexClientVersionCacheEntry = {
+  version: string
+  fetchedAt: number
+}
+
+function readCodexClientVersionCache(cacheFilePath: string): CodexClientVersionCacheEntry | undefined {
+  try {
+    const raw = readFileSync(cacheFilePath, "utf8")
+    const parsed = JSON.parse(raw) as { version?: unknown; fetchedAt?: unknown }
+    const version = normalizeCodexClientVersion(parsed.version)
+    const fetchedAt =
+      typeof parsed.fetchedAt === "number" && Number.isFinite(parsed.fetchedAt)
+        ? parsed.fetchedAt
+        : undefined
+    if (!version) return undefined
+    return {
+      version,
+      fetchedAt: fetchedAt ?? 0
+    }
+  } catch {
+    return undefined
+  }
+}
+
+function writeCodexClientVersionCache(
+  entry: CodexClientVersionCacheEntry,
+  cacheFilePath: string = CODEX_CLIENT_VERSION_CACHE_FILE
+): void {
+  try {
+    mkdirSync(path.dirname(cacheFilePath), { recursive: true })
+    const tempFilePath = `${cacheFilePath}.tmp.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
+    writeFileSync(tempFilePath, `${JSON.stringify(entry, null, 2)}\n`, { mode: 0o600 })
+    renameSync(tempFilePath, cacheFilePath)
+    chmodSync(cacheFilePath, 0o600)
+  } catch {
+    // best-effort cache persistence
+  }
+}
+
+function extractSemverFromTag(tag: string): string | undefined {
+  const match = tag.match(/(\d+\.\d+\.\d+)/)
+  return match?.[1]
+}
+
+async function fetchLatestCodexReleaseTag(fetchImpl: typeof fetch = fetch): Promise<string> {
+  try {
+    const apiResponse = await fetchImpl(CODEX_GITHUB_RELEASES_API)
+    if (apiResponse.ok) {
+      const payload = (await apiResponse.json()) as { tag_name?: unknown }
+      const tagName = normalizeCodexClientVersion(payload.tag_name)
+      if (tagName) return tagName
+    }
+  } catch {
+    // fallback to HTML release page
+  }
+
+  const htmlResponse = await fetchImpl(CODEX_GITHUB_RELEASES_HTML, { redirect: "follow" })
+  if (!htmlResponse.ok) {
+    throw new Error(`failed to fetch codex release tag: ${htmlResponse.status}`)
+  }
+
+  const finalUrl = htmlResponse.url
+  if (finalUrl.includes("/tag/")) {
+    const tag = finalUrl.split("/tag/").pop()
+    if (tag && !tag.includes("/")) return tag
+  }
+
+  const html = await htmlResponse.text()
+  const match = html.match(/\/openai\/codex\/releases\/tag\/([^"'/]+)/)
+  if (match?.[1]) return match[1]
+  throw new Error("failed to parse codex release tag")
+}
+
+async function refreshCodexClientVersionFromGitHub(
+  log?: Logger,
+  options: {
+    cacheFilePath?: string
+    fetchImpl?: typeof fetch
+    now?: () => number
+    allowInTest?: boolean
+  } = {}
+): Promise<string> {
+  const cacheFilePath = options.cacheFilePath ?? CODEX_CLIENT_VERSION_CACHE_FILE
+  if (!options.allowInTest && (process.env.VITEST || process.env.NODE_ENV === "test")) {
+    return resolveCodexClientVersion(cacheFilePath)
+  }
+  const now = options.now ?? Date.now
+  const cached = readCodexClientVersionCache(cacheFilePath)
+  const isFresh = cached && now() - cached.fetchedAt < CODEX_CLIENT_VERSION_TTL_MS
+  if (isFresh) {
+    if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE) {
+      cachedCodexClientVersion = cached.version
+    }
+    return cached.version
+  }
+
+  const run = async (): Promise<string> => {
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), CODEX_CLIENT_VERSION_FETCH_TIMEOUT_MS)
+      try {
+        const fetchWithTimeout: typeof fetch = (input, init) =>
+          (options.fetchImpl ?? fetch)(input, { ...(init ?? {}), signal: controller.signal })
+        const releaseTag = await fetchLatestCodexReleaseTag(fetchWithTimeout)
+        const semver = extractSemverFromTag(releaseTag)
+        if (!semver) throw new Error(`invalid_codex_release_tag:${releaseTag}`)
+        const nextEntry: CodexClientVersionCacheEntry = { version: semver, fetchedAt: now() }
+        writeCodexClientVersionCache(nextEntry, cacheFilePath)
+        if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE) {
+          cachedCodexClientVersion = semver
+        }
+        return semver
+      } finally {
+        clearTimeout(timeout)
+      }
+    } catch (error) {
+      log?.debug("codex client version refresh failed", {
+        error: error instanceof Error ? error.message : String(error)
+      })
+      const fallback = cached?.version ?? DEFAULT_CODEX_CLIENT_VERSION
+      if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE) {
+        cachedCodexClientVersion = fallback
+      }
+      return fallback
+    }
+  }
+
+  if (cacheFilePath !== CODEX_CLIENT_VERSION_CACHE_FILE) {
+    return run()
+  }
+  if (codexClientVersionRefreshPromise) return codexClientVersionRefreshPromise
+  codexClientVersionRefreshPromise = run().finally(() => {
+    codexClientVersionRefreshPromise = undefined
+  })
+  return codexClientVersionRefreshPromise
+}
+
+function resolveCodexClientVersion(cacheFilePath: string = CODEX_CLIENT_VERSION_CACHE_FILE): string {
+  if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE && cachedCodexClientVersion) {
+    return cachedCodexClientVersion
+  }
+
+  const fromCache = readCodexClientVersionCache(cacheFilePath)?.version
+  const resolved = fromCache ?? cachedCodexClientVersion ?? DEFAULT_CODEX_CLIENT_VERSION
+
+  if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE) {
+    cachedCodexClientVersion = resolved
+  }
+  return resolved
 }
 
 function resolveMacProductVersion(): string {
@@ -1941,15 +2149,21 @@ export async function CodexAuthPlugin(
         : "native"
   const collabModeEnabled = runtimeMode === "collab"
   const authMode: OpenAIAuthMode = modeForRuntimeMode(runtimeMode)
+  void refreshCodexClientVersionFromGitHub(opts.log).catch(() => {})
   const resolveCatalogHeaders = (): {
     originator: string
     userAgent: string
+    clientVersion: string
+    versionHeader: string
     openaiBeta?: string
   } => {
     const originator = resolveCodexOriginator(spoofMode)
+    const codexClientVersion = resolveCodexClientVersion()
     return {
       originator,
       userAgent: resolveRequestUserAgent(spoofMode, originator),
+      clientVersion: codexClientVersion,
+      versionHeader: codexClientVersion,
       ...(spoofMode === "native" ? { openaiBeta: "responses=experimental" } : {})
     }
   }
@@ -1958,6 +2172,7 @@ export async function CodexAuthPlugin(
     log: opts.log
   })
   let lastCatalogModels: CodexModelInfo[] | undefined
+  const quotaFetchCooldownByIdentity = new Map<string, number>()
   const showToast = async (
     message: string,
     variant: "info" | "success" | "warning" | "error" = "info",
@@ -1977,6 +2192,10 @@ export async function CodexAuthPlugin(
 
   const refreshQuotaSnapshotsForAuthMenu = async (): Promise<void> => {
     const auth = await loadAuthStorage()
+    const snapshotPath = defaultSnapshotsPath()
+    const existingSnapshots: Record<string, { updatedAt?: number }> = await loadSnapshots(
+      snapshotPath
+    ).catch(() => ({}))
     const snapshotUpdates: Record<string, ReturnType<CodexStatus["parseFromHeaders"]>> = {}
     for (const { mode, domain } of listOpenAIOAuthDomains(auth)) {
       for (let index = 0; index < domain.accounts.length; index += 1) {
@@ -1984,10 +2203,24 @@ export async function CodexAuthPlugin(
         if (!account || account.enabled === false) continue
 
         hydrateAccountIdentityFromAccessClaims(account)
+        const identityKey = account.identityKey
+        const now = Date.now()
+        if (identityKey) {
+          const cooldownUntil = quotaFetchCooldownByIdentity.get(identityKey)
+          if (typeof cooldownUntil === "number" && cooldownUntil > now) continue
+          const existing = existingSnapshots[identityKey]
+          if (
+            existing &&
+            typeof existing.updatedAt === "number" &&
+            Number.isFinite(existing.updatedAt) &&
+            now - existing.updatedAt < AUTH_MENU_QUOTA_SNAPSHOT_TTL_MS
+          ) {
+            continue
+          }
+        }
 
         let accessToken =
           typeof account.access === "string" && account.access.length > 0 ? account.access : undefined
-        const now = Date.now()
         const expired =
           typeof account.expires === "number" &&
           Number.isFinite(account.expires) &&
@@ -2025,6 +2258,12 @@ export async function CodexAuthPlugin(
               return authFile
             })
           } catch (error) {
+            if (identityKey) {
+              quotaFetchCooldownByIdentity.set(
+                identityKey,
+                Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS
+              )
+            }
             opts.log?.debug("quota check refresh failed", {
               index,
               mode,
@@ -2046,9 +2285,18 @@ export async function CodexAuthPlugin(
           now: Date.now(),
           modelFamily: "gpt-5.3-codex",
           userAgent: resolveRequestUserAgent(spoofMode, resolveCodexOriginator(spoofMode)),
-          log: opts.log
+          log: opts.log,
+          timeoutMs: AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS
         })
-        if (!snapshot) continue
+        if (!snapshot) {
+          quotaFetchCooldownByIdentity.set(
+            account.identityKey,
+            Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS
+          )
+          continue
+        }
+
+        quotaFetchCooldownByIdentity.delete(account.identityKey)
 
         snapshotUpdates[account.identityKey] = snapshot
       }
@@ -2056,7 +2304,7 @@ export async function CodexAuthPlugin(
 
     if (Object.keys(snapshotUpdates).length === 0) return
 
-    await saveSnapshots(defaultSnapshotsPath(), (current) => ({
+    await saveSnapshots(snapshotPath, (current) => ({
       ...current,
       ...snapshotUpdates
     }))
@@ -2759,6 +3007,22 @@ export async function CodexAuthPlugin(
               sanitized: sanitizedOutbound.changed,
               ...(collaborationModeKind ? { collaborationModeKind } : {})
             })
+            try {
+              assertAllowedOutboundUrl(new URL(sanitizedOutbound.request.url))
+            } catch (error) {
+              if (isPluginFatalError(error)) {
+                return toSyntheticErrorResponse(error)
+              }
+              return toSyntheticErrorResponse(
+                new PluginFatalError({
+                  message:
+                    "Outbound request validation failed before sending to OpenAI backend.",
+                  status: 400,
+                  type: "disallowed_outbound_request",
+                  param: "request"
+                })
+              )
+            }
 
             let response: Response
             try {
