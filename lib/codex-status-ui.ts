@@ -196,7 +196,7 @@ export function renderDashboard(input: {
 
     if (style === "menu" && i < renderableAccounts.length - 1) {
       lines.push(colorize("│", ANSI.cyan, useColor))
-    } else {
+    } else if (style !== "menu") {
       lines.push("")
     }
   }

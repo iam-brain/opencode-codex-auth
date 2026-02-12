@@ -40,6 +40,7 @@ describe("codex status ui", () => {
     expect(text).toContain("Credits")
     expect(text).toContain("unlimited")
     expect(text).not.toContain("│\n└")
+    expect(text).not.toContain("\n\n└")
   })
 
   it("renders fallback bars and unknown reset when snapshot is missing", () => {
