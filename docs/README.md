@@ -11,6 +11,7 @@ This directory contains user and developer documentation for `opencode-codex-aut
 
 - `getting-started.md`
 - `configuration.md`
+- `compaction.md`
 - `multi-account.md`
 - `troubleshooting.md`
 - `privacy.md`

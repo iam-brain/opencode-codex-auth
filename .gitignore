@@ -9,3 +9,4 @@ docs/research/
 
 # local-only agent instructions
 AGENTS.md
+.worktrees/

@@ -34,14 +34,17 @@ export async function toolOutputForStatus(
     lastUsed: acc.lastUsed
   }))
 
-  const dashboardLines = renderDashboard({
-    accounts: displayAccounts,
-    activeIdentityKey: openai.activeIdentityKey,
-    snapshots
-  }, {
-    style,
-    useColor
-  })
+  const dashboardLines = renderDashboard(
+    {
+      accounts: displayAccounts,
+      activeIdentityKey: openai.activeIdentityKey,
+      snapshots
+    },
+    {
+      style,
+      useColor
+    }
+  )
 
   return dashboardLines.join("\n").trim()
 }

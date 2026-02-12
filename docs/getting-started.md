@@ -18,15 +18,14 @@ npx -y @iam-brain/opencode-codex-auth
 What this does:
 
 - Adds `@iam-brain/opencode-codex-auth@latest` to `~/.config/opencode/opencode.json`
-- Installs Codex collab agents to `~/.config/opencode/agents/` as `*.md.disabled`
 - Creates `~/.config/opencode/codex-config.json` if missing
 - Synchronizes `/create-personality` command at `~/.config/opencode/commands/create-personality.md`
 - Synchronizes `personality-builder` skill at `~/.config/opencode/skills/personality-builder/SKILL.md`
 
-To install only the agent templates (no `opencode.json` edits):
+Re-run installer (idempotent):
 
 ```bash
-npx -y @iam-brain/opencode-codex-auth install-agents
+npx -y @iam-brain/opencode-codex-auth install
 ```
 
 ## 2) Keep OpenCode config minimal
@@ -82,14 +81,10 @@ Import sources:
 ## 5) Verify with a real run
 
 ```bash
-opencode run "say hi" --model=openai/gpt-5.2
+opencode run "say hi" --model=openai/gpt-5
 ```
 
-If your account has access:
-
-```bash
-opencode run "say hi" --model=openai/gpt-5.3-codex
-```
+If that model is not available on your account, pick any available `openai/*` model.
 
 ## 6) Create a custom personality (optional)
 
@@ -110,12 +105,9 @@ Runtime mode is configured in `codex-config.json`.
 
 - `native`: default
 - `codex`
-- `collab` (WIP / untested)
 
-Agent files are reconciled at plugin startup:
+Managed templates are synchronized at plugin startup:
 
-- `collab`: Codex agents are enabled (`.md`)
-- non-collab: Codex agents are disabled (`.md.disabled`)
 - `/create-personality` command is refreshed to the managed latest template
 - `personality-builder` skill bundle is refreshed to the managed latest template
 

@@ -26,10 +26,10 @@ describe("installer cli", () => {
     const code = await runInstallerCli(["--help"], capture.io)
     expect(code).toBe(0)
     expect(capture.out.join("\n")).toContain("install ")
-    expect(capture.out.join("\n")).toContain("install-agents")
+    expect(capture.out.join("\n")).not.toContain("install-agents")
   })
 
-  it("runs full install by default: plugin config + codex collaboration agents", async () => {
+  it("runs full install by default: plugin config + personality workflows", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-"))
     const agentsDir = path.join(root, "agents")
     const configPath = path.join(root, "opencode.json")
@@ -47,7 +47,6 @@ describe("installer cli", () => {
       expect(output).toContain("Codex config:")
       expect(output).toContain("/create-personality synchronized: created")
       expect(output).toContain("personality-builder skill synchronized: created")
-      expect(output).toContain("Written: 6")
 
       const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
       expect(config.plugin).toContain("@iam-brain/opencode-codex-auth@latest")
@@ -76,23 +75,13 @@ describe("installer cli", () => {
     }
   })
 
-  it("installs agents to requested directory", async () => {
+  it("rejects removed install-agents command", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-"))
     const agentsDir = path.join(root, "agents")
     const capture = captureIo()
 
     const code = await runInstallerCli(["install-agents", "--dir", agentsDir], capture.io)
-    expect(code).toBe(0)
-    expect(capture.out.join("\n")).toContain("Written: 6")
-
-    const files = (await fs.readdir(agentsDir)).sort()
-    expect(files).toEqual([
-      "Codex Compact.md.disabled",
-      "Codex Default.md.disabled",
-      "Codex Execute.md.disabled",
-      "Codex Orchestrator.md.disabled",
-      "Codex Plan.md.disabled",
-      "Codex Review.md.disabled"
-    ])
+    expect(code).toBe(1)
+    expect(capture.err.join("\n")).toContain("Unknown command: install-agents")
   })
 })

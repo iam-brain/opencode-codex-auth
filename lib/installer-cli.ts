@@ -1,6 +1,5 @@
 import path from "node:path"
 
-import { defaultOpencodeAgentsDir, installOrchestratorAgents } from "./orchestrator-agents.js"
 import { installCreatePersonalityCommand } from "./personality-command.js"
 import { installPersonalityBuilderSkill } from "./personality-skill.js"
 import { ensureDefaultConfigFile } from "./config.js"
@@ -18,32 +17,15 @@ const DEFAULT_IO: InstallerIo = {
 
 function parseArgs(args: string[]): {
   command: string
-  force: boolean
-  dir?: string
   configPath?: string
   pluginSpecifier?: string
 } {
   const command = args[0] && !args[0].startsWith("-") ? args[0] : "install"
-  const tail = command === "install" || command === "install-agents" ? args.slice(1) : args
-  let force = false
-  let dir: string | undefined
+  const tail = command === "install" ? args.slice(1) : args
   let configPath: string | undefined
   let pluginSpecifier: string | undefined
   for (let i = 0; i < tail.length; i += 1) {
     const token = tail[i]
-    if (token === "--force") {
-      force = true
-      continue
-    }
-    if (token === "--dir") {
-      dir = tail[i + 1]
-      i += 1
-      continue
-    }
-    if (token.startsWith("--dir=")) {
-      dir = token.slice("--dir=".length)
-      continue
-    }
     if (token === "--config") {
       configPath = tail[i + 1]
       i += 1
@@ -63,7 +45,7 @@ function parseArgs(args: string[]): {
       continue
     }
   }
-  return { command, force, dir, configPath, pluginSpecifier }
+  return { command, configPath, pluginSpecifier }
 }
 
 function helpText(): string {
@@ -71,16 +53,12 @@ function helpText(): string {
     "opencode-codex-auth installer",
     "",
     "Usage:",
-    "  opencode-codex-auth install [--force] [--dir <path>] [--config <path>] [--plugin <specifier>]",
-    "  opencode-codex-auth install-agents [--force] [--dir <path>]",
+    "  opencode-codex-auth install [--config <path>] [--plugin <specifier>]",
     "",
     "Commands:",
-    "  install         Install plugin entry in opencode.json, collab agents, /create-personality command, and personality skill.",
-    "  install-agents  Install local Codex collaboration agent templates.",
+    "  install         Install plugin entry in opencode.json plus personality command/skill scaffolding.",
     "",
     "Options:",
-    "  --force         Overwrite existing Codex*.md / Codex*.md.disabled collaboration agent files.",
-    "  --dir <path>    Custom agents directory (defaults to ~/.config/opencode/agents).",
     "  --config <path> Custom opencode.json path (defaults to ~/.config/opencode/opencode.json).",
     `  --plugin <spec> Plugin specifier for opencode.json (default: ${DEFAULT_PLUGIN_SPECIFIER}).`
   ].join("\n")
@@ -93,61 +71,43 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
   }
 
   const parsed = parseArgs(args)
-  if (parsed.command !== "install" && parsed.command !== "install-agents") {
+  if (parsed.command !== "install") {
     io.err(`Unknown command: ${parsed.command}`)
     io.err("")
     io.err(helpText())
     return 1
   }
 
-  if (parsed.command === "install") {
-    const configPath = parsed.configPath ? path.resolve(parsed.configPath) : defaultOpencodeConfigPath()
-    const pluginResult = await ensurePluginInstalled({
-      configPath,
-      pluginSpecifier: parsed.pluginSpecifier ?? DEFAULT_PLUGIN_SPECIFIER
-    })
-
-    io.out(`OpenCode config: ${pluginResult.configPath}`)
-    io.out(`Plugin specifier: ${pluginResult.pluginSpecifier}`)
-    io.out(`OpenCode config created: ${pluginResult.created ? "yes" : "no"}`)
-    io.out(`OpenCode config updated: ${pluginResult.changed ? "yes" : "no"}`)
-
-    const defaultConfig = await ensureDefaultConfigFile({ env: process.env })
-    io.out(`Codex config: ${defaultConfig.filePath}`)
-    io.out(`Codex config created: ${defaultConfig.created ? "yes" : "no"}`)
-
-    const commandResult = await installCreatePersonalityCommand({ force: true })
-    io.out(`Commands directory: ${commandResult.commandsDir}`)
-    io.out(
-      `/create-personality synchronized: ${
-        commandResult.created ? "created" : commandResult.updated ? "updated" : "unchanged"
-      }`
-    )
-
-    const skillResult = await installPersonalityBuilderSkill({ force: true })
-    io.out(`Skills directory: ${skillResult.skillsDir}`)
-    io.out(
-      `personality-builder skill synchronized: ${
-        skillResult.created ? "created" : skillResult.updated ? "updated" : "unchanged"
-      }`
-    )
-  }
-
-  const agentsDir = parsed.dir ? path.resolve(parsed.dir) : defaultOpencodeAgentsDir()
-  const result = await installOrchestratorAgents({
-    agentsDir,
-    force: parsed.force
+  const configPath = parsed.configPath ? path.resolve(parsed.configPath) : defaultOpencodeConfigPath()
+  const pluginResult = await ensurePluginInstalled({
+    configPath,
+    pluginSpecifier: parsed.pluginSpecifier ?? DEFAULT_PLUGIN_SPECIFIER
   })
 
-  io.out(`Agents directory: ${result.agentsDir}`)
-  io.out(`Written: ${result.written.length}`)
-  io.out(`Skipped: ${result.skipped.length}`)
-  for (const filePath of result.written) {
-    io.out(`  + ${filePath}`)
-  }
-  for (const filePath of result.skipped) {
-    io.out(`  = ${filePath}`)
-  }
+  io.out(`OpenCode config: ${pluginResult.configPath}`)
+  io.out(`Plugin specifier: ${pluginResult.pluginSpecifier}`)
+  io.out(`OpenCode config created: ${pluginResult.created ? "yes" : "no"}`)
+  io.out(`OpenCode config updated: ${pluginResult.changed ? "yes" : "no"}`)
+
+  const defaultConfig = await ensureDefaultConfigFile({ env: process.env })
+  io.out(`Codex config: ${defaultConfig.filePath}`)
+  io.out(`Codex config created: ${defaultConfig.created ? "yes" : "no"}`)
+
+  const commandResult = await installCreatePersonalityCommand({ force: true })
+  io.out(`Commands directory: ${commandResult.commandsDir}`)
+  io.out(
+    `/create-personality synchronized: ${
+      commandResult.created ? "created" : commandResult.updated ? "updated" : "unchanged"
+    }`
+  )
+
+  const skillResult = await installPersonalityBuilderSkill({ force: true })
+  io.out(`Skills directory: ${skillResult.skillsDir}`)
+  io.out(
+    `personality-builder skill synchronized: ${
+      skillResult.created ? "created" : skillResult.updated ? "updated" : "unchanged"
+    }`
+  )
 
   return 0
 }

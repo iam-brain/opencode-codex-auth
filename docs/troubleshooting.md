@@ -69,6 +69,7 @@ If accounts reappear:
 
 - check for multiple plugin installs writing concurrently
 - check external scripts touching auth files
+- stop OpenCode before manually editing `codex-accounts.json` (plugin writes are lock-guarded + atomic and can overwrite ad-hoc edits)
 
 ## Debug mode
 

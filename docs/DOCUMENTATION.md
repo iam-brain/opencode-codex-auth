@@ -7,7 +7,7 @@ This file describes how docs are organized and maintained.
 - Root entrypoints:
   - `README.md`
   - `docs/README.md`
-  - `docs/index.md`
+  - `docs/index.md` (thin alias to `docs/README.md`)
 - User-facing guides:
   - `docs/getting-started.md`
   - `docs/configuration.md`

@@ -18,7 +18,7 @@ npm run verify
 ```bash
 npx vitest run test/storage.test.ts
 npx vitest run test/config.test.ts
-npx vitest run test/orchestrator-agents.test.ts
+npx vitest run test/installer-cli.test.ts
 ```
 
 ## Test design expectations
@@ -35,7 +35,6 @@ npx vitest run test/orchestrator-agents.test.ts
 - auth menu actions and wiring
 - config parsing and precedence
 - model catalog shaping
-- collab agent install/reconcile behavior
 - request snapshot redaction paths
 
 ## Manual smoke test checklist

@@ -11,7 +11,7 @@ Quick links: `docs/getting-started.md` · `docs/configuration.md` · `docs/multi
 
 - Uses ChatGPT OAuth instead of API keys for OpenAI provider flows.
 - Keeps account rotation state in a plugin-owned store (`codex-accounts.json`).
-- Supports `native`, `codex`, and experimental `collab` runtime modes.
+- Supports `native` and `codex` runtime modes.
 - Adds account-manager UX to `opencode auth login` (quotas, toggles, scoped deletes, transfer).
 
 ## Quick start
@@ -31,8 +31,10 @@ opencode auth login
 Use an OpenAI model through OpenCode:
 
 ```bash
-opencode run "say hi" --model=openai/gpt-5.2
+opencode run "say hi" --model=openai/gpt-5
 ```
+
+If that model is unavailable on your account, use any available `openai/*` model.
 
 ## Usage notice
 
@@ -45,28 +47,19 @@ By default, `npx -y @iam-brain/opencode-codex-auth` runs the installer.
 The installer does two things:
 
 1. Ensures `@iam-brain/opencode-codex-auth@latest` is present in `~/.config/opencode/opencode.json`.
-2. Installs Codex collaboration agent templates in `~/.config/opencode/agents/` as disabled files:
-   - `Codex Orchestrator.md.disabled`
-   - `Codex Default.md.disabled`
-   - `Codex Plan.md.disabled`
-   - `Codex Execute.md.disabled`
-   - `Codex Review.md.disabled`
-   - `Codex Compact.md.disabled`
-3. Creates `~/.config/opencode/codex-config.json` with defaults when missing.
-4. Synchronizes `~/.config/opencode/commands/create-personality.md` for `/create-personality` (created/updated as needed).
-5. Synchronizes `~/.config/opencode/skills/personality-builder/SKILL.md` (plus references) for skill-driven personality workflows.
+2. Creates `~/.config/opencode/codex-config.json` with defaults when missing.
+3. Synchronizes `~/.config/opencode/commands/create-personality.md` for `/create-personality` (created/updated as needed).
+4. Synchronizes `~/.config/opencode/skills/personality-builder/SKILL.md` (plus references) for skill-driven personality workflows.
 
-At plugin startup, files are reconciled against runtime mode:
+At plugin startup, managed templates are synchronized to the latest version:
 
-- `mode: "collab"` -> `.md.disabled` files are activated to `.md`
-- `mode: "native"` or `mode: "codex"` -> Codex agents are disabled to `.md.disabled`
-- `/create-personality` command template is synchronized to the latest managed version.
-- `personality-builder` skill template bundle is synchronized to the latest managed version.
+- `/create-personality` command template
+- `personality-builder` skill bundle
 
-To install only the agent templates (no `opencode.json` edits):
+Re-run installer (idempotent):
 
 ```bash
-npx -y @iam-brain/opencode-codex-auth install-agents
+npx -y @iam-brain/opencode-codex-auth install
 ```
 
 ## Config split
@@ -98,7 +91,6 @@ Create guided custom personalities with:
 
 - `native`: native-plugin style identity/headers.
 - `codex`: codex-rs style identity/headers.
-- `collab`: Codex collaboration profile wiring (WIP / untested; not recommended for production).
 
 ## Account storage
 
@@ -117,6 +109,7 @@ Legacy sources can be imported explicitly from the auth menu:
 - Docs portal: `docs/README.md`
 - Getting started: `docs/getting-started.md`
 - Configuration: `docs/configuration.md`
+- Compaction: `docs/compaction.md`
 - Multi-account: `docs/multi-account.md`
 - Troubleshooting: `docs/troubleshooting.md`
 - Development docs: `docs/development/`

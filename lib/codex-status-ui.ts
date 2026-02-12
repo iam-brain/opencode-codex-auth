@@ -118,11 +118,14 @@ function formatCredits(snap: CodexRateLimitSnapshot | undefined): string {
   return "0 credits"
 }
 
-export function renderDashboard(input: {
-  accounts: AccountRecord[]
-  activeIdentityKey?: string
-  snapshots: Record<string, CodexRateLimitSnapshot | undefined>
-}, options: { style?: StatusRenderStyle; useColor?: boolean } = {}): string[] {
+export function renderDashboard(
+  input: {
+    accounts: AccountRecord[]
+    activeIdentityKey?: string
+    snapshots: Record<string, CodexRateLimitSnapshot | undefined>
+  },
+  options: { style?: StatusRenderStyle; useColor?: boolean } = {}
+): string[] {
   const style = options.style ?? "plain"
   const useColor = options.useColor === true
   const lines: string[] = []
@@ -175,7 +178,9 @@ export function renderDashboard(input: {
         prefix: style === "menu" ? `${colorize("│", ANSI.cyan, useColor)}  ├─ ` : "├─ ",
         label: "5h",
         leftPct: rows.fiveHour?.leftPct ?? 0,
-        resetText: rows.fiveHour ? formatResetTimestamp(rows.fiveHour.resetsAt) ?? "Unknown" : fallbackResetLabel(expired),
+        resetText: rows.fiveHour
+          ? (formatResetTimestamp(rows.fiveHour.resetsAt) ?? "Unknown")
+          : fallbackResetLabel(expired),
         useColor
       })
     )
@@ -184,13 +189,14 @@ export function renderDashboard(input: {
         prefix: style === "menu" ? `${colorize("│", ANSI.cyan, useColor)}  ├─ ` : "├─ ",
         label: "Weekly",
         leftPct: rows.weekly?.leftPct ?? 0,
-        resetText: rows.weekly ? formatResetTimestamp(rows.weekly.resetsAt) ?? "Unknown" : fallbackResetLabel(expired),
+        resetText: rows.weekly
+          ? (formatResetTimestamp(rows.weekly.resetsAt) ?? "Unknown")
+          : fallbackResetLabel(expired),
         useColor
       })
     )
     const creditsText = formatCredits(snap)
-    const creditsColor =
-      creditsText === "0 credits" ? ANSI.red : creditsText === "unlimited" ? ANSI.cyan : ANSI.green
+    const creditsColor = creditsText === "0 credits" ? ANSI.red : creditsText === "unlimited" ? ANSI.cyan : ANSI.green
     const colorizedCredits = colorize(creditsText, creditsColor, useColor)
     lines.push(`${style === "menu" ? `${colorize("│", ANSI.cyan, useColor)}  └─ ` : "└─ "}Credits ${colorizedCredits}`)
 

@@ -38,7 +38,7 @@ Matching preference:
 
 ## Rotation strategies
 
-Configured in `openai.strategy`:
+Configured in `runtime.rotationStrategy`:
 
 - `sticky` (default)
 - `hybrid`

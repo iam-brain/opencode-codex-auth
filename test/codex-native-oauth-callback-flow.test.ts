@@ -53,7 +53,7 @@ async function httpGet(url: string): Promise<{
   })
 }
 
-async function loadPluginForOAuthFlow(input: { mode: "native" | "codex" | "collab"; spoofMode: "native" | "codex" }) {
+async function loadPluginForOAuthFlow(input: { mode: "native" | "codex"; spoofMode: "native" | "codex" }) {
   vi.resetModules()
 
   const storageState: StorageState = {
