@@ -68,14 +68,8 @@ describe("auth menu helpers", () => {
       { availableDeleteScopes: ["native", "codex"] }
     )
 
-    expect(
-      mixedItems.some((item) => item.value.type === "delete" && item.value.scope === "native")
-    ).toBe(true)
-    expect(
-      mixedItems.some((item) => item.value.type === "delete" && item.value.scope === "codex")
-    ).toBe(true)
-    expect(
-      mixedItems.some((item) => item.value.type === "delete" && item.value.scope === "both")
-    ).toBe(true)
+    expect(mixedItems.some((item) => item.value.type === "delete" && item.value.scope === "native")).toBe(true)
+    expect(mixedItems.some((item) => item.value.type === "delete" && item.value.scope === "codex")).toBe(true)
+    expect(mixedItems.some((item) => item.value.type === "delete" && item.value.scope === "both")).toBe(true)
   })
 })

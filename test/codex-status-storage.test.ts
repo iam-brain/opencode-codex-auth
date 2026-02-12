@@ -29,7 +29,7 @@ describe("codex-status storage", () => {
   it("handles missing file by returning empty object", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-status-missing-"))
     const p = path.join(dir, "nonexistent.json")
-    
+
     const snapshots = await loadSnapshots(p)
     expect(snapshots).toEqual({})
 
@@ -65,7 +65,7 @@ describe("codex-status storage", () => {
     }))
 
     // Wait a small amount of time
-    await new Promise(r => setTimeout(r, 25))
+    await new Promise((r) => setTimeout(r, 25))
 
     // Assert the snapshots file still does NOT exist yet
     let exists = true

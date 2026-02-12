@@ -78,11 +78,7 @@ function getPromptCacheKey(body: unknown): string | undefined {
 
 export type RequestSnapshots = {
   captureRequest: (stage: string, request: Request, meta?: SnapshotMeta) => Promise<void>
-  captureResponse: (
-    stage: string,
-    response: Response,
-    meta?: SnapshotMeta
-  ) => Promise<void>
+  captureResponse: (stage: string, response: Response, meta?: SnapshotMeta) => Promise<void>
 }
 
 export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnapshots {

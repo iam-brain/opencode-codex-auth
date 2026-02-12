@@ -47,14 +47,11 @@ describe("codex-native model allowlist", () => {
           "o3-mini": { id: "o3-mini" }
         }
       }
-    
+
       const loader = hooks.auth?.loader
       if (!loader) throw new Error("Missing auth loader")
 
-      await loader(
-        async () => ({ type: "oauth", refresh: "", access: "", expires: 0 } as any),
-        provider as any
-      )
+      await loader(async () => ({ type: "oauth", refresh: "", access: "", expires: 0 }) as any, provider as any)
 
       expect(provider.models["gpt-5.3-codex"]).toBeDefined()
       expect(provider.models["gpt-5.3-codex"].instructions).toBe("TEMPLATE")
@@ -107,13 +104,15 @@ describe("codex-native model allowlist", () => {
         listOpenAIOAuthDomains: vi.fn((auth: Record<string, unknown>) => {
           const openai = auth.openai as { accounts?: unknown[]; activeIdentityKey?: string } | undefined
           if (!openai || !Array.isArray(openai.accounts)) return []
-          const out: Array<{ mode: "native" | "codex"; domain: { accounts: unknown[]; activeIdentityKey?: string } }> = []
+          const out: Array<{ mode: "native" | "codex"; domain: { accounts: unknown[]; activeIdentityKey?: string } }> =
+            []
           for (const mode of ["native", "codex"] as const) {
             const scoped = (openai.accounts as Array<{ authTypes?: string[] }>).filter((account) => {
               const authTypes = Array.isArray(account.authTypes) ? account.authTypes : ["native"]
               return authTypes.includes(mode)
             })
-            if (scoped.length > 0) out.push({ mode, domain: { accounts: scoped, activeIdentityKey: openai.activeIdentityKey } })
+            if (scoped.length > 0)
+              out.push({ mode, domain: { accounts: scoped, activeIdentityKey: openai.activeIdentityKey } })
           }
           return out
         }),
@@ -128,10 +127,7 @@ describe("codex-native model allowlist", () => {
           if (url.toString().includes("/codex/models")) {
             return new Response(
               JSON.stringify({
-                models: [
-                  { slug: "gpt-5.4-codex" },
-                  { slug: "gpt-5.4-codex-mini" }
-                ]
+                models: [{ slug: "gpt-5.4-codex" }, { slug: "gpt-5.4-codex-mini" }]
               }),
               { status: 200 }
             )
@@ -153,10 +149,7 @@ describe("codex-native model allowlist", () => {
       const loader = hooks.auth?.loader
       if (!loader) throw new Error("Missing auth loader")
 
-      await loader(
-        async () => ({ type: "oauth", refresh: "", access: "", expires: 0 } as any),
-        provider as any
-      )
+      await loader(async () => ({ type: "oauth", refresh: "", access: "", expires: 0 }) as any, provider as any)
 
       expect(provider.models["gpt-5.4-codex"]).toBeDefined()
       expect(provider.models["gpt-5.4-codex-mini"]).toBeDefined()

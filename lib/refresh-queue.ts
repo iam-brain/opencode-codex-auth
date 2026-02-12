@@ -60,7 +60,7 @@ export function createRefreshScheduler(input: {
 
       const runners = input.getTasks()
       for (const task of due) {
-        const runner = runners.find(r => r.key === task.key)
+        const runner = runners.find((r) => r.key === task.key)
         if (!runner) continue
         try {
           await runner.refresh()
@@ -76,7 +76,9 @@ export function createRefreshScheduler(input: {
   return {
     start() {
       if (timer) return
-      timer = setInterval(() => { tick().catch(() => {}) }, intervalMs)
+      timer = setInterval(() => {
+        tick().catch(() => {})
+      }, intervalMs)
     },
     stop() {
       if (!timer) return

@@ -69,19 +69,12 @@ function truncateAnsi(text: string, maxVisible: number): string {
   return out
 }
 
-function formatItemLabel(
-  item: MenuItem<unknown>,
-  selected: boolean,
-  useColor: boolean,
-  maxWidth: number
-): string {
+function formatItemLabel(item: MenuItem<unknown>, selected: boolean, useColor: boolean, maxWidth: number): string {
   const colorCode = useColor ? getColorCode(item.color) : ""
   let labelText: string
 
   if (item.disabled) {
-    labelText = useColor
-      ? `${ANSI.dim}${item.label} (unavailable)${ANSI.reset}`
-      : `${item.label} (unavailable)`
+    labelText = useColor ? `${ANSI.dim}${item.label} (unavailable)${ANSI.reset}` : `${item.label} (unavailable)`
   } else if (selected) {
     labelText = colorCode ? `${colorCode}${item.label}${ANSI.reset}` : item.label
     if (item.hint) {
@@ -135,9 +128,7 @@ export async function select<T>(items: MenuItem<T>[], options: SelectOptions): P
     }
     isFirstRender = false
 
-    output.write(
-      `${ANSI.clearLine}${useColor ? ANSI.dim : ""}┌  ${useColor ? ANSI.reset : ""}${message}\n`
-    )
+    output.write(`${ANSI.clearLine}${useColor ? ANSI.dim : ""}┌  ${useColor ? ANSI.reset : ""}${message}\n`)
 
     if (subtitle) {
       output.write(`${ANSI.clearLine}${useColor ? ANSI.dim : ""}│${useColor ? ANSI.reset : ""}\n`)

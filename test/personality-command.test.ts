@@ -4,10 +4,7 @@ import path from "node:path"
 
 import { describe, expect, it } from "vitest"
 
-import {
-  CREATE_PERSONALITY_COMMAND_FILE,
-  installCreatePersonalityCommand
-} from "../lib/personality-command"
+import { CREATE_PERSONALITY_COMMAND_FILE, installCreatePersonalityCommand } from "../lib/personality-command"
 
 describe("create-personality command installer", () => {
   it("writes command template and preserves existing files by default", async () => {

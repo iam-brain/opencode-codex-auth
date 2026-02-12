@@ -33,7 +33,7 @@ describe("request transformer compatibility bridge", () => {
       {
         type: "message",
         role: "assistant",
-        content: [{ type: "output_text", text: "{\"status\":\"ok\",\"value\":7}" }]
+        content: [{ type: "output_text", text: '{"status":"ok","value":7}' }]
       }
     ])
   })

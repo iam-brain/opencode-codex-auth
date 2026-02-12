@@ -22,23 +22,17 @@ export function defaultOpencodeDataPath(env: Record<string, string | undefined> 
   return path.join(os.homedir(), ".local", "share")
 }
 
-export function defaultOpencodeConfigPath(
-  env: Record<string, string | undefined> = process.env
-): string {
+export function defaultOpencodeConfigPath(env: Record<string, string | undefined> = process.env): string {
   const xdgConfig = env.XDG_CONFIG_HOME?.trim()
   if (xdgConfig) return path.join(xdgConfig, "opencode")
   return path.join(os.homedir(), ".config", "opencode")
 }
 
-export function defaultOpencodeCachePath(
-  env: Record<string, string | undefined> = process.env
-): string {
+export function defaultOpencodeCachePath(env: Record<string, string | undefined> = process.env): string {
   return path.join(defaultOpencodeConfigPath(env), "cache")
 }
 
-export function defaultOpencodeSessionStoragePath(
-  env: Record<string, string | undefined> = process.env
-): string {
+export function defaultOpencodeSessionStoragePath(env: Record<string, string | undefined> = process.env): string {
   return path.join(defaultOpencodeDataPath(env), OPENCODE_SESSION_STORAGE_DIR)
 }
 

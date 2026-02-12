@@ -4,11 +4,7 @@ import path from "node:path"
 
 import { describe, expect, it } from "vitest"
 
-import {
-  DEFAULT_PLUGIN_SPECIFIER,
-  defaultOpencodeConfigPath,
-  ensurePluginInstalled
-} from "../lib/opencode-install"
+import { DEFAULT_PLUGIN_SPECIFIER, defaultOpencodeConfigPath, ensurePluginInstalled } from "../lib/opencode-install"
 
 describe("opencode installer config", () => {
   it("uses XDG root for default opencode.json path", () => {

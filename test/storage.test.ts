@@ -6,12 +6,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { defaultAuthPath, defaultSessionAffinityPath, defaultSnapshotsPath } from "../lib/paths"
-import {
-  importLegacyInstallData,
-  loadAuthStorage,
-  saveAuthStorage,
-  shouldOfferLegacyTransfer
-} from "../lib/storage"
+import { importLegacyInstallData, loadAuthStorage, saveAuthStorage, shouldOfferLegacyTransfer } from "../lib/storage"
 
 function fixturePath(name: string): string {
   return fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
@@ -25,9 +20,7 @@ describe("auth storage", () => {
   }
 
   it("defaultAuthPath points at ~/.config/opencode/codex-accounts.json", () => {
-    expect(defaultAuthPath()).toBe(
-      path.join(os.homedir(), ".config", "opencode", "codex-accounts.json")
-    )
+    expect(defaultAuthPath()).toBe(path.join(os.homedir(), ".config", "opencode", "codex-accounts.json"))
   })
 
   it("defaultSessionAffinityPath points at ~/.config/opencode/cache/codex-session-affinity.json", () => {
@@ -37,9 +30,7 @@ describe("auth storage", () => {
   })
 
   it("defaultSnapshotsPath points at ~/.config/opencode/cache/codex-snapshots.json", () => {
-    expect(defaultSnapshotsPath()).toBe(
-      path.join(os.homedir(), ".config", "opencode", "cache", "codex-snapshots.json")
-    )
+    expect(defaultSnapshotsPath()).toBe(path.join(os.homedir(), ".config", "opencode", "cache", "codex-snapshots.json"))
   })
 
   it("loadAuthStorage creates parent dir and returns {} when missing", async () => {

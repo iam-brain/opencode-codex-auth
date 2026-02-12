@@ -144,11 +144,7 @@ export function formatStatusBadges(
 
 function buildAccountLabel(account: AccountInfo, useColor: boolean): string {
   const baseLabel = formatAccountDisplayName(account)
-  const accountAuthTypes = colorize(
-    `[${formatAccountAuthTypes(account.authTypes)}]`,
-    ANSI.cyan,
-    useColor
-  )
+  const accountAuthTypes = colorize(`[${formatAccountAuthTypes(account.authTypes)}]`, ANSI.cyan, useColor)
   const badges = formatStatusBadges(account, useColor)
   return badges ? `${baseLabel} ${accountAuthTypes} ${badges}` : `${baseLabel} ${accountAuthTypes}`
 }
@@ -270,10 +266,7 @@ export function buildAccountActionItems(
   ]
 }
 
-export function buildAccountSelectItems(
-  accounts: AccountInfo[],
-  useColor = shouldUseColor()
-): MenuItem<AccountInfo>[] {
+export function buildAccountSelectItems(accounts: AccountInfo[], useColor = shouldUseColor()): MenuItem<AccountInfo>[] {
   return accounts.map((account) => ({
     label: buildAccountLabel(account, useColor),
     hint: account.lastUsed ? `used ${formatRelativeTime(account.lastUsed)}` : "",
@@ -401,9 +394,7 @@ export async function showAccountDetails(
 
     if (selected.type === "delete") {
       const confirmed = await confirm(
-        selected.scope === "both"
-          ? `Delete ${label}?`
-          : `Delete ${scopeLabel(selected.scope)} auth from ${label}?`,
+        selected.scope === "both" ? `Delete ${label}?` : `Delete ${scopeLabel(selected.scope)} auth from ${label}?`,
         false,
         options
       )

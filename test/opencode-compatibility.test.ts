@@ -23,8 +23,7 @@ describe("opencode compatibility", () => {
             slug: "gpt-5.3-codex",
             base_instructions: "Safe base instructions",
             model_messages: {
-              instructions_template:
-                "Use multi_tool_use.parallel with recipient_name=functions.exec_command"
+              instructions_template: "Use multi_tool_use.parallel with recipient_name=functions.exec_command"
             }
           }
         }
@@ -71,18 +70,11 @@ describe("opencode compatibility", () => {
       topP: 1,
       topK: 0,
       options: {
-        include: [
-          "web_search_call.action.sources",
-          "reasoning.encrypted_content",
-          "reasoning.encrypted_content"
-        ]
+        include: ["web_search_call.action.sources", "reasoning.encrypted_content", "reasoning.encrypted_content"]
       }
     }
 
     await chatParams?.(input, output)
-    expect(output.options.include).toEqual([
-      "web_search_call.action.sources",
-      "reasoning.encrypted_content"
-    ])
+    expect(output.options.include).toEqual(["web_search_call.action.sources", "reasoning.encrypted_content"])
   })
 })

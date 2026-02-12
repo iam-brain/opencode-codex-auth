@@ -39,7 +39,10 @@ function sanitizeItemReferences(value: unknown): { value: unknown; changed: bool
 function hasCallId(item: Record<string, unknown>): boolean {
   const callId = item.call_id
   const toolCallId = item.tool_call_id
-  return (typeof callId === "string" && callId.trim().length > 0) || (typeof toolCallId === "string" && toolCallId.trim().length > 0)
+  return (
+    (typeof callId === "string" && callId.trim().length > 0) ||
+    (typeof toolCallId === "string" && toolCallId.trim().length > 0)
+  )
 }
 
 function extractOutputText(item: Record<string, unknown>): string {

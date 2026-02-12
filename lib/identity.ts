@@ -14,11 +14,7 @@ export function normalizePlan(plan?: string): string | undefined {
   return trimmed.toLowerCase()
 }
 
-export function buildIdentityKey(input: {
-  accountId?: string
-  email?: string
-  plan?: string
-}): string | undefined {
+export function buildIdentityKey(input: { accountId?: string; email?: string; plan?: string }): string | undefined {
   const accountId = input.accountId?.trim()
   const email = normalizeEmail(input.email)
   const plan = normalizePlan(input.plan)

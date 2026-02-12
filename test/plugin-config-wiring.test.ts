@@ -18,15 +18,17 @@ describe("plugin wiring", () => {
       await saveAuthStorage(authPath, (auth) => {
         auth.openai = {
           type: "oauth",
-          accounts: [{
-            identityKey: "acc|u@e.com|plus",
-            email: "u@e.com",
-            plan: "plus",
-            enabled: true,
-            access: "at",
-            refresh: "rt",
-            expires: 1
-          }],
+          accounts: [
+            {
+              identityKey: "acc|u@e.com|plus",
+              email: "u@e.com",
+              plan: "plus",
+              enabled: true,
+              access: "at",
+              refresh: "rt",
+              expires: 1
+            }
+          ],
           activeIdentityKey: "acc|u@e.com|plus"
         }
       })

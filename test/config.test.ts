@@ -274,9 +274,7 @@ describe("config file loading", () => {
     expect(loaded.customSettings?.options?.personality).toBe("friendly")
     expect(loaded.customSettings?.models?.["gpt-5.3-codex"]?.options?.personality).toBe("pirate")
     expect(loaded.customSettings?.models?.["gpt-5.3-codex"]?.thinkingSummaries).toBe(false)
-    expect(loaded.customSettings?.models?.["gpt-5.3-codex"]?.variants?.high?.options?.personality).toBe(
-      "strict"
-    )
+    expect(loaded.customSettings?.models?.["gpt-5.3-codex"]?.variants?.high?.options?.personality).toBe("strict")
     expect(loaded.customSettings?.models?.["gpt-5.3-codex"]?.variants?.high?.thinkingSummaries).toBe(true)
     expect(loaded.personality).toBe("friendly")
   })
@@ -350,8 +348,8 @@ describe("config file loading", () => {
     const written = parseConfigJsonWithComments(raw) as unknown
 
     expect(result.created).toBe(true)
-    expect(raw).toContain("// default: \"native\"")
-    expect(raw).toContain("// default: \"sticky\"")
+    expect(raw).toContain('// default: "native"')
+    expect(raw).toContain('// default: "sticky"')
     expect(raw).toContain("// Thinking summaries behavior:")
     expect(written).toEqual(DEFAULT_CODEX_CONFIG)
   })

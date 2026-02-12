@@ -33,7 +33,7 @@ export async function quarantineFile(input: {
     const allFiles = await fs.readdir(input.quarantineDir)
     const files = allFiles.filter((f) => f.startsWith(base + "."))
     files.sort() // timestamp in name -> lexical works for Date.now() values
-    
+
     const excess = files.length - keep
     for (let i = 0; i < excess; i++) {
       const fp = path.join(input.quarantineDir, files[i]!)

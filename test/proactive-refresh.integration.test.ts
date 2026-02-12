@@ -17,8 +17,26 @@ describe("proactive refresh", () => {
         strategy: "round_robin",
         activeIdentityKey: "a",
         accounts: [
-          { identityKey: "a", enabled: true, refresh: "ra", access: "oldA", expires: 50_000, accountId: "1", email: "a@example.com", plan: "plus" },
-          { identityKey: "b", enabled: false, refresh: "rb", access: "oldB", expires: 50_000, accountId: "2", email: "b@example.com", plan: "plus" }
+          {
+            identityKey: "a",
+            enabled: true,
+            refresh: "ra",
+            access: "oldA",
+            expires: 50_000,
+            accountId: "1",
+            email: "a@example.com",
+            plan: "plus"
+          },
+          {
+            identityKey: "b",
+            enabled: false,
+            refresh: "rb",
+            access: "oldB",
+            expires: 50_000,
+            accountId: "2",
+            email: "b@example.com",
+            plan: "plus"
+          }
         ]
       }
     }))
@@ -39,9 +57,9 @@ describe("proactive refresh", () => {
     const stored = await loadAuthStorage(p)
     const openai = stored.openai
     if (!openai || !("accounts" in openai)) throw new Error("missing")
-    
-    const accountA = openai.accounts.find(a => a.identityKey === "a")
-    const accountB = openai.accounts.find(a => a.identityKey === "b")
+
+    const accountA = openai.accounts.find((a) => a.identityKey === "a")
+    const accountB = openai.accounts.find((a) => a.identityKey === "b")
 
     expect(accountA?.access).toBe("newA")
     expect(accountB?.access).toBe("oldB")

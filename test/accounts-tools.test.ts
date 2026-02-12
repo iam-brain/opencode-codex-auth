@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import { listAccountsForTools, removeAccountByIndex, switchAccountByIndex, toggleAccountEnabledByIndex } from "../lib/accounts-tools"
+import {
+  listAccountsForTools,
+  removeAccountByIndex,
+  switchAccountByIndex,
+  toggleAccountEnabledByIndex
+} from "../lib/accounts-tools"
 
 describe("accounts-tools listing", () => {
   it("returns a stable list with 1-based display index", () => {
@@ -120,7 +125,7 @@ describe("removeAccountByIndex", () => {
       ]
     }
     const next = removeAccountByIndex(openai, 2)
-    expect(next.accounts.map(a => a.identityKey)).toEqual(["a", "c"])
+    expect(next.accounts.map((a) => a.identityKey)).toEqual(["a", "c"])
     expect(next.activeIdentityKey).toBe("c")
   })
 
@@ -136,7 +141,7 @@ describe("removeAccountByIndex", () => {
       ]
     }
     const next = removeAccountByIndex(openai, 2)
-    expect(next.accounts.map(a => a.identityKey)).toEqual(["a", "c", "d"])
+    expect(next.accounts.map((a) => a.identityKey)).toEqual(["a", "c", "d"])
     expect(next.activeIdentityKey).toBe("d")
   })
 

@@ -19,9 +19,7 @@ async function httpGet(url: string): Promise<{
 }> {
   return new Promise((resolve, reject) => {
     const req = http.get(url, (res) => {
-      const location = Array.isArray(res.headers.location)
-        ? res.headers.location[0]
-        : res.headers.location
+      const location = Array.isArray(res.headers.location) ? res.headers.location[0] : res.headers.location
       const contentSecurityPolicy = Array.isArray(res.headers["content-security-policy"])
         ? res.headers["content-security-policy"][0]
         : res.headers["content-security-policy"]
@@ -55,10 +53,7 @@ async function httpGet(url: string): Promise<{
   })
 }
 
-async function loadPluginForOAuthFlow(input: {
-  mode: "native" | "codex" | "collab"
-  spoofMode: "native" | "codex"
-}) {
+async function loadPluginForOAuthFlow(input: { mode: "native" | "codex" | "collab"; spoofMode: "native" | "codex" }) {
   vi.resetModules()
 
   const storageState: StorageState = {

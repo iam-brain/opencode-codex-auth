@@ -45,9 +45,7 @@ describe("codex-status tool", () => {
       "acc1|test@example.com|free": {
         updatedAt: Date.now(),
         modelFamily: "o3-mini",
-        limits: [
-          { name: "Requests", leftPct: 80 }
-        ]
+        limits: [{ name: "Requests", leftPct: 80 }]
       }
     }))
 

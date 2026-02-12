@@ -5,31 +5,34 @@ describe("FetchOrchestrator", () => {
   it("retries with different account after 429", async () => {
     const auths = [
       { access: "access1", identityKey: "id1", accountId: "acc1" },
-      { access: "access2", identityKey: "id2", accountId: "acc2" },
+      { access: "access2", identityKey: "id2", accountId: "acc2" }
     ]
     let authIdx = 0
     const acquireAuth = vi.fn(async () => auths[authIdx++])
     const setCooldown = vi.fn(async () => {})
 
     let fetchCount = 0
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      fetchCount++
-      const req = new Request(input, init)
-      const auth = req.headers.get("authorization")
-      
-      if (fetchCount === 1) {
-        expect(auth).toBe("Bearer access1")
-        expect(req.headers.get("ChatGPT-Account-Id")).toBe("acc1")
-        return new Response("Too Many Requests", {
-          status: 429,
-          headers: { "Retry-After": "10" }
-        })
-      }
-      
-      expect(auth).toBe("Bearer access2")
-      expect(req.headers.get("ChatGPT-Account-Id")).toBe("acc2")
-      return new Response("OK", { status: 200 })
-    }))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        fetchCount++
+        const req = new Request(input, init)
+        const auth = req.headers.get("authorization")
+
+        if (fetchCount === 1) {
+          expect(auth).toBe("Bearer access1")
+          expect(req.headers.get("ChatGPT-Account-Id")).toBe("acc1")
+          return new Response("Too Many Requests", {
+            status: 429,
+            headers: { "Retry-After": "10" }
+          })
+        }
+
+        expect(auth).toBe("Bearer access2")
+        expect(req.headers.get("ChatGPT-Account-Id")).toBe("acc2")
+        return new Response("OK", { status: 200 })
+      })
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -59,13 +62,16 @@ describe("FetchOrchestrator", () => {
     const setCooldown = vi.fn(async () => {})
 
     let fetchCount = 0
-    vi.stubGlobal("fetch", vi.fn(async () => {
-      fetchCount++
-      if (fetchCount === 1) {
-        return new Response("Too Many Requests", { status: 429 })
-      }
-      return new Response("OK", { status: 200 })
-    }))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCount++
+        if (fetchCount === 1) {
+          return new Response("Too Many Requests", { status: 429 })
+        }
+        return new Response("OK", { status: 200 })
+      })
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -84,9 +90,12 @@ describe("FetchOrchestrator", () => {
     const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
     const setCooldown = vi.fn(async () => {})
 
-    vi.stubGlobal("fetch", vi.fn(async () => {
-      return new Response("RL", { status: 429, headers: { "Retry-After": "1" } })
-    }))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response("RL", { status: 429, headers: { "Retry-After": "1" } })
+      })
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -166,17 +175,20 @@ describe("FetchOrchestrator", () => {
     const setCooldown = vi.fn(async () => {})
 
     let fetchCount = 0
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      fetchCount++
-      const req = new Request(input, init)
-      // Consume the body to ensure it's "used"
-      await req.text()
-      
-      if (fetchCount === 1) {
-        return new Response("RL", { status: 429 })
-      }
-      return new Response("OK", { status: 200 })
-    }))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        fetchCount++
+        const req = new Request(input, init)
+        // Consume the body to ensure it's "used"
+        await req.text()
+
+        if (fetchCount === 1) {
+          return new Response("RL", { status: 429 })
+        }
+        return new Response("OK", { status: 200 })
+      })
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -206,12 +218,15 @@ describe("FetchOrchestrator", () => {
     const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "id1" }))
     const setCooldown = vi.fn(async () => {})
 
-    vi.stubGlobal("fetch", vi.fn(async () => {
-      return new Response("RL", {
-        status: 429,
-        headers: { "Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT" }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response("RL", {
+          status: 429,
+          headers: { "Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT" }
+        })
       })
-    }))
+    )
 
     let nowCalls = 0
     const nowStubs = [1000, 2000, 3000]
@@ -244,7 +259,10 @@ describe("FetchOrchestrator", () => {
     const setCooldown = vi.fn(async () => {})
     const showToast = vi.fn(async () => {})
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -271,7 +289,10 @@ describe("FetchOrchestrator", () => {
     const setCooldown = vi.fn(async () => {})
     const showToast = vi.fn(async () => {})
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -297,10 +318,7 @@ describe("FetchOrchestrator", () => {
 
     expect(
       showToast.mock.calls.some(
-        (call) =>
-          call[0] === "Session switched: user@example.com (plus)" &&
-          call[1] === "info" &&
-          call[2] === false
+        (call) => call[0] === "Session switched: user@example.com (plus)" && call[1] === "info" && call[2] === false
       )
     ).toBe(true)
   })
@@ -317,7 +335,10 @@ describe("FetchOrchestrator", () => {
     const sharedState = createFetchOrchestratorState()
     sharedState.seenSessionKeys.set("ses_resume_1", Date.now())
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -333,9 +354,7 @@ describe("FetchOrchestrator", () => {
     })
 
     expect(showToast).toHaveBeenCalledWith("Resuming chat: user@example.com (plus)", "info", false)
-    expect(
-      showToast.mock.calls.some((call) => call[0] === "New chat: user@example.com (plus)")
-    ).toBe(false)
+    expect(showToast.mock.calls.some((call) => call[0] === "New chat: user@example.com (plus)")).toBe(false)
   })
 
   it("shows a toast when the account changes", async () => {
@@ -348,7 +367,10 @@ describe("FetchOrchestrator", () => {
     const setCooldown = vi.fn(async () => {})
     const showToast = vi.fn(async () => {})
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -359,11 +381,7 @@ describe("FetchOrchestrator", () => {
     await orch.execute("https://api.com")
     await orch.execute("https://api.com")
 
-    expect(showToast).toHaveBeenCalledWith(
-      "Account switched: two@example.com (pro)",
-      "info",
-      false
-    )
+    expect(showToast).toHaveBeenCalledWith("Account switched: two@example.com (pro)", "info", false)
   })
 
   it("shows a warning toast on rate-limit switch", async () => {
@@ -412,7 +430,10 @@ describe("FetchOrchestrator", () => {
     const showToast = vi.fn(async () => {})
     const sharedState = createFetchOrchestratorState()
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
 
     const first = new FetchOrchestrator({
       acquireAuth,
@@ -438,9 +459,7 @@ describe("FetchOrchestrator", () => {
       body: JSON.stringify({ prompt_cache_key: "ses_shared_1", input: "second" })
     })
 
-    const newChatToasts = showToast.mock.calls.filter(
-      (call) => call[0] === "New chat: user@example.com (plus)"
-    )
+    const newChatToasts = showToast.mock.calls.filter((call) => call[0] === "New chat: user@example.com (plus)")
     expect(newChatToasts).toHaveLength(1)
   })
 
@@ -455,7 +474,10 @@ describe("FetchOrchestrator", () => {
     const showToast = vi.fn(async () => {})
     let nowValue = 1_000
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -476,9 +498,7 @@ describe("FetchOrchestrator", () => {
       body: JSON.stringify({ prompt_cache_key: "ses_new_2", input: "two" })
     })
 
-    const newChatToasts = showToast.mock.calls.filter(
-      (call) => call[0] === "New chat: user@example.com (plus)"
-    )
+    const newChatToasts = showToast.mock.calls.filter((call) => call[0] === "New chat: user@example.com (plus)")
     expect(newChatToasts).toHaveLength(1)
   })
 
@@ -495,7 +515,10 @@ describe("FetchOrchestrator", () => {
     const showToast = vi.fn(async () => {})
     let nowValue = 1_000
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -529,7 +552,10 @@ describe("FetchOrchestrator", () => {
     const onAttemptRequest = vi.fn(async () => {})
     const onAttemptResponse = vi.fn(async () => {})
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -613,7 +639,10 @@ describe("FetchOrchestrator", () => {
     const setCooldown = vi.fn(async () => {})
     const onSessionObserved = vi.fn(async () => {})
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,
@@ -639,7 +668,10 @@ describe("FetchOrchestrator", () => {
     const setCooldown = vi.fn(async () => {})
     const onSessionObserved = vi.fn(async () => {})
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("OK", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
 
     const orch = new FetchOrchestrator({
       acquireAuth,

@@ -6,11 +6,7 @@ export type ConfirmOptions = {
   useColor?: boolean
 }
 
-export async function confirm(
-  message: string,
-  defaultYes = false,
-  options: ConfirmOptions = {}
-): Promise<boolean> {
+export async function confirm(message: string, defaultYes = false, options: ConfirmOptions = {}): Promise<boolean> {
   const items = defaultYes
     ? [
         { label: "Yes", value: true },

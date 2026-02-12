@@ -57,10 +57,7 @@ export function resolveCustomPersonalityDescription(
   const configRoot = options.configRoot ?? defaultConfigRoot()
 
   for (const directory of PERSONALITY_DIRS) {
-    const localFile = resolvePersonalityFile(
-      path.join(projectRoot, ".opencode", directory),
-      normalized
-    )
+    const localFile = resolvePersonalityFile(path.join(projectRoot, ".opencode", directory), normalized)
     if (localFile) {
       const local = readPersonality(localFile)
       if (local) return local
@@ -68,10 +65,7 @@ export function resolveCustomPersonalityDescription(
   }
 
   for (const directory of PERSONALITY_DIRS) {
-    const globalFile = resolvePersonalityFile(
-      path.join(configRoot, directory),
-      normalized
-    )
+    const globalFile = resolvePersonalityFile(path.join(configRoot, directory), normalized)
     if (globalFile) {
       const global = readPersonality(globalFile)
       if (global) return global

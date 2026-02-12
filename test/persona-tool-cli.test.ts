@@ -29,13 +29,7 @@ describe("persona-tool cli", () => {
 
     const capture = captureIo()
     const code = await runPersonaToolCli(
-      [
-        "--in", inputFile,
-        "--style", "mid",
-        "--domain", "coding",
-        "--out", outFile,
-        "--json", jsonFile
-      ],
+      ["--in", inputFile, "--style", "mid", "--domain", "coding", "--out", outFile, "--json", jsonFile],
       capture.io
     )
     expect(code).toBe(0)
@@ -50,10 +44,7 @@ describe("persona-tool cli", () => {
 
   it("fails with helpful error when input file is missing", async () => {
     const capture = captureIo()
-    const code = await runPersonaToolCli(
-      ["--in", "/tmp/definitely-not-here.md", "--style", "mid"],
-      capture.io
-    )
+    const code = await runPersonaToolCli(["--in", "/tmp/definitely-not-here.md", "--style", "mid"], capture.io)
     expect(code).toBe(1)
     expect(capture.err.join("\n")).toMatch(/Unable to read input file/i)
   })

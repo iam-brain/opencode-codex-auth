@@ -42,7 +42,10 @@
     "release": "node scripts/release.js",
     "release:patch": "npm run release -- patch",
     "release:minor": "npm run release -- minor",
-    "release:major": "npm run release -- major"
+    "release:major": "npm run release -- major",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "files": [
     "dist/",
@@ -61,6 +64,10 @@
     "@opencode-ai/sdk": "^1.0.150",
     "@types/node": "^24.6.2",
     "@types/proper-lockfile": "^4.1.2",
+    "@typescript-eslint/eslint-plugin": "^8.55.0",
+    "@typescript-eslint/parser": "^8.55.0",
+    "eslint": "^9.39.2",
+    "prettier": "^3.8.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },

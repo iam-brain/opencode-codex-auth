@@ -69,9 +69,8 @@ async function loadPluginForAuth(
   const listOpenAIOAuthDomains = vi.fn((auth: MockAuthFile) =>
     (["native", "codex"] as const)
       .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(auth, mode) }))
-      .filter(
-        (entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
-          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
+      .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+        Boolean(entry.domain && Array.isArray(entry.domain.accounts))
       )
   )
 
@@ -93,22 +92,19 @@ async function loadPluginForAuth(
   }))
 
   const { CodexAuthPlugin } = await import("../lib/codex-native")
-  const hooks = await CodexAuthPlugin(
-    {
-      client: {
-        tui: {
-          showToast: vi.fn(async () => ({}))
-        }
+  const hooks = await CodexAuthPlugin({
+    client: {
+      tui: {
+        showToast: vi.fn(async () => ({}))
       }
-    } as never
-  )
+    }
+  } as never)
   const loader = hooks.auth?.loader
   if (!loader) throw new Error("Missing auth loader")
 
-  const loaded = await loader(
-    async () => (getAuthResult as never),
-    { models: { "gpt-5.2-codex": { id: "gpt-5.2-codex" } } } as never
-  )
+  const loaded = await loader(async () => getAuthResult as never, {
+    models: { "gpt-5.2-codex": { id: "gpt-5.2-codex" } }
+  } as never)
 
   return { loaded, loadAuthStorage, saveAuthStorage, setAccountCooldown }
 }
@@ -120,7 +116,10 @@ describe("codex-native fatal responses", () => {
   })
 
   it("returns synthetic no-accounts error in conversation response", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("ok", { status: 200 }))
+    )
 
     const { loaded } = await loadPluginForAuth({
       openai: {
@@ -214,7 +213,10 @@ describe("codex-native fatal responses", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-08T12:00:00.000Z")
     vi.setSystemTime(now)
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("ok", { status: 200 }))
+    )
 
     const { loaded } = await loadPluginForAuth({
       openai: {
@@ -349,9 +351,7 @@ describe("codex-native fatal responses", () => {
 
     expect(response?.status).toBe(200)
     expect(fetchImpl).toHaveBeenCalledTimes(2)
-    const codexCall = fetchImpl.mock.calls.find(
-      (call) => !call[0].toString().includes("/oauth/token")
-    )
+    const codexCall = fetchImpl.mock.calls.find((call) => !call[0].toString().includes("/oauth/token"))
     expect(codexCall).toBeDefined()
     const outboundRequest = codexCall?.[0] as Request
     expect(outboundRequest.headers.get("authorization")).toBe("Bearer access-good")

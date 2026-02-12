@@ -169,7 +169,7 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
     } as never
 
     const loaded = await hooks.auth?.loader?.(
-      async () => ({ type: "oauth", refresh: "rt_123", access: "at_123", expires: Date.now() + 60_000 } as never),
+      async () => ({ type: "oauth", refresh: "rt_123", access: "at_123", expires: Date.now() + 60_000 }) as never,
       provider
     )
 
@@ -177,8 +177,8 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
       throw new Error("Auth loader did not return fetch handler")
     }
 
-    const modelOptions = (provider as { models: Record<string, { options?: Record<string, unknown> }> })
-      .models[modelSlug]?.options ?? {}
+    const modelOptions =
+      (provider as { models: Record<string, { options?: Record<string, unknown> }> }).models[modelSlug]?.options ?? {}
 
     const paramsOutput = {
       temperature: 0,
@@ -236,9 +236,7 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
 
     return {
       preflightInstructions:
-        typeof paramsOutput.options.instructions === "string"
-          ? paramsOutput.options.instructions
-          : undefined,
+        typeof paramsOutput.options.instructions === "string" ? paramsOutput.options.instructions : undefined,
       outboundInstructions,
       outboundUrl,
       outboundOriginator,

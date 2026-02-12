@@ -8,29 +8,30 @@ describe("codex quota fetch", () => {
   })
 
   it("parses wham usage response into requests/tokens limits", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          rate_limit: {
-            primary_window: {
-              used_percent: 25,
-              limit_window_seconds: 18000,
-              reset_at: 1_710_000_000
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            rate_limit: {
+              primary_window: {
+                used_percent: 25,
+                limit_window_seconds: 18000,
+                reset_at: 1_710_000_000
+              },
+              secondary_window: {
+                used_percent: 70,
+                limit_window_seconds: 604800,
+                reset_at: 1_711_000_000
+              }
             },
-            secondary_window: {
-              used_percent: 70,
-              limit_window_seconds: 604800,
-              reset_at: 1_711_000_000
+            credits: {
+              has_credits: true,
+              unlimited: false,
+              balance: "12.5"
             }
-          },
-          credits: {
-            has_credits: true,
-            unlimited: false,
-            balance: "12.5"
-          }
-        }),
-        { status: 200 }
-      )
+          }),
+          { status: 200 }
+        )
     )
     vi.stubGlobal("fetch", fetchMock)
 
@@ -56,19 +57,20 @@ describe("codex quota fetch", () => {
   })
 
   it("resolves codex-api usage path for non-backend base URLs", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          rate_limit: {
-            primary_window: {
-              used_percent: 10,
-              limit_window_seconds: 18000,
-              reset_at: 1_712_000_000
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            rate_limit: {
+              primary_window: {
+                used_percent: 10,
+                limit_window_seconds: 18000,
+                reset_at: 1_712_000_000
+              }
             }
-          }
-        }),
-        { status: 200 }
-      )
+          }),
+          { status: 200 }
+        )
     )
     vi.stubGlobal("fetch", fetchMock)
 
@@ -83,24 +85,23 @@ describe("codex quota fetch", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.openai.com/api/codex/usage")
-    expect(snapshot?.limits).toEqual([
-      { name: "requests", leftPct: 90, resetsAt: 1_712_000_000_000 }
-    ])
+    expect(snapshot?.limits).toEqual([{ name: "requests", leftPct: 90, resetsAt: 1_712_000_000_000 }])
   })
 
   it("routes quota requests with ChatGPT-Account-Id header for account isolation parity", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          rate_limit: {
-            primary_window: {
-              used_percent: 50,
-              reset_at: 1_713_000_000
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            rate_limit: {
+              primary_window: {
+                used_percent: 50,
+                reset_at: 1_713_000_000
+              }
             }
-          }
-        }),
-        { status: 200 }
-      )
+          }),
+          { status: 200 }
+        )
     )
     vi.stubGlobal("fetch", fetchMock)
 
@@ -119,18 +120,19 @@ describe("codex quota fetch", () => {
   })
 
   it("normalizes chatgpt base URL to backend-api before usage lookup", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          rate_limit: {
-            primary_window: {
-              used_percent: 10,
-              reset_at: 1_712_000_000
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            rate_limit: {
+              primary_window: {
+                used_percent: 10,
+                reset_at: 1_712_000_000
+              }
             }
-          }
-        }),
-        { status: 200 }
-      )
+          }),
+          { status: 200 }
+        )
     )
     vi.stubGlobal("fetch", fetchMock)
 
@@ -171,11 +173,7 @@ describe("codex quota fetch", () => {
           reject(new Error("missing signal"))
           return
         }
-        signal.addEventListener(
-          "abort",
-          () => reject(new Error("aborted")),
-          { once: true }
-        )
+        signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })
       })
     })
 

@@ -25,24 +25,11 @@ function formatResetTimestamp(resetsAt: number | undefined, now = Date.now()): s
   if (resetsAt - now <= 24 * 60 * 60 * 1000) {
     return `resets ${timeStr}`
   }
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec"
-  ]
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
   return `resets ${timeStr} ${date.getDate()} ${months[date.getMonth()]}`
 }
 
-function findLimitByName(snap: CodexRateLimitSnapshot, names: string[]): typeof snap.limits[number] | undefined {
+function findLimitByName(snap: CodexRateLimitSnapshot, names: string[]): (typeof snap.limits)[number] | undefined {
   const lowered = names.map((name) => name.toLowerCase())
   return snap.limits.find((limit) => lowered.includes(limit.name.toLowerCase()))
 }
@@ -54,9 +41,7 @@ function resolveQuotaRows(snap: CodexRateLimitSnapshot | undefined): {
   if (!snap) {
     return { fiveHour: undefined, weekly: undefined }
   }
-  const fiveHour =
-    findLimitByName(snap, ["5h", "primary", "requests"]) ??
-    snap.limits[0]
+  const fiveHour = findLimitByName(snap, ["5h", "primary", "requests"]) ?? snap.limits[0]
   const weekly =
     findLimitByName(snap, ["weekly", "secondary", "tokens"]) ??
     snap.limits.find((limit) => limit !== fiveHour) ??
@@ -64,11 +49,7 @@ function resolveQuotaRows(snap: CodexRateLimitSnapshot | undefined): {
   return { fiveHour, weekly }
 }
 
-function renderQuotaLine(input: {
-  label: string
-  leftPct: number
-  resetText?: string
-}): string {
+function renderQuotaLine(input: { label: string; leftPct: number; resetText?: string }): string {
   const pct = clampPct(input.leftPct)
   const pctText = `${String(pct).padStart(3, " ")}%`
   const resetSuffix = input.resetText ? ` (${input.resetText})` : ""
@@ -106,8 +87,7 @@ export function renderDashboard(input: {
 
     lines.push(`${active} ${label} (${acc.plan ?? "unknown"})`)
 
-    const expired =
-      typeof acc.expires === "number" && Number.isFinite(acc.expires) && acc.expires <= Date.now()
+    const expired = typeof acc.expires === "number" && Number.isFinite(acc.expires) && acc.expires <= Date.now()
 
     const rows = resolveQuotaRows(snap)
     lines.push(
@@ -115,7 +95,7 @@ export function renderDashboard(input: {
         label: "5h",
         leftPct: rows.fiveHour?.leftPct ?? 0,
         resetText: rows.fiveHour
-          ? formatResetTimestamp(rows.fiveHour.resetsAt) ?? "Unknown"
+          ? (formatResetTimestamp(rows.fiveHour.resetsAt) ?? "Unknown")
           : fallbackResetLabel(expired)
       })
     )
@@ -123,9 +103,7 @@ export function renderDashboard(input: {
       renderQuotaLine({
         label: "Weekly",
         leftPct: rows.weekly?.leftPct ?? 0,
-        resetText: rows.weekly
-          ? formatResetTimestamp(rows.weekly.resetsAt) ?? "Unknown"
-          : fallbackResetLabel(expired)
+        resetText: rows.weekly ? (formatResetTimestamp(rows.weekly.resetsAt) ?? "Unknown") : fallbackResetLabel(expired)
       })
     )
     lines.push(`  ● Credits    ${formatCredits(snap)}`)

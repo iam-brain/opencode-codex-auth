@@ -57,8 +57,7 @@ function normalizeBaseUrl(baseUrl: string): string {
   while (normalized.endsWith("/")) normalized = normalized.slice(0, -1)
 
   if (
-    (normalized.startsWith("https://chatgpt.com") ||
-      normalized.startsWith("https://chat.openai.com")) &&
+    (normalized.startsWith("https://chatgpt.com") || normalized.startsWith("https://chat.openai.com")) &&
     !normalized.includes("/backend-api")
   ) {
     normalized = `${normalized}/backend-api`
@@ -81,12 +80,8 @@ function snapshotFromUsagePayload(input: {
   if (!isRecord(input.payload)) return null
 
   const rateLimit = isRecord(input.payload.rate_limit) ? input.payload.rate_limit : null
-  const primary =
-    rateLimit?.primary_window ??
-    (isRecord(input.payload.primary) ? input.payload.primary : null)
-  const secondary =
-    rateLimit?.secondary_window ??
-    (isRecord(input.payload.secondary) ? input.payload.secondary : null)
+  const primary = rateLimit?.primary_window ?? (isRecord(input.payload.primary) ? input.payload.primary : null)
+  const secondary = rateLimit?.secondary_window ?? (isRecord(input.payload.secondary) ? input.payload.secondary : null)
 
   const limits: CodexLimit[] = []
   const primaryLimit = parseWindowLimit("requests", primary)
@@ -114,9 +109,11 @@ function snapshotFromUsagePayload(input: {
       limits.push({
         name,
         leftPct: clampPct(computedLeftPct),
-        ...(toEpochMs(asNumber(entry.reset_at ?? entry.resets_at)) ? {
-          resetsAt: toEpochMs(asNumber(entry.reset_at ?? entry.resets_at))
-        } : null)
+        ...(toEpochMs(asNumber(entry.reset_at ?? entry.resets_at))
+          ? {
+              resetsAt: toEpochMs(asNumber(entry.reset_at ?? entry.resets_at))
+            }
+          : null)
       })
     }
   }

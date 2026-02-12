@@ -4,11 +4,7 @@ import path from "node:path"
 
 import { describe, expect, it } from "vitest"
 
-import {
-  PERSONALITY_SKILL_FILE,
-  PERSONALITY_SKILL_KEY,
-  installPersonalityBuilderSkill
-} from "../lib/personality-skill"
+import { PERSONALITY_SKILL_FILE, PERSONALITY_SKILL_KEY, installPersonalityBuilderSkill } from "../lib/personality-skill"
 
 describe("personality skill installer", () => {
   it("writes skill bundle and preserves existing files by default", async () => {
@@ -18,12 +14,7 @@ describe("personality skill installer", () => {
     const first = await installPersonalityBuilderSkill({ skillsDir })
     expect(first.created).toBe(true)
     const skillPath = path.join(skillsDir, PERSONALITY_SKILL_KEY, PERSONALITY_SKILL_FILE)
-    const refPath = path.join(
-      skillsDir,
-      PERSONALITY_SKILL_KEY,
-      "references",
-      "personality-patterns.md"
-    )
+    const refPath = path.join(skillsDir, PERSONALITY_SKILL_KEY, "references", "personality-patterns.md")
     const firstContent = await fs.readFile(skillPath, "utf8")
     expect(firstContent).toContain("name: personality-builder")
     expect(firstContent).toContain("create-personality")
@@ -40,12 +31,7 @@ describe("personality skill installer", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-skill-force-"))
     const skillsDir = path.join(root, "skills")
     const skillPath = path.join(skillsDir, PERSONALITY_SKILL_KEY, PERSONALITY_SKILL_FILE)
-    const refPath = path.join(
-      skillsDir,
-      PERSONALITY_SKILL_KEY,
-      "references",
-      "personality-patterns.md"
-    )
+    const refPath = path.join(skillsDir, PERSONALITY_SKILL_KEY, "references", "personality-patterns.md")
     await fs.mkdir(path.dirname(skillPath), { recursive: true })
     await fs.writeFile(skillPath, "stale skill", "utf8")
     await fs.mkdir(path.dirname(refPath), { recursive: true })

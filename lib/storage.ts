@@ -3,18 +3,8 @@ import lockfile from "proper-lockfile"
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import {
-  ensureIdentityKey,
-  normalizeEmail,
-  normalizePlan,
-  synchronizeIdentityKey
-} from "./identity"
-import {
-  extractAccountIdFromClaims,
-  extractEmailFromClaims,
-  extractPlanFromClaims,
-  parseJwtClaims
-} from "./claims"
+import { ensureIdentityKey, normalizeEmail, normalizePlan, synchronizeIdentityKey } from "./identity"
+import { extractAccountIdFromClaims, extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "./claims"
 import { quarantineFile } from "./quarantine"
 import {
   CODEX_ACCOUNTS_FILE,
@@ -92,9 +82,7 @@ function isOpenAIOAuthDomain(value: unknown): value is OpenAIOAuthDomain {
 
 function normalizeAccountRecord(account: AccountRecord, authMode?: OpenAIAuthMode): void {
   const claims =
-    typeof account.access === "string" && account.access.length > 0
-      ? parseJwtClaims(account.access)
-      : undefined
+    typeof account.access === "string" && account.access.length > 0 ? parseJwtClaims(account.access) : undefined
   if (!account.accountId) account.accountId = extractAccountIdFromClaims(claims)
   if (!account.email) account.email = extractEmailFromClaims(claims)
   if (!account.plan) account.plan = extractPlanFromClaims(claims)
@@ -258,11 +246,7 @@ function isMultiOauthAuth(value: unknown): value is OpenAIMultiOauthAuth {
 function isLegacyOauthAuth(value: unknown): value is LegacyOpenAIOauth {
   if (!isObject(value)) return false
   if (value.type !== "oauth") return false
-  return (
-    typeof value.refresh === "string" &&
-    typeof value.access === "string" &&
-    typeof value.expires === "number"
-  )
+  return typeof value.refresh === "string" && typeof value.access === "string" && typeof value.expires === "number"
 }
 
 function sanitizeAuthFile(input: AuthFile): AuthFile {
@@ -280,9 +264,7 @@ function hasUsableOpenAIOAuth(auth: AuthFile): boolean {
     return OPENAI_AUTH_MODES.some((authMode) => {
       const domain = normalized[authMode]
       if (!domain) return false
-      return domain.accounts.some(
-        (account) => typeof account.refresh === "string" && account.refresh.trim().length > 0
-      )
+      return domain.accounts.some((account) => typeof account.refresh === "string" && account.refresh.trim().length > 0)
     })
   }
   return isLegacyOauthAuth(openai) && openai.refresh.trim().length > 0
@@ -351,8 +333,7 @@ function migrateLegacyCodexAccounts(input: Record<string, unknown>): AuthFile | 
           : typeof source.expires === "number"
             ? source.expires
             : 0,
-      accountId:
-        typeof source.accountId === "string" ? source.accountId : extractAccountIdFromClaims(claims),
+      accountId: typeof source.accountId === "string" ? source.accountId : extractAccountIdFromClaims(claims),
       email: typeof source.email === "string" ? source.email : extractEmailFromClaims(claims),
       plan: typeof source.plan === "string" ? source.plan : extractPlanFromClaims(claims),
       authTypes: normalizeAccountAuthTypes(source.authTypes),
@@ -380,8 +361,7 @@ function migrateLegacyCodexAccounts(input: Record<string, unknown>): AuthFile | 
   if (mappedAccounts.length === 0) return undefined
 
   const activeIndex = typeof input.activeIndex === "number" ? Math.floor(input.activeIndex) : 0
-  const safeActiveIndex =
-    activeIndex >= 0 && activeIndex < mappedAccounts.length ? activeIndex : 0
+  const safeActiveIndex = activeIndex >= 0 && activeIndex < mappedAccounts.length ? activeIndex : 0
   const activeIdentityKey = mappedAccounts[safeActiveIndex]?.identityKey
 
   const auth: AuthFile = {
@@ -516,9 +496,7 @@ export type LegacyTransferResult = {
   sourcesUsed: number
 }
 
-export async function importLegacyInstallData(
-  filePath: string = defaultAuthPath()
-): Promise<LegacyTransferResult> {
+export async function importLegacyInstallData(filePath: string = defaultAuthPath()): Promise<LegacyTransferResult> {
   return withFileLock(filePath, async () => {
     const current = sanitizeAuthFile(migrateAuthFile(await readAuthUnlocked(filePath)))
     const nextOpenAI = ensureMultiOauthState(current)
@@ -575,10 +553,7 @@ export async function importLegacyInstallData(
   })
 }
 
-export function getOpenAIOAuthDomain(
-  auth: AuthFile,
-  authMode: OpenAIAuthMode
-): OpenAIOAuthDomain | undefined {
+export function getOpenAIOAuthDomain(auth: AuthFile, authMode: OpenAIAuthMode): OpenAIOAuthDomain | undefined {
   const openai = auth.openai
   if (!openai || openai.type !== "oauth" || !isMultiOauthAuth(openai)) return undefined
   const normalized = normalizeOpenAIOAuthState(openai)
@@ -586,10 +561,7 @@ export function getOpenAIOAuthDomain(
   return normalized[authMode]
 }
 
-export function ensureOpenAIOAuthDomain(
-  auth: AuthFile,
-  authMode: OpenAIAuthMode
-): OpenAIOAuthDomain {
+export function ensureOpenAIOAuthDomain(auth: AuthFile, authMode: OpenAIAuthMode): OpenAIOAuthDomain {
   const openai = requireOpenAIMultiOauthAuth(auth)
   const normalized = normalizeOpenAIOAuthState(openai)
   auth.openai = normalized

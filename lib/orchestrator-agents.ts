@@ -70,11 +70,14 @@ export type OrchestratorAgentTemplate = {
 
 const DISABLED_AGENT_EXTENSION = ".disabled"
 
-function withFrontmatter(config: {
-  description: string
-  mode: "primary" | "subagent"
-  hidden?: boolean
-}, prompt: string): string {
+function withFrontmatter(
+  config: {
+    description: string
+    mode: "primary" | "subagent"
+    hidden?: boolean
+  },
+  prompt: string
+): string {
   const frontmatter = [
     "---",
     `description: ${config.description}`,

@@ -80,7 +80,8 @@ function parseArgs(args: string[]): ParsedArgs {
     else if (token === "--style") parsed.style = parseStyle(next) ?? parsed.style
     else if (token.startsWith("--style=")) parsed.style = parseStyle(token.slice("--style=".length)) ?? parsed.style
     else if (token === "--domain") parsed.domain = parseDomain(next) ?? parsed.domain
-    else if (token.startsWith("--domain=")) parsed.domain = parseDomain(token.slice("--domain=".length)) ?? parsed.domain
+    else if (token.startsWith("--domain="))
+      parsed.domain = parseDomain(token.slice("--domain=".length)) ?? parsed.domain
     else if (token === "--voice-fidelity") parsed.voiceFidelity = parseNumber(next, parsed.voiceFidelity)
     else if (token.startsWith("--voice-fidelity=")) {
       parsed.voiceFidelity = parseNumber(token.slice("--voice-fidelity=".length), parsed.voiceFidelity)

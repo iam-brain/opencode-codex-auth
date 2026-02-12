@@ -65,9 +65,8 @@ async function loadPluginForAuth(authFile: MockAuthFile, pluginOpts?: PluginOpts
   const listOpenAIOAuthDomains = vi.fn((auth: MockAuthFile) =>
     (["native", "codex"] as const)
       .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(auth, mode) }))
-      .filter(
-        (entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
-          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
+      .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+        Boolean(entry.domain && Array.isArray(entry.domain.accounts))
       )
   )
 
@@ -93,10 +92,9 @@ async function loadPluginForAuth(authFile: MockAuthFile, pluginOpts?: PluginOpts
   const loader = hooks.auth?.loader
   if (!loader) throw new Error("Missing auth loader")
 
-  const loaded = await loader(
-    async () => ({ type: "oauth", refresh: "", access: "", expires: 0 } as never),
-    { models: { "gpt-5.2-codex": { id: "gpt-5.2-codex" } } } as never
-  )
+  const loaded = await loader(async () => ({ type: "oauth", refresh: "", access: "", expires: 0 }) as never, {
+    models: { "gpt-5.2-codex": { id: "gpt-5.2-codex" } }
+  } as never)
 
   return { loaded, loadAuthStorage, saveAuthStorage, setAccountCooldown }
 }

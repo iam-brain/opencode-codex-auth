@@ -38,18 +38,16 @@ describe("codex-native session affinity persistence", () => {
       }
     )
     const setAccountCooldown = vi.fn(async () => {})
-    const getOpenAIOAuthDomain = vi.fn(
-      (current: Record<string, unknown>, mode: "native" | "codex") => {
-        const openai = current.openai as { accounts?: unknown[]; activeIdentityKey?: string } | undefined
-        if (!openai || !Array.isArray(openai.accounts)) return undefined
-        const scoped = (openai.accounts as Array<{ authTypes?: string[] }>).filter((account) => {
-          const authTypes = Array.isArray(account.authTypes) ? account.authTypes : ["native"]
-          return authTypes.includes(mode)
-        })
-        if (scoped.length === 0) return undefined
-        return { accounts: scoped, activeIdentityKey: openai.activeIdentityKey }
-      }
-    )
+    const getOpenAIOAuthDomain = vi.fn((current: Record<string, unknown>, mode: "native" | "codex") => {
+      const openai = current.openai as { accounts?: unknown[]; activeIdentityKey?: string } | undefined
+      if (!openai || !Array.isArray(openai.accounts)) return undefined
+      const scoped = (openai.accounts as Array<{ authTypes?: string[] }>).filter((account) => {
+        const authTypes = Array.isArray(account.authTypes) ? account.authTypes : ["native"]
+        return authTypes.includes(mode)
+      })
+      if (scoped.length === 0) return undefined
+      return { accounts: scoped, activeIdentityKey: openai.activeIdentityKey }
+    })
     const ensureOpenAIOAuthDomain = vi.fn(
       (current: Record<string, unknown>, mode: "native" | "codex") =>
         getOpenAIOAuthDomain(current, mode) ?? { accounts: [] }
@@ -57,9 +55,8 @@ describe("codex-native session affinity persistence", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter(
-          (entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
-            Boolean(entry.domain && Array.isArray(entry.domain.accounts))
+        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
 
@@ -83,8 +80,8 @@ describe("codex-native session affinity persistence", () => {
     }))
     vi.doMock("../lib/codex-status-storage", () => ({
       loadSnapshots: vi.fn(async () => ({})),
-      saveSnapshots: vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) =>
-        update({})
+      saveSnapshots: vi.fn(
+        async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) => update({})
       )
     }))
     const pruneSessionAffinitySnapshot = vi.fn(async () => 0)
@@ -102,17 +99,19 @@ describe("codex-native session affinity persistence", () => {
       pruneSessionAffinitySnapshot
     }))
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("ok", { status: 200 }))
+    )
 
     const { CodexAuthPlugin } = await import("../lib/codex-native")
     const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex" })
     const loader = hooks.auth?.loader
     if (!loader) throw new Error("Missing auth loader")
 
-    const loaded = await loader(
-      async () => ({ type: "oauth", refresh: "", access: "", expires: 0 } as never),
-      { models: { "gpt-5.2-codex": { id: "gpt-5.2-codex" } } } as never
-    )
+    const loaded = await loader(async () => ({ type: "oauth", refresh: "", access: "", expires: 0 }) as never, {
+      models: { "gpt-5.2-codex": { id: "gpt-5.2-codex" } }
+    } as never)
 
     const subagentRequest = new Request("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -146,9 +145,7 @@ describe("codex-native session affinity persistence", () => {
     })
 
     expect(pruneSessionAffinitySnapshot).toHaveBeenCalled()
-    const pruneOptions = pruneSessionAffinitySnapshot.mock.calls[0]?.[2] as
-      | { missingGraceMs?: number }
-      | undefined
+    const pruneOptions = pruneSessionAffinitySnapshot.mock.calls[0]?.[2] as { missingGraceMs?: number } | undefined
     expect((pruneOptions?.missingGraceMs ?? 0) > 0).toBe(true)
   })
 })

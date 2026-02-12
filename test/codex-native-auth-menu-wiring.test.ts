@@ -13,14 +13,13 @@ async function loadPluginWithMenu(input: {
       onTransfer: () => Promise<void>
       onCheckQuotas: () => Promise<void>
       onDeleteAll: (scope: "native" | "codex" | "both") => Promise<void>
-      onDeleteAccount: (
-        account: { identityKey?: string },
-        scope: "native" | "codex" | "both"
-      ) => Promise<void>
+      onDeleteAccount: (account: { identityKey?: string }, scope: "native" | "codex" | "both") => Promise<void>
     }
   }) => Promise<"add" | "continue" | "exit">
   quotaSnapshot?: { updatedAt: number; modelFamily: string; limits: Array<{ name: string; leftPct: number }> }
-  quotaSnapshotImpl?: (args: { accountId?: string }) =>
+  quotaSnapshotImpl?: (args: {
+    accountId?: string
+  }) =>
     | Promise<{ updatedAt: number; modelFamily: string; limits: Array<{ name: string; leftPct: number }> } | null>
     | { updatedAt: number; modelFamily: string; limits: Array<{ name: string; leftPct: number }> }
     | null
@@ -28,9 +27,7 @@ async function loadPluginWithMenu(input: {
 }) {
   vi.resetModules()
 
-  const runAuthMenuOnce = vi.fn(
-    input.runAuthMenuOnceImpl ?? (async () => input.menuResult ?? "exit")
-  )
+  const runAuthMenuOnce = vi.fn(input.runAuthMenuOnceImpl ?? (async () => input.menuResult ?? "exit"))
 
   const storageState =
     input.authFile ??
@@ -137,11 +134,16 @@ async function loadPluginWithMenu(input: {
   const snapshotStore: Record<string, unknown> = {
     ...(input.initialSnapshots ?? {})
   }
-  const saveSnapshots = vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>) => {
-    const next = await update(snapshotStore)
-    Object.assign(snapshotStore, next)
-    return snapshotStore
-  })
+  const saveSnapshots = vi.fn(
+    async (
+      _path: string,
+      update: (current: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>
+    ) => {
+      const next = await update(snapshotStore)
+      Object.assign(snapshotStore, next)
+      return snapshotStore
+    }
+  )
   const toolOutputForStatus = vi.fn(async () => "## Codex Status\n")
   const fetchQuotaSnapshotFromBackend = vi.fn(async (args: { accountId?: string }) => {
     if (input.quotaSnapshotImpl) {
@@ -374,39 +376,38 @@ describe("codex-native auth menu wiring", () => {
     vi.setSystemTime(now)
 
     const identityKey = "acc_1|one@example.com|plus"
-    const { hooks, fetchQuotaSnapshotFromBackend, saveSnapshots, toolOutputForStatus } =
-      await loadPluginWithMenu({
-        offerLegacyTransfer: false,
-        authFile: {
-          openai: {
-            type: "oauth",
-            accounts: [
-              {
-                identityKey,
-                accountId: "acc_1",
-                email: "one@example.com",
-                plan: "plus",
-                enabled: true,
-                access: "at_1",
-                refresh: "rt_1",
-                expires: Date.now() + 60_000
-              }
-            ],
-            activeIdentityKey: identityKey
-          }
-        },
-        runAuthMenuOnceImpl: async (args) => {
-          await args.handlers.onCheckQuotas()
-          return "exit"
-        },
-        initialSnapshots: {
-          [identityKey]: {
-            updatedAt: Date.now() - 10_000,
-            modelFamily: "gpt-5.3-codex",
-            limits: [{ name: "requests", leftPct: 42 }]
-          }
+    const { hooks, fetchQuotaSnapshotFromBackend, saveSnapshots, toolOutputForStatus } = await loadPluginWithMenu({
+      offerLegacyTransfer: false,
+      authFile: {
+        openai: {
+          type: "oauth",
+          accounts: [
+            {
+              identityKey,
+              accountId: "acc_1",
+              email: "one@example.com",
+              plan: "plus",
+              enabled: true,
+              access: "at_1",
+              refresh: "rt_1",
+              expires: Date.now() + 60_000
+            }
+          ],
+          activeIdentityKey: identityKey
         }
-      })
+      },
+      runAuthMenuOnceImpl: async (args) => {
+        await args.handlers.onCheckQuotas()
+        return "exit"
+      },
+      initialSnapshots: {
+        [identityKey]: {
+          updatedAt: Date.now() - 10_000,
+          modelFamily: "gpt-5.3-codex",
+          limits: [{ name: "requests", leftPct: 42 }]
+        }
+      }
+    })
 
     const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
     if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
@@ -431,61 +432,60 @@ describe("codex-native auth menu wiring", () => {
   })
 
   it("keeps same-email plus/team quota snapshots isolated during check quotas action", async () => {
-    const { hooks, fetchQuotaSnapshotFromBackend, snapshotStore } =
-      await loadPluginWithMenu({
-        offerLegacyTransfer: false,
-        authFile: {
-          openai: {
-            type: "oauth",
-            accounts: [
-              {
-                identityKey: "acc_live_plus|same@example.com|plus",
-                accountId: "acc_live_plus",
-                email: "same@example.com",
-                plan: "plus",
-                authTypes: ["native", "codex"],
-                enabled: true,
-                access: "at_plus",
-                refresh: "rt_plus",
-                expires: Date.now() + 60_000
-              },
-              {
-                identityKey: "acc_live_team|same@example.com|team",
-                accountId: "acc_live_team",
-                email: "same@example.com",
-                plan: "team",
-                authTypes: ["native", "codex"],
-                enabled: true,
-                access: "at_team",
-                refresh: "rt_team",
-                expires: Date.now() + 60_000
-              }
-            ],
-            activeIdentityKey: "acc_live_team|same@example.com|team"
-          }
-        },
-        runAuthMenuOnceImpl: async (args) => {
-          await args.handlers.onCheckQuotas()
-          return "exit"
-        },
-        quotaSnapshotImpl: async ({ accountId }) => {
-          if (accountId === "acc_live_plus") {
-            return {
-              updatedAt: 300,
-              modelFamily: "gpt-5.3-codex",
-              limits: [{ name: "requests", leftPct: 78 }]
+    const { hooks, fetchQuotaSnapshotFromBackend, snapshotStore } = await loadPluginWithMenu({
+      offerLegacyTransfer: false,
+      authFile: {
+        openai: {
+          type: "oauth",
+          accounts: [
+            {
+              identityKey: "acc_live_plus|same@example.com|plus",
+              accountId: "acc_live_plus",
+              email: "same@example.com",
+              plan: "plus",
+              authTypes: ["native", "codex"],
+              enabled: true,
+              access: "at_plus",
+              refresh: "rt_plus",
+              expires: Date.now() + 60_000
+            },
+            {
+              identityKey: "acc_live_team|same@example.com|team",
+              accountId: "acc_live_team",
+              email: "same@example.com",
+              plan: "team",
+              authTypes: ["native", "codex"],
+              enabled: true,
+              access: "at_team",
+              refresh: "rt_team",
+              expires: Date.now() + 60_000
             }
-          }
-          if (accountId === "acc_live_team") {
-            return {
-              updatedAt: 301,
-              modelFamily: "gpt-5.3-codex",
-              limits: [{ name: "requests", leftPct: 12 }]
-            }
-          }
-          return null
+          ],
+          activeIdentityKey: "acc_live_team|same@example.com|team"
         }
-      })
+      },
+      runAuthMenuOnceImpl: async (args) => {
+        await args.handlers.onCheckQuotas()
+        return "exit"
+      },
+      quotaSnapshotImpl: async ({ accountId }) => {
+        if (accountId === "acc_live_plus") {
+          return {
+            updatedAt: 300,
+            modelFamily: "gpt-5.3-codex",
+            limits: [{ name: "requests", leftPct: 78 }]
+          }
+        }
+        if (accountId === "acc_live_team") {
+          return {
+            updatedAt: 301,
+            modelFamily: "gpt-5.3-codex",
+            limits: [{ name: "requests", leftPct: 12 }]
+          }
+        }
+        return null
+      }
+    })
 
     const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
     if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
@@ -562,15 +562,15 @@ describe("codex-native auth menu wiring", () => {
 
     try {
       await browserMethod.authorize({})
-      const openai = (storageState as {
-        openai?: {
-          native?: { accounts?: Array<{ identityKey?: string }> }
-          codex?: { accounts?: Array<{ identityKey?: string }> }
+      const openai = (
+        storageState as {
+          openai?: {
+            native?: { accounts?: Array<{ identityKey?: string }> }
+            codex?: { accounts?: Array<{ identityKey?: string }> }
+          }
         }
-      }).openai
-      expect(openai?.native?.accounts?.map((account) => account.identityKey)).toEqual([
-        "acc_1|one@example.com|plus"
-      ])
+      ).openai
+      expect(openai?.native?.accounts?.map((account) => account.identityKey)).toEqual(["acc_1|one@example.com|plus"])
       expect(openai?.codex?.accounts ?? []).toHaveLength(0)
     } finally {
       stdin.isTTY = prevIn
@@ -629,12 +629,14 @@ describe("codex-native auth menu wiring", () => {
 
     try {
       await browserMethod.authorize({})
-      const openai = (storageState as {
-        openai?: {
-          native?: { accounts?: Array<{ identityKey?: string }>; activeIdentityKey?: string }
-          codex?: { accounts?: Array<{ identityKey?: string }>; activeIdentityKey?: string }
+      const openai = (
+        storageState as {
+          openai?: {
+            native?: { accounts?: Array<{ identityKey?: string }>; activeIdentityKey?: string }
+            codex?: { accounts?: Array<{ identityKey?: string }>; activeIdentityKey?: string }
+          }
         }
-      }).openai
+      ).openai
       expect(openai?.native?.accounts?.map((account) => account.identityKey)).toEqual([
         "acc_native|one@example.com|plus"
       ])
@@ -644,5 +646,4 @@ describe("codex-native auth menu wiring", () => {
       stdout.isTTY = prevOut
     }
   })
-
 })

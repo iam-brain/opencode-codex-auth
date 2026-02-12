@@ -43,10 +43,7 @@ function clampEntries<T>(entries: Array<[string, T]>, maxEntries: number): Array
   return entries.slice(entries.length - maxEntries)
 }
 
-function sanitizeStringMap(
-  value: unknown,
-  maxEntries = MAX_SESSION_AFFINITY_ENTRIES
-): Map<string, string> {
+function sanitizeStringMap(value: unknown, maxEntries = MAX_SESSION_AFFINITY_ENTRIES): Map<string, string> {
   if (!isRecord(value)) return new Map()
   const entries: Array<[string, string]> = []
   for (const [key, mapValue] of Object.entries(value)) {
@@ -56,10 +53,7 @@ function sanitizeStringMap(
   return new Map(clampEntries(entries, maxEntries))
 }
 
-function sanitizeSeenMap(
-  value: unknown,
-  maxEntries = MAX_SESSION_AFFINITY_ENTRIES
-): Map<string, number> {
+function sanitizeSeenMap(value: unknown, maxEntries = MAX_SESSION_AFFINITY_ENTRIES): Map<string, number> {
   if (!isRecord(value)) return new Map()
   const entries: Array<[string, number]> = []
   for (const [key, mapValue] of Object.entries(value)) {
@@ -77,14 +71,8 @@ function toModeRecord(snapshot: SessionAffinitySnapshot): SessionAffinityModeRec
     [...snapshot.seenSessionKeys.entries()].sort((left, right) => left[1] - right[1]),
     MAX_SESSION_AFFINITY_ENTRIES
   )
-  const stickyEntries = clampEntries(
-    [...snapshot.stickyBySessionKey.entries()],
-    MAX_SESSION_AFFINITY_ENTRIES
-  )
-  const hybridEntries = clampEntries(
-    [...snapshot.hybridBySessionKey.entries()],
-    MAX_SESSION_AFFINITY_ENTRIES
-  )
+  const stickyEntries = clampEntries([...snapshot.stickyBySessionKey.entries()], MAX_SESSION_AFFINITY_ENTRIES)
+  const hybridEntries = clampEntries([...snapshot.hybridBySessionKey.entries()], MAX_SESSION_AFFINITY_ENTRIES)
 
   return {
     seenSessionKeys: Object.fromEntries(seenEntries),
@@ -117,10 +105,7 @@ function sanitizeFile(input: unknown): SessionAffinityFile {
   return out
 }
 
-export function readSessionAffinitySnapshot(
-  file: SessionAffinityFile,
-  mode: OpenAIAuthMode
-): SessionAffinitySnapshot {
+export function readSessionAffinitySnapshot(file: SessionAffinityFile, mode: OpenAIAuthMode): SessionAffinitySnapshot {
   const modeRecord = file[mode]
   return {
     seenSessionKeys: sanitizeSeenMap(modeRecord?.seenSessionKeys),
@@ -154,9 +139,7 @@ function isSafeSessionKey(sessionKey: string): boolean {
   return true
 }
 
-export function createSessionExistsFn(
-  env: Record<string, string | undefined> = process.env
-): SessionExistsFn {
+export function createSessionExistsFn(env: Record<string, string | undefined> = process.env): SessionExistsFn {
   return async (sessionKey: string): Promise<boolean> => {
     if (!isSafeSessionKey(sessionKey)) return false
     const filePath = opencodeSessionFilePath(sessionKey, env)
@@ -228,7 +211,9 @@ async function writeUnlocked(filePath: string, file: SessionAffinityFile): Promi
   }
 }
 
-export async function loadSessionAffinity(filePath: string = defaultSessionAffinityPath()): Promise<SessionAffinityFile> {
+export async function loadSessionAffinity(
+  filePath: string = defaultSessionAffinityPath()
+): Promise<SessionAffinityFile> {
   return readUnlocked(filePath)
 }
 

@@ -40,11 +40,7 @@ export type FetchOrchestratorDeps = {
   quietMode?: boolean
   rateLimitToastDebounceMs?: number
   state?: FetchOrchestratorState
-  showToast?: (
-    message: string,
-    variant: "info" | "success" | "warning" | "error",
-    quietMode: boolean
-  ) => Promise<void>
+  showToast?: (message: string, variant: "info" | "success" | "warning" | "error", quietMode: boolean) => Promise<void>
   onAttemptRequest?: (input: {
     attempt: number
     maxAttempts: number
@@ -89,11 +85,7 @@ function formatAccountLabel(auth: AuthData): string {
   const email = auth.email?.trim()
   const plan = auth.plan?.trim()
   const accountId = auth.accountId?.trim()
-  const idSuffix = accountId
-    ? accountId.length > 6
-      ? accountId.slice(-6)
-      : accountId
-    : undefined
+  const idSuffix = accountId ? (accountId.length > 6 ? accountId.slice(-6) : accountId) : undefined
 
   if (email && plan) return `${email} (${plan})`
   if (email) return email
@@ -223,10 +215,7 @@ export class FetchOrchestrator {
       const auth = await this.deps.acquireAuth({ sessionKey })
       const accountLabel = formatAccountLabel(auth)
       const accountKey =
-        auth.identityKey?.trim() ||
-        auth.accountId?.trim() ||
-        auth.email?.trim()?.toLowerCase() ||
-        accountLabel
+        auth.identityKey?.trim() || auth.accountId?.trim() || auth.email?.trim()?.toLowerCase() || accountLabel
 
       if (sessionEvent && !sessionToastEmitted) {
         const message =
@@ -234,7 +223,7 @@ export class FetchOrchestrator {
             ? `New chat: ${accountLabel}`
             : sessionEvent === "resume"
               ? `Resuming chat: ${accountLabel}`
-            : `Session switched: ${accountLabel}`
+              : `Session switched: ${accountLabel}`
         await this.maybeShowToast(message, "info", {
           dedupeKey: `session:${sessionEvent}`,
           debounceMs: DEFAULT_SESSION_TOAST_DEBOUNCE_MS,
@@ -251,7 +240,7 @@ export class FetchOrchestrator {
         })
       }
       this.state.lastAccountKey = accountKey
-      
+
       let request = baseRequest.clone()
       request.headers.set("Authorization", `Bearer ${auth.access}`)
       if (auth.accountId) {

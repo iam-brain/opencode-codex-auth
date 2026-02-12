@@ -14,15 +14,15 @@ describe("storage corruption", () => {
 
     const qDir = path.join(dir, "q")
     const data = await loadAuthStorage(p, { quarantineDir: qDir, now: () => 12345 })
-    
+
     // Should return empty storage
     expect(data).toEqual({})
-    
+
     // Should have moved the file to quarantine
     const files = await fs.readdir(qDir)
     expect(files.length).toBe(1)
     expect(files[0]).toContain("auth.json.12345.quarantine.json")
-    
+
     // Original file should be gone (quarantineFile moves it)
     await expect(fs.stat(p)).rejects.toThrow()
   })

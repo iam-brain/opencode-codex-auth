@@ -23,9 +23,17 @@ export function createLogger(input: { debug: boolean; sink?: (line: string) => v
   }
 
   return {
-    debug(msg, meta) { if (input.debug) emit("debug", msg, meta) },
-    info(msg, meta) { emit("info", msg, meta) },
-    warn(msg, meta) { emit("warn", msg, meta) },
-    error(msg, meta) { emit("error", msg, meta) }
+    debug(msg, meta) {
+      if (input.debug) emit("debug", msg, meta)
+    },
+    info(msg, meta) {
+      emit("info", msg, meta)
+    },
+    warn(msg, meta) {
+      emit("warn", msg, meta)
+    },
+    error(msg, meta) {
+      emit("error", msg, meta)
+    }
   }
 }

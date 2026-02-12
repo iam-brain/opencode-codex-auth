@@ -33,18 +33,12 @@ describe("upsertAccount", () => {
     })
 
     expect(openai.accounts).toHaveLength(2)
-    const original = openai.accounts.find(
-      (account) => account.identityKey === "acc_1|old@example.com|plus"
-    )
+    const original = openai.accounts.find((account) => account.identityKey === "acc_1|old@example.com|plus")
     expect(original?.email).toBe("old@example.com")
     expect(original?.plan).toBe("plus")
     expect(original?.identityKey).toBe("acc_1|old@example.com|plus")
     expect(stored.identityKey).toBe("acc_1|new@example.com|pro")
-    expect(
-      openai.accounts.some(
-        (account) => account.identityKey === "acc_1|new@example.com|pro"
-      )
-    ).toBe(true)
+    expect(openai.accounts.some((account) => account.identityKey === "acc_1|new@example.com|pro")).toBe(true)
   })
 
   it("uses refresh fallback without mutating identity-defining fields when strict identity is unavailable", () => {
@@ -75,9 +69,7 @@ describe("upsertAccount", () => {
     })
 
     expect(openai.accounts).toHaveLength(1)
-    const original = openai.accounts.find(
-      (account) => account.identityKey === "acc_1|old@example.com|plus"
-    )
+    const original = openai.accounts.find((account) => account.identityKey === "acc_1|old@example.com|plus")
     expect(original?.email).toBe("old@example.com")
     expect(original?.plan).toBe("plus")
     expect(stored.identityKey).toBe("acc_1|old@example.com|plus")
@@ -111,9 +103,7 @@ describe("upsertAccount", () => {
     })
 
     expect(openai.accounts).toHaveLength(2)
-    const original = openai.accounts.find(
-      (account) => account.identityKey === "acc_1|old@example.com|plus"
-    )
+    const original = openai.accounts.find((account) => account.identityKey === "acc_1|old@example.com|plus")
     expect(original?.access).toBe("old-access")
     expect(stored.identityKey).toBeUndefined()
   })
@@ -145,9 +135,7 @@ describe("upsertAccount", () => {
     })
 
     expect(openai.accounts).toHaveLength(2)
-    const original = openai.accounts.find(
-      (account) => account.identityKey === "acc_1|old@example.com|plus"
-    )
+    const original = openai.accounts.find((account) => account.identityKey === "acc_1|old@example.com|plus")
     expect(original?.access).toBe("old-access")
     expect(stored.identityKey).toBeUndefined()
   })

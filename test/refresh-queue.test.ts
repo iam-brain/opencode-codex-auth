@@ -9,7 +9,7 @@ describe("ProactiveRefreshQueue", () => {
     q.enqueue({ key: "b", expiresAt: 80_000 })
 
     const dueAt60 = q.due(60_000)
-    expect(dueAt60.map(t => t.key)).toEqual(["a"])
+    expect(dueAt60.map((t) => t.key)).toEqual(["a"])
   })
 
   it("sorts due tasks by expiresAt", () => {
@@ -18,7 +18,7 @@ describe("ProactiveRefreshQueue", () => {
     q.enqueue({ key: "sooner", expiresAt: 50 })
 
     const due = q.due(100)
-    expect(due.map(t => t.key)).toEqual(["sooner", "later"])
+    expect(due.map((t) => t.key)).toEqual(["sooner", "later"])
   })
 
   it("removes tasks", () => {
@@ -41,7 +41,15 @@ describe("refresh scheduler", () => {
       intervalMs: 10,
       queue: q,
       now: () => 60_000,
-      getTasks: () => [{ key: "a", expiresAt: 50_000, refresh: async () => { calls.push("a") } }]
+      getTasks: () => [
+        {
+          key: "a",
+          expiresAt: 50_000,
+          refresh: async () => {
+            calls.push("a")
+          }
+        }
+      ]
     })
 
     try {
@@ -70,14 +78,16 @@ describe("refresh scheduler", () => {
       intervalMs: 1,
       queue: q,
       now: () => 60_000,
-      getTasks: () => [{
-        key: "a",
-        expiresAt: 50_000,
-        refresh: async () => {
-          calls.push("a")
-          await blocked
+      getTasks: () => [
+        {
+          key: "a",
+          expiresAt: 50_000,
+          refresh: async () => {
+            calls.push("a")
+            await blocked
+          }
         }
-      }]
+      ]
     })
 
     try {
@@ -101,7 +111,15 @@ describe("refresh scheduler", () => {
       intervalMs: 10,
       queue: q,
       now: () => 60_000,
-      getTasks: () => [{ key: "a", expiresAt: 50_000, refresh: async () => { calls.push("a") } }]
+      getTasks: () => [
+        {
+          key: "a",
+          expiresAt: 50_000,
+          refresh: async () => {
+            calls.push("a")
+          }
+        }
+      ]
     })
 
     try {
@@ -136,7 +154,13 @@ describe("refresh scheduler", () => {
             throw new Error("boom")
           }
         },
-        { key: "b", expiresAt: 50_001, refresh: async () => { calls.push("b") } }
+        {
+          key: "b",
+          expiresAt: 50_001,
+          refresh: async () => {
+            calls.push("b")
+          }
+        }
       ]
     })
 

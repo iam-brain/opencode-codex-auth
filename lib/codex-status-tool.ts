@@ -28,11 +28,11 @@ export async function toolOutputForStatus(
     accountId: acc.accountId,
     email: acc.email,
     plan: acc.plan,
-      enabled: acc.enabled,
-      expires: acc.expires,
-      cooldownUntil: acc.cooldownUntil,
-      lastUsed: acc.lastUsed
-    }))
+    enabled: acc.enabled,
+    expires: acc.expires,
+    cooldownUntil: acc.cooldownUntil,
+    lastUsed: acc.lastUsed
+  }))
 
   const dashboardLines = renderDashboard({
     accounts: displayAccounts,

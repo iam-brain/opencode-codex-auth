@@ -19,14 +19,16 @@ function buildToolRows(openai: OpenAIMultiOauthAuth): ToolAccountInternalRow[] {
       if (typeof account.identityKey !== "string" || account.identityKey.length === 0) {
         return []
       }
-      return [{
-        accountIndex,
-        identityKey: account.identityKey,
-        email: account.email,
-        plan: account.plan,
-        enabled: account.enabled !== false,
-        isActive: openai.activeIdentityKey === account.identityKey
-      }]
+      return [
+        {
+          accountIndex,
+          identityKey: account.identityKey,
+          email: account.email,
+          plan: account.plan,
+          enabled: account.enabled !== false,
+          isActive: openai.activeIdentityKey === account.identityKey
+        }
+      ]
     })
     .map((row, i) => ({
       ...row,
@@ -34,10 +36,7 @@ function buildToolRows(openai: OpenAIMultiOauthAuth): ToolAccountInternalRow[] {
     }))
 }
 
-function resolveToolAccount(
-  openai: OpenAIMultiOauthAuth,
-  index1: number
-): AccountRecord & { identityKey: string } {
+function resolveToolAccount(openai: OpenAIMultiOauthAuth, index1: number): AccountRecord & { identityKey: string } {
   if (!Number.isInteger(index1)) throw new Error("Invalid account index")
   if (index1 < 1) throw new Error("Invalid account index")
 
@@ -105,7 +104,10 @@ export function removeAccountByIndex(openai: OpenAIMultiOauthAuth, index1: numbe
 
   if (removed?.identityKey && openai.activeIdentityKey === removed.identityKey) {
     const forward = accounts.slice(idx).find((a) => a.enabled !== false && a.identityKey)
-    const backward = accounts.slice(0, idx).reverse().find((a) => a.enabled !== false && a.identityKey)
+    const backward = accounts
+      .slice(0, idx)
+      .reverse()
+      .find((a) => a.enabled !== false && a.identityKey)
     const fallback = forward ?? backward
     activeIdentityKey = fallback?.identityKey
   }

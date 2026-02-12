@@ -4,20 +4,18 @@ import { CodexAuthPlugin } from "../lib/codex-native"
 
 describe("codex-native compaction hook", () => {
   it("swaps to codex compact prompt for openai sessions", async () => {
-    const hooks = await CodexAuthPlugin(
-      {
-        client: {
-          session: {
-            messages: async () => ({
-              data: [
-                { info: { role: "assistant", providerID: "openai", modelID: "gpt-5.3-codex" } },
-                { info: { role: "user", model: { providerID: "openai", modelID: "gpt-5.3-codex" } } }
-              ]
-            })
-          }
+    const hooks = await CodexAuthPlugin({
+      client: {
+        session: {
+          messages: async () => ({
+            data: [
+              { info: { role: "assistant", providerID: "openai", modelID: "gpt-5.3-codex" } },
+              { info: { role: "user", model: { providerID: "openai", modelID: "gpt-5.3-codex" } } }
+            ]
+          })
         }
-      } as never
-    )
+      }
+    } as never)
 
     const compacting = hooks["experimental.session.compacting"]
     expect(compacting).toBeTypeOf("function")
@@ -29,24 +27,22 @@ describe("codex-native compaction hook", () => {
   })
 
   it("leaves compaction prompt unchanged for non-openai sessions", async () => {
-    const hooks = await CodexAuthPlugin(
-      {
-        client: {
-          session: {
-            messages: async () => ({
-              data: [
-                {
-                  info: {
-                    role: "user",
-                    model: { providerID: "anthropic", modelID: "claude-sonnet-4-5" }
-                  }
+    const hooks = await CodexAuthPlugin({
+      client: {
+        session: {
+          messages: async () => ({
+            data: [
+              {
+                info: {
+                  role: "user",
+                  model: { providerID: "anthropic", modelID: "claude-sonnet-4-5" }
                 }
-              ]
-            })
-          }
+              }
+            ]
+          })
         }
-      } as never
-    )
+      }
+    } as never)
 
     const compacting = hooks["experimental.session.compacting"]
     expect(compacting).toBeTypeOf("function")
@@ -58,17 +54,15 @@ describe("codex-native compaction hook", () => {
   })
 
   it("fails open when session lookup errors", async () => {
-    const hooks = await CodexAuthPlugin(
-      {
-        client: {
-          session: {
-            messages: async () => {
-              throw new Error("session lookup failed")
-            }
+    const hooks = await CodexAuthPlugin({
+      client: {
+        session: {
+          messages: async () => {
+            throw new Error("session lookup failed")
           }
         }
-      } as never
-    )
+      }
+    } as never)
 
     const compacting = hooks["experimental.session.compacting"]
     expect(compacting).toBeTypeOf("function")

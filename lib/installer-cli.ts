@@ -4,11 +4,7 @@ import { defaultOpencodeAgentsDir, installOrchestratorAgents } from "./orchestra
 import { installCreatePersonalityCommand } from "./personality-command.js"
 import { installPersonalityBuilderSkill } from "./personality-skill.js"
 import { ensureDefaultConfigFile } from "./config.js"
-import {
-  DEFAULT_PLUGIN_SPECIFIER,
-  defaultOpencodeConfigPath,
-  ensurePluginInstalled
-} from "./opencode-install.js"
+import { DEFAULT_PLUGIN_SPECIFIER, defaultOpencodeConfigPath, ensurePluginInstalled } from "./opencode-install.js"
 
 type InstallerIo = {
   out: (message: string) => void
@@ -105,9 +101,7 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
   }
 
   if (parsed.command === "install") {
-    const configPath = parsed.configPath
-      ? path.resolve(parsed.configPath)
-      : defaultOpencodeConfigPath()
+    const configPath = parsed.configPath ? path.resolve(parsed.configPath) : defaultOpencodeConfigPath()
     const pluginResult = await ensurePluginInstalled({
       configPath,
       pluginSpecifier: parsed.pluginSpecifier ?? DEFAULT_PLUGIN_SPECIFIER

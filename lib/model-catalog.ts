@@ -230,15 +230,11 @@ function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
           }
         : null,
       base_instructions: typeof item.base_instructions === "string" ? item.base_instructions : null,
-      apply_patch_tool_type:
-        typeof item.apply_patch_tool_type === "string" ? item.apply_patch_tool_type : null,
+      apply_patch_tool_type: typeof item.apply_patch_tool_type === "string" ? item.apply_patch_tool_type : null,
       supported_reasoning_levels: parseReasoningLevels(item.supported_reasoning_levels),
-      default_reasoning_level:
-        typeof item.default_reasoning_level === "string" ? item.default_reasoning_level : null,
+      default_reasoning_level: typeof item.default_reasoning_level === "string" ? item.default_reasoning_level : null,
       supports_reasoning_summaries:
-        typeof item.supports_reasoning_summaries === "boolean"
-          ? item.supports_reasoning_summaries
-          : null,
+        typeof item.supports_reasoning_summaries === "boolean" ? item.supports_reasoning_summaries : null,
       reasoning_summary_format:
         typeof item.reasoning_summary_format === "string" ? item.reasoning_summary_format : null,
       support_verbosity: typeof item.support_verbosity === "boolean" ? item.support_verbosity : null,
@@ -285,9 +281,7 @@ async function readCatalogFromDisk(cacheDir: string, accountId?: string): Promis
 async function readCatalogFromOpencodeCache(cacheDir: string): Promise<CodexModelsCache | undefined> {
   try {
     const entries = await fs.readdir(cacheDir)
-    const candidates = entries.filter(
-      (name) => name.startsWith(OPENCODE_MODELS_CACHE_PREFIX) && name.endsWith(".json")
-    )
+    const candidates = entries.filter((name) => name.startsWith(OPENCODE_MODELS_CACHE_PREFIX) && name.endsWith(".json"))
     if (candidates.length === 0) return undefined
 
     let best: CodexModelsCache | undefined
@@ -316,7 +310,11 @@ async function readCatalogFromOpencodeCache(cacheDir: string): Promise<CodexMode
   }
 }
 
-async function writeCatalogToDisk(cacheDir: string, accountId: string | undefined, cache: CodexModelsCache): Promise<void> {
+async function writeCatalogToDisk(
+  cacheDir: string,
+  accountId: string | undefined,
+  cache: CodexModelsCache
+): Promise<void> {
   await withCacheLock(cacheDir, async () => {
     const file = cachePath(cacheDir, accountId)
     await fs.mkdir(path.dirname(file), { recursive: true })
@@ -512,10 +510,7 @@ function setModelIdentityFields(model: Record<string, unknown>, slug: string): v
   }
 }
 
-function resolvePersonalityText(
-  model: CodexModelInfo,
-  personality: PersonalityOption | undefined
-): string | undefined {
+function resolvePersonalityText(model: CodexModelInfo, personality: PersonalityOption | undefined): string | undefined {
   const vars = model.model_messages?.instructions_variables
 
   const normalized = (personality ?? "none").trim().toLowerCase()
@@ -538,7 +533,11 @@ function resolvePersonalityText(
   if (normalized === "friendly" && typeof vars.personality_friendly === "string" && vars.personality_friendly.trim()) {
     return vars.personality_friendly
   }
-  if (normalized === "pragmatic" && typeof vars.personality_pragmatic === "string" && vars.personality_pragmatic.trim()) {
+  if (
+    normalized === "pragmatic" &&
+    typeof vars.personality_pragmatic === "string" &&
+    vars.personality_pragmatic.trim()
+  ) {
     return vars.personality_pragmatic
   }
 
@@ -596,7 +595,9 @@ function resolveAllowedSlugs(catalogModels: CodexModelInfo[] | undefined, fallba
   return Array.from(new Set(fallback.map((slug) => slug.trim().toLowerCase()).filter(Boolean))).sort(compareModelSlugs)
 }
 
-function resolveTemplateSource(providerModels: Record<string, Record<string, unknown>>): Record<string, unknown> | undefined {
+function resolveTemplateSource(
+  providerModels: Record<string, Record<string, unknown>>
+): Record<string, unknown> | undefined {
   for (const candidate of ["gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex", "gpt-5.2"]) {
     const found = providerModels[candidate]
     if (found) return found

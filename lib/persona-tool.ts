@@ -61,29 +61,9 @@ const PROTOCOL_FAILURE_MODES = [
   "failure to self-correct"
 ]
 
-const SLANG_TERMS = [
-  "dude",
-  "bro",
-  "chief",
-  "buddy",
-  "fam",
-  "yo",
-  "lmao",
-  "lol",
-  "goblin",
-  "meme"
-]
+const SLANG_TERMS = ["dude", "bro", "chief", "buddy", "fam", "yo", "lmao", "lol", "goblin", "meme"]
 
-const GOOFY_TERMS = [
-  "chaotic",
-  "chaos",
-  "goofy",
-  "silly",
-  "clown",
-  "nonsense",
-  "absurd",
-  "gremlin"
-]
+const GOOFY_TERMS = ["chaotic", "chaos", "goofy", "silly", "clown", "nonsense", "absurd", "gremlin"]
 
 const WARMTH_TERMS = ["friendly", "warm", "supportive", "encouraging", "kind", "empathetic"]
 
@@ -116,16 +96,17 @@ function extractAddressTerms(lower: string): string[] {
 
 function pickQuotedFragments(source: string): string[] {
   const matches = source.match(/"([^"\n]{3,60})"/g) ?? []
-  const cleaned = matches
-    .map((entry) => entry.replaceAll('"', "").trim())
-    .filter((entry) => entry.length >= 3)
+  const cleaned = matches.map((entry) => entry.replaceAll('"', "").trim()).filter((entry) => entry.length >= 3)
   return cleaned.slice(0, 3)
 }
 
 function extractVoiceSignature(sourceText: string, fidelity: number): string[] {
   const source = sanitizeSourceText(sourceText)
   const lower = source.toLowerCase()
-  const lines = source.split("\n").map((line) => line.trim()).filter(Boolean)
+  const lines = source
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
   const result: string[] = []
 
   const slangHits = SLANG_TERMS.filter((term) => lower.includes(term))
@@ -163,9 +144,7 @@ function extractVoiceSignature(sourceText: string, fidelity: number): string[] {
   }
 
   const avgLineLen =
-    lines.length > 0
-      ? Math.round(lines.reduce((sum, line) => sum + line.split(/\s+/).length, 0) / lines.length)
-      : 0
+    lines.length > 0 ? Math.round(lines.reduce((sum, line) => sum + line.split(/\s+/).length, 0) / lines.length) : 0
   if (avgLineLen > 18) {
     result.push("Uses longer, descriptive phrasing and richer context.")
   } else if (avgLineLen > 0) {
@@ -376,13 +355,13 @@ function renderMarkdown(input: {
   }
 
   const deepReinforcement = [
-      "Extended protocol note: If source voice says \"never ask questions,\" reinterpret that as \"avoid unnecessary friction\" while still asking one blocking clarifier when architecture, security, or destructive operations depend on it.",
-      "Extended protocol note: If source voice says \"always be confident,\" keep the energetic delivery but label confidence numerically (for example 0.7 confidence) and attach a concrete verification step before final claims.",
-      "Extended protocol note: Maintain a short execution loop in long sessions — restate objective, report completed action, report current risk, and propose one verifiable next action to prevent drift.",
-      "Extended protocol note: In goofy or meme-heavy voices, preserve slang and metaphor while keeping operational language explicit enough for reproducible execution and debugging.",
-      "Extended protocol note: For collaborative resilience, acknowledge user corrections quickly, update assumptions immediately, and continue without defensiveness or unnecessary restarts.",
-      "Extended protocol note: When uncertain about external dependencies, avoid hallucinated specifics; prefer evidence-first phrasing and name the exact command or lookup required to resolve uncertainty."
-    ]
+    'Extended protocol note: If source voice says "never ask questions," reinterpret that as "avoid unnecessary friction" while still asking one blocking clarifier when architecture, security, or destructive operations depend on it.',
+    'Extended protocol note: If source voice says "always be confident," keep the energetic delivery but label confidence numerically (for example 0.7 confidence) and attach a concrete verification step before final claims.',
+    "Extended protocol note: Maintain a short execution loop in long sessions — restate objective, report completed action, report current risk, and propose one verifiable next action to prevent drift.",
+    "Extended protocol note: In goofy or meme-heavy voices, preserve slang and metaphor while keeping operational language explicit enough for reproducible execution and debugging.",
+    "Extended protocol note: For collaborative resilience, acknowledge user corrections quickly, update assumptions immediately, and continue without defensiveness or unnecessary restarts.",
+    "Extended protocol note: When uncertain about external dependencies, avoid hallucinated specifics; prefer evidence-first phrasing and name the exact command or lookup required to resolve uncertainty."
+  ]
   let deepAdded = 0
   if (profile.detailLevel === 3 && estimateTokens(markdown) < profile.minTokens) {
     let deepIndex = 0
@@ -408,13 +387,9 @@ function renderMarkdown(input: {
   return `${markdown.trimEnd()}\n`
 }
 
-function buildDiffSummary(input: {
-  voiceSignature: string[]
-  protocolRules: string[]
-  intents: string[]
-}): string {
-  const conflicts = input.intents.filter((intent) =>
-    intent.includes("overconfidence") || intent.includes("discourages")
+function buildDiffSummary(input: { voiceSignature: string[]; protocolRules: string[]; intents: string[] }): string {
+  const conflicts = input.intents.filter(
+    (intent) => intent.includes("overconfidence") || intent.includes("discourages")
   )
   if (conflicts.length === 0) {
     return `Preserved ${input.voiceSignature.length} voice traits and enforced ${input.protocolRules.length} protocol rules with competence-first behavior.`

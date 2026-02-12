@@ -67,11 +67,10 @@ function waitForGitHubRelease(repoSlug, tag) {
 
   process.stdout.write(`Waiting for GitHub release ${tag} in ${repoSlug}...\n`)
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const result = run(
-      "gh",
-      ["release", "view", tag, "--repo", repoSlug, "--json", "url", "--jq", ".url"],
-      { capture: true, allowFailure: true }
-    )
+    const result = run("gh", ["release", "view", tag, "--repo", repoSlug, "--json", "url", "--jq", ".url"], {
+      capture: true,
+      allowFailure: true
+    })
     if ((result.status ?? 1) === 0) {
       const url = result.stdout?.trim()
       if (url) {
@@ -130,7 +129,7 @@ function main() {
   if (!repoSlug || !hasGhCli() || !hasGhAuth()) {
     process.stdout.write(
       `Push complete. Release workflow triggered for ${tag}. ` +
-      "Install/authenticate gh CLI to auto-wait for GitHub release visibility.\n"
+        "Install/authenticate gh CLI to auto-wait for GitHub release visibility.\n"
     )
     return
   }

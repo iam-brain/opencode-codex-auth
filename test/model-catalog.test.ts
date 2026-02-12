@@ -20,12 +20,7 @@ describe("model catalog", () => {
   it("fetches /codex/models with auth headers", async () => {
     const cacheDir = await makeCacheDir()
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      const endpoint =
-        typeof url === "string"
-          ? url
-          : url instanceof URL
-            ? url.toString()
-            : new URL(url.url).toString()
+      const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
       expect(endpoint).toContain("/backend-api/codex/models")
       expect(endpoint).toContain("client_version=0.97.0")
       const headers = init?.headers as Record<string, string>
@@ -101,12 +96,7 @@ describe("model catalog", () => {
   it("honors caller-provided originator/user-agent/beta headers", async () => {
     const cacheDir = await makeCacheDir()
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      const endpoint =
-        typeof url === "string"
-          ? url
-          : url instanceof URL
-            ? url.toString()
-            : new URL(url.url).toString()
+      const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
       expect(endpoint).toContain("client_version=9.9.9")
       const headers = init?.headers as Record<string, string>
       expect(headers.originator).toBe("codex_exec")
@@ -209,9 +199,7 @@ describe("model catalog", () => {
     expect(models?.map((model) => model.slug)).toEqual(["gpt-5.3-codex"])
     expect(events.some((event) => event.type === "network_fetch_failed")).toBe(true)
     expect(
-      events.some(
-        (event) => event.type === "stale_cache_used" && event.reason === "opencode_cache_fallback"
-      )
+      events.some((event) => event.type === "stale_cache_used" && event.reason === "opencode_cache_fallback")
     ).toBe(true)
   })
 
@@ -263,8 +251,7 @@ describe("model catalog", () => {
       slug: "gpt-5.4-codex",
       base_instructions: "Safe base instructions",
       model_messages: {
-        instructions_template:
-          "Use multi_tool_use.parallel with recipient_name=functions.read and function calls"
+        instructions_template: "Use multi_tool_use.parallel with recipient_name=functions.read and function calls"
       }
     })
 
@@ -369,18 +356,10 @@ describe("model catalog", () => {
 
     applyCodexCatalogToProviderModels({
       providerModels,
-      catalogModels: [
-        { slug: "gpt-5.2-codex" },
-        { slug: "gpt-5.1-codex-mini" },
-        { slug: "gpt-5.3-codex" }
-      ],
+      catalogModels: [{ slug: "gpt-5.2-codex" }, { slug: "gpt-5.1-codex-mini" }, { slug: "gpt-5.3-codex" }],
       fallbackModels: []
     })
 
-    expect(Object.keys(providerModels)).toEqual([
-      "gpt-5.3-codex",
-      "gpt-5.2-codex",
-      "gpt-5.1-codex-mini"
-    ])
+    expect(Object.keys(providerModels)).toEqual(["gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-mini"])
   })
 })

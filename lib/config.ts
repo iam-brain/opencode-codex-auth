@@ -208,13 +208,13 @@ function stripJsonComments(raw: string): string {
         escaped = false
       } else if (ch === "\\") {
         escaped = true
-      } else if (ch === "\"") {
+      } else if (ch === '"') {
         inString = false
       }
       continue
     }
 
-    if (ch === "\"") {
+    if (ch === '"') {
       inString = true
       out += ch
       continue
@@ -351,9 +351,7 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
       if (!normalized) continue
       variantMap[variantName] = {
         ...(normalized.personality ? { options: { personality: normalized.personality } } : {}),
-        ...(normalized.thinkingSummaries !== undefined
-          ? { thinkingSummaries: normalized.thinkingSummaries }
-          : {})
+        ...(normalized.thinkingSummaries !== undefined ? { thinkingSummaries: normalized.thinkingSummaries } : {})
       }
     }
     if (Object.keys(variantMap).length > 0) {
@@ -367,9 +365,7 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
 
   return {
     ...(modelBehavior?.personality ? { options: { personality: modelBehavior.personality } } : {}),
-    ...(modelBehavior?.thinkingSummaries !== undefined
-      ? { thinkingSummaries: modelBehavior.thinkingSummaries }
-      : {}),
+    ...(modelBehavior?.thinkingSummaries !== undefined ? { thinkingSummaries: modelBehavior.thinkingSummaries } : {}),
     ...(variants ? { variants } : {})
   }
 }
@@ -397,9 +393,7 @@ function normalizeNewBehaviorSections(raw: Record<string, unknown>): CustomSetti
 
   return {
     ...(global?.personality ? { options: { personality: global.personality } } : {}),
-    ...(global?.thinkingSummaries !== undefined
-      ? { thinkingSummaries: global.thinkingSummaries }
-      : {}),
+    ...(global?.thinkingSummaries !== undefined ? { thinkingSummaries: global.thinkingSummaries } : {}),
     ...(models ? { models } : {})
   }
 }
@@ -412,26 +406,16 @@ function mergeCustomSettings(
   if (!primary) return secondary
   if (!secondary) return primary
 
-  const modelKeys = new Set<string>([
-    ...Object.keys(primary.models ?? {}),
-    ...Object.keys(secondary.models ?? {})
-  ])
+  const modelKeys = new Set<string>([...Object.keys(primary.models ?? {}), ...Object.keys(secondary.models ?? {})])
   let models: CustomSettings["models"] | undefined
   if (modelKeys.size > 0) {
     const merged: NonNullable<CustomSettings["models"]> = {}
     for (const key of modelKeys) {
       const a = primary.models?.[key]
       const b = secondary.models?.[key]
-      const personality =
-        b?.options?.personality !== undefined
-          ? b.options.personality
-          : a?.options?.personality
-      const thinkingSummaries =
-        b?.thinkingSummaries !== undefined ? b.thinkingSummaries : a?.thinkingSummaries
-      const variantKeys = new Set<string>([
-        ...Object.keys(a?.variants ?? {}),
-        ...Object.keys(b?.variants ?? {})
-      ])
+      const personality = b?.options?.personality !== undefined ? b.options.personality : a?.options?.personality
+      const thinkingSummaries = b?.thinkingSummaries !== undefined ? b.thinkingSummaries : a?.thinkingSummaries
+      const variantKeys = new Set<string>([...Object.keys(a?.variants ?? {}), ...Object.keys(b?.variants ?? {})])
       let variants: ModelConfigOverride["variants"] | undefined
       if (variantKeys.size > 0) {
         const variantMap: NonNullable<ModelConfigOverride["variants"]> = {}
@@ -439,19 +423,13 @@ function mergeCustomSettings(
           const base = a?.variants?.[variantKey]
           const override = b?.variants?.[variantKey]
           const variantPersonality =
-            override?.options?.personality !== undefined
-              ? override.options.personality
-              : base?.options?.personality
+            override?.options?.personality !== undefined ? override.options.personality : base?.options?.personality
           const variantThinkingSummaries =
-            override?.thinkingSummaries !== undefined
-              ? override.thinkingSummaries
-              : base?.thinkingSummaries
+            override?.thinkingSummaries !== undefined ? override.thinkingSummaries : base?.thinkingSummaries
           if (variantPersonality === undefined && variantThinkingSummaries === undefined) continue
           variantMap[variantKey] = {
             ...(variantPersonality ? { options: { personality: variantPersonality } } : {}),
-            ...(variantThinkingSummaries !== undefined
-              ? { thinkingSummaries: variantThinkingSummaries }
-              : {})
+            ...(variantThinkingSummaries !== undefined ? { thinkingSummaries: variantThinkingSummaries } : {})
           }
         }
         if (Object.keys(variantMap).length > 0) {
@@ -471,15 +449,11 @@ function mergeCustomSettings(
   }
 
   const mergedPersonality =
-    secondary.options?.personality !== undefined
-      ? secondary.options.personality
-      : primary.options?.personality
+    secondary.options?.personality !== undefined ? secondary.options.personality : primary.options?.personality
 
   return {
     thinkingSummaries:
-      secondary.thinkingSummaries !== undefined
-        ? secondary.thinkingSummaries
-        : primary.thinkingSummaries,
+      secondary.thinkingSummaries !== undefined ? secondary.thinkingSummaries : primary.thinkingSummaries,
     ...(mergedPersonality ? { options: { personality: mergedPersonality } } : {}),
     ...(models ? { models } : {})
   }
@@ -496,9 +470,7 @@ function cloneCustomSettings(input: CustomSettings | undefined): CustomSettings 
             key,
             {
               ...(value.options ? { options: { ...value.options } } : {}),
-              ...(value.thinkingSummaries !== undefined
-                ? { thinkingSummaries: value.thinkingSummaries }
-                : {}),
+              ...(value.thinkingSummaries !== undefined ? { thinkingSummaries: value.thinkingSummaries } : {}),
               ...(value.variants
                 ? {
                     variants: Object.fromEntries(
@@ -532,35 +504,23 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
 
   const debug = typeof raw.debug === "boolean" ? raw.debug : undefined
   const proactiveRefresh =
-    isRecord(raw.refreshAhead) && typeof raw.refreshAhead.enabled === "boolean"
-      ? raw.refreshAhead.enabled
-      : undefined
+    isRecord(raw.refreshAhead) && typeof raw.refreshAhead.enabled === "boolean" ? raw.refreshAhead.enabled : undefined
   const proactiveRefreshBufferMs =
-    isRecord(raw.refreshAhead) && typeof raw.refreshAhead.bufferMs === "number"
-      ? raw.refreshAhead.bufferMs
-      : undefined
+    isRecord(raw.refreshAhead) && typeof raw.refreshAhead.bufferMs === "number" ? raw.refreshAhead.bufferMs : undefined
   const quietMode = typeof raw.quiet === "boolean" ? raw.quiet : undefined
   const mode = parseRuntimeMode(isRecord(raw.runtime) ? raw.runtime.mode : undefined)
-  const rotationStrategy = parseRotationStrategy(
-    isRecord(raw.runtime) ? raw.runtime.rotationStrategy : undefined
-  )
+  const rotationStrategy = parseRotationStrategy(isRecord(raw.runtime) ? raw.runtime.rotationStrategy : undefined)
   const spoofMode = mode === "native" ? "native" : mode === "codex" || mode === "collab" ? "codex" : undefined
   const compatInputSanitizer =
-    isRecord(raw.runtime) && typeof raw.runtime.sanitizeInputs === "boolean"
-      ? raw.runtime.sanitizeInputs
-      : undefined
+    isRecord(raw.runtime) && typeof raw.runtime.sanitizeInputs === "boolean" ? raw.runtime.sanitizeInputs : undefined
   const headerSnapshots =
-    isRecord(raw.runtime) && typeof raw.runtime.headerSnapshots === "boolean"
-      ? raw.runtime.headerSnapshots
-      : undefined
+    isRecord(raw.runtime) && typeof raw.runtime.headerSnapshots === "boolean" ? raw.runtime.headerSnapshots : undefined
   const headerTransformDebug =
     isRecord(raw.runtime) && typeof raw.runtime.headerTransformDebug === "boolean"
       ? raw.runtime.headerTransformDebug
       : undefined
   const pidOffsetEnabled =
-    isRecord(raw.runtime) && typeof raw.runtime.pidOffset === "boolean"
-      ? raw.runtime.pidOffset
-      : undefined
+    isRecord(raw.runtime) && typeof raw.runtime.pidOffset === "boolean" ? raw.runtime.pidOffset : undefined
 
   return {
     debug,
@@ -592,11 +552,13 @@ export type EnsureDefaultConfigFileResult = {
   created: boolean
 }
 
-export async function ensureDefaultConfigFile(input: {
-  env?: Record<string, string | undefined>
-  filePath?: string
-  overwrite?: boolean
-} = {}): Promise<EnsureDefaultConfigFileResult> {
+export async function ensureDefaultConfigFile(
+  input: {
+    env?: Record<string, string | undefined>
+    filePath?: string
+    overwrite?: boolean
+  } = {}
+): Promise<EnsureDefaultConfigFileResult> {
   const env = input.env ?? process.env
   const filePath = input.filePath ?? resolveDefaultConfigPath(env)
   const overwrite = input.overwrite === true
@@ -611,10 +573,12 @@ export async function ensureDefaultConfigFile(input: {
   return { filePath, created: true }
 }
 
-export function loadConfigFile(input: {
-  env?: Record<string, string | undefined>
-  filePath?: string
-} = {}): Partial<PluginConfig> {
+export function loadConfigFile(
+  input: {
+    env?: Record<string, string | undefined>
+    filePath?: string
+  } = {}
+): Partial<PluginConfig> {
   const env = input.env ?? process.env
   const explicitPath = input.filePath ?? env.OPENCODE_OPENAI_MULTI_CONFIG_PATH?.trim()
 
@@ -643,22 +607,14 @@ export function resolveConfig(input: {
   const file = input.file ?? {}
   const fileCustom = normalizeCustomSettings(file.customSettings)
 
-  const envDebug =
-    env.OPENCODE_OPENAI_MULTI_DEBUG === "1" ||
-    env.DEBUG_CODEX_PLUGIN === "1"
+  const envDebug = env.OPENCODE_OPENAI_MULTI_DEBUG === "1" || env.DEBUG_CODEX_PLUGIN === "1"
 
-  const proactiveRefresh =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH) ?? file.proactiveRefresh
+  const proactiveRefresh = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH) ?? file.proactiveRefresh
   const proactiveRefreshBufferMs =
-    parseEnvNumber(env.OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS) ??
-    file.proactiveRefreshBufferMs
-  const quietMode =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_QUIET) ?? file.quietMode
-  const pidOffsetEnabled =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_PID_OFFSET) ?? file.pidOffsetEnabled
-  const rotationStrategy =
-    parseRotationStrategy(env.OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY) ??
-    file.rotationStrategy
+    parseEnvNumber(env.OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS) ?? file.proactiveRefreshBufferMs
+  const quietMode = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_QUIET) ?? file.quietMode
+  const pidOffsetEnabled = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_PID_OFFSET) ?? file.pidOffsetEnabled
+  const rotationStrategy = parseRotationStrategy(env.OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY) ?? file.rotationStrategy
 
   const envPersonality = normalizePersonalityOption(env.OPENCODE_OPENAI_MULTI_PERSONALITY)
   const envThinkingSummaries = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES)
@@ -707,22 +663,19 @@ export function resolveConfig(input: {
         }
       : undefined)
 
-  const personality =
-    envPersonality ??
-    file.personality ??
-    resolvedCustomSettings?.options?.personality
+  const personality = envPersonality ?? file.personality ?? resolvedCustomSettings?.options?.personality
 
   // Runtime mode is canonical; spoofMode remains a compatibility input only.
   // If runtime mode is explicitly set via env, ignore spoof env for consistency.
   const spoofMode =
     modeFromEnv !== undefined
-      ? (mode === "native" ? "native" : "codex")
-      : (spoofModeFromEnv ??
-        (mode === "native" ? "native" : "codex"))
+      ? mode === "native"
+        ? "native"
+        : "codex"
+      : (spoofModeFromEnv ?? (mode === "native" ? "native" : "codex"))
   const compatInputSanitizer =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER) ?? file.compatInputSanitizer
-  const headerSnapshots =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS) ?? file.headerSnapshots
+  const headerSnapshots = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS) ?? file.headerSnapshots
   const headerTransformDebug =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG) ?? file.headerTransformDebug
 
@@ -780,9 +733,7 @@ export function getMode(cfg: PluginConfig): PluginRuntimeMode {
 }
 
 export function getRotationStrategy(cfg: PluginConfig): RotationStrategy {
-  return cfg.rotationStrategy === "hybrid" || cfg.rotationStrategy === "round_robin"
-    ? cfg.rotationStrategy
-    : "sticky"
+  return cfg.rotationStrategy === "hybrid" || cfg.rotationStrategy === "round_robin" ? cfg.rotationStrategy : "sticky"
 }
 
 export function getCompatInputSanitizerEnabled(cfg: PluginConfig): boolean {

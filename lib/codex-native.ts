@@ -1,12 +1,5 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 
-import http from "node:http"
-import os from "node:os"
-import { execFile, execFileSync } from "node:child_process"
-import { appendFileSync, chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
-import path from "node:path"
-import { promisify } from "node:util"
-
 import {
   extractAccountIdFromClaims as extractAccountIdFromClaimsBase,
   extractEmailFromClaims,
@@ -16,20 +9,9 @@ import {
 } from "./claims"
 import { CodexStatus, type HeaderMap } from "./codex-status"
 import { loadSnapshots, saveSnapshots } from "./codex-status-storage"
-import {
-  PluginFatalError,
-  formatWaitTime,
-  isPluginFatalError,
-  toSyntheticErrorResponse
-} from "./fatal-errors"
-import {
-  buildIdentityKey,
-  ensureIdentityKey,
-  normalizeEmail,
-  normalizePlan,
-  synchronizeIdentityKey
-} from "./identity"
-import { defaultOpencodeCachePath, defaultSessionAffinityPath, defaultSnapshotsPath } from "./paths"
+import { PluginFatalError, formatWaitTime, isPluginFatalError, toSyntheticErrorResponse } from "./fatal-errors"
+import { buildIdentityKey, ensureIdentityKey, normalizeEmail, normalizePlan, synchronizeIdentityKey } from "./identity"
+import { defaultSessionAffinityPath, defaultSnapshotsPath } from "./paths"
 import { createStickySessionState, selectAccount } from "./rotation"
 import {
   ensureOpenAIOAuthDomain,
@@ -52,12 +34,7 @@ import type {
   RotationStrategy
 } from "./types"
 import { FetchOrchestrator, createFetchOrchestratorState } from "./fetch-orchestrator"
-import type {
-  CodexSpoofMode,
-  CustomSettings,
-  PersonalityOption,
-  PluginRuntimeMode
-} from "./config"
+import type { CodexSpoofMode, CustomSettings, PersonalityOption, PluginRuntimeMode } from "./config"
 import { formatToastMessage } from "./toast"
 import { runAuthMenuOnce } from "./ui/auth-menu-runner"
 import type { AccountInfo, DeleteScope } from "./ui/auth-menu"
@@ -69,10 +46,27 @@ import {
   type CodexModelInfo
 } from "./model-catalog"
 import { CODEX_RS_COMPACT_PROMPT } from "./orchestrator-agents"
-import { sanitizeRequestPayloadForCompat } from "./compat-sanitizer"
 import { fetchQuotaSnapshotFromBackend } from "./codex-quota-fetch"
 import { createRequestSnapshots } from "./request-snapshots"
 import { CODEX_OAUTH_SUCCESS_HTML } from "./oauth-pages"
+import {
+  mergeInstructions,
+  resolveCollaborationInstructions,
+  resolveCollaborationModeKind,
+  resolveCollaborationProfile,
+  resolveHookAgentName,
+  resolveSubagentHeaderValue
+} from "./codex-native/collaboration"
+import {
+  applyCatalogInstructionOverrideToRequest,
+  applyCodexRuntimeDefaultsToParams,
+  findCatalogModelForCandidates,
+  getModelLookupCandidates,
+  getModelThinkingSummariesOverride,
+  getVariantLookupCandidates,
+  resolvePersonalityForModel,
+  sanitizeOutboundRequestIfNeeded
+} from "./codex-native/request-transform"
 import {
   createSessionExistsFn,
   loadSessionAffinity,
@@ -81,6 +75,17 @@ import {
   saveSessionAffinity,
   writeSessionAffinitySnapshot
 } from "./session-affinity"
+import { resolveCodexOriginator, type CodexOriginator } from "./codex-native/originator"
+import { tryOpenUrlInBrowser as openUrlInBrowser } from "./codex-native/browser"
+import { selectCatalogAuthCandidate } from "./codex-native/catalog-auth"
+import {
+  buildCodexUserAgent,
+  refreshCodexClientVersionFromGitHub,
+  resolveCodexClientVersion,
+  resolveRequestUserAgent
+} from "./codex-native/client-identity"
+import { createOAuthServerController } from "./codex-native/oauth-server"
+export { browserOpenInvocationFor } from "./codex-native/browser"
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const ISSUER = "https://auth.openai.com"
@@ -111,22 +116,7 @@ const OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS = (() => {
   const parsed = Number(raw)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 60_000
 })()
-const OAUTH_DEBUG_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
-const OAUTH_DEBUG_LOG_FILE = path.join(OAUTH_DEBUG_LOG_DIR, "oauth-lifecycle.log")
-const execFileAsync = promisify(execFile)
-const DEFAULT_PLUGIN_VERSION = "0.1.0"
-const DEFAULT_CODEX_CLIENT_VERSION = "0.97.0"
-const CODEX_CLIENT_VERSION_CACHE_FILE = path.join(defaultOpencodeCachePath(), "codex-client-version.json")
-const CODEX_CLIENT_VERSION_TTL_MS = 60 * 60 * 1000
-const CODEX_CLIENT_VERSION_FETCH_TIMEOUT_MS = 5000
-const CODEX_GITHUB_RELEASES_API = "https://api.github.com/repos/openai/codex/releases/latest"
-const CODEX_GITHUB_RELEASES_HTML = "https://github.com/openai/codex/releases/latest"
-const OPENAI_OUTBOUND_HOST_ALLOWLIST = new Set([
-  "api.openai.com",
-  "auth.openai.com",
-  "chat.openai.com",
-  "chatgpt.com"
-])
+const OPENAI_OUTBOUND_HOST_ALLOWLIST = new Set(["api.openai.com", "auth.openai.com", "chat.openai.com", "chatgpt.com"])
 const AUTH_MENU_QUOTA_SNAPSHOT_TTL_MS = 60_000
 const AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS = 30_000
 const AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS = 5000
@@ -167,47 +157,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-type BrowserOpenInvocation = {
-  command: string
-  args: string[]
-}
-
-export function browserOpenInvocationFor(
-  url: string,
-  platform: NodeJS.Platform = process.platform
-): BrowserOpenInvocation {
-  if (platform === "darwin") {
-    return { command: "open", args: [url] }
-  }
-  if (platform === "win32") {
-    return { command: "cmd", args: ["/c", "start", "", url] }
-  }
-  return { command: "xdg-open", args: [url] }
-}
-
-export async function tryOpenUrlInBrowser(
-  url: string,
-  log?: Logger
-): Promise<boolean> {
-  if (process.env.OPENCODE_NO_BROWSER === "1") return false
-  if (process.env.VITEST || process.env.NODE_ENV === "test") return false
-  const invocation = browserOpenInvocationFor(url)
-  emitOAuthDebug("browser_open_attempt", { command: invocation.command })
-  try {
-    await execFileAsync(invocation.command, invocation.args, { windowsHide: true, timeout: 5000 })
-    emitOAuthDebug("browser_open_success", { command: invocation.command })
-    return true
-  } catch (error) {
-    emitOAuthDebug("browser_open_failure", {
-      command: invocation.command,
-      error: error instanceof Error ? error.message : String(error)
-    })
-    log?.warn("failed to auto-open oauth URL", {
-      command: invocation.command,
-      error: error instanceof Error ? error.message : String(error)
-    })
-    return false
-  }
+export async function tryOpenUrlInBrowser(url: string, log?: Logger): Promise<boolean> {
+  return openUrlInBrowser({
+    url,
+    log,
+    onEvent: (event, meta) => oauthServerController.emitDebug(event, meta ?? {})
+  })
 }
 
 function escapeHtml(value: string): string {
@@ -232,20 +187,14 @@ async function generatePKCE(): Promise<PkceCodes> {
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {
-  return Buffer.from(bytes)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "")
+  return Buffer.from(bytes).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
 }
 
 function generateState(): string {
   return base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)))
 }
 
-export function extractAccountIdFromClaims(claims: IdTokenClaims | undefined):
-  | string
-  | undefined {
+export function extractAccountIdFromClaims(claims: IdTokenClaims | undefined): string | undefined {
   return extractAccountIdFromClaimsBase(claims)
 }
 
@@ -327,11 +276,7 @@ export const __testOnly = {
   stopOAuthServer
 }
 
-async function exchangeCodeForTokens(
-  code: string,
-  redirectUri: string,
-  pkce: PkceCodes
-): Promise<TokenResponse> {
+async function exchangeCodeForTokens(code: string, redirectUri: string, pkce: PkceCodes): Promise<TokenResponse> {
   const response = await fetch(`${ISSUER}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -418,11 +363,9 @@ function composeCodexSuccessRedirectUrl(
   const accessClaims = getOpenAIAuthClaims(tokens.access_token)
 
   const needsSetup =
-    !getClaimBoolean(idClaims, "completed_platform_onboarding") &&
-    getClaimBoolean(idClaims, "is_org_owner")
+    !getClaimBoolean(idClaims, "completed_platform_onboarding") && getClaimBoolean(idClaims, "is_org_owner")
 
-  const platformUrl =
-    issuer === ISSUER ? "https://platform.openai.com" : "https://platform.api.openai.org"
+  const platformUrl = issuer === ISSUER ? "https://platform.openai.com" : "https://platform.api.openai.org"
 
   const params = new URLSearchParams({
     needs_setup: String(needsSetup),
@@ -522,284 +465,40 @@ function buildOAuthErrorHtml(error: string): string {
 </html>`
 }
 
-type PendingOAuth = {
-  pkce: PkceCodes
-  state: string
-  authMode: OpenAIAuthMode
-  resolve: (tokens: TokenResponse) => void
-  reject: (error: Error) => void
-}
-
-let oauthServer: http.Server | undefined
-let pendingOAuth: PendingOAuth | undefined
-let oauthServerCloseTimer: ReturnType<typeof setTimeout> | undefined
+const oauthServerController = createOAuthServerController<PkceCodes, TokenResponse>({
+  port: OAUTH_PORT,
+  loopbackHost: OAUTH_LOOPBACK_HOST,
+  callbackOrigin: OAUTH_CALLBACK_ORIGIN,
+  callbackUri: OAUTH_CALLBACK_URI,
+  callbackPath: OAUTH_CALLBACK_PATH,
+  callbackTimeoutMs: OAUTH_CALLBACK_TIMEOUT_MS,
+  buildOAuthErrorHtml,
+  buildOAuthSuccessHtml,
+  composeCodexSuccessRedirectUrl,
+  exchangeCodeForTokens
+})
 
 function isOAuthDebugEnabled(): boolean {
-  const raw = process.env.CODEX_AUTH_DEBUG?.trim().toLowerCase()
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on"
-}
-
-function emitOAuthDebug(event: string, meta: Record<string, unknown> = {}): void {
-  if (!isOAuthDebugEnabled()) return
-  const payload: Record<string, unknown> = {
-    ts: new Date().toISOString(),
-    pid: process.pid,
-    event,
-    ...meta
-  }
-  const line = JSON.stringify(payload)
-  try {
-    console.error(`[codex-auth-debug] ${line}`)
-  } catch {
-    // best effort stderr logging
-  }
-  try {
-    mkdirSync(OAUTH_DEBUG_LOG_DIR, { recursive: true, mode: 0o700 })
-    appendFileSync(OAUTH_DEBUG_LOG_FILE, `${line}\n`, { encoding: "utf8", mode: 0o600 })
-    chmodSync(OAUTH_DEBUG_LOG_FILE, 0o600)
-  } catch {
-    // best effort file logging
-  }
-}
-
-function clearOAuthServerCloseTimer(): void {
-  if (!oauthServerCloseTimer) return
-  clearTimeout(oauthServerCloseTimer)
-  oauthServerCloseTimer = undefined
-}
-
-function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
-  if (!remoteAddress) return false
-  const normalized = remoteAddress.split("%")[0]?.toLowerCase()
-  return normalized === "127.0.0.1" || normalized === "::1" || normalized === "::ffff:127.0.0.1"
-}
-
-function setOAuthResponseHeaders(
-  res: http.ServerResponse,
-  options?: { contentType?: string; isHtml?: boolean }
-): void {
-  res.setHeader("Cache-Control", "no-store")
-  res.setHeader("Pragma", "no-cache")
-  res.setHeader("Referrer-Policy", "no-referrer")
-  res.setHeader("X-Content-Type-Options", "nosniff")
-  if (options?.contentType) {
-    res.setHeader("Content-Type", options.contentType)
-  }
-  if (options?.isHtml) {
-    res.setHeader(
-      "Content-Security-Policy",
-      "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-    )
-  }
+  return oauthServerController.isDebugEnabled()
 }
 
 async function startOAuthServer(): Promise<{ redirectUri: string }> {
-  clearOAuthServerCloseTimer()
-  if (oauthServer) {
-    emitOAuthDebug("server_reuse", { port: OAUTH_PORT })
-    return { redirectUri: OAUTH_CALLBACK_URI }
-  }
-
-  emitOAuthDebug("server_starting", { port: OAUTH_PORT })
-  oauthServer = http.createServer((req, res) => {
-    try {
-      if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
-        emitOAuthDebug("callback_rejected_non_loopback", {
-          remoteAddress: req.socket.remoteAddress
-        })
-        res.statusCode = 403
-        setOAuthResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
-        res.end("Forbidden")
-        return
-      }
-
-      const url = new URL(req.url ?? "/", OAUTH_CALLBACK_ORIGIN)
-
-      const sendHtml = (status: number, html: string) => {
-        res.statusCode = status
-        setOAuthResponseHeaders(res, { contentType: "text/html; charset=utf-8", isHtml: true })
-        res.end(html)
-      }
-      const redirect = (location: string) => {
-        res.statusCode = 302
-        setOAuthResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
-        res.setHeader("Location", location)
-        res.end()
-      }
-
-      if (url.pathname === "/auth/callback") {
-        const code = url.searchParams.get("code")
-        const state = url.searchParams.get("state")
-        const error = url.searchParams.get("error")
-        const errorDescription = url.searchParams.get("error_description")
-        emitOAuthDebug("callback_hit", {
-          hasCode: Boolean(code),
-          hasState: Boolean(state),
-          hasError: Boolean(error)
-        })
-
-        if (error) {
-          const errorMsg = errorDescription || error
-          emitOAuthDebug("callback_error", { reason: errorMsg })
-          pendingOAuth?.reject(new Error(errorMsg))
-          pendingOAuth = undefined
-          sendHtml(200, buildOAuthErrorHtml(errorMsg))
-          return
-        }
-
-        if (!code) {
-          const errorMsg = "Missing authorization code"
-          emitOAuthDebug("callback_error", { reason: errorMsg })
-          pendingOAuth?.reject(new Error(errorMsg))
-          pendingOAuth = undefined
-          sendHtml(400, buildOAuthErrorHtml(errorMsg))
-          return
-        }
-
-        if (!pendingOAuth || state !== pendingOAuth.state) {
-          const errorMsg = "Invalid state - potential CSRF attack"
-          emitOAuthDebug("callback_error", { reason: errorMsg })
-          pendingOAuth?.reject(new Error(errorMsg))
-          pendingOAuth = undefined
-          sendHtml(400, buildOAuthErrorHtml(errorMsg))
-          return
-        }
-
-        const current = pendingOAuth
-        pendingOAuth = undefined
-        emitOAuthDebug("token_exchange_start", { authMode: current.authMode })
-        exchangeCodeForTokens(code, OAUTH_CALLBACK_URI, current.pkce)
-          .then((tokens) => {
-            current.resolve(tokens)
-            emitOAuthDebug("token_exchange_success", { authMode: current.authMode })
-            if (res.writableEnded) return
-            if (current.authMode === "codex") {
-              redirect(composeCodexSuccessRedirectUrl(tokens))
-              return
-            }
-            sendHtml(200, buildOAuthSuccessHtml("native"))
-          })
-          .catch((err) => {
-            const oauthError = err instanceof Error ? err : new Error(String(err))
-            current.reject(oauthError)
-            emitOAuthDebug("token_exchange_error", { error: oauthError.message })
-            if (res.writableEnded) return
-            sendHtml(500, buildOAuthErrorHtml(oauthError.message))
-          })
-        return
-      }
-
-      if (url.pathname === "/success") {
-        emitOAuthDebug("callback_success_page")
-        sendHtml(200, buildOAuthSuccessHtml("codex"))
-        return
-      }
-
-      if (url.pathname === "/cancel") {
-        emitOAuthDebug("callback_cancel")
-        pendingOAuth?.reject(new Error("Login cancelled"))
-        pendingOAuth = undefined
-        res.statusCode = 200
-        setOAuthResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
-        res.end("Login cancelled")
-        return
-      }
-
-      res.statusCode = 404
-      setOAuthResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
-      res.end("Not found")
-    } catch (error) {
-      res.statusCode = 500
-      setOAuthResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
-      res.end(`Server error: ${(error as Error).message}`)
-    }
-  })
-
-  try {
-    await new Promise<void>((resolve, reject) => {
-      oauthServer?.once("error", reject)
-      oauthServer?.listen(OAUTH_PORT, OAUTH_LOOPBACK_HOST, () => resolve())
-    })
-    emitOAuthDebug("server_started", { port: OAUTH_PORT })
-  } catch (error) {
-    emitOAuthDebug("server_start_error", {
-      error: error instanceof Error ? error.message : String(error)
-    })
-    const server = oauthServer
-    oauthServer = undefined
-    try {
-      server?.close()
-    } catch {
-      // best-effort cleanup
-    }
-    throw error
-  }
-
-  return { redirectUri: OAUTH_CALLBACK_URI }
+  return oauthServerController.start()
 }
 
 function stopOAuthServer(): void {
-  clearOAuthServerCloseTimer()
-  emitOAuthDebug("server_stopping", { hadPendingOAuth: Boolean(pendingOAuth) })
-  oauthServer?.close()
-  oauthServer = undefined
-  emitOAuthDebug("server_stopped")
+  oauthServerController.stop()
 }
 
 function scheduleOAuthServerStop(
   delayMs = OAUTH_SERVER_SHUTDOWN_GRACE_MS,
   reason: "success" | "error" | "other" = "other"
 ): void {
-  if (!oauthServer) return
-  clearOAuthServerCloseTimer()
-  emitOAuthDebug("server_stop_scheduled", { delayMs, reason })
-  oauthServerCloseTimer = setTimeout(() => {
-    oauthServerCloseTimer = undefined
-    if (pendingOAuth) return
-    emitOAuthDebug("server_stop_timer_fired", { reason })
-    stopOAuthServer()
-  }, delayMs)
+  oauthServerController.scheduleStop(delayMs, reason)
 }
 
-function waitForOAuthCallback(
-  pkce: PkceCodes,
-  state: string,
-  authMode: OpenAIAuthMode
-): Promise<TokenResponse> {
-  emitOAuthDebug("callback_wait_start", {
-    authMode,
-    stateTail: state.slice(-6)
-  })
-  return new Promise((resolve, reject) => {
-    let settled = false
-    const resolveOnce = (tokens: TokenResponse) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeout)
-      emitOAuthDebug("callback_wait_resolved", { authMode })
-      resolve(tokens)
-    }
-    const rejectOnce = (error: Error) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeout)
-      emitOAuthDebug("callback_wait_rejected", { authMode, error: error.message })
-      reject(error)
-    }
-    const timeout = setTimeout(() => {
-      pendingOAuth = undefined
-      emitOAuthDebug("callback_wait_timeout", { authMode, timeoutMs: OAUTH_CALLBACK_TIMEOUT_MS })
-      rejectOnce(new Error("OAuth callback timeout - authorization took too long"))
-    }, OAUTH_CALLBACK_TIMEOUT_MS)
-
-    pendingOAuth = {
-      pkce,
-      state,
-      authMode,
-      resolve: resolveOnce,
-      reject: rejectOnce
-    }
-  })
+function waitForOAuthCallback(pkce: PkceCodes, state: string, authMode: OpenAIAuthMode): Promise<TokenResponse> {
+  return oauthServerController.waitForCallback(pkce, state, authMode)
 }
 
 function modeForRuntimeMode(runtimeMode: PluginRuntimeMode): OpenAIAuthMode {
@@ -830,17 +529,11 @@ function mergeAccountAuthTypes(existing: unknown, incoming: unknown): AccountAut
   return normalizeAccountAuthTypes(merged)
 }
 
-function removeAccountAuthType(
-  existing: unknown,
-  scope: Exclude<DeleteScope, "both">
-): AccountAuthType[] {
+function removeAccountAuthType(existing: unknown, scope: Exclude<DeleteScope, "both">): AccountAuthType[] {
   return normalizeAccountAuthTypes(existing).filter((type) => type !== scope)
 }
 
-export function upsertAccount(
-  openai: OpenAIOAuthDomain,
-  incoming: AccountRecord
-): AccountRecord {
+export function upsertAccount(openai: OpenAIOAuthDomain, incoming: AccountRecord): AccountRecord {
   const normalizedEmail = normalizeEmail(incoming.email)
   const normalizedPlan = normalizePlan(incoming.plan)
   const normalizedAccountId = incoming.accountId?.trim()
@@ -905,10 +598,7 @@ function rewriteUrl(requestInput: string | URL | Request): URL {
       ? requestInput
       : new URL(typeof requestInput === "string" ? requestInput : requestInput.url)
 
-  if (
-    parsed.pathname.includes("/v1/responses") ||
-    parsed.pathname.includes("/chat/completions")
-  ) {
+  if (parsed.pathname.includes("/v1/responses") || parsed.pathname.includes("/chat/completions")) {
     return new URL(CODEX_API_ENDPOINT)
   }
 
@@ -939,517 +629,18 @@ function assertAllowedOutboundUrl(url: URL): void {
 
   throw new PluginFatalError({
     message:
-      `Blocked outbound request to "${url.hostname}". ` +
-      "This plugin only proxies OpenAI/ChatGPT backend traffic.",
+      `Blocked outbound request to "${url.hostname}". ` + "This plugin only proxies OpenAI/ChatGPT backend traffic.",
     status: 400,
     type: "disallowed_outbound_host",
     param: "request"
   })
 }
 
-function opencodeUserAgent(): string {
-  const version = resolvePluginVersion()
-  return `opencode/${version} (${os.platform()} ${os.release()}; ${os.arch()})`
-}
-
-type CodexOriginator = "opencode" | "codex_cli_rs" | "codex_exec"
-
-let cachedPluginVersion: string | undefined
-let cachedMacProductVersion: string | undefined
-let cachedTerminalUserAgentToken: string | undefined
-let cachedCodexClientVersion: string | undefined
-let codexClientVersionRefreshPromise: Promise<string> | undefined
-
-function isPrintableAscii(value: string): boolean {
-  if (!value) return false
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
-    if (code < 0x20 || code > 0x7e) return false
-  }
-  return true
-}
-
-function sanitizeUserAgentCandidate(candidate: string, fallback: string, originator: string): string {
-  if (isPrintableAscii(candidate)) return candidate
-
-  const sanitized = Array.from(candidate)
-    .map((char) => {
-      const code = char.charCodeAt(0)
-      return code >= 0x20 && code <= 0x7e ? char : "_"
-    })
-    .join("")
-
-  if (isPrintableAscii(sanitized)) return sanitized
-  if (isPrintableAscii(fallback)) return fallback
-  return originator
-}
-
-function sanitizeTerminalToken(value: string): string {
-  return value.replace(/[^A-Za-z0-9._/-]/g, "_")
-}
-
-function nonEmptyEnv(env: NodeJS.ProcessEnv, key: string): string | undefined {
-  const value = env[key]?.trim()
-  return value ? value : undefined
-}
-
-function splitProgramAndVersion(value: string): { program: string; version?: string } {
-  const [program, version] = value.trim().split(/\s+/, 2)
-  return {
-    program: program ?? "unknown",
-    ...(version ? { version } : {})
-  }
-}
-
-function tmuxDisplayMessage(format: string): string | undefined {
-  try {
-    const value = execFileSync("tmux", ["display-message", "-p", format], { encoding: "utf8" }).trim()
-    return value || undefined
-  } catch {
-    return undefined
-  }
-}
-
-function resolveTerminalUserAgentToken(env: NodeJS.ProcessEnv = process.env): string {
-  if (cachedTerminalUserAgentToken) return cachedTerminalUserAgentToken
-
-  const termProgram = nonEmptyEnv(env, "TERM_PROGRAM")
-  const termProgramVersion = nonEmptyEnv(env, "TERM_PROGRAM_VERSION")
-  const term = nonEmptyEnv(env, "TERM")
-  const hasTmux = Boolean(nonEmptyEnv(env, "TMUX") || nonEmptyEnv(env, "TMUX_PANE"))
-
-  if (termProgram && termProgram.toLowerCase() === "tmux" && hasTmux) {
-    const tmuxTermType = tmuxDisplayMessage("#{client_termtype}")
-    if (tmuxTermType) {
-      const { program, version } = splitProgramAndVersion(tmuxTermType)
-      cachedTerminalUserAgentToken = sanitizeTerminalToken(
-        version ? `${program}/${version}` : program
-      )
-      return cachedTerminalUserAgentToken
-    }
-    const tmuxTermName = tmuxDisplayMessage("#{client_termname}")
-    if (tmuxTermName) {
-      cachedTerminalUserAgentToken = sanitizeTerminalToken(tmuxTermName)
-      return cachedTerminalUserAgentToken
-    }
-  }
-
-  if (termProgram) {
-    cachedTerminalUserAgentToken = sanitizeTerminalToken(
-      termProgramVersion ? `${termProgram}/${termProgramVersion}` : termProgram
-    )
-    return cachedTerminalUserAgentToken
-  }
-
-  const weztermVersion = nonEmptyEnv(env, "WEZTERM_VERSION")
-  if (weztermVersion) {
-    cachedTerminalUserAgentToken = sanitizeTerminalToken(`WezTerm/${weztermVersion}`)
-    return cachedTerminalUserAgentToken
-  }
-
-  if (env.ITERM_SESSION_ID || env.ITERM_PROFILE || env.ITERM_PROFILE_NAME) {
-    cachedTerminalUserAgentToken = "iTerm.app"
-    return cachedTerminalUserAgentToken
-  }
-
-  if (env.TERM_SESSION_ID) {
-    cachedTerminalUserAgentToken = "Apple_Terminal"
-    return cachedTerminalUserAgentToken
-  }
-
-  if (env.KITTY_WINDOW_ID || term?.includes("kitty")) {
-    cachedTerminalUserAgentToken = "kitty"
-    return cachedTerminalUserAgentToken
-  }
-
-  if (env.ALACRITTY_SOCKET || term === "alacritty") {
-    cachedTerminalUserAgentToken = "Alacritty"
-    return cachedTerminalUserAgentToken
-  }
-
-  const konsoleVersion = nonEmptyEnv(env, "KONSOLE_VERSION")
-  if (konsoleVersion) {
-    cachedTerminalUserAgentToken = sanitizeTerminalToken(`Konsole/${konsoleVersion}`)
-    return cachedTerminalUserAgentToken
-  }
-
-  if (env.GNOME_TERMINAL_SCREEN) {
-    cachedTerminalUserAgentToken = "gnome-terminal"
-    return cachedTerminalUserAgentToken
-  }
-
-  const vteVersion = nonEmptyEnv(env, "VTE_VERSION")
-  if (vteVersion) {
-    cachedTerminalUserAgentToken = sanitizeTerminalToken(`VTE/${vteVersion}`)
-    return cachedTerminalUserAgentToken
-  }
-
-  if (env.WT_SESSION) {
-    cachedTerminalUserAgentToken = "WindowsTerminal"
-    return cachedTerminalUserAgentToken
-  }
-
-  if (term) {
-    cachedTerminalUserAgentToken = sanitizeTerminalToken(term)
-    return cachedTerminalUserAgentToken
-  }
-
-  cachedTerminalUserAgentToken = "unknown"
-  return cachedTerminalUserAgentToken
-}
-
-function resolvePluginVersion(): string {
-  if (cachedPluginVersion) return cachedPluginVersion
-
-  const fromEnv = process.env.npm_package_version?.trim()
-  if (fromEnv) {
-    cachedPluginVersion = fromEnv
-    return cachedPluginVersion
-  }
-
-  try {
-    const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8")
-    const parsed = JSON.parse(raw) as { version?: unknown }
-    if (typeof parsed.version === "string" && parsed.version.trim()) {
-      cachedPluginVersion = parsed.version.trim()
-      return cachedPluginVersion
-    }
-  } catch {
-    // Use fallback version below.
-  }
-
-  cachedPluginVersion = DEFAULT_PLUGIN_VERSION
-  return cachedPluginVersion
-}
-
-function normalizeCodexClientVersion(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : undefined
-}
-
-type CodexClientVersionCacheEntry = {
-  version: string
-  fetchedAt: number
-}
-
-function readCodexClientVersionCache(cacheFilePath: string): CodexClientVersionCacheEntry | undefined {
-  try {
-    const raw = readFileSync(cacheFilePath, "utf8")
-    const parsed = JSON.parse(raw) as { version?: unknown; fetchedAt?: unknown }
-    const version = normalizeCodexClientVersion(parsed.version)
-    const fetchedAt =
-      typeof parsed.fetchedAt === "number" && Number.isFinite(parsed.fetchedAt)
-        ? parsed.fetchedAt
-        : undefined
-    if (!version) return undefined
-    return {
-      version,
-      fetchedAt: fetchedAt ?? 0
-    }
-  } catch {
-    return undefined
-  }
-}
-
-function writeCodexClientVersionCache(
-  entry: CodexClientVersionCacheEntry,
-  cacheFilePath: string = CODEX_CLIENT_VERSION_CACHE_FILE
-): void {
-  try {
-    mkdirSync(path.dirname(cacheFilePath), { recursive: true })
-    const tempFilePath = `${cacheFilePath}.tmp.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
-    writeFileSync(tempFilePath, `${JSON.stringify(entry, null, 2)}\n`, { mode: 0o600 })
-    renameSync(tempFilePath, cacheFilePath)
-    chmodSync(cacheFilePath, 0o600)
-  } catch {
-    // best-effort cache persistence
-  }
-}
-
-function extractSemverFromTag(tag: string): string | undefined {
-  const match = tag.match(/(\d+\.\d+\.\d+)/)
-  return match?.[1]
-}
-
-async function fetchLatestCodexReleaseTag(fetchImpl: typeof fetch = fetch): Promise<string> {
-  try {
-    const apiResponse = await fetchImpl(CODEX_GITHUB_RELEASES_API)
-    if (apiResponse.ok) {
-      const payload = (await apiResponse.json()) as { tag_name?: unknown }
-      const tagName = normalizeCodexClientVersion(payload.tag_name)
-      if (tagName) return tagName
-    }
-  } catch {
-    // fallback to HTML release page
-  }
-
-  const htmlResponse = await fetchImpl(CODEX_GITHUB_RELEASES_HTML, { redirect: "follow" })
-  if (!htmlResponse.ok) {
-    throw new Error(`failed to fetch codex release tag: ${htmlResponse.status}`)
-  }
-
-  const finalUrl = htmlResponse.url
-  if (finalUrl.includes("/tag/")) {
-    const tag = finalUrl.split("/tag/").pop()
-    if (tag && !tag.includes("/")) return tag
-  }
-
-  const html = await htmlResponse.text()
-  const match = html.match(/\/openai\/codex\/releases\/tag\/([^"'/]+)/)
-  if (match?.[1]) return match[1]
-  throw new Error("failed to parse codex release tag")
-}
-
-async function refreshCodexClientVersionFromGitHub(
-  log?: Logger,
-  options: {
-    cacheFilePath?: string
-    fetchImpl?: typeof fetch
-    now?: () => number
-    allowInTest?: boolean
-  } = {}
-): Promise<string> {
-  const cacheFilePath = options.cacheFilePath ?? CODEX_CLIENT_VERSION_CACHE_FILE
-  if (!options.allowInTest && (process.env.VITEST || process.env.NODE_ENV === "test")) {
-    return resolveCodexClientVersion(cacheFilePath)
-  }
-  const now = options.now ?? Date.now
-  const cached = readCodexClientVersionCache(cacheFilePath)
-  const isFresh = cached && now() - cached.fetchedAt < CODEX_CLIENT_VERSION_TTL_MS
-  if (isFresh) {
-    if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE) {
-      cachedCodexClientVersion = cached.version
-    }
-    return cached.version
-  }
-
-  const run = async (): Promise<string> => {
-    try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), CODEX_CLIENT_VERSION_FETCH_TIMEOUT_MS)
-      try {
-        const fetchWithTimeout: typeof fetch = (input, init) =>
-          (options.fetchImpl ?? fetch)(input, { ...(init ?? {}), signal: controller.signal })
-        const releaseTag = await fetchLatestCodexReleaseTag(fetchWithTimeout)
-        const semver = extractSemverFromTag(releaseTag)
-        if (!semver) throw new Error(`invalid_codex_release_tag:${releaseTag}`)
-        const nextEntry: CodexClientVersionCacheEntry = { version: semver, fetchedAt: now() }
-        writeCodexClientVersionCache(nextEntry, cacheFilePath)
-        if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE) {
-          cachedCodexClientVersion = semver
-        }
-        return semver
-      } finally {
-        clearTimeout(timeout)
-      }
-    } catch (error) {
-      log?.debug("codex client version refresh failed", {
-        error: error instanceof Error ? error.message : String(error)
-      })
-      const fallback = cached?.version ?? DEFAULT_CODEX_CLIENT_VERSION
-      if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE) {
-        cachedCodexClientVersion = fallback
-      }
-      return fallback
-    }
-  }
-
-  if (cacheFilePath !== CODEX_CLIENT_VERSION_CACHE_FILE) {
-    return run()
-  }
-  if (codexClientVersionRefreshPromise) return codexClientVersionRefreshPromise
-  codexClientVersionRefreshPromise = run().finally(() => {
-    codexClientVersionRefreshPromise = undefined
-  })
-  return codexClientVersionRefreshPromise
-}
-
-function resolveCodexClientVersion(cacheFilePath: string = CODEX_CLIENT_VERSION_CACHE_FILE): string {
-  if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE && cachedCodexClientVersion) {
-    return cachedCodexClientVersion
-  }
-
-  const fromCache = readCodexClientVersionCache(cacheFilePath)?.version
-  const resolved = fromCache ?? cachedCodexClientVersion ?? DEFAULT_CODEX_CLIENT_VERSION
-
-  if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE) {
-    cachedCodexClientVersion = resolved
-  }
-  return resolved
-}
-
-function resolveMacProductVersion(): string {
-  if (cachedMacProductVersion) return cachedMacProductVersion
-  try {
-    const value = execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).trim()
-    cachedMacProductVersion = value || os.release()
-  } catch {
-    cachedMacProductVersion = os.release()
-  }
-  return cachedMacProductVersion
-}
-
-function normalizeArchitecture(architecture: string): string {
-  if (architecture === "x64") return "x86_64"
-  if (architecture === "arm64") return "arm64"
-  return architecture || "unknown"
-}
-
-function resolveCodexPlatformSignature(platform: NodeJS.Platform = process.platform): string {
-  const architecture = normalizeArchitecture(os.arch())
-  if (platform === "darwin") {
-    return `Mac OS ${resolveMacProductVersion()}; ${architecture}`
-  }
-  if (platform === "win32") {
-    return `Windows ${os.release()}; ${architecture}`
-  }
-  if (platform === "linux") {
-    return `Linux ${os.release()}; ${architecture}`
-  }
-  return `${platform} ${os.release()}; ${architecture}`
-}
-
-function buildCodexUserAgent(originator: CodexOriginator): string {
-  if (originator === "opencode") return opencodeUserAgent()
-  const buildVersion = resolvePluginVersion()
-  const terminalToken = resolveTerminalUserAgentToken()
-  const prefix = `${originator}/${buildVersion} (${resolveCodexPlatformSignature()}) ${terminalToken}`
-  return sanitizeUserAgentCandidate(prefix, prefix, originator)
-}
-
-function resolveRequestUserAgent(spoofMode: CodexSpoofMode, originator: CodexOriginator): string {
-  if (spoofMode === "codex") return buildCodexUserAgent(originator)
-  return opencodeUserAgent()
-}
-
-type CodexCollaborationModeKind = "plan" | "code" | "execute" | "pair_programming"
-type CodexCollaborationProfile = {
-  enabled: boolean
-  kind?: CodexCollaborationModeKind
-  normalizedAgentName?: string
-}
-
-function resolveHookAgentName(agent: unknown): string | undefined {
-  const direct = asString(agent)
-  if (direct) return direct
-  if (!isRecord(agent)) return undefined
-  return asString(agent.name) ?? asString(agent.agent)
-}
-
-function normalizeAgentNameForCollaboration(agentName: string): string {
-  return agentName.trim().toLowerCase().replace(/\s+/g, "-")
-}
-
-function tokenizeAgentName(normalizedAgentName: string): string[] {
-  return normalizedAgentName
-    .split(/[-./:_]+/)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0)
-}
-
-function isPluginCollaborationAgent(normalizedAgentName: string): boolean {
-  const tokens = tokenizeAgentName(normalizedAgentName)
-  if (tokens.length === 0) return false
-  if (tokens[0] !== "codex") return false
-  return tokens.some((token) =>
-    [
-      "orchestrator",
-      "default",
-      "code",
-      "plan",
-      "planner",
-      "execute",
-      "pair",
-      "pairprogramming",
-      "review",
-      "compact",
-      "compaction"
-    ].includes(token)
-  )
-}
-
-function resolveCollaborationModeKindFromName(normalizedAgentName: string): CodexCollaborationModeKind {
-  const tokens = tokenizeAgentName(normalizedAgentName)
-  if (tokens.includes("plan") || tokens.includes("planner")) return "plan"
-  if (tokens.includes("execute")) return "execute"
-  if (tokens.includes("pair") || tokens.includes("pairprogramming")) return "pair_programming"
-  return "code"
-}
-
-function resolveCollaborationProfile(agent: unknown): CodexCollaborationProfile {
-  const name = resolveHookAgentName(agent)
-  if (!name) return { enabled: false }
-  const normalizedAgentName = normalizeAgentNameForCollaboration(name)
-  if (!isPluginCollaborationAgent(normalizedAgentName)) {
-    return { enabled: false, normalizedAgentName }
-  }
-  return {
-    enabled: true,
-    normalizedAgentName,
-    kind: resolveCollaborationModeKindFromName(normalizedAgentName)
-  }
-}
-
-function resolveCollaborationModeKind(agent: unknown): CodexCollaborationModeKind {
-  const profile = resolveCollaborationProfile(agent)
-  return profile.kind ?? "code"
-}
-
-function resolveCollaborationInstructions(kind: CodexCollaborationModeKind): string {
-  if (kind === "plan") return CODEX_PLAN_MODE_INSTRUCTIONS
-  if (kind === "execute") return CODEX_EXECUTE_MODE_INSTRUCTIONS
-  if (kind === "pair_programming") return CODEX_PAIR_PROGRAMMING_MODE_INSTRUCTIONS
-  return CODEX_CODE_MODE_INSTRUCTIONS
-}
-
-function mergeInstructions(base: string | undefined, extra: string): string {
-  const normalizedExtra = extra.trim()
-  if (!normalizedExtra) return base?.trim() ?? ""
-  const normalizedBase = base?.trim()
-  if (!normalizedBase) return normalizedExtra
-  if (normalizedBase.includes(normalizedExtra)) return normalizedBase
-  return `${normalizedBase}\n\n${normalizedExtra}`
-}
-
-function resolveSubagentHeaderValue(agent: unknown): string | undefined {
-  const profile = resolveCollaborationProfile(agent)
-  const normalized = profile.normalizedAgentName
-  if (!profile.enabled || !normalized) {
-    return undefined
-  }
-  const tokens = tokenizeAgentName(normalized)
-  const isCodexPrimary =
-    tokens[0] === "codex" &&
-    (tokens.includes("orchestrator") ||
-      tokens.includes("default") ||
-      tokens.includes("code") ||
-      tokens.includes("plan") ||
-      tokens.includes("planner") ||
-      tokens.includes("execute") ||
-      tokens.includes("pair") ||
-      tokens.includes("pairprogramming"))
-  if (isCodexPrimary) {
-    return undefined
-  }
-  if (tokens.includes("plan") || tokens.includes("planner")) {
-    return undefined
-  }
-  if (normalized === "compaction") {
-    return "compact"
-  }
-  if (normalized.includes("review")) return "review"
-  if (normalized.includes("compact") || normalized.includes("compaction")) return "compact"
-  return "collab_spawn"
-}
-
 async function sessionUsesOpenAIProvider(
   client: PluginInput["client"] | undefined,
   sessionID: string
 ): Promise<boolean> {
-  const sessionApi = client?.session as
-    | { messages: (input: unknown) => Promise<unknown> }
-    | undefined
+  const sessionApi = client?.session as { messages: (input: unknown) => Promise<unknown> } | undefined
   if (!sessionApi || typeof sessionApi.messages !== "function") return false
 
   try {
@@ -1461,9 +652,7 @@ async function sessionUsesOpenAIProvider(
       const info = row.info
       if (asString(info.role) !== "user") continue
       const model = isRecord(info.model) ? info.model : undefined
-      const providerID = model
-        ? asString(model.providerID)
-        : asString(info.providerID)
+      const providerID = model ? asString(model.providerID) : asString(info.providerID)
       if (!providerID) continue
       return providerID === "openai"
     }
@@ -1474,17 +663,6 @@ async function sessionUsesOpenAIProvider(
   return false
 }
 
-function isTuiWorkerInvocation(argv: string[]): boolean {
-  return argv.some((entry) => /(?:^|[\\/])tui[\\/]worker\.(?:js|ts)$/i.test(entry))
-}
-
-function resolveCodexOriginator(spoofMode: CodexSpoofMode, argv = process.argv): CodexOriginator {
-  if (spoofMode !== "codex") return "opencode"
-  const normalizedArgv = argv.map((entry) => String(entry))
-  if (isTuiWorkerInvocation(normalizedArgv)) return "codex_cli_rs"
-  return normalizedArgv.includes("run") ? "codex_exec" : "codex_cli_rs"
-}
-
 function formatAccountLabel(
   account: { email?: string; plan?: string; accountId?: string } | undefined,
   index: number
@@ -1492,11 +670,7 @@ function formatAccountLabel(
   const email = account?.email?.trim()
   const plan = account?.plan?.trim()
   const accountId = account?.accountId?.trim()
-  const idSuffix = accountId
-    ? accountId.length > 6
-      ? accountId.slice(-6)
-      : accountId
-    : null
+  const idSuffix = accountId ? (accountId.length > 6 ? accountId.slice(-6) : accountId) : null
 
   if (email && plan) return `${email} (${plan})`
   if (email) return email
@@ -1505,7 +679,9 @@ function formatAccountLabel(
 }
 
 function hasActiveCooldown(account: AccountRecord, now: number): boolean {
-  return typeof account.cooldownUntil === "number" && Number.isFinite(account.cooldownUntil) && account.cooldownUntil > now
+  return (
+    typeof account.cooldownUntil === "number" && Number.isFinite(account.cooldownUntil) && account.cooldownUntil > now
+  )
 }
 
 function ensureAccountAuthTypes(account: AccountRecord): AccountAuthType[] {
@@ -1517,9 +693,7 @@ function ensureAccountAuthTypes(account: AccountRecord): AccountAuthType[] {
 function reconcileActiveIdentityKey(openai: OpenAIOAuthDomain): void {
   if (
     openai.activeIdentityKey &&
-    openai.accounts.some(
-      (account) => account.identityKey === openai.activeIdentityKey && account.enabled !== false
-    )
+    openai.accounts.some((account) => account.identityKey === openai.activeIdentityKey && account.enabled !== false)
   ) {
     return
   }
@@ -1565,16 +739,14 @@ function buildAuthMenuAccounts(input: {
       const existing = rows.get(identity)
       const currentStatus: AccountInfo["status"] = hasActiveCooldown(account, now)
         ? "rate-limited"
-        : typeof account.expires === "number" &&
-            Number.isFinite(account.expires) &&
-            account.expires <= now
+        : typeof account.expires === "number" && Number.isFinite(account.expires) && account.expires <= now
           ? "expired"
           : "unknown"
 
       if (!existing) {
-        const isCurrentAccount = authMode === input.activeMode && Boolean(
-          domain.activeIdentityKey && account.identityKey === domain.activeIdentityKey
-        )
+        const isCurrentAccount =
+          authMode === input.activeMode &&
+          Boolean(domain.activeIdentityKey && account.identityKey === domain.activeIdentityKey)
         rows.set(identity, {
           identityKey: account.identityKey,
           index: rows.size,
@@ -1591,10 +763,7 @@ function buildAuthMenuAccounts(input: {
       }
 
       existing.authTypes = normalizeAccountAuthTypes([...(existing.authTypes ?? []), authMode])
-      if (
-        typeof account.lastUsed === "number" &&
-        (!existing.lastUsed || account.lastUsed > existing.lastUsed)
-      ) {
+      if (typeof account.lastUsed === "number" && (!existing.lastUsed || account.lastUsed > existing.lastUsed)) {
         existing.lastUsed = account.lastUsed
       }
       if (existing.enabled === false && account.enabled !== false) {
@@ -1602,16 +771,12 @@ function buildAuthMenuAccounts(input: {
       }
       if (existing.status !== "rate-limited" && currentStatus === "rate-limited") {
         existing.status = "rate-limited"
-      } else if (
-        existing.status !== "rate-limited" &&
-        existing.status !== "expired" &&
-        currentStatus === "expired"
-      ) {
+      } else if (existing.status !== "rate-limited" && existing.status !== "expired" && currentStatus === "expired") {
         existing.status = "expired"
       }
-      const isCurrentAccount = authMode === input.activeMode && Boolean(
-        domain.activeIdentityKey && account.identityKey === domain.activeIdentityKey
-      )
+      const isCurrentAccount =
+        authMode === input.activeMode &&
+        Boolean(domain.activeIdentityKey && account.identityKey === domain.activeIdentityKey)
       if (isCurrentAccount) {
         existing.isCurrentAccount = true
         existing.status = "active"
@@ -1626,9 +791,7 @@ function buildAuthMenuAccounts(input: {
 
 function hydrateAccountIdentityFromAccessClaims(account: AccountRecord): void {
   const claims =
-    typeof account.access === "string" && account.access.length > 0
-      ? parseJwtClaims(account.access)
-      : undefined
+    typeof account.access === "string" && account.access.length > 0 ? parseJwtClaims(account.access) : undefined
   if (!account.accountId) account.accountId = extractAccountIdFromClaims(claims)
   if (!account.email) account.email = extractEmailFromClaims(claims)
   if (!account.plan) account.plan = extractPlanFromClaims(claims)
@@ -1653,59 +816,6 @@ export type CodexAuthPluginOptions = {
   headerTransformDebug?: boolean
 }
 
-async function selectCatalogAuthCandidate(
-  authMode: OpenAIAuthMode,
-  pidOffsetEnabled: boolean,
-  rotationStrategy?: RotationStrategy
-): Promise<{ accessToken?: string; accountId?: string }> {
-  try {
-    const auth = await loadAuthStorage()
-    const domain = getOpenAIOAuthDomain(auth, authMode)
-    if (!domain) {
-      return {}
-    }
-
-    const selected = selectAccount({
-      accounts: domain.accounts,
-      strategy: rotationStrategy ?? domain.strategy,
-      activeIdentityKey: domain.activeIdentityKey,
-      now: Date.now(),
-      stickyPidOffset: pidOffsetEnabled
-    })
-
-    if (!selected?.access) {
-      return { accountId: selected?.accountId }
-    }
-
-    if (selected.expires && selected.expires <= Date.now()) {
-      return { accountId: selected.accountId }
-    }
-
-    return {
-      accessToken: selected.access,
-      accountId: selected.accountId
-    }
-  } catch {
-    return {}
-  }
-}
-
-type ChatParamsOutput = {
-  temperature: number
-  topP: number
-  topK: number
-  options: Record<string, unknown>
-}
-
-type ModelRuntimeDefaults = {
-  applyPatchToolType?: string
-  defaultReasoningEffort?: string
-  supportsReasoningSummaries?: boolean
-  reasoningSummaryFormat?: string
-  defaultVerbosity?: "low" | "medium" | "high"
-  supportsVerbosity?: boolean
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -1715,430 +825,10 @@ function asString(value: unknown): string | undefined {
   const trimmed = value.trim()
   return trimmed ? trimmed : undefined
 }
-
-function asStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-}
-
-function normalizeReasoningSummaryOption(value: unknown): "auto" | "concise" | "detailed" | undefined {
-  const normalized = asString(value)?.toLowerCase()
-  if (!normalized || normalized === "none") return undefined
-  if (normalized === "auto" || normalized === "concise" || normalized === "detailed") return normalized
-  return undefined
-}
-
-function readModelRuntimeDefaults(options: Record<string, unknown>): ModelRuntimeDefaults {
-  const raw = options.codexRuntimeDefaults
-  if (!isRecord(raw)) return {}
-  return {
-    applyPatchToolType: asString(raw.applyPatchToolType),
-    defaultReasoningEffort: asString(raw.defaultReasoningEffort),
-    supportsReasoningSummaries:
-      typeof raw.supportsReasoningSummaries === "boolean" ? raw.supportsReasoningSummaries : undefined,
-    reasoningSummaryFormat: asString(raw.reasoningSummaryFormat),
-    defaultVerbosity:
-      raw.defaultVerbosity === "low" || raw.defaultVerbosity === "medium" || raw.defaultVerbosity === "high"
-        ? raw.defaultVerbosity
-        : undefined,
-    supportsVerbosity: typeof raw.supportsVerbosity === "boolean" ? raw.supportsVerbosity : undefined
-  }
-}
-
-function mergeUnique(values: string[]): string[] {
-  const out: string[] = []
-  const seen = new Set<string>()
-  for (const value of values) {
-    if (seen.has(value)) continue
-    seen.add(value)
-    out.push(value)
-  }
-  return out
-}
-
-function normalizePersonalityKey(value: unknown): string | undefined {
-  const normalized = asString(value)?.toLowerCase()
-  if (!normalized) return undefined
-  if (normalized.includes("/") || normalized.includes("\\") || normalized.includes("..")) {
-    return undefined
-  }
-  return normalized
-}
-
-function getModelLookupCandidates(model: {
-  id?: string
-  api?: { id?: string }
-}): string[] {
-  const out: string[] = []
-  const seen = new Set<string>()
-  const add = (value: string | undefined) => {
-    const trimmed = value?.trim()
-    if (!trimmed) return
-    if (seen.has(trimmed)) return
-    seen.add(trimmed)
-    out.push(trimmed)
-  }
-
-  add(model.id)
-  add(model.api?.id)
-  add(model.id?.split("/").pop())
-  add(model.api?.id?.split("/").pop())
-
-  return out
-}
-
-function getVariantLookupCandidates(input: {
-  message?: unknown
-  modelCandidates: string[]
-}): string[] {
-  const out: string[] = []
-  const seen = new Set<string>()
-  const add = (value: string | undefined) => {
-    const trimmed = value?.trim()
-    if (!trimmed) return
-    if (seen.has(trimmed)) return
-    seen.add(trimmed)
-    out.push(trimmed)
-  }
-
-  if (isRecord(input.message)) {
-    add(asString(input.message.variant))
-  }
-
-  for (const candidate of input.modelCandidates) {
-    const slash = candidate.lastIndexOf("/")
-    if (slash <= 0 || slash >= candidate.length - 1) continue
-    add(candidate.slice(slash + 1))
-  }
-
-  return out
-}
-
-const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
-
-function stripEffortSuffix(value: string): string {
-  return value.replace(EFFORT_SUFFIX_REGEX, "")
-}
-
-function findCatalogModelForCandidates(
-  catalogModels: CodexModelInfo[] | undefined,
-  modelCandidates: string[]
-): CodexModelInfo | undefined {
-  if (!catalogModels || catalogModels.length === 0) return undefined
-
-  const wanted = new Set<string>()
-  for (const candidate of modelCandidates) {
-    const normalized = candidate.trim().toLowerCase()
-    if (!normalized) continue
-    wanted.add(normalized)
-    wanted.add(stripEffortSuffix(normalized))
-  }
-
-  return catalogModels.find((model) => {
-    const slug = model.slug.trim().toLowerCase()
-    if (!slug) return false
-    return wanted.has(slug) || wanted.has(stripEffortSuffix(slug))
-  })
-}
-
-function resolveCaseInsensitiveEntry<T>(
-  entries: Record<string, T> | undefined,
-  candidate: string
-): T | undefined {
-  if (!entries) return undefined
-
-  const direct = entries[candidate]
-  if (direct !== undefined) return direct
-
-  const lowered = entries[candidate.toLowerCase()]
-  if (lowered !== undefined) return lowered
-
-  const loweredCandidate = candidate.toLowerCase()
-  for (const [name, entry] of Object.entries(entries)) {
-    if (name.trim().toLowerCase() === loweredCandidate) {
-      return entry
-    }
-  }
-
-  return undefined
-}
-
-function getModelPersonalityOverride(
-  customSettings: CustomSettings | undefined,
-  modelCandidates: string[],
-  variantCandidates: string[]
-): string | undefined {
-  const models = customSettings?.models
-  if (!models) return undefined
-
-  for (const candidate of modelCandidates) {
-    const entry = resolveCaseInsensitiveEntry(models, candidate)
-    if (!entry) continue
-
-    for (const variantCandidate of variantCandidates) {
-      const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
-      const variantPersonality = normalizePersonalityKey(variantEntry?.options?.personality)
-      if (variantPersonality) return variantPersonality
-    }
-
-    const modelPersonality = normalizePersonalityKey(entry.options?.personality)
-    if (modelPersonality) return modelPersonality
-  }
-
-  return undefined
-}
-
-function getModelThinkingSummariesOverride(
-  customSettings: CustomSettings | undefined,
-  modelCandidates: string[],
-  variantCandidates: string[]
-): boolean | undefined {
-  const models = customSettings?.models
-  if (!models) return undefined
-
-  for (const candidate of modelCandidates) {
-    const entry = resolveCaseInsensitiveEntry(models, candidate)
-    if (!entry) continue
-
-    for (const variantCandidate of variantCandidates) {
-      const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
-      if (typeof variantEntry?.thinkingSummaries === "boolean") {
-        return variantEntry.thinkingSummaries
-      }
-    }
-
-    if (typeof entry.thinkingSummaries === "boolean") {
-      return entry.thinkingSummaries
-    }
-  }
-
-  return undefined
-}
-
-function resolvePersonalityForModel(input: {
-  customSettings?: CustomSettings
-  modelCandidates: string[]
-  variantCandidates: string[]
-  fallback?: PersonalityOption
-}): string | undefined {
-  const modelOverride = getModelPersonalityOverride(
-    input.customSettings,
-    input.modelCandidates,
-    input.variantCandidates
-  )
-  if (modelOverride) return modelOverride
-
-  const globalOverride = normalizePersonalityKey(input.customSettings?.options?.personality)
-  if (globalOverride) return globalOverride
-
-  return normalizePersonalityKey(input.fallback)
-}
-
-function applyCodexRuntimeDefaultsToParams(input: {
-  modelOptions: Record<string, unknown>
-  modelToolCallCapable: boolean | undefined
-  thinkingSummariesOverride: boolean | undefined
-  preferCodexInstructions: boolean
-  output: ChatParamsOutput
-}): void {
-  const options = input.output.options
-  const modelOptions = input.modelOptions
-  const defaults = readModelRuntimeDefaults(modelOptions)
-  const codexInstructions = asString(modelOptions.codexInstructions)
-
-  if (codexInstructions && (input.preferCodexInstructions || asString(options.instructions) === undefined)) {
-    options.instructions = codexInstructions
-  }
-
-  if (asString(options.reasoningEffort) === undefined && defaults.defaultReasoningEffort) {
-    options.reasoningEffort = defaults.defaultReasoningEffort
-  }
-
-  const reasoningEffort = asString(options.reasoningEffort)
-  const hasReasoning = reasoningEffort !== undefined && reasoningEffort !== "none"
-  const rawReasoningSummary = asString(options.reasoningSummary)
-  const hadExplicitReasoningSummary = rawReasoningSummary !== undefined
-  const currentReasoningSummary = normalizeReasoningSummaryOption(rawReasoningSummary)
-  if (rawReasoningSummary !== undefined) {
-    if (currentReasoningSummary) {
-      options.reasoningSummary = currentReasoningSummary
-    } else {
-      delete options.reasoningSummary
-    }
-  }
-  if (!hadExplicitReasoningSummary && currentReasoningSummary === undefined) {
-    if (
-      hasReasoning &&
-      (defaults.supportsReasoningSummaries === true || input.thinkingSummariesOverride === true)
-    ) {
-      if (input.thinkingSummariesOverride === false) {
-        delete options.reasoningSummary
-      } else {
-        if (defaults.reasoningSummaryFormat?.toLowerCase() === "none") {
-          delete options.reasoningSummary
-        } else {
-          options.reasoningSummary = defaults.reasoningSummaryFormat ?? "auto"
-        }
-      }
-    }
-  }
-
-  if (
-    asString(options.textVerbosity) === undefined &&
-    defaults.defaultVerbosity &&
-    (defaults.supportsVerbosity ?? true)
-  ) {
-    options.textVerbosity = defaults.defaultVerbosity
-  }
-
-  if (asString(options.applyPatchToolType) === undefined && defaults.applyPatchToolType) {
-    options.applyPatchToolType = defaults.applyPatchToolType
-  }
-
-  if (typeof options.parallelToolCalls !== "boolean" && input.modelToolCallCapable !== undefined) {
-    options.parallelToolCalls = input.modelToolCallCapable
-  }
-
-  const shouldIncludeReasoning =
-    hasReasoning &&
-    ((asString(options.reasoningSummary) !== undefined &&
-      asString(options.reasoningSummary)?.toLowerCase() !== "none") ||
-      defaults.supportsReasoningSummaries === true)
-
-  if (shouldIncludeReasoning) {
-    const include = asStringArray(options.include) ?? []
-    options.include = mergeUnique([...include, "reasoning.encrypted_content"])
-  }
-}
-
-async function sanitizeOutboundRequestIfNeeded(
-  request: Request,
-  enabled: boolean
-): Promise<{ request: Request; changed: boolean }> {
-  if (!enabled) return { request, changed: false }
-
-  const method = request.method.toUpperCase()
-  if (method !== "POST") return { request, changed: false }
-
-  let payload: unknown
-  try {
-    const raw = await request.clone().text()
-    if (!raw) return { request, changed: false }
-    payload = JSON.parse(raw)
-  } catch {
-    return { request, changed: false }
-  }
-
-  if (!isRecord(payload)) return { request, changed: false }
-  const sanitized = sanitizeRequestPayloadForCompat(payload)
-  if (!sanitized.changed) return { request, changed: false }
-
-  const headers = new Headers(request.headers)
-  headers.set("content-type", "application/json")
-
-  const sanitizedRequest = new Request(request.url, {
-    method: request.method,
-    headers,
-    body: JSON.stringify(sanitized.payload),
-    redirect: request.redirect
-  })
-
-  return { request: sanitizedRequest, changed: true }
-}
-
-function getVariantCandidatesFromBody(input: {
-  body: Record<string, unknown>
-  modelSlug: string
-}): string[] {
-  const out: string[] = []
-  const seen = new Set<string>()
-  const add = (value: string | undefined) => {
-    const trimmed = value?.trim().toLowerCase()
-    if (!trimmed) return
-    if (seen.has(trimmed)) return
-    seen.add(trimmed)
-    out.push(trimmed)
-  }
-
-  const reasoning = isRecord(input.body.reasoning) ? input.body.reasoning : undefined
-  add(asString(reasoning?.effort))
-
-  const normalizedSlug = input.modelSlug.trim().toLowerCase()
-  const suffix = normalizedSlug.match(EFFORT_SUFFIX_REGEX)?.[1]
-  add(suffix)
-
-  return out
-}
-
-async function applyCatalogInstructionOverrideToRequest(input: {
-  request: Request
-  enabled: boolean
-  catalogModels: CodexModelInfo[] | undefined
-  customSettings: CustomSettings | undefined
-  fallbackPersonality: PersonalityOption | undefined
-}): Promise<{ request: Request; changed: boolean; reason: string }> {
-  if (!input.enabled) return { request: input.request, changed: false, reason: "disabled" }
-
-  const method = input.request.method.toUpperCase()
-  if (method !== "POST") return { request: input.request, changed: false, reason: "non_post" }
-
-  let payload: unknown
-  try {
-    const raw = await input.request.clone().text()
-    if (!raw) return { request: input.request, changed: false, reason: "empty_body" }
-    payload = JSON.parse(raw)
-  } catch {
-    return { request: input.request, changed: false, reason: "invalid_json" }
-  }
-
-  if (!isRecord(payload)) return { request: input.request, changed: false, reason: "non_object_body" }
-  const modelSlugRaw = asString(payload.model)
-  if (!modelSlugRaw) return { request: input.request, changed: false, reason: "missing_model" }
-
-  const modelCandidates = getModelLookupCandidates({
-    id: modelSlugRaw,
-    api: { id: modelSlugRaw }
-  })
-  const variantCandidates = getVariantCandidatesFromBody({
-    body: payload,
-    modelSlug: modelSlugRaw
-  })
-  const effectivePersonality = resolvePersonalityForModel({
-    customSettings: input.customSettings,
-    modelCandidates,
-    variantCandidates,
-    fallback: input.fallbackPersonality
-  })
-  const catalogModel = findCatalogModelForCandidates(input.catalogModels, modelCandidates)
-  if (!catalogModel) return { request: input.request, changed: false, reason: "catalog_model_not_found" }
-
-  const rendered = resolveInstructionsForModel(catalogModel, effectivePersonality)
-  if (!rendered) return { request: input.request, changed: false, reason: "rendered_empty_or_unsafe" }
-
-  if (asString(payload.instructions) === rendered) {
-    return { request: input.request, changed: false, reason: "already_matches" }
-  }
-
-  payload.instructions = rendered
-  const headers = new Headers(input.request.headers)
-  headers.set("content-type", "application/json")
-  const updatedRequest = new Request(input.request.url, {
-    method: input.request.method,
-    headers,
-    body: JSON.stringify(payload),
-    redirect: input.request.redirect
-  })
-  return { request: updatedRequest, changed: true, reason: "updated" }
-}
-
-export async function CodexAuthPlugin(
-  input: PluginInput,
-  opts: CodexAuthPluginOptions = {}
-): Promise<Hooks> {
+export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginOptions = {}): Promise<Hooks> {
   opts.log?.debug("codex-native init")
   const spoofMode: CodexSpoofMode =
-    (opts.spoofMode as string | undefined) === "codex" ||
-    (opts.spoofMode as string | undefined) === "strict"
+    (opts.spoofMode as string | undefined) === "codex" || (opts.spoofMode as string | undefined) === "strict"
       ? "codex"
       : "native"
   const runtimeMode: PluginRuntimeMode =
@@ -2193,9 +883,9 @@ export async function CodexAuthPlugin(
   const refreshQuotaSnapshotsForAuthMenu = async (): Promise<void> => {
     const auth = await loadAuthStorage()
     const snapshotPath = defaultSnapshotsPath()
-    const existingSnapshots: Record<string, { updatedAt?: number }> = await loadSnapshots(
-      snapshotPath
-    ).catch(() => ({}))
+    const existingSnapshots: Record<string, { updatedAt?: number }> = await loadSnapshots(snapshotPath).catch(
+      () => ({})
+    )
     const snapshotUpdates: Record<string, ReturnType<CodexStatus["parseFromHeaders"]>> = {}
     for (const { mode, domain } of listOpenAIOAuthDomains(auth)) {
       for (let index = 0; index < domain.accounts.length; index += 1) {
@@ -2219,12 +909,9 @@ export async function CodexAuthPlugin(
           }
         }
 
-        let accessToken =
-          typeof account.access === "string" && account.access.length > 0 ? account.access : undefined
+        let accessToken = typeof account.access === "string" && account.access.length > 0 ? account.access : undefined
         const expired =
-          typeof account.expires === "number" &&
-          Number.isFinite(account.expires) &&
-          account.expires <= now
+          typeof account.expires === "number" && Number.isFinite(account.expires) && account.expires <= now
 
         if ((!accessToken || expired) && account.refresh) {
           try {
@@ -2259,10 +946,7 @@ export async function CodexAuthPlugin(
             })
           } catch (error) {
             if (identityKey) {
-              quotaFetchCooldownByIdentity.set(
-                identityKey,
-                Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS
-              )
+              quotaFetchCooldownByIdentity.set(identityKey, Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS)
             }
             opts.log?.debug("quota check refresh failed", {
               index,
@@ -2289,10 +973,7 @@ export async function CodexAuthPlugin(
           timeoutMs: AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS
         })
         if (!snapshot) {
-          quotaFetchCooldownByIdentity.set(
-            account.identityKey,
-            Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS
-          )
+          quotaFetchCooldownByIdentity.set(account.identityKey, Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS)
           continue
         }
 
@@ -2386,8 +1067,7 @@ export async function CodexAuthPlugin(
           },
           onDeleteAll: async (scope) => {
             await saveAuthStorage(undefined, (authFile) => {
-              const targets =
-                scope === "both" ? (["native", "codex"] as const) : ([scope] as const)
+              const targets = scope === "both" ? (["native", "codex"] as const) : ([scope] as const)
               for (const targetMode of targets) {
                 const domain = ensureOpenAIOAuthDomain(authFile, targetMode)
                 domain.accounts = []
@@ -2404,9 +1084,7 @@ export async function CodexAuthPlugin(
           onToggleAccount: async (account) => {
             await saveAuthStorage(undefined, (authFile) => {
               const authTypes: OpenAIAuthMode[] =
-                account.authTypes && account.authTypes.length > 0
-                  ? [...account.authTypes]
-                  : ["native"]
+                account.authTypes && account.authTypes.length > 0 ? [...account.authTypes] : ["native"]
               for (const mode of authTypes) {
                 const domain = getOpenAIOAuthDomain(authFile, mode)
                 if (!domain) continue
@@ -2465,8 +1143,7 @@ export async function CodexAuthPlugin(
           },
           onDeleteAccount: async (account, scope) => {
             await saveAuthStorage(undefined, (authFile) => {
-              const targets =
-                scope === "both" ? (["native", "codex"] as const) : ([scope] as const)
+              const targets = scope === "both" ? (["native", "codex"] as const) : ([scope] as const)
               for (const mode of targets) {
                 const domain = getOpenAIOAuthDomain(authFile, mode)
                 if (!domain) continue
@@ -2511,13 +1188,10 @@ export async function CodexAuthPlugin(
         if (!hasOAuth) return {}
 
         const sessionAffinityPath = defaultSessionAffinityPath()
-        const loadedSessionAffinity = await loadSessionAffinity(sessionAffinityPath).catch(
-          () => ({ version: 1 as const })
-        )
-        const initialSessionAffinity = readSessionAffinitySnapshot(
-          loadedSessionAffinity,
-          authMode
-        )
+        const loadedSessionAffinity = await loadSessionAffinity(sessionAffinityPath).catch(() => ({
+          version: 1 as const
+        }))
+        const initialSessionAffinity = readSessionAffinitySnapshot(loadedSessionAffinity, authMode)
         const sessionExists = createSessionExistsFn(process.env)
         await pruneSessionAffinitySnapshot(initialSessionAffinity, sessionExists, {
           missingGraceMs: SESSION_AFFINITY_MISSING_GRACE_MS
@@ -2608,9 +1282,7 @@ export async function CodexAuthPlugin(
             if (opts.headerTransformDebug === true) {
               await requestSnapshots.captureRequest("before-header-transform", baseRequest, {
                 spoofMode,
-                ...(inboundCollaborationModeKind
-                  ? { collaborationModeKind: inboundCollaborationModeKind }
-                  : {})
+                ...(inboundCollaborationModeKind ? { collaborationModeKind: inboundCollaborationModeKind } : {})
               })
             }
             let outbound = new Request(rewriteUrl(baseRequest), baseRequest)
@@ -2626,10 +1298,7 @@ export async function CodexAuthPlugin(
             if (spoofMode === "native" && inboundUserAgent) {
               outbound.headers.set("user-agent", inboundUserAgent)
             } else {
-              outbound.headers.set(
-                "user-agent",
-                resolveRequestUserAgent(spoofMode, outboundOriginator)
-              )
+              outbound.headers.set("user-agent", resolveRequestUserAgent(spoofMode, outboundOriginator))
             }
             const collaborationModeKind = outbound.headers.get(INTERNAL_COLLABORATION_MODE_HEADER)
             if (collaborationModeKind) {
@@ -2712,8 +1381,7 @@ export async function CodexAuthPlugin(
                     let sawInvalidGrant = false
                     let sawRefreshFailure = false
                     let sawMissingRefresh = false
-                    const rotationStrategy: RotationStrategy =
-                      opts.rotationStrategy ?? domain.strategy ?? "sticky"
+                    const rotationStrategy: RotationStrategy = opts.rotationStrategy ?? domain.strategy ?? "sticky"
                     opts.log?.debug("rotation begin", {
                       strategy: rotationStrategy,
                       activeIdentityKey: domain.activeIdentityKey,
@@ -2800,10 +1468,7 @@ export async function CodexAuthPlugin(
                       try {
                         tokens = await refreshAccessToken(selected.refresh)
                       } catch (error) {
-                        if (
-                          isOAuthTokenRefreshError(error) &&
-                          error.oauthCode?.toLowerCase() === "invalid_grant"
-                        ) {
+                        if (isOAuthTokenRefreshError(error) && error.oauthCode?.toLowerCase() === "invalid_grant") {
                           sawInvalidGrant = true
                           selected.enabled = false
                           delete selected.cooldownUntil
@@ -2850,20 +1515,16 @@ export async function CodexAuthPlugin(
                       })
                     }
 
-                    const nextAvailableAt = enabledAfterAttempts.reduce<number | undefined>(
-                      (current, account) => {
-                        const cooldownUntil = account.cooldownUntil
-                        if (typeof cooldownUntil !== "number" || cooldownUntil <= now) return current
-                        if (current === undefined || cooldownUntil < current) return cooldownUntil
-                        return current
-                      },
-                      undefined
-                    )
+                    const nextAvailableAt = enabledAfterAttempts.reduce<number | undefined>((current, account) => {
+                      const cooldownUntil = account.cooldownUntil
+                      if (typeof cooldownUntil !== "number" || cooldownUntil <= now) return current
+                      if (current === undefined || cooldownUntil < current) return cooldownUntil
+                      return current
+                    }, undefined)
                     if (nextAvailableAt !== undefined) {
                       const waitMs = Math.max(0, nextAvailableAt - now)
                       throw new PluginFatalError({
-                        message:
-                          `All enabled OpenAI accounts are cooling down. Try again in ${formatWaitTime(waitMs)} or run \`opencode auth login\`.`,
+                        message: `All enabled OpenAI accounts are cooling down. Try again in ${formatWaitTime(waitMs)} or run \`opencode auth login\`.`,
                         status: 429,
                         type: "all_accounts_cooling_down",
                         param: "accounts"
@@ -2892,8 +1553,7 @@ export async function CodexAuthPlugin(
 
                     if (sawRefreshFailure) {
                       throw new PluginFatalError({
-                        message:
-                          "Failed to refresh OpenAI access token. Run `opencode auth login` and try again.",
+                        message: "Failed to refresh OpenAI access token. Run `opencode auth login` and try again.",
                         status: 401,
                         type: "refresh_failed",
                         param: "auth"
@@ -2901,8 +1561,7 @@ export async function CodexAuthPlugin(
                     }
 
                     throw new PluginFatalError({
-                      message:
-                        `No enabled OpenAI ${authMode} accounts available. Enable an account or run \`opencode auth login\`.`,
+                      message: `No enabled OpenAI ${authMode} accounts available. Enable an account or run \`opencode auth login\`.`,
                       status: 403,
                       type: "no_enabled_accounts",
                       param: "accounts"
@@ -3015,8 +1674,7 @@ export async function CodexAuthPlugin(
               }
               return toSyntheticErrorResponse(
                 new PluginFatalError({
-                  message:
-                    "Outbound request validation failed before sending to OpenAI backend.",
+                  message: "Outbound request validation failed before sending to OpenAI backend.",
                   status: 400,
                   type: "disallowed_outbound_request",
                   param: "request"
@@ -3114,7 +1772,6 @@ export async function CodexAuthPlugin(
                 process.stdout.write(`\nAuthorization failed: ${reason}\n\n`)
                 return null
               } finally {
-                pendingOAuth = undefined
                 scheduleOAuthServerStop(
                   authFailed ? OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS : OAUTH_SERVER_SHUTDOWN_GRACE_MS,
                   authFailed ? "error" : "success"
@@ -3160,12 +1817,7 @@ export async function CodexAuthPlugin(
               }
             }
 
-            if (
-              inputs &&
-              process.env.OPENCODE_NO_BROWSER !== "1" &&
-              process.stdin.isTTY &&
-              process.stdout.isTTY
-            ) {
+            if (inputs && process.env.OPENCODE_NO_BROWSER !== "1" && process.stdin.isTTY && process.stdout.isTTY) {
               return runInteractiveBrowserAuthLoop()
             }
 
@@ -3196,7 +1848,6 @@ export async function CodexAuthPlugin(
                   authFailed = true
                   return { type: "failed" as const }
                 } finally {
-                  pendingOAuth = undefined
                   scheduleOAuthServerStop(
                     authFailed ? OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS : OAUTH_SERVER_SHUTDOWN_GRACE_MS,
                     authFailed ? "error" : "success"
@@ -3301,9 +1952,9 @@ export async function CodexAuthPlugin(
     },
     "chat.message": async (hookInput, output) => {
       const directProviderID = hookInput.model?.providerID
-      const isOpenAI = directProviderID === "openai"
-        || (directProviderID === undefined
-          && (await sessionUsesOpenAIProvider(input.client, hookInput.sessionID)))
+      const isOpenAI =
+        directProviderID === "openai" ||
+        (directProviderID === undefined && (await sessionUsesOpenAIProvider(input.client, hookInput.sessionID)))
       if (!isOpenAI) return
 
       for (const part of output.parts) {
@@ -3316,9 +1967,7 @@ export async function CodexAuthPlugin(
     "chat.params": async (hookInput, output) => {
       if (hookInput.model.providerID !== "openai") return
       const initialReasoningEffort = asString(output.options.reasoningEffort)
-      const collaborationProfile = collabModeEnabled
-        ? resolveCollaborationProfile(hookInput.agent)
-        : { enabled: false }
+      const collaborationProfile = collabModeEnabled ? resolveCollaborationProfile(hookInput.agent) : { enabled: false }
       const modelOptions = isRecord(hookInput.model.options) ? hookInput.model.options : {}
       const modelCandidates = getModelLookupCandidates({
         id: hookInput.model.id,
@@ -3371,19 +2020,20 @@ export async function CodexAuthPlugin(
       applyCodexRuntimeDefaultsToParams({
         modelOptions,
         modelToolCallCapable: hookInput.model.capabilities?.toolcall,
-        thinkingSummariesOverride:
-          modelThinkingSummariesOverride ?? opts.customSettings?.thinkingSummaries,
+        thinkingSummariesOverride: modelThinkingSummariesOverride ?? opts.customSettings?.thinkingSummaries,
         preferCodexInstructions: spoofMode === "codex",
         output
       })
 
       if (collabModeEnabled && collaborationProfile.enabled && collaborationProfile.kind) {
         const collaborationModeKind = collaborationProfile.kind
-        const collaborationInstructions = resolveCollaborationInstructions(collaborationModeKind)
-        const mergedInstructions = mergeInstructions(
-          asString(output.options.instructions),
-          collaborationInstructions
-        )
+        const collaborationInstructions = resolveCollaborationInstructions(collaborationModeKind, {
+          plan: CODEX_PLAN_MODE_INSTRUCTIONS,
+          code: CODEX_CODE_MODE_INSTRUCTIONS,
+          execute: CODEX_EXECUTE_MODE_INSTRUCTIONS,
+          pairProgramming: CODEX_PAIR_PROGRAMMING_MODE_INSTRUCTIONS
+        })
+        const mergedInstructions = mergeInstructions(asString(output.options.instructions), collaborationInstructions)
         if (mergedInstructions) {
           output.options.instructions = mergedInstructions
         }
@@ -3398,9 +2048,7 @@ export async function CodexAuthPlugin(
     },
     "chat.headers": async (hookInput, output) => {
       if (hookInput.model.providerID !== "openai") return
-      const collaborationProfile = collabModeEnabled
-        ? resolveCollaborationProfile(hookInput.agent)
-        : { enabled: false }
+      const collaborationProfile = collabModeEnabled ? resolveCollaborationProfile(hookInput.agent) : { enabled: false }
       const collaborationModeKind = collaborationProfile.enabled ? collaborationProfile.kind : undefined
       const originator = resolveCodexOriginator(spoofMode)
       output.headers.originator = originator

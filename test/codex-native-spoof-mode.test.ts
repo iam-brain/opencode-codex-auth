@@ -70,10 +70,7 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.textVerbosity).toBe("medium")
     expect(output.options.parallelToolCalls).toBe(true)
     expect(output.options.applyPatchToolType).toBe("apply_patch")
-    expect(output.options.include).toEqual([
-      "web_search_call.action.sources",
-      "reasoning.encrypted_content"
-    ])
+    expect(output.options.include).toEqual(["web_search_call.action.sources", "reasoning.encrypted_content"])
   })
 
   it("applies model reasoning summary format default verbatim", async () => {
@@ -629,8 +626,7 @@ describe("codex-native spoof + params hooks", () => {
           codexCatalogModel: {
             slug: "gpt-5.3-codex",
             model_messages: {
-              instructions_template:
-                "Use multi_tool_use.parallel with recipient_name=functions.read"
+              instructions_template: "Use multi_tool_use.parallel with recipient_name=functions.read"
             }
           }
         }

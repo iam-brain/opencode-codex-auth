@@ -21,7 +21,9 @@ describe("proactive refresh locking", () => {
     const saveAuthStorage = vi.fn(
       async (
         _path: string | undefined,
-        update: (auth: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown> | void> | void
+        update: (
+          auth: Record<string, unknown>
+        ) => Record<string, unknown> | Promise<Record<string, unknown> | void> | void
       ) => {
         await update(auth)
         return auth

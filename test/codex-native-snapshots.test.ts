@@ -23,13 +23,17 @@ describe("codex-native snapshots", () => {
 
     const loadAuthStorage = vi.fn(async () => auth)
 
-    const saveAuthStorage = vi.fn(async (
-      _path: string | undefined,
-      update: (auth: Record<string, unknown>) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
-    ) => {
-      await update(auth)
-      return auth
-    })
+    const saveAuthStorage = vi.fn(
+      async (
+        _path: string | undefined,
+        update: (
+          auth: Record<string, unknown>
+        ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
+      ) => {
+        await update(auth)
+        return auth
+      }
+    )
     const setAccountCooldown = vi.fn(async () => {})
     const getOpenAIOAuthDomain = vi.fn((current: Record<string, unknown>, mode: "native" | "codex") => {
       const openai = current.openai as { accounts?: unknown[]; activeIdentityKey?: string } | undefined
@@ -49,14 +53,15 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter(
-          (entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
-            Boolean(entry.domain && Array.isArray(entry.domain.accounts))
+        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
-    const saveSnapshots = vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) => {
-      return update({})
-    })
+    const saveSnapshots = vi.fn(
+      async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) => {
+        return update({})
+      }
+    )
 
     vi.doMock("../lib/storage", () => ({
       loadAuthStorage,
@@ -72,16 +77,19 @@ describe("codex-native snapshots", () => {
       saveSnapshots
     }))
 
-    vi.stubGlobal("fetch", vi.fn(async () => {
-      return new Response("ok", {
-        status: 200,
-        headers: {
-          "x-ratelimit-remaining-requests": "75",
-          "x-ratelimit-limit-requests": "100",
-          "x-ratelimit-reset-requests": "1700"
-        }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response("ok", {
+          status: 200,
+          headers: {
+            "x-ratelimit-remaining-requests": "75",
+            "x-ratelimit-limit-requests": "100",
+            "x-ratelimit-reset-requests": "1700"
+          }
+        })
       })
-    }))
+    )
 
     const { CodexAuthPlugin } = await import("../lib/codex-native")
     const hooks = await CodexAuthPlugin({} as never)
@@ -95,7 +103,7 @@ describe("codex-native snapshots", () => {
     }
 
     const loaded = await loader(
-      async () => ({ type: "oauth", refresh: "", access: "", expires: 0 } as never),
+      async () => ({ type: "oauth", refresh: "", access: "", expires: 0 }) as never,
       provider as never
     )
 
@@ -129,13 +137,17 @@ describe("codex-native snapshots", () => {
     }
 
     const loadAuthStorage = vi.fn(async () => auth)
-    const saveAuthStorage = vi.fn(async (
-      _path: string | undefined,
-      update: (auth: Record<string, unknown>) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
-    ) => {
-      await update(auth)
-      return auth
-    })
+    const saveAuthStorage = vi.fn(
+      async (
+        _path: string | undefined,
+        update: (
+          auth: Record<string, unknown>
+        ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
+      ) => {
+        await update(auth)
+        return auth
+      }
+    )
 
     const setAccountCooldown = vi.fn(async () => {})
     const getOpenAIOAuthDomain = vi.fn((current: Record<string, unknown>, mode: "native" | "codex") => {
@@ -156,9 +168,8 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter(
-          (entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
-            Boolean(entry.domain && Array.isArray(entry.domain.accounts))
+        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
 
@@ -173,21 +184,24 @@ describe("codex-native snapshots", () => {
     }))
     vi.doMock("../lib/codex-status-storage", () => ({
       loadSnapshots: vi.fn(async () => ({})),
-      saveSnapshots: vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) =>
-        update({})
+      saveSnapshots: vi.fn(
+        async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) => update({})
       )
     }))
 
     let capturedUserAgent = ""
     let capturedOriginator = ""
     let capturedSessionId = ""
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const request = input as Request
-      capturedUserAgent = request.headers.get("user-agent") ?? ""
-      capturedOriginator = request.headers.get("originator") ?? ""
-      capturedSessionId = request.headers.get("session_id") ?? ""
-      return new Response("ok", { status: 200 })
-    }))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const request = input as Request
+        capturedUserAgent = request.headers.get("user-agent") ?? ""
+        capturedOriginator = request.headers.get("originator") ?? ""
+        capturedSessionId = request.headers.get("session_id") ?? ""
+        return new Response("ok", { status: 200 })
+      })
+    )
 
     const { CodexAuthPlugin } = await import("../lib/codex-native")
     const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex" })
@@ -201,7 +215,7 @@ describe("codex-native snapshots", () => {
     }
 
     const loaded = await loader(
-      async () => ({ type: "oauth", refresh: "", access: "", expires: 0 } as never),
+      async () => ({ type: "oauth", refresh: "", access: "", expires: 0 }) as never,
       provider as never
     )
 
@@ -246,13 +260,17 @@ describe("codex-native snapshots", () => {
     }
 
     const loadAuthStorage = vi.fn(async () => auth)
-    const saveAuthStorage = vi.fn(async (
-      _path: string | undefined,
-      update: (auth: Record<string, unknown>) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
-    ) => {
-      await update(auth)
-      return auth
-    })
+    const saveAuthStorage = vi.fn(
+      async (
+        _path: string | undefined,
+        update: (
+          auth: Record<string, unknown>
+        ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
+      ) => {
+        await update(auth)
+        return auth
+      }
+    )
     const setAccountCooldown = vi.fn(async () => {})
     const getOpenAIOAuthDomain = vi.fn((current: Record<string, unknown>, mode: "native" | "codex") => {
       const openai = current.openai as { accounts?: unknown[]; activeIdentityKey?: string } | undefined
@@ -272,9 +290,8 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter(
-          (entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
-            Boolean(entry.domain && Array.isArray(entry.domain.accounts))
+        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
 
@@ -289,21 +306,24 @@ describe("codex-native snapshots", () => {
     }))
     vi.doMock("../lib/codex-status-storage", () => ({
       loadSnapshots: vi.fn(async () => ({})),
-      saveSnapshots: vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) =>
-        update({})
+      saveSnapshots: vi.fn(
+        async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) => update({})
       )
     }))
 
     let capturedUserAgent = ""
     let capturedOriginator = ""
     let capturedSessionId = ""
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const request = input as Request
-      capturedUserAgent = request.headers.get("user-agent") ?? ""
-      capturedOriginator = request.headers.get("originator") ?? ""
-      capturedSessionId = request.headers.get("session_id") ?? ""
-      return new Response("ok", { status: 200 })
-    }))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const request = input as Request
+        capturedUserAgent = request.headers.get("user-agent") ?? ""
+        capturedOriginator = request.headers.get("originator") ?? ""
+        capturedSessionId = request.headers.get("session_id") ?? ""
+        return new Response("ok", { status: 200 })
+      })
+    )
 
     const { CodexAuthPlugin } = await import("../lib/codex-native")
     const hooks = await CodexAuthPlugin({} as never, { spoofMode: "native" })
@@ -317,7 +337,7 @@ describe("codex-native snapshots", () => {
     }
 
     const loaded = await loader(
-      async () => ({ type: "oauth", refresh: "", access: "", expires: 0 } as never),
+      async () => ({ type: "oauth", refresh: "", access: "", expires: 0 }) as never,
       provider as never
     )
 
@@ -361,13 +381,17 @@ describe("codex-native snapshots", () => {
     }
 
     const loadAuthStorage = vi.fn(async () => auth)
-    const saveAuthStorage = vi.fn(async (
-      _path: string | undefined,
-      update: (auth: Record<string, unknown>) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
-    ) => {
-      await update(auth)
-      return auth
-    })
+    const saveAuthStorage = vi.fn(
+      async (
+        _path: string | undefined,
+        update: (
+          auth: Record<string, unknown>
+        ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
+      ) => {
+        await update(auth)
+        return auth
+      }
+    )
     const setAccountCooldown = vi.fn(async () => {})
     const getOpenAIOAuthDomain = vi.fn((current: Record<string, unknown>, mode: "native" | "codex") => {
       const openai = current.openai as { accounts?: unknown[]; activeIdentityKey?: string } | undefined
@@ -387,9 +411,8 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter(
-          (entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
-            Boolean(entry.domain && Array.isArray(entry.domain.accounts))
+        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
 
@@ -404,8 +427,8 @@ describe("codex-native snapshots", () => {
     }))
     vi.doMock("../lib/codex-status-storage", () => ({
       loadSnapshots: vi.fn(async () => ({})),
-      saveSnapshots: vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) =>
-        update({})
+      saveSnapshots: vi.fn(
+        async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) => update({})
       )
     }))
 
@@ -420,11 +443,14 @@ describe("codex-native snapshots", () => {
     }))
 
     let seenInternalHeader = ""
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const request = input as Request
-      seenInternalHeader = request.headers.get("x-opencode-collaboration-mode-kind") ?? ""
-      return new Response("ok", { status: 200 })
-    }))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const request = input as Request
+        seenInternalHeader = request.headers.get("x-opencode-collaboration-mode-kind") ?? ""
+        return new Response("ok", { status: 200 })
+      })
+    )
 
     const { CodexAuthPlugin } = await import("../lib/codex-native")
     const hooks = await CodexAuthPlugin({} as never, {
@@ -441,7 +467,7 @@ describe("codex-native snapshots", () => {
     }
 
     const loaded = await loader(
-      async () => ({ type: "oauth", refresh: "", access: "", expires: 0 } as never),
+      async () => ({ type: "oauth", refresh: "", access: "", expires: 0 }) as never,
       provider as never
     )
 
@@ -460,12 +486,8 @@ describe("codex-native snapshots", () => {
         enabled: true
       })
     )
-    const beforeTransformCall = captureRequest.mock.calls.find(
-      (call) => call[0] === "before-header-transform"
-    )
-    const afterTransformCall = captureRequest.mock.calls.find(
-      (call) => call[0] === "after-header-transform"
-    )
+    const beforeTransformCall = captureRequest.mock.calls.find((call) => call[0] === "before-header-transform")
+    const afterTransformCall = captureRequest.mock.calls.find((call) => call[0] === "after-header-transform")
     const beforeAuthCall = captureRequest.mock.calls.find((call) => call[0] === "before-auth")
     expect(beforeTransformCall).toBeDefined()
     expect(afterTransformCall?.[2]?.collaborationModeKind).toBe("plan")

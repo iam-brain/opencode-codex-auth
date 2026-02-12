@@ -24,10 +24,7 @@ export function parseKey(data: Buffer): KeyAction {
   return null
 }
 
-export function isTTY(
-  input: NodeJS.ReadStream = process.stdin,
-  output: NodeJS.WriteStream = process.stdout
-): boolean {
+export function isTTY(input: NodeJS.ReadStream = process.stdin, output: NodeJS.WriteStream = process.stdout): boolean {
   return Boolean(input.isTTY && output.isTTY)
 }
 

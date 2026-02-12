@@ -129,10 +129,7 @@ function assignSessionAccount(
   })
 }
 
-function resolveStickySessionAccount(
-  input: SelectAccountInput,
-  eligible: AccountRecord[]
-): AccountRecord | undefined {
+function resolveStickySessionAccount(input: SelectAccountInput, eligible: AccountRecord[]): AccountRecord | undefined {
   const reused = resolveAssignedSessionAccount(input, eligible, "sticky")
   if (reused) return reused
 
@@ -147,10 +144,7 @@ function resolveStickySessionAccount(
   return selected
 }
 
-function resolveHybridSessionAccount(
-  input: SelectAccountInput,
-  eligible: AccountRecord[]
-): AccountRecord | undefined {
+function resolveHybridSessionAccount(input: SelectAccountInput, eligible: AccountRecord[]): AccountRecord | undefined {
   const reused = resolveAssignedSessionAccount(input, eligible, "hybrid")
   if (reused) return reused
 
@@ -172,9 +166,7 @@ function resolveHybridSessionAccount(
   return selected
 }
 
-export function selectAccount(input: SelectAccountInput):
-  | AccountRecord
-  | undefined {
+export function selectAccount(input: SelectAccountInput): AccountRecord | undefined {
   const { accounts, now, activeIdentityKey } = input
   const strategy: RotationStrategy = input.strategy ?? "sticky"
 
@@ -190,9 +182,7 @@ export function selectAccount(input: SelectAccountInput):
   }
 
   const activeIndex =
-    activeIdentityKey == null
-      ? -1
-      : eligible.findIndex((acc) => acc.identityKey === activeIdentityKey)
+    activeIdentityKey == null ? -1 : eligible.findIndex((acc) => acc.identityKey === activeIdentityKey)
 
   if (strategy === "sticky") {
     const stickySessionAccount =
@@ -263,8 +253,7 @@ export function selectAccount(input: SelectAccountInput):
       const candidateLastUsed = candidate.lastUsed ?? 0
       if (
         candidateLastUsed < selectedLastUsed ||
-        (candidateLastUsed === selectedLastUsed &&
-          (candidate.identityKey ?? "") < (selected.identityKey ?? ""))
+        (candidateLastUsed === selectedLastUsed && (candidate.identityKey ?? "") < (selected.identityKey ?? ""))
       ) {
         selected = candidate
         selectedLastUsed = candidateLastUsed

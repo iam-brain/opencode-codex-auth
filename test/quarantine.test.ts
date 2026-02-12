@@ -40,7 +40,7 @@ describe("quarantine", () => {
 
     const files = await fs.readdir(quarantineDir)
     expect(files.length).toBe(5)
-    
+
     // Check that we kept the newest ones (1006 to 1010)
     files.sort()
     expect(files[0]).toContain("1006")

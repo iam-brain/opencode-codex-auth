@@ -59,9 +59,8 @@ async function loadFetchForToast(input: { authFile: MockAuthFile; tui: Record<st
   const listOpenAIOAuthDomains = vi.fn((auth: MockAuthFile) =>
     (["native", "codex"] as const)
       .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(auth, mode) }))
-      .filter(
-        (entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
-          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
+      .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+        Boolean(entry.domain && Array.isArray(entry.domain.accounts))
       )
   )
 
@@ -87,10 +86,9 @@ async function loadFetchForToast(input: { authFile: MockAuthFile; tui: Record<st
   const loader = hooks.auth?.loader
   if (!loader) throw new Error("Missing auth loader")
 
-  const loaded = await loader(
-    async () => ({ type: "oauth", refresh: "", access: "", expires: 0 } as never),
-    { models: { "gpt-5.2-codex": { id: "gpt-5.2-codex" } } } as never
-  )
+  const loaded = await loader(async () => ({ type: "oauth", refresh: "", access: "", expires: 0 }) as never, {
+    models: { "gpt-5.2-codex": { id: "gpt-5.2-codex" } }
+  } as never)
 
   return loaded
 }
@@ -104,17 +102,17 @@ describe("codex-native toast binding", () => {
     const calls: Array<{ body?: { message?: string; variant?: string } }> = []
     const tui = {
       _client: { connected: true },
-      async showToast(
-        this: { _client?: unknown },
-        payload: { body?: { message?: string; variant?: string } }
-      ) {
+      async showToast(this: { _client?: unknown }, payload: { body?: { message?: string; variant?: string } }) {
         if (!this._client) throw new Error("missing_client_context")
         calls.push(payload)
         return {}
       }
     }
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    )
 
     const loaded = await loadFetchForToast({
       tui,

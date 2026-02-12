@@ -87,14 +87,10 @@ describe("session affinity storage", () => {
       hybridBySessionKey: new Map([["ses_stale", "id_stale"]])
     }
 
-    const removed = await pruneSessionAffinitySnapshot(
-      snapshot,
-      async () => false,
-      {
-        now: 1200,
-        missingGraceMs: 500
-      }
-    )
+    const removed = await pruneSessionAffinitySnapshot(snapshot, async () => false, {
+      now: 1200,
+      missingGraceMs: 500
+    })
 
     expect(removed).toBe(1)
     expect(snapshot.seenSessionKeys.has("ses_recent")).toBe(true)

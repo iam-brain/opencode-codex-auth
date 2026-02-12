@@ -121,24 +121,22 @@ describe("codex-native review hotswap", () => {
   })
 
   it("uses session message lookup when model is absent", async () => {
-    const hooks = await CodexAuthPlugin(
-      {
-        client: {
-          session: {
-            messages: async () => ({
-              data: [
-                {
-                  info: {
-                    role: "user",
-                    model: { providerID: "openai", modelID: "gpt-5.3-codex" }
-                  }
+    const hooks = await CodexAuthPlugin({
+      client: {
+        session: {
+          messages: async () => ({
+            data: [
+              {
+                info: {
+                  role: "user",
+                  model: { providerID: "openai", modelID: "gpt-5.3-codex" }
                 }
-              ]
-            })
-          }
+              }
+            ]
+          })
         }
-      } as never
-    )
+      }
+    } as never)
     const chatMessage = hooks["chat.message"]
     expect(chatMessage).toBeTypeOf("function")
 
