@@ -11,11 +11,13 @@ import { CodexAuthPlugin, refreshAccessToken } from "./lib/codex-native"
 import {
   ensureDefaultConfigFile,
   getCompatInputSanitizerEnabled,
+  getCodexCompactionOverrideEnabled,
   getCustomSettings,
   getDebugEnabled,
   getHeaderTransformDebugEnabled,
   getHeaderSnapshotsEnabled,
   getMode,
+  getRemapDeveloperMessagesToUserEnabled,
   getRotationStrategy,
   getPidOffsetEnabled,
   getPersonality,
@@ -27,7 +29,6 @@ import {
   resolveConfig
 } from "./lib/config"
 import { createLogger } from "./lib/logger"
-import { reconcileOrchestratorAgentsState } from "./lib/orchestrator-agents"
 import { generatePersonaSpec } from "./lib/persona-tool"
 import { createPersonalityFile } from "./lib/personality-create"
 import { installCreatePersonalityCommand } from "./lib/personality-command"
@@ -55,22 +56,6 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
   })
   const runtimeMode = getMode(cfg)
   const log = createLogger({ debug: getDebugEnabled(cfg) })
-
-  try {
-    const reconcile = await reconcileOrchestratorAgentsState({
-      enabled: runtimeMode === "collab"
-    })
-    if (reconcile.renamed.length > 0) {
-      log.debug("orchestrator agent state reconciled", {
-        enabled: reconcile.enabled,
-        renamed: reconcile.renamed.length
-      })
-    }
-  } catch (error) {
-    log.debug("orchestrator agent state reconcile failed", {
-      error: error instanceof Error ? error.message : String(error)
-    })
-  }
 
   if (getProactiveRefreshEnabled(cfg)) {
     const bufferMs = getProactiveRefreshBufferMs(cfg)
@@ -101,6 +86,8 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     rotationStrategy: getRotationStrategy(cfg),
     spoofMode: getSpoofMode(cfg),
     compatInputSanitizer: getCompatInputSanitizerEnabled(cfg),
+    remapDeveloperMessagesToUser: getRemapDeveloperMessagesToUserEnabled(cfg),
+    codexCompactionOverride: getCodexCompactionOverrideEnabled(cfg),
     headerSnapshots: getHeaderSnapshotsEnabled(cfg),
     headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
     customSettings: getCustomSettings(cfg)

@@ -1,36 +1,35 @@
 # Documentation
 
-This directory is the canonical documentation set for `@iam-brain/opencode-codex-auth`.
+This directory contains user and developer documentation for `opencode-codex-auth`.
 
 ## Start here
 
-- `getting-started.md` for install, login, and first request.
-- `configuration.md` for runtime config and environment variable reference.
-- `accounts-and-rotation.md` for account selection, failover, and auth menu operations.
+- `getting-started.md` for install/login/first-run.
+- `configuration.md` for the complete setting-variable reference (all config keys + env vars).
 
 ## User guides
 
 - `getting-started.md`
 - `configuration.md`
-- `accounts-and-rotation.md`
+- `multi-account.md`
 - `troubleshooting.md`
-- `privacy-and-data-handling.md`
+- `privacy.md`
+- `releasing.md`
+- `examples/README.md`
 
-## Maintainer guides
+## Schemas
 
-- `maintainers/releasing.md`
-- `maintainers/documentation-standards.md`
-
-## Development internals
-
-- `development/architecture.md`
-- `development/config-internals.md`
-- `development/testing.md`
-
-## Examples and schemas
-
-- `examples/opencode.json`
-- `examples/codex-config.json`
 - `../schemas/codex-config.schema.json`
 - `../schemas/opencode.schema.json`
 - `../schemas/codex-accounts.schema.json`
+
+## Developer guides
+
+- `development/ARCHITECTURE.md`
+- `development/CONFIG_FLOW.md`
+- `development/CONFIG_FIELDS.md`
+- `development/TESTING.md`
+
+## Local planning and research
+
+`docs/plans/` and `docs/research/` are local workflow directories and may be managed outside the main repository history.

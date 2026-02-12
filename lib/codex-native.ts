@@ -46,18 +46,9 @@ import {
   resolveInstructionsForModel,
   type CodexModelInfo
 } from "./model-catalog"
-import { CODEX_RS_COMPACT_PROMPT } from "./orchestrator-agents"
 import { fetchQuotaSnapshotFromBackend } from "./codex-quota-fetch"
 import { createRequestSnapshots } from "./request-snapshots"
 import { CODEX_OAUTH_SUCCESS_HTML } from "./oauth-pages"
-import {
-  mergeInstructions,
-  resolveCollaborationInstructions,
-  resolveCollaborationModeKind,
-  resolveCollaborationProfile,
-  resolveHookAgentName,
-  resolveSubagentHeaderValue
-} from "./codex-native/collaboration"
 import {
   applyCatalogInstructionOverrideToRequest,
   applyCodexRuntimeDefaultsToParams,
@@ -65,6 +56,7 @@ import {
   getModelLookupCandidates,
   getModelThinkingSummariesOverride,
   getVariantLookupCandidates,
+  remapDeveloperMessagesToUserOnRequest,
   resolvePersonalityForModel,
   sanitizeOutboundRequestIfNeeded
 } from "./codex-native/request-transform"
@@ -123,27 +115,6 @@ const AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS = 30_000
 const AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS = 5000
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
-const CODEX_PLAN_MODE_INSTRUCTIONS = [
-  "# Plan Mode",
-  "",
-  "You are in Plan Mode. Focus on producing a decision-complete implementation plan before making code changes.",
-  "Use non-mutating exploration first, ask focused questions only when needed, and make assumptions explicit.",
-  "If asked to execute while still in plan mode, continue planning until the active agent switches out of plan mode."
-].join("\n")
-const CODEX_CODE_MODE_INSTRUCTIONS = "you are now in code mode."
-const CODEX_EXECUTE_MODE_INSTRUCTIONS = [
-  "# Collaboration Style: Execute",
-  "You execute on a well-specified task independently and report progress.",
-  "",
-  "You do not collaborate on decisions in this mode. You execute end-to-end.",
-  "You make reasonable assumptions when the user hasn't specified something, and you proceed without asking questions."
-].join("\n")
-const CODEX_PAIR_PROGRAMMING_MODE_INSTRUCTIONS = [
-  "# Collaboration Style: Pair Programming",
-  "",
-  "## Build together as you go",
-  "You treat collaboration as pairing by default. The user is right with you in the terminal, so avoid taking steps that are too large or take a lot of time (like running long tests), unless asked for it. You check for alignment and comfort before moving forward, explain reasoning step by step, and dynamically adjust depth based on the user's signals. There is no need to ask multiple rounds of questions—build as you go. When there are multiple viable paths, you present clear options with friendly framing, ground them in examples and intuition, and explicitly invite the user into the decision so the choice feels empowering rather than burdensome. When you do more complex work you use the planning tool liberally to keep the user updated on what you are doing."
-].join("\n")
 
 const STATIC_FALLBACK_MODELS = [
   "gpt-5.1-codex-max",
@@ -153,6 +124,17 @@ const STATIC_FALLBACK_MODELS = [
   "gpt-5.3-codex",
   "gpt-5.1-codex"
 ]
+
+const CODEX_RS_COMPACT_PROMPT = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
+
+Include:
+- Current progress and key decisions made
+- Important context, constraints, or user preferences
+- What remains to be done (clear next steps)
+- Any critical data, examples, or references needed to continue
+
+Be concise, structured, and focused on helping the next LLM seamlessly continue the work.
+`
 
 const CODEX_RS_COMPACT_SUMMARY_PREFIX =
   "Another language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:"
@@ -273,9 +255,6 @@ export const __testOnly = {
   resolveRequestUserAgent,
   resolveCodexClientVersion,
   refreshCodexClientVersionFromGitHub,
-  resolveHookAgentName,
-  resolveCollaborationModeKind,
-  resolveSubagentHeaderValue,
   isOAuthDebugEnabled,
   stopOAuthServer
 }
@@ -844,6 +823,8 @@ export type CodexAuthPluginOptions = {
   rotationStrategy?: RotationStrategy
   spoofMode?: CodexSpoofMode
   compatInputSanitizer?: boolean
+  remapDeveloperMessagesToUser?: boolean
+  codexCompactionOverride?: boolean
   headerSnapshots?: boolean
   headerTransformDebug?: boolean
 }
@@ -865,13 +846,10 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       ? "codex"
       : "native"
   const runtimeMode: PluginRuntimeMode =
-    opts.mode === "collab" || opts.mode === "codex" || opts.mode === "native"
-      ? opts.mode
-      : spoofMode === "codex"
-        ? "codex"
-        : "native"
-  const collabModeEnabled = runtimeMode === "collab"
+    opts.mode === "codex" || opts.mode === "native" ? opts.mode : spoofMode === "codex" ? "codex" : "native"
   const authMode: OpenAIAuthMode = modeForRuntimeMode(runtimeMode)
+  const remapDeveloperMessagesToUserEnabled = spoofMode === "codex" && opts.remapDeveloperMessagesToUser !== false
+  const codexCompactionOverrideEnabled = runtimeMode === "codex" && opts.codexCompactionOverride === true
   void refreshCodexClientVersionFromGitHub(opts.log).catch(() => {})
   const resolveCatalogHeaders = (): {
     originator: string
@@ -1313,12 +1291,9 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           apiKey: OAUTH_DUMMY_KEY,
           async fetch(requestInput: string | URL | Request, init?: RequestInit) {
             const baseRequest = new Request(requestInput, init)
-            const inboundCollaborationModeKind =
-              baseRequest.headers.get(INTERNAL_COLLABORATION_MODE_HEADER) ?? undefined
             if (opts.headerTransformDebug === true) {
               await requestSnapshots.captureRequest("before-header-transform", baseRequest, {
-                spoofMode,
-                ...(inboundCollaborationModeKind ? { collaborationModeKind: inboundCollaborationModeKind } : {})
+                spoofMode
               })
             }
             let outbound = new Request(rewriteUrl(baseRequest), baseRequest)
@@ -1336,8 +1311,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
             } else {
               outbound.headers.set("user-agent", resolveRequestUserAgent(spoofMode, outboundOriginator))
             }
-            const collaborationModeKind = outbound.headers.get(INTERNAL_COLLABORATION_MODE_HEADER)
-            if (collaborationModeKind) {
+            if (outbound.headers.has(INTERNAL_COLLABORATION_MODE_HEADER)) {
               outbound.headers.delete(INTERNAL_COLLABORATION_MODE_HEADER)
             }
             const instructionOverride = await applyCatalogInstructionOverrideToRequest({
@@ -1347,7 +1321,11 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
               customSettings: opts.customSettings,
               fallbackPersonality: opts.personality
             })
-            outbound = instructionOverride.request
+            const developerRoleRemap = await remapDeveloperMessagesToUserOnRequest({
+              request: instructionOverride.request,
+              enabled: remapDeveloperMessagesToUserEnabled
+            })
+            outbound = developerRoleRemap.request
             const subagentHeader = outbound.headers.get("x-openai-subagent")?.trim()
             const isSubagentRequest = Boolean(subagentHeader)
             if (opts.headerTransformDebug === true) {
@@ -1355,16 +1333,16 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
                 spoofMode,
                 instructionsOverridden: instructionOverride.changed,
                 instructionOverrideReason: instructionOverride.reason,
-                ...(collaborationModeKind ? { collaborationModeKind } : {}),
+                developerMessagesRemapped: developerRoleRemap.changed,
+                developerMessageRemapReason: developerRoleRemap.reason,
+                developerMessageRemapCount: developerRoleRemap.remappedCount,
+                developerMessagePreservedCount: developerRoleRemap.preservedCount,
                 ...(isSubagentRequest ? { subagent: subagentHeader } : {})
               })
             }
             let selectedIdentityKey: string | undefined
 
-            await requestSnapshots.captureRequest("before-auth", outbound, {
-              spoofMode,
-              ...(collaborationModeKind ? { collaborationModeKind } : {})
-            })
+            await requestSnapshots.captureRequest("before-auth", outbound, { spoofMode })
 
             const orchestrator = new FetchOrchestrator({
               acquireAuth: async (context) => {
@@ -1666,7 +1644,11 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
                   customSettings: opts.customSettings,
                   fallbackPersonality: opts.personality
                 })
-                await requestSnapshots.captureRequest("outbound-attempt", instructionOverride.request, {
+                const developerRoleRemap = await remapDeveloperMessagesToUserOnRequest({
+                  request: instructionOverride.request,
+                  enabled: remapDeveloperMessagesToUserEnabled
+                })
+                await requestSnapshots.captureRequest("outbound-attempt", developerRoleRemap.request, {
                   attempt: attempt + 1,
                   maxAttempts,
                   sessionKey,
@@ -1674,9 +1656,12 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
                   accountLabel: auth.accountLabel,
                   instructionsOverridden: instructionOverride.changed,
                   instructionOverrideReason: instructionOverride.reason,
-                  ...(collaborationModeKind ? { collaborationModeKind } : {})
+                  developerMessagesRemapped: developerRoleRemap.changed,
+                  developerMessageRemapReason: developerRoleRemap.reason,
+                  developerMessageRemapCount: developerRoleRemap.remappedCount,
+                  developerMessagePreservedCount: developerRoleRemap.preservedCount
                 })
-                return instructionOverride.request
+                return developerRoleRemap.request
               },
               onAttemptResponse: async ({ attempt, maxAttempts, response, auth, sessionKey }) => {
                 await requestSnapshots.captureResponse("outbound-response", response, {
@@ -1684,8 +1669,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
                   maxAttempts,
                   sessionKey,
                   identityKey: auth.identityKey,
-                  accountLabel: auth.accountLabel,
-                  ...(collaborationModeKind ? { collaborationModeKind } : {})
+                  accountLabel: auth.accountLabel
                 })
               }
             })
@@ -1699,8 +1683,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
             }
             await requestSnapshots.captureRequest("after-sanitize", sanitizedOutbound.request, {
               spoofMode,
-              sanitized: sanitizedOutbound.changed,
-              ...(collaborationModeKind ? { collaborationModeKind } : {})
+              sanitized: sanitizedOutbound.changed
             })
             try {
               assertAllowedOutboundUrl(new URL(sanitizedOutbound.request.url))
@@ -2002,8 +1985,6 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     },
     "chat.params": async (hookInput, output) => {
       if (hookInput.model.providerID !== "openai") return
-      const initialReasoningEffort = asString(output.options.reasoningEffort)
-      const collaborationProfile = collabModeEnabled ? resolveCollaborationProfile(hookInput.agent) : { enabled: false }
       const modelOptions = isRecord(hookInput.model.options) ? hookInput.model.options : {}
       const modelCandidates = getModelLookupCandidates({
         id: hookInput.model.id,
@@ -2060,32 +2041,9 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         preferCodexInstructions: spoofMode === "codex",
         output
       })
-
-      if (collabModeEnabled && collaborationProfile.enabled && collaborationProfile.kind) {
-        const collaborationModeKind = collaborationProfile.kind
-        const collaborationInstructions = resolveCollaborationInstructions(collaborationModeKind, {
-          plan: CODEX_PLAN_MODE_INSTRUCTIONS,
-          code: CODEX_CODE_MODE_INSTRUCTIONS,
-          execute: CODEX_EXECUTE_MODE_INSTRUCTIONS,
-          pairProgramming: CODEX_PAIR_PROGRAMMING_MODE_INSTRUCTIONS
-        })
-        const mergedInstructions = mergeInstructions(asString(output.options.instructions), collaborationInstructions)
-        if (mergedInstructions) {
-          output.options.instructions = mergedInstructions
-        }
-        if (initialReasoningEffort === undefined) {
-          if (collaborationModeKind === "plan" || collaborationModeKind === "pair_programming") {
-            output.options.reasoningEffort = "medium"
-          } else if (collaborationModeKind === "execute") {
-            output.options.reasoningEffort = "high"
-          }
-        }
-      }
     },
     "chat.headers": async (hookInput, output) => {
       if (hookInput.model.providerID !== "openai") return
-      const collaborationProfile = collabModeEnabled ? resolveCollaborationProfile(hookInput.agent) : { enabled: false }
-      const collaborationModeKind = collaborationProfile.enabled ? collaborationProfile.kind : undefined
       const originator = resolveCodexOriginator(spoofMode)
       output.headers.originator = originator
       output.headers["User-Agent"] = resolveRequestUserAgent(spoofMode, originator)
@@ -2097,42 +2055,32 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         output.headers.session_id = hookInput.sessionID
         delete output.headers["OpenAI-Beta"]
         delete output.headers.conversation_id
-        const subagentHeader = collaborationProfile.enabled ? resolveSubagentHeaderValue(hookInput.agent) : undefined
-        if (subagentHeader) {
-          output.headers["x-openai-subagent"] = subagentHeader
-        } else {
-          delete output.headers["x-openai-subagent"]
-        }
-        if (collaborationModeKind) {
-          output.headers[INTERNAL_COLLABORATION_MODE_HEADER] = collaborationModeKind
-        } else {
-          delete output.headers[INTERNAL_COLLABORATION_MODE_HEADER]
-        }
+        delete output.headers["x-openai-subagent"]
+        delete output.headers[INTERNAL_COLLABORATION_MODE_HEADER]
       }
     },
-"experimental.session.compacting": async (hookInput, output) => {
-  if (runtimeMode !== "codex") return
-  if (await sessionUsesOpenAIProvider(input.client, hookInput.sessionID)) {
-    output.prompt = CODEX_RS_COMPACT_PROMPT
-    codexCompactionSummaryPrefixSessions.add(hookInput.sessionID)
-  }
-},
-"experimental.text.complete": async (hookInput, output) => {
-  if (runtimeMode !== "codex") return
-  if (!codexCompactionSummaryPrefixSessions.has(hookInput.sessionID)) return
+    "experimental.session.compacting": async (hookInput, output) => {
+      if (!codexCompactionOverrideEnabled) return
+      if (await sessionUsesOpenAIProvider(input.client, hookInput.sessionID)) {
+        output.prompt = CODEX_RS_COMPACT_PROMPT
+        codexCompactionSummaryPrefixSessions.add(hookInput.sessionID)
+      }
+    },
+    "experimental.text.complete": async (hookInput, output) => {
+      if (!codexCompactionOverrideEnabled) return
+      if (!codexCompactionSummaryPrefixSessions.has(hookInput.sessionID)) return
 
-  const info = await readSessionMessageInfo(input.client, hookInput.sessionID, hookInput.messageID)
-  codexCompactionSummaryPrefixSessions.delete(hookInput.sessionID)
-  if (!info) return
-  if (asString(info.role) !== "assistant") return
-  if (asString(info.agent) !== "compaction") return
-  if (info.summary !== true) return
-  if (getMessageProviderID(info) !== "openai") return
-  if (output.text.startsWith(CODEX_RS_COMPACT_SUMMARY_PREFIX)) return
+      const info = await readSessionMessageInfo(input.client, hookInput.sessionID, hookInput.messageID)
+      codexCompactionSummaryPrefixSessions.delete(hookInput.sessionID)
+      if (!info) return
+      if (asString(info.role) !== "assistant") return
+      if (asString(info.agent) !== "compaction") return
+      if (info.summary !== true) return
+      if (getMessageProviderID(info) !== "openai") return
+      if (output.text.startsWith(CODEX_RS_COMPACT_SUMMARY_PREFIX)) return
 
-  output.text = `${CODEX_RS_COMPACT_SUMMARY_PREFIX}\n${output.text.trimStart()}`
-}
-
+      output.text = `${CODEX_RS_COMPACT_SUMMARY_PREFIX}\n${output.text.trimStart()}`
+    }
   }
 
   async function persistOAuthTokens(tokens: TokenResponse): Promise<void> {

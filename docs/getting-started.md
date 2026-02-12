@@ -1,6 +1,6 @@
-# Getting Started
+# Getting started
 
-This guide covers install, login, optional account transfer, and first request verification.
+This guide covers install, login, migration transfer, and first verification.
 
 ## Prerequisites
 
@@ -9,25 +9,31 @@ This guide covers install, login, optional account transfer, and first request v
 
 ## 1) Install the plugin
 
+Published install:
+
 ```bash
 npx -y @iam-brain/opencode-codex-auth
 ```
 
-Installer behavior (`lib/installer-cli.ts`, `lib/opencode-install.ts`, `lib/config.ts`):
+What this does:
 
-- Adds `@iam-brain/opencode-codex-auth@latest` to `~/.config/opencode/opencode.json`.
-- Creates `~/.config/opencode/codex-config.json` if missing.
-- Synchronizes `/create-personality` command template and `personality-builder` skill files.
+- Adds `@iam-brain/opencode-codex-auth@latest` to `~/.config/opencode/opencode.json`
+- Installs Codex collab agents to `~/.config/opencode/agents/` as `*.md.disabled`
+- Creates `~/.config/opencode/codex-config.json` if missing
+- Synchronizes `/create-personality` command at `~/.config/opencode/commands/create-personality.md`
+- Synchronizes `personality-builder` skill at `~/.config/opencode/skills/personality-builder/SKILL.md`
 
-Re-run installer (idempotent):
+To install only the agent templates (no `opencode.json` edits):
 
 ```bash
-npx -y @iam-brain/opencode-codex-auth install
+npx -y @iam-brain/opencode-codex-auth install-agents
 ```
 
-## 2) Keep `opencode.json` minimal
+## 2) Keep OpenCode config minimal
 
-Use only plugin registration in `~/.config/opencode/opencode.json`:
+`opencode.json` should contain plugin enablement only.
+
+Example:
 
 ```json
 {
@@ -35,12 +41,16 @@ Use only plugin registration in `~/.config/opencode/opencode.json`:
 }
 ```
 
-Put plugin runtime behavior in `~/.config/opencode/codex-config.json`.
+Put all plugin behavior flags in:
 
-Use examples:
+- `~/.config/opencode/codex-config.json`
 
-- `docs/examples/opencode.json`
-- `docs/examples/codex-config.json`
+Use `docs/examples/codex-config.json` as a baseline.
+Use schemas for autocomplete/validation:
+
+- `schemas/codex-config.schema.json`
+- `schemas/opencode.schema.json`
+- `schemas/codex-accounts.schema.json`
 
 ## 3) Authenticate
 
@@ -48,36 +58,40 @@ Use examples:
 opencode auth login
 ```
 
-Account manager supports:
+Account manager highlights:
 
-- adding multiple accounts in one session
-- quota checks (`5h`, `Weekly`, `Credits`)
-- enable/disable
-- token refresh
-- scoped delete and delete-all
+- Add multiple accounts in one run (`Add new account` returns to menu)
+- Check live quotas (`5h`, `Weekly`, `Credits`)
+- Enable/disable accounts
+- Refresh tokens
+- Scoped delete and delete-all actions
 
-Auth menu behavior source: `lib/codex-native.ts`, `lib/ui/auth-menu-runner.ts`.
+## 4) Optional migration transfer
 
-## 4) Optional transfer from legacy/native stores
+Legacy import is explicit, not automatic.
 
-Legacy transfer is explicit and only offered when `codex-accounts.json` is missing (`lib/storage.ts`).
+If `codex-accounts.json` is missing and legacy sources exist, the auth menu offers:
 
-Import candidates:
+- `Transfer OpenAI accounts from native & old plugins?`
+
+Import sources:
 
 - `~/.config/opencode/openai-codex-accounts.json`
 - `~/.local/share/opencode/auth.json`
 
-Coverage: `test/storage.test.ts`.
-
-## 5) Verify with a real request
+## 5) Verify with a real run
 
 ```bash
-opencode run "say hi" --model=openai/gpt-5
+opencode run "say hi" --model=openai/gpt-5.2
 ```
 
-If that model is unavailable, use another available `openai/*` model.
+If your account has access:
 
-## 6) Optional custom personality
+```bash
+opencode run "say hi" --model=openai/gpt-5.3-codex
+```
+
+## 6) Create a custom personality (optional)
 
 Run:
 
@@ -85,9 +99,37 @@ Run:
 /create-personality
 ```
 
-This writes to:
+This guided flow writes a profile into:
 
-- `.opencode/personalities/<key>.md` (project scope)
+- `.opencode/personalities/<key>.md` (project scope), or
 - `~/.config/opencode/personalities/<key>.md` (global scope)
 
-Implementation source: `lib/personality-command.ts`, `lib/personality-skill.ts`, `index.ts`.
+## Mode + agent behavior
+
+Runtime mode is configured in `codex-config.json`.
+
+- `native`: default
+- `codex`
+- `collab` (WIP / untested)
+
+Agent files are reconciled at plugin startup:
+
+- `collab`: Codex agents are enabled (`.md`)
+- non-collab: Codex agents are disabled (`.md.disabled`)
+- `/create-personality` command is refreshed to the managed latest template
+- `personality-builder` skill bundle is refreshed to the managed latest template
+
+## Local development install
+
+```bash
+npm install
+npm run build
+```
+
+Then use a file plugin path in your local `opencode.json`:
+
+```json
+{
+  "plugin": ["file:///absolute/path/to/opencode-codex-auth/dist"]
+}
+```

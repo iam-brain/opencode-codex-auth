@@ -347,6 +347,147 @@ export async function sanitizeOutboundRequestIfNeeded(
   return { request: sanitizedRequest, changed: true }
 }
 
+function messageContentToText(value: unknown): string {
+  if (typeof value === "string") return value
+  if (!Array.isArray(value)) return ""
+  const parts: string[] = []
+  for (const entry of value) {
+    if (!isRecord(entry)) continue
+    if (typeof entry.text === "string" && entry.text.trim().length > 0) {
+      parts.push(entry.text)
+    }
+  }
+  return parts.join("\n")
+}
+
+function shouldPreserveDeveloperRole(item: Record<string, unknown>): boolean {
+  const text = messageContentToText(item.content).toLowerCase()
+  if (!text) return false
+  return (
+    text.includes("<permissions instructions>") ||
+    text.includes("filesystem sandboxing defines which files can be read or written")
+  )
+}
+
+export async function remapDeveloperMessagesToUserOnRequest(input: { request: Request; enabled: boolean }): Promise<{
+  request: Request
+  changed: boolean
+  reason: string
+  remappedCount: number
+  preservedCount: number
+}> {
+  if (!input.enabled) {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "disabled",
+      remappedCount: 0,
+      preservedCount: 0
+    }
+  }
+
+  const method = input.request.method.toUpperCase()
+  if (method !== "POST") {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "non_post",
+      remappedCount: 0,
+      preservedCount: 0
+    }
+  }
+
+  let payload: unknown
+  try {
+    const raw = await input.request.clone().text()
+    if (!raw) {
+      return {
+        request: input.request,
+        changed: false,
+        reason: "empty_body",
+        remappedCount: 0,
+        preservedCount: 0
+      }
+    }
+    payload = JSON.parse(raw)
+  } catch {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "invalid_json",
+      remappedCount: 0,
+      preservedCount: 0
+    }
+  }
+
+  if (!isRecord(payload)) {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "non_object_body",
+      remappedCount: 0,
+      preservedCount: 0
+    }
+  }
+  if (!Array.isArray(payload.input)) {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "missing_input_array",
+      remappedCount: 0,
+      preservedCount: 0
+    }
+  }
+
+  let nextInput: unknown[] | undefined
+  let remappedCount = 0
+  let preservedCount = 0
+  let developerCount = 0
+  for (let index = 0; index < payload.input.length; index += 1) {
+    const item = payload.input[index]
+    if (!isRecord(item)) continue
+    if (item.role !== "developer") continue
+    developerCount += 1
+    if (shouldPreserveDeveloperRole(item)) {
+      preservedCount += 1
+      continue
+    }
+    if (!nextInput) nextInput = payload.input.slice()
+    nextInput[index] = {
+      ...item,
+      role: "user"
+    }
+    remappedCount += 1
+  }
+
+  if (!nextInput) {
+    return {
+      request: input.request,
+      changed: false,
+      reason: developerCount === 0 ? "no_developer_messages" : "permissions_only",
+      remappedCount,
+      preservedCount
+    }
+  }
+
+  payload.input = nextInput
+  const headers = new Headers(input.request.headers)
+  headers.set("content-type", "application/json")
+  const updatedRequest = new Request(input.request.url, {
+    method: input.request.method,
+    headers,
+    body: JSON.stringify(payload),
+    redirect: input.request.redirect
+  })
+  return {
+    request: updatedRequest,
+    changed: true,
+    reason: "updated",
+    remappedCount,
+    preservedCount
+  }
+}
+
 function getVariantCandidatesFromBody(input: { body: Record<string, unknown>; modelSlug: string }): string[] {
   const out: string[] = []
   const seen = new Set<string>()

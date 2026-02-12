@@ -10,6 +10,7 @@
     "mode": "native",
     "rotationStrategy": "sticky",
     "sanitizeInputs": false,
+    "developerMessagesToUser": true,
     "headerSnapshots": false,
     "headerTransformDebug": false,
     "pidOffset": false

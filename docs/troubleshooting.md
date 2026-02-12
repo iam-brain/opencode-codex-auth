@@ -1,100 +1,95 @@
 # Troubleshooting
 
-## Fast diagnostics
+## Quick checks
 
-Check install and config:
+1. Confirm plugin is installed in `~/.config/opencode/opencode.json`.
+2. Confirm config exists at `~/.config/opencode/codex-config.json`.
+3. Confirm auth files exist:
+   - `~/.local/share/opencode/auth.json`
+   - `~/.config/opencode/codex-accounts.json`
+4. Confirm cache files exist (created on demand):
+   - `~/.config/opencode/cache/codex-session-affinity.json`
+   - `~/.config/opencode/cache/codex-snapshots.json`
 
-1. `~/.config/opencode/opencode.json` contains `@iam-brain/opencode-codex-auth@latest`.
-2. `~/.config/opencode/codex-config.json` exists.
-3. `opencode auth login` opens the account manager.
+## Common issues
 
-Check plugin-owned storage files:
+### Login appears stuck on callback wait
 
-- `~/.config/opencode/codex-accounts.json`
-- `~/.config/opencode/cache/codex-session-affinity.json` (created on demand)
-- `~/.config/opencode/cache/codex-snapshots.json` (created on demand)
+- Ensure port `1455` is free.
+- Close other auth flows (Codex/OpenCode) and retry.
 
-## Login stuck waiting for callback
+### OpenAI model not found / API key missing
 
-Symptoms: browser flow starts but callback does not complete.
+- Re-run `opencode auth login`.
+- Verify both auth files above exist and are readable.
+- Confirm your selected model slug exists in provider model list.
 
-Checks:
+### `/create-personality` command not found
 
-- Ensure local port `1455` is available (`lib/codex-native.ts`).
-- Close other active OAuth flows and retry.
-- If running headless, use the headless auth method in the menu.
+- Re-run installer: `npx -y @iam-brain/opencode-codex-auth`
+- Verify file exists: `~/.config/opencode/commands/create-personality.md`
+- Restart OpenCode so command discovery refreshes.
 
-Optional timeout controls:
+### `personality-builder` skill missing
+
+- Re-run installer: `npx -y @iam-brain/opencode-codex-auth`
+- Verify file exists: `~/.config/opencode/skills/personality-builder/SKILL.md`
+
+### Quota output shows `Unknown`
+
+Usually means either:
+
+- account expired and needs re-auth, or
+- backend did not return reset timestamp for that window.
+
+Fix:
+
+- open account manager
+- run per-account `Refresh token`
+- run `Check quotas` again
+
+### Refresh token rejected (`invalid_grant`)
+
+Meaning:
+
+- request exhausted healthy candidates and at least one account requires re-auth.
+
+Fix:
+
+- reauthenticate affected accounts via `opencode auth login`
+- disable repeatedly failing accounts temporarily
+
+### Delete-all appears to repopulate
+
+Expected behavior:
+
+- existing `codex-accounts.json` (including empty `accounts: []`) is authoritative.
+
+If accounts reappear:
+
+- check for multiple plugin installs writing concurrently
+- check external scripts touching auth files
+
+## Debug mode
+
+Enable:
+
+- `OPENCODE_OPENAI_MULTI_DEBUG=1`
+- or `DEBUG_CODEX_PLUGIN=1`
+- `CODEX_AUTH_DEBUG=1` (OAuth lifecycle logs; supports `true|yes|on`)
+
+Optional request/response snapshots:
+
+- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true`
+- `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG=true` (adds `before-header-transform` and `after-header-transform`)
+- output in `~/.config/opencode/logs/codex-plugin/`
+
+Optional OAuth timing controls:
 
 - `CODEX_OAUTH_CALLBACK_TIMEOUT_MS`
 - `CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS`
 - `CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS`
 
-## `invalid_grant` or repeated refresh failures
+Sensitive auth headers/tokens are redacted in snapshot logs.
 
-Meaning: refresh token is rejected for at least one account.
-
-Actions:
-
-1. Run `opencode auth login`.
-2. Re-authenticate affected account.
-3. Disable repeatedly failing accounts until replaced.
-
-Behavior source: `lib/codex-native.ts`, `lib/proactive-refresh.ts`.
-
-## All accounts rate-limited
-
-When all candidates are exhausted, requests return synthetic `429` with guidance (`lib/fetch-orchestrator.ts`).
-
-Actions:
-
-- wait until cooldown expires
-- add another account
-- verify cooldown logic in account status output
-
-## Model not available
-
-Actions:
-
-- Retry with another available `openai/*` model.
-- Re-run `opencode auth login` and verify account is enabled.
-- Check catalog refresh behavior in logs if debug is enabled.
-
-Sources: `lib/codex-native.ts`, `lib/model-catalog.ts`.
-
-## `/create-personality` or `personality-builder` missing
-
-Re-run installer:
-
-```bash
-npx -y @iam-brain/opencode-codex-auth install
-```
-
-Expected files:
-
-- `~/.config/opencode/commands/create-personality.md`
-- `~/.config/opencode/skills/personality-builder/SKILL.md`
-
-Source: `lib/installer-cli.ts`, `lib/personality-command.ts`, `lib/personality-skill.ts`.
-
-## Debug logging
-
-Plugin debug:
-
-- `OPENCODE_OPENAI_MULTI_DEBUG=1`
-- `DEBUG_CODEX_PLUGIN=1`
-
-OAuth lifecycle debug:
-
-- `CODEX_AUTH_DEBUG=1`
-
-Header/request snapshots:
-
-- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true`
-- `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG=true`
-
-Snapshot output path:
-
-- `~/.config/opencode/logs/codex-plugin/`
-
-Sensitive headers/tokens are redacted before persistence (`lib/request-snapshots.ts`, `test/request-snapshots.test.ts`).
+For complete config/env reference, see `docs/configuration.md`.

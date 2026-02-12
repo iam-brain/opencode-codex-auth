@@ -34,13 +34,19 @@
       "properties": {
         "mode": {
           "type": "string",
-          "enum": ["native", "codex", "collab"]
+          "enum": ["native", "codex"]
         },
         "rotationStrategy": {
           "type": "string",
           "enum": ["sticky", "hybrid", "round_robin"]
         },
         "sanitizeInputs": {
+          "type": "boolean"
+        },
+        "developerMessagesToUser": {
+          "type": "boolean"
+        },
+        "codexCompactionOverride": {
           "type": "boolean"
         },
         "headerSnapshots": {

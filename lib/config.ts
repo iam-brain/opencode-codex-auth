@@ -6,7 +6,7 @@ import type { RotationStrategy } from "./types"
 
 export type PersonalityOption = string
 export type CodexSpoofMode = "native" | "codex"
-export type PluginRuntimeMode = "native" | "codex" | "collab"
+export type PluginRuntimeMode = "native" | "codex"
 
 export type ModelBehaviorOverride = {
   options?: {
@@ -38,6 +38,8 @@ export type PluginConfig = {
   rotationStrategy?: RotationStrategy
   spoofMode?: CodexSpoofMode
   compatInputSanitizer?: boolean
+  remapDeveloperMessagesToUser?: boolean
+  codexCompactionOverride?: boolean
   headerSnapshots?: boolean
   headerTransformDebug?: boolean
   customSettings?: CustomSettings
@@ -57,6 +59,8 @@ export const DEFAULT_CODEX_CONFIG = {
     mode: "native",
     rotationStrategy: "sticky",
     sanitizeInputs: false,
+    developerMessagesToUser: true,
+    codexCompactionOverride: false,
     headerSnapshots: false,
     headerTransformDebug: false,
     pidOffset: false
@@ -93,7 +97,7 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
 
   "runtime": {
     // Request identity/profile mode.
-    // options: "native" | "codex" | "collab"
+    // options: "native" | "codex"
     // default: "native"
     "mode": "native",
 
@@ -106,6 +110,18 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // options: true | false
     // default: false
     "sanitizeInputs": false,
+
+    // Experimental: remap non-permissions developer messages to user role.
+    // Only applies when runtime.mode is "codex".
+    // options: true | false
+    // default: true
+    "developerMessagesToUser": true,
+
+    // Enable codex-rs compaction prompt + summary_prefix override.
+    // Only applies when runtime.mode is "codex".
+    // options: true | false
+    // default: false
+    "codexCompactionOverride": false,
 
     // Write request header snapshots to plugin logs.
     // options: true | false
@@ -265,7 +281,6 @@ function parseRuntimeMode(value: unknown): PluginRuntimeMode | undefined {
   const normalized = value.trim().toLowerCase()
   if (normalized === "native") return "native"
   if (normalized === "codex") return "codex"
-  if (normalized === "collab") return "collab"
   return undefined
 }
 
@@ -510,9 +525,17 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
   const quietMode = typeof raw.quiet === "boolean" ? raw.quiet : undefined
   const mode = parseRuntimeMode(isRecord(raw.runtime) ? raw.runtime.mode : undefined)
   const rotationStrategy = parseRotationStrategy(isRecord(raw.runtime) ? raw.runtime.rotationStrategy : undefined)
-  const spoofMode = mode === "native" ? "native" : mode === "codex" || mode === "collab" ? "codex" : undefined
+  const spoofMode = mode === "native" ? "native" : mode === "codex" ? "codex" : undefined
   const compatInputSanitizer =
     isRecord(raw.runtime) && typeof raw.runtime.sanitizeInputs === "boolean" ? raw.runtime.sanitizeInputs : undefined
+  const remapDeveloperMessagesToUser =
+    isRecord(raw.runtime) && typeof raw.runtime.developerMessagesToUser === "boolean"
+      ? raw.runtime.developerMessagesToUser
+      : undefined
+  const codexCompactionOverride =
+    isRecord(raw.runtime) && typeof raw.runtime.codexCompactionOverride === "boolean"
+      ? raw.runtime.codexCompactionOverride
+      : undefined
   const headerSnapshots =
     isRecord(raw.runtime) && typeof raw.runtime.headerSnapshots === "boolean" ? raw.runtime.headerSnapshots : undefined
   const headerTransformDebug =
@@ -533,6 +556,8 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     rotationStrategy,
     spoofMode,
     compatInputSanitizer,
+    remapDeveloperMessagesToUser,
+    codexCompactionOverride,
     headerSnapshots,
     headerTransformDebug,
     customSettings
@@ -675,6 +700,10 @@ export function resolveConfig(input: {
       : (spoofModeFromEnv ?? (mode === "native" ? "native" : "codex"))
   const compatInputSanitizer =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER) ?? file.compatInputSanitizer
+  const remapDeveloperMessagesToUser =
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER) ?? file.remapDeveloperMessagesToUser
+  const codexCompactionOverride =
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE) ?? file.codexCompactionOverride
   const headerSnapshots = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS) ?? file.headerSnapshots
   const headerTransformDebug =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG) ?? file.headerTransformDebug
@@ -691,6 +720,8 @@ export function resolveConfig(input: {
     rotationStrategy,
     spoofMode,
     compatInputSanitizer,
+    remapDeveloperMessagesToUser,
+    codexCompactionOverride,
     headerSnapshots,
     headerTransformDebug,
     customSettings: resolvedCustomSettings
@@ -728,7 +759,7 @@ export function getSpoofMode(cfg: PluginConfig): CodexSpoofMode {
 }
 
 export function getMode(cfg: PluginConfig): PluginRuntimeMode {
-  if (cfg.mode === "native" || cfg.mode === "codex" || cfg.mode === "collab") return cfg.mode
+  if (cfg.mode === "native" || cfg.mode === "codex") return cfg.mode
   return getSpoofMode(cfg) === "codex" ? "codex" : "native"
 }
 
@@ -738,6 +769,16 @@ export function getRotationStrategy(cfg: PluginConfig): RotationStrategy {
 
 export function getCompatInputSanitizerEnabled(cfg: PluginConfig): boolean {
   return cfg.compatInputSanitizer === true
+}
+
+export function getRemapDeveloperMessagesToUserEnabled(cfg: PluginConfig): boolean {
+  if (getMode(cfg) !== "codex") return false
+  return cfg.remapDeveloperMessagesToUser !== false
+}
+
+export function getCodexCompactionOverrideEnabled(cfg: PluginConfig): boolean {
+  if (getMode(cfg) !== "codex") return false
+  return cfg.codexCompactionOverride === true
 }
 
 export function getHeaderSnapshotsEnabled(cfg: PluginConfig): boolean {

@@ -1,33 +1,32 @@
 # Contributing
 
-Thanks for contributing to `@iam-brain/opencode-codex-auth`.
+Thanks for contributing to `opencode-codex-auth`.
 
-## Local setup
+## Development setup
 
 ```bash
 npm ci
 npm run verify
 ```
 
-`npm run verify` is the baseline gate (`package.json`):
+`npm run verify` is the baseline gate and runs:
 
 - `npm run typecheck`
 - `npm test`
 - `npm run build`
 
-## Pull request requirements
+## Pull requests
 
-- Keep changes scoped to one task.
+- Keep diffs task-scoped and avoid unrelated refactors.
 - Add or update tests for behavior changes.
-- Include verification commands and results in the PR description.
-- Update docs when behavior, config, or operator workflows change.
+- Include a short verification note in the PR description.
 
-## Test guidance
+## Testing guidance
 
-- Keep tests deterministic and offline.
-- Use fixtures from `test/fixtures/auth-single.json` and `test/fixtures/auth-multi.json` when applicable.
-- Use temp directories for filesystem tests.
+- Prefer deterministic, offline tests.
+- Use fixtures under `test/fixtures/` when applicable.
+- For filesystem cases, use temporary directories.
 
-## Security disclosures
+## Security
 
-Use the private disclosure flow in `SECURITY.md`.
+For vulnerabilities, follow `SECURITY.md` and use private disclosure.

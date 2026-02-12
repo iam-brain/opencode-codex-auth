@@ -2,28 +2,28 @@
 
 ## Supported versions
 
-Security fixes are prioritized for the latest released `@iam-brain/opencode-codex-auth` version.
+Security fixes are prioritized for the latest released version of `@iam-brain/opencode-codex-auth`.
 
 ## Reporting a vulnerability
 
-Do not open public issues for vulnerability reports.
+Please do not open public issues for security reports.
 
-Preferred path: GitHub Security Advisories.
+Use GitHub Security Advisories for private disclosure:
 
-1. Open the repository `Security` tab.
-2. Select `Report a vulnerability`.
-3. Provide impact, reproduction steps, and affected versions.
+1. Go to the repository `Security` tab.
+2. Click `Report a vulnerability`.
+3. Include impact, reproduction steps, and affected version.
 
-If private advisories are unavailable, open a minimal issue without sensitive details and request a private channel.
+If private advisory reporting is unavailable, open a minimal issue without sensitive details and request a private contact path.
 
-## Include in your report
+## What to include
 
-- Affected version and platform
+- Affected version/tag
 - Reproduction steps
 - Expected vs actual behavior
-- Logs/screenshots with secrets removed
+- Logs or screenshots with secrets redacted
 
-## Response targets
+## Response expectations
 
-- Initial triage acknowledgement: within 5 business days
-- Remediation timeline: based on severity and exploitability
+- Initial triage acknowledgement target: within 5 business days
+- Remediation target: based on severity and exploitability

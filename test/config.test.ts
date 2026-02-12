@@ -8,11 +8,13 @@ import {
   DEFAULT_CODEX_CONFIG,
   ensureDefaultConfigFile,
   getCompatInputSanitizerEnabled,
+  getCodexCompactionOverrideEnabled,
   getCustomSettings,
   getDebugEnabled,
   getHeaderTransformDebugEnabled,
   getHeaderSnapshotsEnabled,
   getMode,
+  getRemapDeveloperMessagesToUserEnabled,
   getRotationStrategy,
   getPidOffsetEnabled,
   getPersonality,
@@ -90,10 +92,10 @@ describe("config loading", () => {
     expect(getSpoofMode(cfg)).toBe("native")
   })
 
-  it("parses runtime mode from env", () => {
+  it("ignores unsupported runtime mode from env", () => {
     const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_MODE: "collab" } })
-    expect(getMode(cfg)).toBe("collab")
-    expect(getSpoofMode(cfg)).toBe("codex")
+    expect(getMode(cfg)).toBe("native")
+    expect(getSpoofMode(cfg)).toBe("native")
   })
 
   it("lets spoof env temporarily override file runtime mode", () => {
@@ -131,6 +133,31 @@ describe("config loading", () => {
   it("parses compat input sanitizer from env", () => {
     const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER: "1" } })
     expect(getCompatInputSanitizerEnabled(cfg)).toBe(true)
+  })
+
+  it("parses developer-message remap from env", () => {
+    const cfg = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_MODE: "codex",
+        OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER: "1"
+      }
+    })
+    expect(getRemapDeveloperMessagesToUserEnabled(cfg)).toBe(true)
+  })
+
+  it("defaults developer-message remap to enabled in codex mode", () => {
+    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_MODE: "codex" } })
+    expect(getRemapDeveloperMessagesToUserEnabled(cfg)).toBe(true)
+  })
+
+  it("parses codex compaction override from env", () => {
+    const cfg = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_MODE: "codex",
+        OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE: "1"
+      }
+    })
+    expect(getCodexCompactionOverrideEnabled(cfg)).toBe(true)
   })
 
   it("enables header snapshots from env flags", () => {
@@ -217,6 +244,34 @@ describe("config", () => {
   it("defaults compat input sanitizer to false", () => {
     expect(getCompatInputSanitizerEnabled({})).toBe(false)
   })
+
+  it("defaults developer-message remap to codex mode only", () => {
+    expect(getRemapDeveloperMessagesToUserEnabled({ mode: "native" })).toBe(false)
+    expect(getRemapDeveloperMessagesToUserEnabled({ mode: "codex" })).toBe(true)
+  })
+
+  it("allows disabling developer-message remap in codex mode", () => {
+    expect(
+      getRemapDeveloperMessagesToUserEnabled({
+        mode: "codex",
+        remapDeveloperMessagesToUser: false
+      })
+    ).toBe(false)
+  })
+
+  it("defaults codex compaction override to disabled", () => {
+    expect(getCodexCompactionOverrideEnabled({ mode: "native" })).toBe(false)
+    expect(getCodexCompactionOverrideEnabled({ mode: "codex" })).toBe(false)
+  })
+
+  it("allows enabling codex compaction override in codex mode", () => {
+    expect(
+      getCodexCompactionOverrideEnabled({
+        mode: "codex",
+        codexCompactionOverride: true
+      })
+    ).toBe(true)
+  })
 })
 
 describe("config file loading", () => {
@@ -235,6 +290,8 @@ describe("config file loading", () => {
           mode: "codex",
           rotationStrategy: "hybrid",
           sanitizeInputs: true,
+          developerMessagesToUser: true,
+          codexCompactionOverride: true,
           headerSnapshots: true,
           headerTransformDebug: true,
           pidOffset: true
@@ -265,6 +322,8 @@ describe("config file loading", () => {
     expect(loaded.proactiveRefreshBufferMs).toBe(45_000)
     expect(loaded.spoofMode).toBe("codex")
     expect(loaded.compatInputSanitizer).toBe(true)
+    expect(loaded.remapDeveloperMessagesToUser).toBe(true)
+    expect(loaded.codexCompactionOverride).toBe(true)
     expect(loaded.headerSnapshots).toBe(true)
     expect(loaded.headerTransformDebug).toBe(true)
     expect(loaded.pidOffsetEnabled).toBe(true)
@@ -311,7 +370,7 @@ describe("config file loading", () => {
     expect(loaded.spoofMode).toBe("codex")
   })
 
-  it("accepts runtime.collab mode field in config file", async () => {
+  it("ignores unsupported runtime mode field in config file", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const filePath = path.join(root, "codex-config.json")
     await fs.writeFile(
@@ -326,8 +385,8 @@ describe("config file loading", () => {
       env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath }
     })
 
-    expect(loaded.mode).toBe("collab")
-    expect(loaded.spoofMode).toBe("codex")
+    expect(loaded.mode).toBeUndefined()
+    expect(loaded.spoofMode).toBeUndefined()
   })
 
   it("loads codex-config.json from XDG config home", async () => {
