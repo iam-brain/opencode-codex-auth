@@ -2,16 +2,15 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 
 import { extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "./claims"
 import { CodexStatus, type HeaderMap } from "./codex-status"
-import { loadSnapshots, saveSnapshots } from "./codex-status-storage"
-import { PluginFatalError, formatWaitTime, isPluginFatalError, toSyntheticErrorResponse } from "./fatal-errors"
-import { buildIdentityKey, ensureIdentityKey, normalizeEmail, normalizePlan } from "./identity"
+import { saveSnapshots } from "./codex-status-storage"
+import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "./fatal-errors"
+import { buildIdentityKey, ensureIdentityKey } from "./identity"
 import { defaultSessionAffinityPath, defaultSnapshotsPath } from "./paths"
-import { createStickySessionState, selectAccount } from "./rotation"
+import { createStickySessionState } from "./rotation"
 import {
   ensureOpenAIOAuthDomain,
   getOpenAIOAuthDomain,
   importLegacyInstallData,
-  listOpenAIOAuthDomains,
   loadAuthStorage,
   saveAuthStorage,
   setAccountCooldown,
@@ -32,7 +31,6 @@ import {
   resolveInstructionsForModel,
   type CodexModelInfo
 } from "./model-catalog"
-import { fetchQuotaSnapshotFromBackend } from "./codex-quota-fetch"
 import { createRequestSnapshots } from "./request-snapshots"
 import {
   applyCatalogInstructionOverrideToRequest,
@@ -76,30 +74,22 @@ import {
   buildAuthorizeUrl,
   buildOAuthErrorHtml,
   buildOAuthSuccessHtml,
-  CLIENT_ID,
   composeCodexSuccessRedirectUrl,
   exchangeCodeForTokens,
   extractAccountId,
   extractAccountIdFromClaims,
-  fetchWithTimeout,
   generatePKCE,
-  generateState,
   ISSUER,
   OAUTH_CALLBACK_ORIGIN,
   OAUTH_CALLBACK_PATH,
   OAUTH_CALLBACK_TIMEOUT_MS,
   OAUTH_CALLBACK_URI,
-  OAUTH_DEVICE_AUTH_TIMEOUT_MS,
   OAUTH_DUMMY_KEY,
-  OAUTH_HTTP_TIMEOUT_MS,
   OAUTH_LOOPBACK_HOST,
-  OAUTH_POLLING_SAFETY_MARGIN_MS,
   OAUTH_PORT,
   OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS,
   OAUTH_SERVER_SHUTDOWN_GRACE_MS,
   refreshAccessToken,
-  sleep,
-  type OAuthTokenRefreshError,
   type PkceCodes,
   type TokenResponse
 } from "./codex-native/oauth-utils"
@@ -111,14 +101,15 @@ import {
   sessionUsesOpenAIProvider
 } from "./codex-native/session-messages"
 import { assertAllowedOutboundUrl, rewriteUrl } from "./codex-native/request-routing"
+import { acquireOpenAIAuth } from "./codex-native/acquire-auth"
+import { refreshQuotaSnapshotsForAuthMenu as refreshQuotaSnapshotsForAuthMenuBase } from "./codex-native/auth-menu-quotas"
+import { persistOAuthTokensForMode } from "./codex-native/oauth-persistence"
+import { createBrowserOAuthAuthorize, createHeadlessOAuthAuthorize } from "./codex-native/oauth-auth-methods"
+import { runInteractiveAuthMenu as runInteractiveAuthMenuBase } from "./codex-native/auth-menu-flow"
 export { browserOpenInvocationFor } from "./codex-native/browser"
 export { upsertAccount }
 export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken }
 
-const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
-const AUTH_MENU_QUOTA_SNAPSHOT_TTL_MS = 60_000
-const AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS = 30_000
-const AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS = 5000
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
 
@@ -151,10 +142,6 @@ export async function tryOpenUrlInBrowser(url: string, log?: Logger): Promise<bo
     log,
     onEvent: (event, meta) => oauthServerController.emitDebug(event, meta ?? {})
   })
-}
-
-function isOAuthTokenRefreshError(value: unknown): value is OAuthTokenRefreshError {
-  return value instanceof Error && ("status" in value || "oauthCode" in value)
 }
 
 export const __testOnly = {
@@ -283,297 +270,23 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   }
 
   const refreshQuotaSnapshotsForAuthMenu = async (): Promise<void> => {
-    const auth = await loadAuthStorage()
-    const snapshotPath = defaultSnapshotsPath()
-    const existingSnapshots: Record<string, { updatedAt?: number }> = await loadSnapshots(snapshotPath).catch(
-      () => ({})
-    )
-    const snapshotUpdates: Record<string, ReturnType<CodexStatus["parseFromHeaders"]>> = {}
-    for (const { mode, domain } of listOpenAIOAuthDomains(auth)) {
-      for (let index = 0; index < domain.accounts.length; index += 1) {
-        const account = domain.accounts[index]
-        if (!account || account.enabled === false) continue
-
-        hydrateAccountIdentityFromAccessClaims(account)
-        const identityKey = account.identityKey
-        const now = Date.now()
-        if (identityKey) {
-          const cooldownUntil = quotaFetchCooldownByIdentity.get(identityKey)
-          if (typeof cooldownUntil === "number" && cooldownUntil > now) continue
-          const existing = existingSnapshots[identityKey]
-          if (
-            existing &&
-            typeof existing.updatedAt === "number" &&
-            Number.isFinite(existing.updatedAt) &&
-            now - existing.updatedAt < AUTH_MENU_QUOTA_SNAPSHOT_TTL_MS
-          ) {
-            continue
-          }
-        }
-
-        let accessToken = typeof account.access === "string" && account.access.length > 0 ? account.access : undefined
-        const expired =
-          typeof account.expires === "number" && Number.isFinite(account.expires) && account.expires <= now
-
-        if ((!accessToken || expired) && account.refresh) {
-          try {
-            await saveAuthStorage(undefined, async (authFile) => {
-              const current = ensureOpenAIOAuthDomain(authFile, mode)
-              const target = current.accounts[index]
-              if (!target || target.enabled === false || !target.refresh) return authFile
-
-              const tokens = await refreshAccessToken(target.refresh)
-              const refreshedAt = Date.now()
-              const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
-
-              target.refresh = tokens.refresh_token
-              target.access = tokens.access_token
-              target.expires = refreshedAt + (tokens.expires_in ?? 3600) * 1000
-              target.accountId = extractAccountId(tokens) || target.accountId
-              target.email = extractEmailFromClaims(claims) || target.email
-              target.plan = extractPlanFromClaims(claims) || target.plan
-              target.lastUsed = refreshedAt
-              hydrateAccountIdentityFromAccessClaims(target)
-
-              account.refresh = target.refresh
-              account.access = target.access
-              account.expires = target.expires
-              account.accountId = target.accountId
-              account.email = target.email
-              account.plan = target.plan
-              account.identityKey = target.identityKey
-              accessToken = target.access
-
-              return authFile
-            })
-          } catch (error) {
-            if (identityKey) {
-              quotaFetchCooldownByIdentity.set(identityKey, Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS)
-            }
-            opts.log?.debug("quota check refresh failed", {
-              index,
-              mode,
-              error: error instanceof Error ? error.message : String(error)
-            })
-          }
-        }
-
-        if (!accessToken) continue
-
-        if (!account.identityKey) {
-          hydrateAccountIdentityFromAccessClaims(account)
-        }
-        if (!account.identityKey) continue
-
-        const snapshot = await fetchQuotaSnapshotFromBackend({
-          accessToken,
-          accountId: account.accountId,
-          now: Date.now(),
-          modelFamily: "gpt-5.3-codex",
-          userAgent: resolveRequestUserAgent(spoofMode, resolveCodexOriginator(spoofMode)),
-          log: opts.log,
-          timeoutMs: AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS
-        })
-        if (!snapshot) {
-          quotaFetchCooldownByIdentity.set(account.identityKey, Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS)
-          continue
-        }
-
-        quotaFetchCooldownByIdentity.delete(account.identityKey)
-
-        snapshotUpdates[account.identityKey] = snapshot
-      }
-    }
-
-    if (Object.keys(snapshotUpdates).length === 0) return
-
-    await saveSnapshots(snapshotPath, (current) => ({
-      ...current,
-      ...snapshotUpdates
-    }))
+    await refreshQuotaSnapshotsForAuthMenuBase({
+      spoofMode,
+      log: opts.log,
+      cooldownByIdentity: quotaFetchCooldownByIdentity
+    })
   }
 
   const runInteractiveAuthMenu = async (options: { allowExit: boolean }): Promise<"add" | "exit"> => {
-    while (true) {
-      const auth = await loadAuthStorage()
-      const nativeDomain = getOpenAIOAuthDomain(auth, "native")
-      const codexDomain = getOpenAIOAuthDomain(auth, "codex")
-      const menuAccounts = buildAuthMenuAccounts({
-        native: nativeDomain,
-        codex: codexDomain,
-        activeMode: authMode
-      })
-      const allowTransfer = await shouldOfferLegacyTransfer()
+    return runInteractiveAuthMenuBase({
+      authMode,
+      allowExit: options.allowExit,
+      refreshQuotaSnapshotsForAuthMenu
+    })
+  }
 
-      const result = await runAuthMenuOnce({
-        accounts: menuAccounts,
-        allowTransfer,
-        input: process.stdin,
-        output: process.stdout,
-        handlers: {
-          onCheckQuotas: async () => {
-            await refreshQuotaSnapshotsForAuthMenu()
-            const report = await toolOutputForStatus(undefined, undefined, {
-              style: "menu",
-              useColor: shouldUseColor()
-            })
-            process.stdout.write(`\n${report}\n\n`)
-          },
-          onConfigureModels: async () => {
-            process.stdout.write(
-              "\nConfigure provider models in opencode.json and runtime flags in codex-config.json.\n\n"
-            )
-          },
-          onTransfer: async () => {
-            const transfer = await importLegacyInstallData()
-            let total = transfer.imported
-            let hydrated = 0
-            let refreshed = 0
-            await saveAuthStorage(undefined, async (authFile) => {
-              for (const mode of ["native", "codex"] as const) {
-                const domain = getOpenAIOAuthDomain(authFile, mode)
-                if (!domain) continue
-
-                for (const account of domain.accounts) {
-                  const hadIdentity = Boolean(buildIdentityKey(account))
-                  hydrateAccountIdentityFromAccessClaims(account)
-                  const hasIdentityAfterClaims = Boolean(buildIdentityKey(account))
-                  if (!hadIdentity && hasIdentityAfterClaims) hydrated += 1
-
-                  if (hasIdentityAfterClaims || account.enabled === false || !account.refresh) {
-                    continue
-                  }
-
-                  try {
-                    const tokens = await refreshAccessToken(account.refresh)
-                    refreshed += 1
-                    const now = Date.now()
-                    const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
-                    account.refresh = tokens.refresh_token
-                    account.access = tokens.access_token
-                    account.expires = now + (tokens.expires_in ?? 3600) * 1000
-                    account.accountId = extractAccountId(tokens) || account.accountId
-                    account.email = extractEmailFromClaims(claims) || account.email
-                    account.plan = extractPlanFromClaims(claims) || account.plan
-                    account.lastUsed = now
-                    hydrateAccountIdentityFromAccessClaims(account)
-                    if (!hadIdentity && buildIdentityKey(account)) hydrated += 1
-                  } catch {
-                    // best effort per-account hydration
-                  }
-                }
-              }
-              return authFile
-            })
-            process.stdout.write(
-              `\nTransfer complete: imported ${total} account(s). Hydrated ${hydrated} account(s)` +
-                `${refreshed > 0 ? `, refreshed ${refreshed} token(s)` : ""}.\n\n`
-            )
-          },
-          onDeleteAll: async (scope) => {
-            await saveAuthStorage(undefined, (authFile) => {
-              const targets = scope === "both" ? (["native", "codex"] as const) : ([scope] as const)
-              for (const targetMode of targets) {
-                const domain = ensureOpenAIOAuthDomain(authFile, targetMode)
-                domain.accounts = []
-                domain.activeIdentityKey = undefined
-              }
-              return authFile
-            })
-            const deletedLabel =
-              scope === "both"
-                ? "Deleted all OpenAI accounts."
-                : `Deleted ${scope === "native" ? "Native" : "Codex"} auth from all accounts.`
-            process.stdout.write(`\n${deletedLabel}\n\n`)
-          },
-          onToggleAccount: async (account) => {
-            await saveAuthStorage(undefined, (authFile) => {
-              const authTypes: OpenAIAuthMode[] =
-                account.authTypes && account.authTypes.length > 0 ? [...account.authTypes] : ["native"]
-              for (const mode of authTypes) {
-                const domain = getOpenAIOAuthDomain(authFile, mode)
-                if (!domain) continue
-                const idx = findDomainAccountIndex(domain, account)
-                if (idx < 0) continue
-                const target = domain.accounts[idx]
-                if (!target) continue
-                target.enabled = target.enabled === false
-                reconcileActiveIdentityKey(domain)
-              }
-              return authFile
-            })
-            process.stdout.write("\nUpdated account status.\n\n")
-          },
-          onRefreshAccount: async (account) => {
-            let refreshed = false
-            try {
-              await saveAuthStorage(undefined, async (authFile) => {
-                const preferred = [
-                  authMode,
-                  ...((account.authTypes ?? []).filter((mode) => mode !== authMode) as OpenAIAuthMode[])
-                ]
-                for (const mode of preferred) {
-                  const domain = getOpenAIOAuthDomain(authFile, mode)
-                  if (!domain) continue
-                  const idx = findDomainAccountIndex(domain, account)
-                  if (idx < 0) continue
-                  const target = domain.accounts[idx]
-                  if (!target || target.enabled === false || !target.refresh) continue
-                  const tokens = await refreshAccessToken(target.refresh)
-                  const now = Date.now()
-                  const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
-                  target.refresh = tokens.refresh_token
-                  target.access = tokens.access_token
-                  target.expires = now + (tokens.expires_in ?? 3600) * 1000
-                  target.accountId = extractAccountId(tokens) || target.accountId
-                  target.email = extractEmailFromClaims(claims) || target.email
-                  target.plan = extractPlanFromClaims(claims) || target.plan
-                  target.lastUsed = now
-                  ensureAccountAuthTypes(target)
-                  ensureIdentityKey(target)
-                  if (target.identityKey) domain.activeIdentityKey = target.identityKey
-                  refreshed = true
-                  break
-                }
-                return authFile
-              })
-            } catch {
-              refreshed = false
-            }
-            process.stdout.write(
-              refreshed
-                ? "\nAccount refreshed successfully.\n\n"
-                : "\nAccount refresh failed. Run login to reauthenticate.\n\n"
-            )
-          },
-          onDeleteAccount: async (account, scope) => {
-            await saveAuthStorage(undefined, (authFile) => {
-              const targets = scope === "both" ? (["native", "codex"] as const) : ([scope] as const)
-              for (const mode of targets) {
-                const domain = getOpenAIOAuthDomain(authFile, mode)
-                if (!domain) continue
-                const idx = findDomainAccountIndex(domain, account)
-                if (idx < 0) continue
-                domain.accounts.splice(idx, 1)
-                reconcileActiveIdentityKey(domain)
-              }
-              return authFile
-            })
-            const deletedLabel =
-              scope === "both"
-                ? "Deleted account."
-                : `Deleted ${scope === "native" ? "Native" : "Codex"} auth from account.`
-            process.stdout.write(`\n${deletedLabel}\n\n`)
-          }
-        }
-      })
-
-      if (result === "add") return "add"
-      if (result === "exit") {
-        if (options.allowExit) return "exit"
-        continue
-      }
-    }
+  const persistOAuthTokens = async (tokens: TokenResponse): Promise<void> => {
+    await persistOAuthTokensForMode(tokens, authMode)
   }
 
   return {
@@ -737,278 +450,36 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
 
             const orchestrator = new FetchOrchestrator({
               acquireAuth: async (context) => {
-                let access: string | undefined
-                let accountId: string | undefined
-                let identityKey: string | undefined
-                let accountLabel: string | undefined
-                let email: string | undefined
-                let plan: string | undefined
-
-                try {
-                  if (isSubagentRequest && context?.sessionKey) {
-                    orchestratorState.seenSessionKeys.delete(context.sessionKey)
-                    stickySessionState.bySessionKey.delete(context.sessionKey)
-                    hybridSessionState.bySessionKey.delete(context.sessionKey)
-                  }
-                  await saveAuthStorage(undefined, async (authFile) => {
-                    const now = Date.now()
-                    const openai = authFile.openai
-                    if (!openai || openai.type !== "oauth") {
-                      throw new PluginFatalError({
-                        message: "Not authenticated with OpenAI. Run `opencode auth login`.",
-                        status: 401,
-                        type: "oauth_not_configured",
-                        param: "auth"
-                      })
-                    }
-
-                    const domain = ensureOpenAIOAuthDomain(authFile, authMode)
-                    if (domain.accounts.length === 0) {
-                      throw new PluginFatalError({
-                        message: `No OpenAI ${authMode} accounts configured. Run \`opencode auth login\`.`,
-                        status: 401,
-                        type: "no_accounts_configured",
-                        param: "accounts"
-                      })
-                    }
-
-                    const enabled = domain.accounts.filter((account) => account.enabled !== false)
-                    if (enabled.length === 0) {
-                      throw new PluginFatalError({
-                        message: `No enabled OpenAI ${authMode} accounts available. Enable an account or run \`opencode auth login\`.`,
-                        status: 403,
-                        type: "no_enabled_accounts",
-                        param: "accounts"
-                      })
-                    }
-
-                    const attempted = new Set<string>()
-                    let sawInvalidGrant = false
-                    let sawRefreshFailure = false
-                    let sawMissingRefresh = false
-                    const rotationStrategy: RotationStrategy = opts.rotationStrategy ?? domain.strategy ?? "sticky"
-                    opts.log?.debug("rotation begin", {
-                      strategy: rotationStrategy,
-                      activeIdentityKey: domain.activeIdentityKey,
-                      totalAccounts: domain.accounts.length,
-                      enabledAccounts: enabled.length,
-                      mode: authMode,
-                      sessionKey: context?.sessionKey ?? null
-                    })
-
-                    while (attempted.size < domain.accounts.length) {
-                      const sessionState =
-                        rotationStrategy === "sticky"
-                          ? stickySessionState
-                          : rotationStrategy === "hybrid"
-                            ? hybridSessionState
-                            : undefined
-                      const selected = selectAccount({
-                        accounts: domain.accounts,
-                        strategy: rotationStrategy,
-                        activeIdentityKey: domain.activeIdentityKey,
-                        now,
-                        stickyPidOffset: opts.pidOffsetEnabled === true,
-                        stickySessionKey: isSubagentRequest ? undefined : context?.sessionKey,
-                        stickySessionState: sessionState,
-                        onDebug: (event) => {
-                          opts.log?.debug("rotation decision", event)
-                        }
-                      })
-
-                      if (!selected) {
-                        opts.log?.debug("rotation stop: no selectable account", {
-                          attempted: attempted.size,
-                          totalAccounts: domain.accounts.length
-                        })
-                        break
-                      }
-
-                      const selectedIndex = domain.accounts.findIndex((account) => account === selected)
-                      const attemptKey =
-                        selected.identityKey ??
-                        selected.refresh ??
-                        (selectedIndex >= 0 ? `idx:${selectedIndex}` : `idx:${attempted.size}`)
-                      if (attempted.has(attemptKey)) {
-                        opts.log?.debug("rotation stop: duplicate attempt key", {
-                          attemptKey,
-                          selectedIdentityKey: selected.identityKey,
-                          selectedIndex
-                        })
-                        break
-                      }
-                      attempted.add(attemptKey)
-                      if (!isSubagentRequest && context?.sessionKey && sessionState) {
-                        persistSessionAffinityState()
-                      }
-                      opts.log?.debug("rotation candidate selected", {
-                        attemptKey,
-                        selectedIdentityKey: selected.identityKey,
-                        selectedIndex,
-                        selectedEnabled: selected.enabled !== false,
-                        selectedCooldownUntil: selected.cooldownUntil ?? null,
-                        selectedExpires: selected.expires ?? null
-                      })
-
-                      accountLabel = formatAccountLabel(selected, selectedIndex >= 0 ? selectedIndex : 0)
-                      email = selected.email
-                      plan = selected.plan
-
-                      if (selected.access && selected.expires && selected.expires > now) {
-                        selected.lastUsed = now
-                        access = selected.access
-                        accountId = selected.accountId
-                        identityKey = selected.identityKey
-                        if (selected.identityKey) domain.activeIdentityKey = selected.identityKey
-                        return authFile
-                      }
-
-                      if (!selected.refresh) {
-                        sawMissingRefresh = true
-                        selected.cooldownUntil = now + AUTH_REFRESH_FAILURE_COOLDOWN_MS
-                        continue
-                      }
-
-                      let tokens: TokenResponse
-                      try {
-                        tokens = await refreshAccessToken(selected.refresh)
-                      } catch (error) {
-                        if (isOAuthTokenRefreshError(error) && error.oauthCode?.toLowerCase() === "invalid_grant") {
-                          sawInvalidGrant = true
-                          selected.enabled = false
-                          delete selected.cooldownUntil
-                          delete selected.refreshLeaseUntil
-                          continue
-                        }
-                        sawRefreshFailure = true
-                        selected.cooldownUntil = now + AUTH_REFRESH_FAILURE_COOLDOWN_MS
-                        continue
-                      }
-
-                      const expires = now + (tokens.expires_in ?? 3600) * 1000
-                      const refreshedAccountId = extractAccountId(tokens) || selected.accountId
-                      const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
-
-                      selected.refresh = tokens.refresh_token
-                      selected.access = tokens.access_token
-                      selected.expires = expires
-                      selected.accountId = refreshedAccountId
-                      if (claims?.email) selected.email = normalizeEmail(claims.email)
-                      if (claims?.plan) selected.plan = normalizePlan(claims.plan)
-                      ensureIdentityKey(selected)
-                      selected.lastUsed = now
-                      accountLabel = formatAccountLabel(selected, selectedIndex >= 0 ? selectedIndex : 0)
-                      email = selected.email
-                      plan = selected.plan
-                      identityKey = selected.identityKey
-                      if (selected.identityKey) domain.activeIdentityKey = selected.identityKey
-
-                      access = selected.access
-                      accountId = selected.accountId
-
-                      return authFile
-                    }
-
-                    const enabledAfterAttempts = domain.accounts.filter((account) => account.enabled !== false)
-                    if (enabledAfterAttempts.length === 0 && sawInvalidGrant) {
-                      throw new PluginFatalError({
-                        message:
-                          "All enabled OpenAI refresh tokens were rejected (invalid_grant). Run `opencode auth login` to reauthenticate.",
-                        status: 401,
-                        type: "refresh_invalid_grant",
-                        param: "auth"
-                      })
-                    }
-
-                    const nextAvailableAt = enabledAfterAttempts.reduce<number | undefined>((current, account) => {
-                      const cooldownUntil = account.cooldownUntil
-                      if (typeof cooldownUntil !== "number" || cooldownUntil <= now) return current
-                      if (current === undefined || cooldownUntil < current) return cooldownUntil
-                      return current
-                    }, undefined)
-                    if (nextAvailableAt !== undefined) {
-                      const waitMs = Math.max(0, nextAvailableAt - now)
-                      throw new PluginFatalError({
-                        message: `All enabled OpenAI accounts are cooling down. Try again in ${formatWaitTime(waitMs)} or run \`opencode auth login\`.`,
-                        status: 429,
-                        type: "all_accounts_cooling_down",
-                        param: "accounts"
-                      })
-                    }
-
-                    if (sawInvalidGrant) {
-                      throw new PluginFatalError({
-                        message:
-                          "OpenAI refresh token was rejected (invalid_grant). Run `opencode auth login` to reauthenticate this account.",
-                        status: 401,
-                        type: "refresh_invalid_grant",
-                        param: "auth"
-                      })
-                    }
-
-                    if (sawMissingRefresh) {
-                      throw new PluginFatalError({
-                        message:
-                          "Selected OpenAI account is missing a refresh token. Run `opencode auth login` to reauthenticate.",
-                        status: 401,
-                        type: "missing_refresh_token",
-                        param: "accounts"
-                      })
-                    }
-
-                    if (sawRefreshFailure) {
-                      throw new PluginFatalError({
-                        message: "Failed to refresh OpenAI access token. Run `opencode auth login` and try again.",
-                        status: 401,
-                        type: "refresh_failed",
-                        param: "auth"
-                      })
-                    }
-
-                    throw new PluginFatalError({
-                      message: `No enabled OpenAI ${authMode} accounts available. Enable an account or run \`opencode auth login\`.`,
-                      status: 403,
-                      type: "no_enabled_accounts",
-                      param: "accounts"
-                    })
-                  })
-                } catch (error) {
-                  if (isPluginFatalError(error)) throw error
-                  throw new PluginFatalError({
-                    message:
-                      "Unable to access OpenAI auth storage. Check plugin configuration and run `opencode auth login` if needed.",
-                    status: 500,
-                    type: "auth_storage_error",
-                    param: "auth"
-                  })
-                }
-
-                if (!access) {
-                  throw new PluginFatalError({
-                    message: "No valid OpenAI access token available. Run `opencode auth login`.",
-                    status: 401,
-                    type: "no_valid_access_token",
-                    param: "auth"
-                  })
-                }
+                const auth = await acquireOpenAIAuth({
+                  authMode,
+                  context,
+                  isSubagentRequest,
+                  stickySessionState,
+                  hybridSessionState,
+                  seenSessionKeys: orchestratorState.seenSessionKeys,
+                  persistSessionAffinityState,
+                  pidOffsetEnabled: opts.pidOffsetEnabled === true,
+                  configuredRotationStrategy: opts.rotationStrategy,
+                  log: opts.log
+                })
 
                 if (spoofMode === "codex") {
                   const shouldAwaitCatalog = !lastCatalogModels || lastCatalogModels.length === 0
                   if (shouldAwaitCatalog) {
                     try {
-                      await syncCatalogFromAuth({ accessToken: access, accountId })
+                      await syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId })
                     } catch {
                       // best-effort catalog load; request can still proceed
                     }
                   } else {
-                    void syncCatalogFromAuth({ accessToken: access, accountId }).catch(() => {})
+                    void syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId }).catch(() => {})
                   }
                 } else {
-                  void syncCatalogFromAuth({ accessToken: access, accountId }).catch(() => {})
+                  void syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId }).catch(() => {})
                 }
 
-                selectedIdentityKey = identityKey
-                return { access, accountId, identityKey, accountLabel, email, plan }
+                selectedIdentityKey = auth.identityKey
+                return auth
               },
               setCooldown: async (idKey, cooldownUntil) => {
                 await setAccountCooldown(undefined, idKey, cooldownUntil, authMode)
@@ -1146,230 +617,25 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         {
           label: "ChatGPT Pro/Plus (browser)",
           type: "oauth",
-          authorize: async (inputs?: Record<string, string>) => {
-            const toOAuthSuccess = (tokens: TokenResponse) => ({
-              type: "success" as const,
-              refresh: tokens.refresh_token,
-              access: tokens.access_token,
-              expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-              accountId: extractAccountId(tokens)
-            })
-
-            const runSingleBrowserOAuthInline = async (): Promise<TokenResponse | null> => {
-              const { redirectUri } = await startOAuthServer()
-              const pkce = await generatePKCE()
-              const state = generateState()
-              const authUrl = buildAuthorizeUrl(
-                redirectUri,
-                pkce,
-                state,
-                spoofMode === "codex" ? "codex_cli_rs" : "opencode"
-              )
-              const callbackPromise = waitForOAuthCallback(pkce, state, authMode)
-              void tryOpenUrlInBrowser(authUrl, opts.log)
-              process.stdout.write(`\nGo to: ${authUrl}\n`)
-              process.stdout.write("Complete authorization in your browser. This window will close automatically.\n")
-
-              let authFailed = false
-              try {
-                const tokens = await callbackPromise
-                await persistOAuthTokens(tokens)
-                process.stdout.write("\nAccount added.\n\n")
-                return tokens
-              } catch (error) {
-                authFailed = true
-                const reason = error instanceof Error ? error.message : "Authorization failed"
-                process.stdout.write(`\nAuthorization failed: ${reason}\n\n`)
-                return null
-              } finally {
-                scheduleOAuthServerStop(
-                  authFailed ? OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS : OAUTH_SERVER_SHUTDOWN_GRACE_MS,
-                  authFailed ? "error" : "success"
-                )
-              }
-            }
-
-            const runInteractiveBrowserAuthLoop = async () => {
-              let lastAddedTokens: TokenResponse | undefined
-              while (true) {
-                const menuResult = await runInteractiveAuthMenu({ allowExit: true })
-                if (menuResult === "exit") {
-                  if (!lastAddedTokens) {
-                    return {
-                      url: "",
-                      method: "auto" as const,
-                      instructions: "Login cancelled.",
-                      callback: async () => ({ type: "failed" as const })
-                    }
-                  }
-
-                  const latest = lastAddedTokens
-                  return {
-                    url: "",
-                    method: "auto" as const,
-                    instructions: "",
-                    callback: async () => toOAuthSuccess(latest)
-                  }
-                }
-
-                const tokens = await runSingleBrowserOAuthInline()
-                if (tokens) {
-                  lastAddedTokens = tokens
-                  continue
-                }
-
-                return {
-                  url: "",
-                  method: "auto" as const,
-                  instructions: "Authorization failed.",
-                  callback: async () => ({ type: "failed" as const })
-                }
-              }
-            }
-
-            if (inputs && process.env.OPENCODE_NO_BROWSER !== "1" && process.stdin.isTTY && process.stdout.isTTY) {
-              return runInteractiveBrowserAuthLoop()
-            }
-
-            const { redirectUri } = await startOAuthServer()
-            const pkce = await generatePKCE()
-            const state = generateState()
-            const authUrl = buildAuthorizeUrl(
-              redirectUri,
-              pkce,
-              state,
-              spoofMode === "codex" ? "codex_cli_rs" : "opencode"
-            )
-            const callbackPromise = waitForOAuthCallback(pkce, state, authMode)
-            void tryOpenUrlInBrowser(authUrl, opts.log)
-
-            return {
-              url: authUrl,
-              instructions:
-                "Complete authorization in your browser. If you close the tab early, cancel (Ctrl+C) and retry.",
-              method: "auto" as const,
-              callback: async () => {
-                let authFailed = false
-                try {
-                  const tokens = await callbackPromise
-                  await persistOAuthTokens(tokens)
-                  return toOAuthSuccess(tokens)
-                } catch {
-                  authFailed = true
-                  return { type: "failed" as const }
-                } finally {
-                  scheduleOAuthServerStop(
-                    authFailed ? OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS : OAUTH_SERVER_SHUTDOWN_GRACE_MS,
-                    authFailed ? "error" : "success"
-                  )
-                }
-              }
-            }
-          }
+          authorize: createBrowserOAuthAuthorize({
+            authMode,
+            spoofMode,
+            runInteractiveAuthMenu,
+            startOAuthServer,
+            waitForOAuthCallback,
+            scheduleOAuthServerStop,
+            persistOAuthTokens,
+            openAuthUrl: (url: string) => {
+              void tryOpenUrlInBrowser(url, opts.log)
+            },
+            shutdownGraceMs: OAUTH_SERVER_SHUTDOWN_GRACE_MS,
+            shutdownErrorGraceMs: OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS
+          })
         },
         {
           label: "ChatGPT Pro/Plus (headless)",
           type: "oauth",
-          authorize: async () => {
-            const deviceResponse = await fetchWithTimeout(
-              `${ISSUER}/api/accounts/deviceauth/usercode`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "User-Agent": resolveRequestUserAgent(spoofMode, resolveCodexOriginator(spoofMode))
-                },
-                body: JSON.stringify({ client_id: CLIENT_ID })
-              },
-              OAUTH_HTTP_TIMEOUT_MS
-            )
-
-            if (!deviceResponse.ok) {
-              throw new Error("Failed to initiate device authorization")
-            }
-
-            const deviceData = (await deviceResponse.json()) as {
-              device_auth_id: string
-              user_code: string
-              interval: string
-            }
-
-            const interval = Math.max(parseInt(deviceData.interval) || 5, 1) * 1000
-
-            return {
-              url: `${ISSUER}/codex/device`,
-              instructions: `Enter code: ${deviceData.user_code}`,
-              method: "auto" as const,
-              async callback() {
-                const startedAt = Date.now()
-                while (true) {
-                  if (Date.now() - startedAt > OAUTH_DEVICE_AUTH_TIMEOUT_MS) {
-                    return { type: "failed" as const }
-                  }
-
-                  const response = await fetchWithTimeout(
-                    `${ISSUER}/api/accounts/deviceauth/token`,
-                    {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        "User-Agent": resolveRequestUserAgent(spoofMode, resolveCodexOriginator(spoofMode))
-                      },
-                      body: JSON.stringify({
-                        device_auth_id: deviceData.device_auth_id,
-                        user_code: deviceData.user_code
-                      })
-                    },
-                    OAUTH_HTTP_TIMEOUT_MS
-                  )
-
-                  if (response.ok) {
-                    const data = (await response.json()) as {
-                      authorization_code: string
-                      code_verifier: string
-                    }
-
-                    const tokenResponse = await fetchWithTimeout(
-                      `${ISSUER}/oauth/token`,
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                        body: new URLSearchParams({
-                          grant_type: "authorization_code",
-                          code: data.authorization_code,
-                          redirect_uri: `${ISSUER}/deviceauth/callback`,
-                          client_id: CLIENT_ID,
-                          code_verifier: data.code_verifier
-                        }).toString()
-                      },
-                      OAUTH_HTTP_TIMEOUT_MS
-                    )
-
-                    if (!tokenResponse.ok) {
-                      throw new Error(`Token exchange failed: ${tokenResponse.status}`)
-                    }
-
-                    const tokens = (await tokenResponse.json()) as TokenResponse
-                    await persistOAuthTokens(tokens)
-
-                    return {
-                      type: "success" as const,
-                      refresh: tokens.refresh_token,
-                      access: tokens.access_token,
-                      expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-                      accountId: extractAccountId(tokens)
-                    }
-                  }
-
-                  if (response.status !== 403 && response.status !== 404) {
-                    return { type: "failed" as const }
-                  }
-
-                  await sleep(interval + OAUTH_POLLING_SAFETY_MARGIN_MS)
-                }
-              }
-            }
-          }
+          authorize: createHeadlessOAuthAuthorize({ spoofMode, persistOAuthTokens })
         },
         {
           label: "Manually enter API Key",
@@ -1489,31 +755,5 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
 
       output.text = `${CODEX_RS_COMPACT_SUMMARY_PREFIX}\n${output.text.trimStart()}`
     }
-  }
-
-  async function persistOAuthTokens(tokens: TokenResponse): Promise<void> {
-    const now = Date.now()
-    const expires = now + (tokens.expires_in ?? 3600) * 1000
-    const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
-
-    const account: AccountRecord = {
-      enabled: true,
-      refresh: tokens.refresh_token,
-      access: tokens.access_token,
-      expires,
-      accountId: extractAccountId(tokens),
-      email: extractEmailFromClaims(claims),
-      plan: extractPlanFromClaims(claims),
-      lastUsed: now
-    }
-
-    await saveAuthStorage(undefined, async (authFile) => {
-      const domain = ensureOpenAIOAuthDomain(authFile, authMode)
-      const stored = upsertAccount(domain, { ...account, authTypes: [authMode] })
-      if (stored.identityKey) {
-        domain.activeIdentityKey = stored.identityKey
-      }
-      return authFile
-    })
   }
 }

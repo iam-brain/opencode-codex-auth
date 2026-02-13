@@ -1,0 +1,303 @@
+import type { AuthData, FetchOrchestratorAuthContext } from "../fetch-orchestrator"
+import { PluginFatalError, formatWaitTime, isPluginFatalError } from "../fatal-errors"
+import { ensureIdentityKey, normalizeEmail, normalizePlan } from "../identity"
+import type { Logger } from "../logger"
+import { createStickySessionState, selectAccount, type StickySessionState } from "../rotation"
+import { ensureOpenAIOAuthDomain, saveAuthStorage } from "../storage"
+import type { OpenAIAuthMode, RotationStrategy } from "../types"
+import { parseJwtClaims } from "../claims"
+import { formatAccountLabel } from "./accounts"
+import { extractAccountId, refreshAccessToken, type OAuthTokenRefreshError } from "./oauth-utils"
+
+const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
+
+function isOAuthTokenRefreshError(value: unknown): value is OAuthTokenRefreshError {
+  return value instanceof Error && ("status" in value || "oauthCode" in value)
+}
+
+export type AcquireOpenAIAuthInput = {
+  authMode: OpenAIAuthMode
+  context?: FetchOrchestratorAuthContext
+  isSubagentRequest: boolean
+  stickySessionState: StickySessionState
+  hybridSessionState: StickySessionState
+  seenSessionKeys: Map<string, number>
+  persistSessionAffinityState: () => void
+  pidOffsetEnabled: boolean
+  configuredRotationStrategy?: RotationStrategy
+  log?: Logger
+}
+
+export function createAcquireOpenAIAuthInputDefaults(): {
+  stickySessionState: StickySessionState
+  hybridSessionState: StickySessionState
+} {
+  return {
+    stickySessionState: createStickySessionState(),
+    hybridSessionState: createStickySessionState()
+  }
+}
+
+export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<AuthData> {
+  let access: string | undefined
+  let accountId: string | undefined
+  let identityKey: string | undefined
+  let accountLabel: string | undefined
+  let email: string | undefined
+  let plan: string | undefined
+
+  try {
+    if (input.isSubagentRequest && input.context?.sessionKey) {
+      input.seenSessionKeys.delete(input.context.sessionKey)
+      input.stickySessionState.bySessionKey.delete(input.context.sessionKey)
+      input.hybridSessionState.bySessionKey.delete(input.context.sessionKey)
+    }
+
+    await saveAuthStorage(undefined, async (authFile) => {
+      const now = Date.now()
+      const openai = authFile.openai
+      if (!openai || openai.type !== "oauth") {
+        throw new PluginFatalError({
+          message: "Not authenticated with OpenAI. Run `opencode auth login`.",
+          status: 401,
+          type: "oauth_not_configured",
+          param: "auth"
+        })
+      }
+
+      const domain = ensureOpenAIOAuthDomain(authFile, input.authMode)
+      if (domain.accounts.length === 0) {
+        throw new PluginFatalError({
+          message: `No OpenAI ${input.authMode} accounts configured. Run \`opencode auth login\`.`,
+          status: 401,
+          type: "no_accounts_configured",
+          param: "accounts"
+        })
+      }
+
+      const enabled = domain.accounts.filter((account) => account.enabled !== false)
+      if (enabled.length === 0) {
+        throw new PluginFatalError({
+          message: `No enabled OpenAI ${input.authMode} accounts available. Enable an account or run \`opencode auth login\`.`,
+          status: 403,
+          type: "no_enabled_accounts",
+          param: "accounts"
+        })
+      }
+
+      const attempted = new Set<string>()
+      let sawInvalidGrant = false
+      let sawRefreshFailure = false
+      let sawMissingRefresh = false
+      const rotationStrategy: RotationStrategy = input.configuredRotationStrategy ?? domain.strategy ?? "sticky"
+
+      input.log?.debug("rotation begin", {
+        strategy: rotationStrategy,
+        activeIdentityKey: domain.activeIdentityKey,
+        totalAccounts: domain.accounts.length,
+        enabledAccounts: enabled.length,
+        mode: input.authMode,
+        sessionKey: input.context?.sessionKey ?? null
+      })
+
+      while (attempted.size < domain.accounts.length) {
+        const sessionState =
+          rotationStrategy === "sticky"
+            ? input.stickySessionState
+            : rotationStrategy === "hybrid"
+              ? input.hybridSessionState
+              : undefined
+
+        const selected = selectAccount({
+          accounts: domain.accounts,
+          strategy: rotationStrategy,
+          activeIdentityKey: domain.activeIdentityKey,
+          now,
+          stickyPidOffset: input.pidOffsetEnabled,
+          stickySessionKey: input.isSubagentRequest ? undefined : input.context?.sessionKey,
+          stickySessionState: sessionState,
+          onDebug: (event) => {
+            input.log?.debug("rotation decision", event)
+          }
+        })
+
+        if (!selected) {
+          input.log?.debug("rotation stop: no selectable account", {
+            attempted: attempted.size,
+            totalAccounts: domain.accounts.length
+          })
+          break
+        }
+
+        const selectedIndex = domain.accounts.findIndex((account) => account === selected)
+        const attemptKey =
+          selected.identityKey ??
+          selected.refresh ??
+          (selectedIndex >= 0 ? `idx:${selectedIndex}` : `idx:${attempted.size}`)
+
+        if (attempted.has(attemptKey)) {
+          input.log?.debug("rotation stop: duplicate attempt key", {
+            attemptKey,
+            selectedIdentityKey: selected.identityKey,
+            selectedIndex
+          })
+          break
+        }
+
+        attempted.add(attemptKey)
+        if (!input.isSubagentRequest && input.context?.sessionKey && sessionState) {
+          input.persistSessionAffinityState()
+        }
+
+        input.log?.debug("rotation candidate selected", {
+          attemptKey,
+          selectedIdentityKey: selected.identityKey,
+          selectedIndex,
+          selectedEnabled: selected.enabled !== false,
+          selectedCooldownUntil: selected.cooldownUntil ?? null,
+          selectedExpires: selected.expires ?? null
+        })
+
+        accountLabel = formatAccountLabel(selected, selectedIndex >= 0 ? selectedIndex : 0)
+        email = selected.email
+        plan = selected.plan
+
+        if (selected.access && selected.expires && selected.expires > now) {
+          selected.lastUsed = now
+          access = selected.access
+          accountId = selected.accountId
+          identityKey = selected.identityKey
+          if (selected.identityKey) domain.activeIdentityKey = selected.identityKey
+          return authFile
+        }
+
+        if (!selected.refresh) {
+          sawMissingRefresh = true
+          selected.cooldownUntil = now + AUTH_REFRESH_FAILURE_COOLDOWN_MS
+          continue
+        }
+
+        try {
+          const tokens = await refreshAccessToken(selected.refresh)
+          const expires = now + (tokens.expires_in ?? 3600) * 1000
+          const refreshedAccountId = extractAccountId(tokens) || selected.accountId
+          const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
+
+          selected.refresh = tokens.refresh_token
+          selected.access = tokens.access_token
+          selected.expires = expires
+          selected.accountId = refreshedAccountId
+          if (claims?.email) selected.email = normalizeEmail(claims.email)
+          if (claims?.plan) selected.plan = normalizePlan(claims.plan)
+          ensureIdentityKey(selected)
+          selected.lastUsed = now
+          accountLabel = formatAccountLabel(selected, selectedIndex >= 0 ? selectedIndex : 0)
+          email = selected.email
+          plan = selected.plan
+          identityKey = selected.identityKey
+          if (selected.identityKey) domain.activeIdentityKey = selected.identityKey
+
+          access = selected.access
+          accountId = selected.accountId
+
+          return authFile
+        } catch (error) {
+          if (isOAuthTokenRefreshError(error) && error.oauthCode?.toLowerCase() === "invalid_grant") {
+            sawInvalidGrant = true
+            selected.enabled = false
+            delete selected.cooldownUntil
+            delete selected.refreshLeaseUntil
+            continue
+          }
+
+          sawRefreshFailure = true
+          selected.cooldownUntil = now + AUTH_REFRESH_FAILURE_COOLDOWN_MS
+          continue
+        }
+      }
+
+      const enabledAfterAttempts = domain.accounts.filter((account) => account.enabled !== false)
+      if (enabledAfterAttempts.length === 0 && sawInvalidGrant) {
+        throw new PluginFatalError({
+          message:
+            "All enabled OpenAI refresh tokens were rejected (invalid_grant). Run `opencode auth login` to reauthenticate.",
+          status: 401,
+          type: "refresh_invalid_grant",
+          param: "auth"
+        })
+      }
+
+      const nextAvailableAt = enabledAfterAttempts.reduce<number | undefined>((current, account) => {
+        const cooldownUntil = account.cooldownUntil
+        if (typeof cooldownUntil !== "number" || cooldownUntil <= now) return current
+        if (current === undefined || cooldownUntil < current) return cooldownUntil
+        return current
+      }, undefined)
+
+      if (nextAvailableAt !== undefined) {
+        const waitMs = Math.max(0, nextAvailableAt - now)
+        throw new PluginFatalError({
+          message: `All enabled OpenAI accounts are cooling down. Try again in ${formatWaitTime(waitMs)} or run \`opencode auth login\`.`,
+          status: 429,
+          type: "all_accounts_cooling_down",
+          param: "accounts"
+        })
+      }
+
+      if (sawInvalidGrant) {
+        throw new PluginFatalError({
+          message:
+            "OpenAI refresh token was rejected (invalid_grant). Run `opencode auth login` to reauthenticate this account.",
+          status: 401,
+          type: "refresh_invalid_grant",
+          param: "auth"
+        })
+      }
+
+      if (sawMissingRefresh) {
+        throw new PluginFatalError({
+          message: "Selected OpenAI account is missing a refresh token. Run `opencode auth login` to reauthenticate.",
+          status: 401,
+          type: "missing_refresh_token",
+          param: "accounts"
+        })
+      }
+
+      if (sawRefreshFailure) {
+        throw new PluginFatalError({
+          message: "Failed to refresh OpenAI access token. Run `opencode auth login` and try again.",
+          status: 401,
+          type: "refresh_failed",
+          param: "auth"
+        })
+      }
+
+      throw new PluginFatalError({
+        message: `No enabled OpenAI ${input.authMode} accounts available. Enable an account or run \`opencode auth login\`.`,
+        status: 403,
+        type: "no_enabled_accounts",
+        param: "accounts"
+      })
+    })
+  } catch (error) {
+    if (isPluginFatalError(error)) throw error
+    throw new PluginFatalError({
+      message:
+        "Unable to access OpenAI auth storage. Check plugin configuration and run `opencode auth login` if needed.",
+      status: 500,
+      type: "auth_storage_error",
+      param: "auth"
+    })
+  }
+
+  if (!access) {
+    throw new PluginFatalError({
+      message: "No valid OpenAI access token available. Run `opencode auth login`.",
+      status: 401,
+      type: "no_valid_access_token",
+      param: "auth"
+    })
+  }
+
+  return { access, accountId, identityKey, accountLabel, email, plan }
+}
