@@ -1,28 +1,12 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 
-import { extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "./claims"
-import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "./fatal-errors"
-import { buildIdentityKey, ensureIdentityKey } from "./identity"
-import {
-  ensureOpenAIOAuthDomain,
-  getOpenAIOAuthDomain,
-  importLegacyInstallData,
-  loadAuthStorage,
-  saveAuthStorage,
-  setAccountCooldown,
-  shouldOfferLegacyTransfer
-} from "./storage"
-import { toolOutputForStatus } from "./codex-status-tool"
+import { loadAuthStorage, setAccountCooldown } from "./storage"
 import type { Logger } from "./logger"
-import type { AccountRecord, AuthFile, OpenAIAuthMode, OpenAIOAuthDomain, RotationStrategy } from "./types"
-import { FetchOrchestrator } from "./fetch-orchestrator"
+import type { OpenAIAuthMode, RotationStrategy } from "./types"
 import type { CodexSpoofMode, CustomSettings, PersonalityOption, PluginRuntimeMode } from "./config"
 import { formatToastMessage } from "./toast"
-import { runAuthMenuOnce } from "./ui/auth-menu-runner"
-import { shouldUseColor } from "./ui/tty/ansi"
 import type { CodexModelInfo } from "./model-catalog"
 import { createRequestSnapshots } from "./request-snapshots"
-import { sanitizeOutboundRequestIfNeeded } from "./codex-native/request-transform"
 import { resolveCodexOriginator, type CodexOriginator } from "./codex-native/originator"
 import { tryOpenUrlInBrowser as openUrlInBrowser } from "./codex-native/browser"
 import {
@@ -33,24 +17,12 @@ import {
 } from "./codex-native/client-identity"
 import { createOAuthServerController } from "./codex-native/oauth-server"
 import {
-  buildAuthMenuAccounts,
-  ensureAccountAuthTypes,
-  findDomainAccountIndex,
-  formatAccountLabel,
-  hydrateAccountIdentityFromAccessClaims,
-  reconcileActiveIdentityKey,
-  upsertAccount
-} from "./codex-native/accounts"
-import {
   buildAuthorizeUrl,
   buildOAuthErrorHtml,
   buildOAuthSuccessHtml,
   composeCodexSuccessRedirectUrl,
   exchangeCodeForTokens,
-  extractAccountId,
-  extractAccountIdFromClaims,
   generatePKCE,
-  ISSUER,
   OAUTH_CALLBACK_ORIGIN,
   OAUTH_CALLBACK_PATH,
   OAUTH_CALLBACK_TIMEOUT_MS,
@@ -60,13 +32,9 @@ import {
   OAUTH_PORT,
   OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS,
   OAUTH_SERVER_SHUTDOWN_GRACE_MS,
-  refreshAccessToken,
   type PkceCodes,
   type TokenResponse
 } from "./codex-native/oauth-utils"
-import { asString, isRecord } from "./codex-native/session-messages"
-import { assertAllowedOutboundUrl, rewriteUrl } from "./codex-native/request-routing"
-import { acquireOpenAIAuth } from "./codex-native/acquire-auth"
 import { refreshQuotaSnapshotsForAuthMenu as refreshQuotaSnapshotsForAuthMenuBase } from "./codex-native/auth-menu-quotas"
 import { persistOAuthTokensForMode } from "./codex-native/oauth-persistence"
 import { createBrowserOAuthAuthorize, createHeadlessOAuthAuthorize } from "./codex-native/oauth-auth-methods"
@@ -78,13 +46,12 @@ import {
   handleSessionCompactingHook,
   handleTextCompleteHook
 } from "./codex-native/chat-hooks"
-import { applyRequestTransformPipeline } from "./codex-native/request-transform-pipeline"
 import { createSessionAffinityRuntimeState } from "./codex-native/session-affinity-state"
-import { persistRateLimitSnapshotFromResponse } from "./codex-native/rate-limit-snapshots"
 import { initializeCatalogSync } from "./codex-native/catalog-sync"
+import { createOpenAIFetchHandler } from "./codex-native/openai-loader-fetch"
 export { browserOpenInvocationFor } from "./codex-native/browser"
-export { upsertAccount }
-export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken }
+export { upsertAccount } from "./codex-native/accounts"
+export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from "./codex-native/oauth-utils"
 
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
@@ -303,200 +270,37 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           }
         })
 
+        const fetch = createOpenAIFetchHandler({
+          authMode,
+          spoofMode,
+          remapDeveloperMessagesToUserEnabled,
+          customSettings: opts.customSettings,
+          personality: opts.personality,
+          log: opts.log,
+          quietMode: opts.quietMode === true,
+          pidOffsetEnabled: opts.pidOffsetEnabled === true,
+          configuredRotationStrategy: opts.rotationStrategy,
+          headerTransformDebug: opts.headerTransformDebug === true,
+          compatInputSanitizerEnabled: opts.compatInputSanitizer === true,
+          internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
+          requestSnapshots,
+          sessionAffinityState: {
+            orchestratorState,
+            stickySessionState,
+            hybridSessionState,
+            persistSessionAffinityState
+          },
+          getCatalogModels: () => lastCatalogModels,
+          syncCatalogFromAuth,
+          setCooldown: async (idKey, cooldownUntil) => {
+            await setAccountCooldown(undefined, idKey, cooldownUntil, authMode)
+          },
+          showToast
+        })
+
         return {
           apiKey: OAUTH_DUMMY_KEY,
-          async fetch(requestInput: string | URL | Request, init?: RequestInit) {
-            const baseRequest = new Request(requestInput, init)
-            if (opts.headerTransformDebug === true) {
-              await requestSnapshots.captureRequest("before-header-transform", baseRequest, {
-                spoofMode
-              })
-            }
-            let outbound = new Request(rewriteUrl(baseRequest), baseRequest)
-            const inboundOriginator = outbound.headers.get("originator")?.trim()
-            const outboundOriginator =
-              inboundOriginator === "opencode" ||
-              inboundOriginator === "codex_exec" ||
-              inboundOriginator === "codex_cli_rs"
-                ? inboundOriginator
-                : resolveCodexOriginator(spoofMode)
-            outbound.headers.set("originator", outboundOriginator)
-            const inboundUserAgent = outbound.headers.get("user-agent")?.trim()
-            if (spoofMode === "native" && inboundUserAgent) {
-              outbound.headers.set("user-agent", inboundUserAgent)
-            } else {
-              outbound.headers.set("user-agent", resolveRequestUserAgent(spoofMode, outboundOriginator))
-            }
-            if (outbound.headers.has(INTERNAL_COLLABORATION_MODE_HEADER)) {
-              outbound.headers.delete(INTERNAL_COLLABORATION_MODE_HEADER)
-            }
-            const transformed = await applyRequestTransformPipeline({
-              request: outbound,
-              spoofMode,
-              remapDeveloperMessagesToUserEnabled,
-              catalogModels: lastCatalogModels,
-              customSettings: opts.customSettings,
-              fallbackPersonality: opts.personality
-            })
-            outbound = transformed.request
-            const isSubagentRequest = transformed.isSubagentRequest
-            if (opts.headerTransformDebug === true) {
-              await requestSnapshots.captureRequest("after-header-transform", outbound, {
-                spoofMode,
-                instructionsOverridden: transformed.instructionOverride.changed,
-                instructionOverrideReason: transformed.instructionOverride.reason,
-                developerMessagesRemapped: transformed.developerRoleRemap.changed,
-                developerMessageRemapReason: transformed.developerRoleRemap.reason,
-                developerMessageRemapCount: transformed.developerRoleRemap.remappedCount,
-                developerMessagePreservedCount: transformed.developerRoleRemap.preservedCount,
-                ...(isSubagentRequest ? { subagent: transformed.subagentHeader } : {})
-              })
-            }
-            let selectedIdentityKey: string | undefined
-
-            await requestSnapshots.captureRequest("before-auth", outbound, { spoofMode })
-
-            const orchestrator = new FetchOrchestrator({
-              acquireAuth: async (context) => {
-                const auth = await acquireOpenAIAuth({
-                  authMode,
-                  context,
-                  isSubagentRequest,
-                  stickySessionState,
-                  hybridSessionState,
-                  seenSessionKeys: orchestratorState.seenSessionKeys,
-                  persistSessionAffinityState,
-                  pidOffsetEnabled: opts.pidOffsetEnabled === true,
-                  configuredRotationStrategy: opts.rotationStrategy,
-                  log: opts.log
-                })
-
-                if (spoofMode === "codex") {
-                  const shouldAwaitCatalog = !lastCatalogModels || lastCatalogModels.length === 0
-                  if (shouldAwaitCatalog) {
-                    try {
-                      await syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId })
-                    } catch {
-                      // best-effort catalog load; request can still proceed
-                    }
-                  } else {
-                    void syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId }).catch(() => {})
-                  }
-                } else {
-                  void syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId }).catch(() => {})
-                }
-
-                selectedIdentityKey = auth.identityKey
-                return auth
-              },
-              setCooldown: async (idKey, cooldownUntil) => {
-                await setAccountCooldown(undefined, idKey, cooldownUntil, authMode)
-              },
-              quietMode: opts.quietMode === true,
-              state: orchestratorState,
-              onSessionObserved: ({ event, sessionKey }) => {
-                if (isSubagentRequest) {
-                  orchestratorState.seenSessionKeys.delete(sessionKey)
-                  stickySessionState.bySessionKey.delete(sessionKey)
-                  hybridSessionState.bySessionKey.delete(sessionKey)
-                  return
-                }
-                if (event === "new" || event === "resume" || event === "switch") {
-                  persistSessionAffinityState()
-                }
-              },
-              showToast,
-              onAttemptRequest: async ({ attempt, maxAttempts, request, auth, sessionKey }) => {
-                const transformed = await applyRequestTransformPipeline({
-                  request,
-                  spoofMode,
-                  remapDeveloperMessagesToUserEnabled,
-                  catalogModels: lastCatalogModels,
-                  customSettings: opts.customSettings,
-                  fallbackPersonality: opts.personality
-                })
-                await requestSnapshots.captureRequest("outbound-attempt", transformed.request, {
-                  attempt: attempt + 1,
-                  maxAttempts,
-                  sessionKey,
-                  identityKey: auth.identityKey,
-                  accountLabel: auth.accountLabel,
-                  instructionsOverridden: transformed.instructionOverride.changed,
-                  instructionOverrideReason: transformed.instructionOverride.reason,
-                  developerMessagesRemapped: transformed.developerRoleRemap.changed,
-                  developerMessageRemapReason: transformed.developerRoleRemap.reason,
-                  developerMessageRemapCount: transformed.developerRoleRemap.remappedCount,
-                  developerMessagePreservedCount: transformed.developerRoleRemap.preservedCount
-                })
-                return transformed.request
-              },
-              onAttemptResponse: async ({ attempt, maxAttempts, response, auth, sessionKey }) => {
-                await requestSnapshots.captureResponse("outbound-response", response, {
-                  attempt: attempt + 1,
-                  maxAttempts,
-                  sessionKey,
-                  identityKey: auth.identityKey,
-                  accountLabel: auth.accountLabel
-                })
-              }
-            })
-
-            const sanitizedOutbound = await sanitizeOutboundRequestIfNeeded(
-              outbound,
-              opts.compatInputSanitizer === true
-            )
-            if (sanitizedOutbound.changed) {
-              opts.log?.debug("compat input sanitizer applied", { mode: spoofMode })
-            }
-            await requestSnapshots.captureRequest("after-sanitize", sanitizedOutbound.request, {
-              spoofMode,
-              sanitized: sanitizedOutbound.changed
-            })
-            try {
-              assertAllowedOutboundUrl(new URL(sanitizedOutbound.request.url))
-            } catch (error) {
-              if (isPluginFatalError(error)) {
-                return toSyntheticErrorResponse(error)
-              }
-              return toSyntheticErrorResponse(
-                new PluginFatalError({
-                  message: "Outbound request validation failed before sending to OpenAI backend.",
-                  status: 400,
-                  type: "disallowed_outbound_request",
-                  param: "request"
-                })
-              )
-            }
-
-            let response: Response
-            try {
-              response = await orchestrator.execute(sanitizedOutbound.request)
-            } catch (error) {
-              if (isPluginFatalError(error)) {
-                opts.log?.debug("fatal auth/error response", {
-                  type: error.type,
-                  status: error.status
-                })
-                return toSyntheticErrorResponse(error)
-              }
-              opts.log?.debug("unexpected fetch failure", {
-                error: error instanceof Error ? error.message : String(error)
-              })
-              return toSyntheticErrorResponse(
-                new PluginFatalError({
-                  message:
-                    "OpenAI request failed unexpectedly. Retry once, and if it persists run `opencode auth login`.",
-                  status: 502,
-                  type: "plugin_fetch_failed",
-                  param: "request"
-                })
-              )
-            }
-
-            persistRateLimitSnapshotFromResponse(response, selectedIdentityKey)
-
-            return response
-          }
+          fetch
         }
       },
       methods: [
