@@ -348,8 +348,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
 
         if (sawMissingRefresh) {
           throw new PluginFatalError({
-            message:
-              "Selected OpenAI account is missing a refresh token. Run `opencode auth login` to reauthenticate.",
+            message: "Selected OpenAI account is missing a refresh token. Run `opencode auth login` to reauthenticate.",
             status: 401,
             type: "missing_refresh_token",
             param: "accounts"

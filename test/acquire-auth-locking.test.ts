@@ -28,7 +28,9 @@ describe("acquire auth lock behavior", () => {
     const saveAuthStorage = vi.fn(
       async (
         _path: string | undefined,
-        update: (auth: Record<string, unknown>) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
+        update: (
+          auth: Record<string, unknown>
+        ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
       ) => {
         inSaveAuthStorage = true
         try {
