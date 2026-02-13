@@ -8,7 +8,15 @@ import type { Logger } from "./logger"
 const DEFAULT_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
 const REDACTED = "[redacted]"
 const REDACTED_HEADERS = new Set(["authorization", "cookie", "set-cookie", "proxy-authorization"])
-const REDACTED_BODY_KEYS = new Set(["access_token", "refresh_token", "id_token", "authorization"])
+const REDACTED_BODY_KEYS = new Set([
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "authorization",
+  "accesstoken",
+  "refreshtoken",
+  "idtoken"
+])
 const LIVE_HEADERS_LOG_FILE = "live-headers.jsonl"
 
 async function enforceOwnerOnlyPermissions(filePath: string): Promise<void> {

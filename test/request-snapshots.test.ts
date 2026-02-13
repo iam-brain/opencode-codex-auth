@@ -21,7 +21,9 @@ describe("request snapshots", () => {
       body: JSON.stringify({
         model: "gpt-5.3-codex",
         prompt_cache_key: "ses_snap_1",
-        access_token: "should-redact"
+        access_token: "should-redact",
+        accessToken: "should-redact-too",
+        refreshToken: "refresh-secret"
       })
     })
 
@@ -43,6 +45,8 @@ describe("request snapshots", () => {
     expect(payload.headers["chatgpt-account-id"]).toBe("acc_123")
     expect(payload.body.prompt_cache_key).toBe("ses_snap_1")
     expect(payload.body.access_token).toBe("[redacted]")
+    expect(payload.body.accessToken).toBe("[redacted]")
+    expect(payload.body.refreshToken).toBe("[redacted]")
 
     const liveHeadersRaw = await fs.readFile(path.join(root, "live-headers.jsonl"), "utf8")
     const liveHeaders = liveHeadersRaw

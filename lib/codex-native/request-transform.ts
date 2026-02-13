@@ -418,17 +418,28 @@ export async function sanitizeOutboundRequestIfNeeded(
   const sanitized = sanitizeRequestPayloadForCompat(payload)
   if (!sanitized.changed) return { request, changed: false }
 
+  const sanitizedRequest = rebuildRequestWithJsonBody(request, sanitized.payload)
+  return { request: sanitizedRequest, changed: true }
+}
+
+function rebuildRequestWithJsonBody(request: Request, body: unknown): Request {
   const headers = new Headers(request.headers)
   headers.set("content-type", "application/json")
 
-  const sanitizedRequest = new Request(request.url, {
+  return new Request(request.url, {
     method: request.method,
     headers,
-    body: JSON.stringify(sanitized.payload),
-    redirect: request.redirect
+    body: JSON.stringify(body),
+    redirect: request.redirect,
+    signal: request.signal,
+    credentials: request.credentials,
+    cache: request.cache,
+    mode: request.mode,
+    referrer: request.referrer,
+    referrerPolicy: request.referrerPolicy,
+    integrity: request.integrity,
+    keepalive: request.keepalive
   })
-
-  return { request: sanitizedRequest, changed: true }
 }
 
 function messageContentToText(value: unknown): string {
@@ -555,14 +566,7 @@ export async function remapDeveloperMessagesToUserOnRequest(input: { request: Re
   }
 
   payload.input = nextInput
-  const headers = new Headers(input.request.headers)
-  headers.set("content-type", "application/json")
-  const updatedRequest = new Request(input.request.url, {
-    method: input.request.method,
-    headers,
-    body: JSON.stringify(payload),
-    redirect: input.request.redirect
-  })
+  const updatedRequest = rebuildRequestWithJsonBody(input.request, payload)
   return {
     request: updatedRequest,
     changed: true,
@@ -643,13 +647,6 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
   }
 
   payload.instructions = rendered
-  const headers = new Headers(input.request.headers)
-  headers.set("content-type", "application/json")
-  const updatedRequest = new Request(input.request.url, {
-    method: input.request.method,
-    headers,
-    body: JSON.stringify(payload),
-    redirect: input.request.redirect
-  })
+  const updatedRequest = rebuildRequestWithJsonBody(input.request, payload)
   return { request: updatedRequest, changed: true, reason: "updated" }
 }

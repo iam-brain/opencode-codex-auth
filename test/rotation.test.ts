@@ -151,6 +151,23 @@ describe("rotation", () => {
     ).toBe("b")
   })
 
+  it("excludes accounts with active refresh lease", () => {
+    const now = 1000
+    const accounts: AccountRecord[] = [
+      { identityKey: "a", enabled: true, refreshLeaseUntil: now + 1 },
+      { identityKey: "b", enabled: true }
+    ]
+
+    expect(
+      selectAccount({
+        accounts,
+        strategy: "sticky",
+        activeIdentityKey: "a",
+        now
+      })?.identityKey
+    ).toBe("b")
+  })
+
   it("sticky session mode rotates to next healthy account for new sessions", () => {
     const accounts: AccountRecord[] = [
       { identityKey: "a", enabled: true },

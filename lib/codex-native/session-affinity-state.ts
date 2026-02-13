@@ -23,7 +23,7 @@ export async function createSessionAffinityRuntimeState(input: {
   env: NodeJS.ProcessEnv
   missingGraceMs: number
 }): Promise<SessionAffinityRuntimeState> {
-  const sessionAffinityPath = defaultSessionAffinityPath()
+  const sessionAffinityPath = defaultSessionAffinityPath(undefined, input.env)
   const loadedSessionAffinity = await loadSessionAffinity(sessionAffinityPath).catch(() => ({
     version: 1 as const
   }))

@@ -55,6 +55,9 @@ function isEligible(account: AccountRecord, now: number): boolean {
   if (typeof account.cooldownUntil === "number" && account.cooldownUntil > now) {
     return false
   }
+  if (typeof account.refreshLeaseUntil === "number" && account.refreshLeaseUntil > now) {
+    return false
+  }
   return true
 }
 

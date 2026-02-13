@@ -108,4 +108,39 @@ describe("codex request role remap", () => {
     expect(remapped.remappedCount).toBe(0)
     expect(remapped.preservedCount).toBe(0)
   })
+
+  it("preserves request metadata when body is rewritten", async () => {
+    const controller = new AbortController()
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      mode: "cors",
+      credentials: "include",
+      keepalive: true,
+      signal: controller.signal,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: [
+          {
+            type: "message",
+            role: "developer",
+            content: [{ type: "input_text", text: "rewrite me" }]
+          }
+        ]
+      })
+    })
+
+    const remapped = await remapDeveloperMessagesToUserOnRequest({
+      request,
+      enabled: true
+    })
+
+    expect(remapped.changed).toBe(true)
+    expect(remapped.request.keepalive).toBe(true)
+    expect(remapped.request.credentials).toBe("include")
+    expect(remapped.request.mode).toBe("cors")
+
+    controller.abort()
+    expect(remapped.request.signal.aborted).toBe(true)
+  })
 })

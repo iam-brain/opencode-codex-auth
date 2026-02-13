@@ -32,15 +32,17 @@ async function loadPluginForAuth(
 ) {
   vi.resetModules()
 
-  const loadAuthStorage = vi.fn(async () => structuredClone(authFile))
+  let authState = structuredClone(authFile)
+  const loadAuthStorage = vi.fn(async () => structuredClone(authState))
   const saveAuthStorage = vi.fn(
     async (
       _path: string | undefined,
       update: (auth: MockAuthFile) => Promise<MockAuthFile | void> | MockAuthFile | void
     ) => {
-      const current = structuredClone(authFile)
+      const current = structuredClone(authState)
       const next = await update(current)
-      return (next ?? current) as MockAuthFile
+      authState = structuredClone((next ?? current) as MockAuthFile)
+      return structuredClone(authState)
     }
   )
   const setAccountCooldown = vi.fn(async () => {})
