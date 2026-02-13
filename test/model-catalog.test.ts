@@ -51,6 +51,113 @@ describe("model catalog", () => {
     expect(result?.map((m) => m.slug)).toEqual(["gpt-5.1-codex-mini", "gpt-5.2-codex", "gpt-5.4-codex"])
   })
 
+  it("writes plugin cache into codex-auth and codex-models-cache shard files", async () => {
+    const cacheDir = await makeCacheDir()
+    const result = await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      forceRefresh: true,
+      cacheDir,
+      now: () => 4242,
+      fetchImpl: async () => {
+        return new Response(
+          JSON.stringify({
+            models: [{ slug: "gpt-5.3-codex" }]
+          }),
+          { status: 200 }
+        )
+      }
+    })
+
+    expect(result?.map((model) => model.slug)).toEqual(["gpt-5.3-codex"])
+
+    const cacheEntries = await fs.readdir(cacheDir)
+    const authShards = cacheEntries.filter((name) => /^codex-auth-models-[a-f0-9]{16}\.json$/.test(name))
+    const opencodeShards = cacheEntries.filter((name) => /^codex-models-cache-[a-f0-9]{16}\.json$/.test(name))
+
+    expect(authShards.length).toBe(1)
+    expect(opencodeShards.length).toBe(1)
+    expect(cacheEntries).not.toContain("codex-models-cache.json")
+  })
+
+  it("refreshes shared github models cache when client version bumps", async () => {
+    const cacheDir = await makeCacheDir()
+    await fs.writeFile(
+      path.join(cacheDir, "codex-models-cache.json"),
+      JSON.stringify(
+        {
+          fetchedAt: 100,
+          source: "github",
+          models: [{ slug: "gpt-5.2-codex" }]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    )
+    await fs.writeFile(
+      path.join(cacheDir, "codex-models-cache-meta.json"),
+      JSON.stringify(
+        {
+          version: "0.98.0",
+          tag: "rust-v0.98.0",
+          lastChecked: 100,
+          url: "https://raw.githubusercontent.com/openai/codex/rust-v0.98.0/codex-rs/core/models.json"
+        },
+        null,
+        2
+      ),
+      "utf8"
+    )
+
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
+      expect(endpoint).toBe("https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/core/models.json")
+      return new Response(
+        JSON.stringify({
+          models: [{ slug: "gpt-5.3-codex" }]
+        }),
+        {
+          status: 200,
+          headers: {
+            etag: 'W/"models-099"'
+          }
+        }
+      )
+    })
+
+    const models = await getCodexModelCatalog({
+      cacheDir,
+      clientVersion: "0.99.0",
+      refreshGithubModelsCache: true,
+      now: () => 200,
+      fetchImpl
+    })
+
+    expect(models?.map((model) => model.slug)).toContain("gpt-5.3-codex")
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+
+    const sharedRaw = await fs.readFile(path.join(cacheDir, "codex-models-cache.json"), "utf8")
+    const shared = JSON.parse(sharedRaw) as { fetchedAt?: number; source?: string; models?: Array<{ slug?: string }> }
+    expect(shared.fetchedAt).toBe(200)
+    expect(shared.source).toBe("github")
+    expect(shared.models?.map((model) => model.slug)).toContain("gpt-5.3-codex")
+
+    const metaRaw = await fs.readFile(path.join(cacheDir, "codex-models-cache-meta.json"), "utf8")
+    const meta = JSON.parse(metaRaw) as {
+      etag?: string
+      tag?: string
+      lastChecked?: number
+      url?: string
+      version?: string
+    }
+    expect(meta.etag).toBe('W/"models-099"')
+    expect(meta.tag).toBe("rust-v0.99.0")
+    expect(meta.lastChecked).toBe(200)
+    expect(meta.url).toBe("https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/core/models.json")
+    expect(meta.version).toBeUndefined()
+  })
+
   it("deduplicates concurrent network catalog fetches for the same cache key", async () => {
     const cacheDir = await makeCacheDir()
     let resolveFetch: ((value: Response) => void) | undefined
@@ -306,6 +413,37 @@ describe("model catalog", () => {
       } else {
         process.env.XDG_CONFIG_HOME = prevXdg
       }
+    }
+  })
+
+  it("prefers model template over base instructions when both exist", () => {
+    const instructions = resolveInstructionsForModel({
+      slug: "gpt-5.4-codex",
+      base_instructions: "Use base instructions first",
+      model_messages: {
+        instructions_template: "Template {{ personality }}",
+        instructions_variables: {
+          personality_default: "Default"
+        }
+      }
+    })
+
+    expect(instructions).toBe("Template Default")
+  })
+
+  it("does not use local personality text when base and template are missing", async () => {
+    const root = await makeCacheDir()
+    const personalityDir = path.join(root, ".opencode", "personalities")
+    await fs.mkdir(personalityDir, { recursive: true })
+    await fs.writeFile(path.join(personalityDir, "Operator.md"), "Local cached instruction body", "utf8")
+
+    const prev = process.cwd()
+    process.chdir(root)
+    try {
+      const instructions = resolveInstructionsForModel({ slug: "gpt-5.4-codex" }, "operator")
+      expect(instructions).toBeUndefined()
+    } finally {
+      process.chdir(prev)
     }
   })
 

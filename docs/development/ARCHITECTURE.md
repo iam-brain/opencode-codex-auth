@@ -42,6 +42,11 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - optional background refresh with lease/cooldown guards
 - `lib/model-catalog.ts`
   - dynamic model catalog fetch/cache and provider model shaping
+  - account-scoped server cache shards (`codex-auth-models-*.json`, `codex-models-cache-<hash>.json`)
+  - shared GitHub catalog cache (`codex-models-cache.json`) + metadata (`codex-models-cache-meta.json`)
+- `lib/codex-native/client-identity.ts`
+  - Codex client version resolution/refresh cache (`codex-client-version.json`)
+  - release-tag to semver normalization used by catalog/instruction refresh logic
 - `lib/personality-command.ts`
   - `/create-personality` command template install/bootstrap
 - `lib/personality-create.ts`
@@ -55,6 +60,20 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
 
 - Provider marker: `~/.local/share/opencode/auth.json`
 - Plugin store: `~/.config/opencode/codex-accounts.json`
+
+## Cache files (model/instruction path)
+
+- `~/.config/opencode/cache/codex-client-version.json`
+  - canonical cached target client version (`version`, `fetchedAt`)
+- `~/.config/opencode/cache/codex-models-cache-meta.json`
+  - shared GitHub catalog metadata (`etag`, `tag`, `lastChecked`, `url`), aligned with instruction metadata files
+- `~/.config/opencode/cache/codex-models-cache.json`
+  - shared GitHub catalog snapshot used as stale fallback and refresh target
+- `~/.config/opencode/cache/codex-models-cache-<hash>.json`
+  - account-scoped server catalog mirror
+- `~/.config/opencode/cache/codex-auth-models-<hash>.json`
+  - plugin-primary account-scoped server catalog cache
+- Existing instruction caches (for example `codex-instructions.md` + `codex-instructions-meta.json`) remain separate artifacts under the same cache root.
 
 ## Invariants
 

@@ -80,6 +80,7 @@ export type GetCodexModelCatalogInput = {
   fetchImpl?: typeof fetch
   forceRefresh?: boolean
   cacheDir?: string
+  refreshGithubModelsCache?: boolean
   onEvent?: (event: CodexModelCatalogEvent) => void
 }
 
@@ -91,9 +92,11 @@ export type ApplyCodexCatalogInput = {
 }
 
 const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
+const CODEX_GITHUB_MODELS_URL_PREFIX = "https://raw.githubusercontent.com/openai/codex"
 const DEFAULT_CACHE_DIR = path.join(os.homedir(), ".config", "opencode", "cache")
 const OPENCODE_MODELS_CACHE_PREFIX = "codex-models-cache"
 const CODEX_AUTH_MODELS_CACHE_PREFIX = "codex-auth-models-"
+const OPENCODE_MODELS_META_FILE = "codex-models-cache-meta.json"
 const DEFAULT_CLIENT_VERSION = "0.97.0"
 const CACHE_TTL_MS = 15 * 60 * 1000
 const FETCH_TIMEOUT_MS = 5000
@@ -141,6 +144,157 @@ function cachePath(cacheDir: string, accountId?: string): string {
     return path.join(cacheDir, "codex-auth-models-shared.json")
   }
   return path.join(cacheDir, `codex-auth-models-${hashAccountId(normalized)}.json`)
+}
+
+function opencodeShardCachePath(cacheDir: string, accountId?: string): string | undefined {
+  const normalized = normalizeAccountId(accountId)
+  if (!normalized) return undefined
+  return path.join(cacheDir, `codex-models-cache-${hashAccountId(normalized)}.json`)
+}
+
+function opencodeSharedCachePath(cacheDir: string): string {
+  return path.join(cacheDir, "codex-models-cache.json")
+}
+
+type GitHubModelsCacheMeta = {
+  etag?: string
+  tag: string
+  lastChecked: number
+  url: string
+}
+
+function parseSemver(value: unknown): [number, number, number] | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  const match = trimmed.match(/^(\d+)\.(\d+)\.(\d+)$/)
+  if (!match) return undefined
+  return [Number.parseInt(match[1], 10), Number.parseInt(match[2], 10), Number.parseInt(match[3], 10)]
+}
+
+function compareSemver(a: [number, number, number], b: [number, number, number]): number {
+  if (a[0] !== b[0]) return a[0] - b[0]
+  if (a[1] !== b[1]) return a[1] - b[1]
+  return a[2] - b[2]
+}
+
+function normalizeSemver(value: string | undefined): string | undefined {
+  const parsed = parseSemver(value)
+  if (!parsed) return undefined
+  return `${parsed[0]}.${parsed[1]}.${parsed[2]}`
+}
+
+function githubModelsTag(version: string): string {
+  return `rust-v${version}`
+}
+
+function githubModelsUrl(version: string): string {
+  return `${CODEX_GITHUB_MODELS_URL_PREFIX}/${githubModelsTag(version)}/codex-rs/core/models.json`
+}
+
+function semverFromTag(tag: string | undefined): string | undefined {
+  if (!tag) return undefined
+  const match = tag.match(/(\d+\.\d+\.\d+)/)
+  if (!match?.[1]) return undefined
+  return normalizeSemver(match[1])
+}
+
+async function readGitHubModelsCacheMeta(cacheDir: string): Promise<GitHubModelsCacheMeta | undefined> {
+  try {
+    const file = path.join(cacheDir, OPENCODE_MODELS_META_FILE)
+    const raw = await fs.readFile(file, "utf8")
+    const parsed = JSON.parse(raw) as unknown
+    if (!isRecord(parsed)) return undefined
+    const parsedVersion = normalizeSemver(typeof parsed.version === "string" ? parsed.version : undefined)
+    const parsedTag = typeof parsed.tag === "string" ? parsed.tag.trim() : ""
+    const tag = parsedTag || (parsedVersion ? githubModelsTag(parsedVersion) : "")
+    const url = typeof parsed.url === "string" ? parsed.url.trim() : ""
+    const lastChecked =
+      typeof parsed.lastChecked === "number" && Number.isFinite(parsed.lastChecked) ? parsed.lastChecked : 0
+    const etag = typeof parsed.etag === "string" ? parsed.etag.trim() : undefined
+    if (!tag || !url) return undefined
+    return { etag, tag, url, lastChecked }
+  } catch {
+    return undefined
+  }
+}
+
+async function writeGitHubModelsCacheMeta(cacheDir: string, meta: GitHubModelsCacheMeta): Promise<void> {
+  try {
+    const file = path.join(cacheDir, OPENCODE_MODELS_META_FILE)
+    await fs.mkdir(path.dirname(file), { recursive: true })
+    await fs.writeFile(file, `${JSON.stringify(meta, null, 2)}\n`, { mode: 0o600 })
+    await fs.chmod(file, 0o600).catch(() => {})
+  } catch {
+    // Best effort metadata persistence.
+  }
+}
+
+async function refreshSharedGitHubModelsCache(input: {
+  cacheDir: string
+  targetClientVersion: string | undefined
+  now: number
+  fetchImpl: typeof fetch
+}): Promise<void> {
+  const targetVersion = normalizeSemver(input.targetClientVersion)
+  if (!targetVersion) return
+
+  const existingMeta = await readGitHubModelsCacheMeta(input.cacheDir)
+  const existingVersion = parseSemver(semverFromTag(existingMeta?.tag))
+  const target = parseSemver(targetVersion)
+  if (!target) return
+  if (existingVersion && compareSemver(existingVersion, target) >= 0) return
+
+  const tag = githubModelsTag(targetVersion)
+  const url = githubModelsUrl(targetVersion)
+  const requestHeaders: Record<string, string> = {}
+  if (existingMeta?.url === url && existingMeta.etag) {
+    requestHeaders["if-none-match"] = existingMeta.etag
+  }
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+    let response: Response
+    try {
+      response = await input.fetchImpl(url, {
+        method: "GET",
+        ...(Object.keys(requestHeaders).length > 0 ? { headers: requestHeaders } : {}),
+        signal: controller.signal
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
+    if (response.status === 304 && existingMeta) {
+      await writeGitHubModelsCacheMeta(input.cacheDir, {
+        etag: existingMeta.etag,
+        tag,
+        lastChecked: input.now,
+        url
+      })
+      return
+    }
+    if (!response.ok) return
+
+    const payload = (await response.json()) as unknown
+    const models = parseCatalogResponse(payload)
+    if (models.length === 0) return
+    const etag = response.headers.get("etag")?.trim() || (existingMeta?.url === url ? existingMeta.etag : undefined)
+
+    const file = opencodeSharedCachePath(input.cacheDir)
+    await fs.mkdir(path.dirname(file), { recursive: true })
+    await fs.writeFile(file, `${JSON.stringify({ fetchedAt: input.now, source: "github", models }, null, 2)}\n`, {
+      mode: 0o600
+    })
+    await fs.chmod(file, 0o600).catch(() => {})
+
+    await writeGitHubModelsCacheMeta(input.cacheDir, {
+      etag,
+      tag,
+      lastChecked: input.now,
+      url
+    })
+  } catch {
+    // Best effort refresh; continue without blocking catalog load.
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -350,10 +504,15 @@ async function writeCatalogToDisk(
   cache: CodexModelsCache
 ): Promise<void> {
   await withCacheLock(cacheDir, async () => {
-    const file = cachePath(cacheDir, accountId)
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    await fs.writeFile(file, `${JSON.stringify(cache, null, 2)}\n`, { mode: 0o600 })
-    await fs.chmod(file, 0o600).catch(() => {})
+    const primaryFile = cachePath(cacheDir, accountId)
+    const compatFile = opencodeShardCachePath(cacheDir, accountId)
+    const content = `${JSON.stringify(cache, null, 2)}\n`
+    const files = compatFile ? [primaryFile, compatFile] : [primaryFile]
+    for (const file of files) {
+      await fs.mkdir(path.dirname(file), { recursive: true })
+      await fs.writeFile(file, content, { mode: 0o600 })
+      await fs.chmod(file, 0o600).catch(() => {})
+    }
   }).catch(() => {
     // Best effort cache persistence.
   })
@@ -393,6 +552,20 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   const now = (input.now ?? Date.now)()
   const cacheDir = input.cacheDir ?? DEFAULT_CACHE_DIR
   const key = cacheKey(cacheDir, input.accountId)
+  const fetchImpl = input.fetchImpl ?? fetch
+  const targetClientVersion = normalizeSemver(input.clientVersion) ?? normalizeSemver(input.versionHeader)
+  const defaultGithubModelsRefresh =
+    Boolean(input.accessToken) && input.fetchImpl === undefined && targetClientVersion !== undefined
+  const shouldRefreshGithubModelsCache = input.refreshGithubModelsCache ?? defaultGithubModelsRefresh
+
+  if (shouldRefreshGithubModelsCache) {
+    await refreshSharedGitHubModelsCache({
+      cacheDir,
+      targetClientVersion,
+      now,
+      fetchImpl
+    })
+  }
 
   const memory = inMemoryCatalog.get(key)
   if (memory && !input.forceRefresh && isFresh(memory, now)) {
@@ -451,7 +624,6 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
     return existingInFlight
   }
 
-  const fetchImpl = input.fetchImpl ?? fetch
   const inFlight = (async (): Promise<CodexModelInfo[] | undefined> => {
     try {
       const controller = new AbortController()
@@ -614,16 +786,13 @@ export function resolveInstructionsForModel(
   const template = model.model_messages?.instructions_template?.trim()
   const base = model.base_instructions?.trim()
   const safeBase = normalizeSafeInstructions(base)
+  if (!template) return safeBase
 
-  if (!template) {
-    return safeBase
-  }
-
-  const personalityText = resolvePersonalityText(model, personality) ?? ""
   if (!template.includes("{{") && !template.includes("}}")) {
     return normalizeSafeInstructions(template) ?? safeBase
   }
 
+  const personalityText = resolvePersonalityText(model, personality) ?? ""
   const rendered = template
     .replace(/\{\{\s*personality\s*\}\}/gi, personalityText)
     .replace(/\n{3,}/g, "\n\n")

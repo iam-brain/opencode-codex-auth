@@ -10,8 +10,23 @@
   - sticky/hybrid session-to-account affinity state
 - `~/.config/opencode/cache/codex-snapshots.json`
   - quota snapshot cache used by status/quota views
+- `~/.config/opencode/cache/codex-client-version.json`
+  - cached Codex client target version (`version`, `fetchedAt`)
+- `~/.config/opencode/cache/codex-models-cache-meta.json`
+  - shared GitHub model catalog metadata (`etag`, `tag`, `lastChecked`, `url`)
+- `~/.config/opencode/cache/codex-models-cache.json`
+  - shared GitHub model catalog snapshot
+- `~/.config/opencode/cache/codex-models-cache-<hash>.json`
+  - account-scoped server model catalog mirror
+- `~/.config/opencode/cache/codex-auth-models-<hash>.json`
+  - plugin-primary account-scoped model catalog cache
 - `~/.config/opencode/logs/codex-plugin/` (optional)
   - request/response snapshot logs when enabled
+
+## Related compatibility caches
+
+- Existing Codex instruction cache files under `~/.config/opencode/cache/` (for example `codex-instructions.md`, `codex-instructions-meta.json`, `gpt-5.1-instructions.md`) may coexist and are preserved.
+- Metadata conventions are aligned (`etag`, `tag`, `lastChecked`, `url`) for GitHub-backed cache files.
 
 ## Sensitive data handling
 

@@ -100,29 +100,32 @@ export async function handleChatParamsHook(input: {
   const globalVerbosityEnabled =
     typeof globalBehavior?.verbosityEnabled === "boolean" ? globalBehavior.verbosityEnabled : undefined
   const globalVerbosity = normalizeVerbositySetting(globalBehavior?.verbosity)
-  if (isRecord(modelOptions.codexCatalogModel)) {
-    const rendered = resolveInstructionsForModel(modelOptions.codexCatalogModel as CodexModelInfo, effectivePersonality)
-    if (rendered) {
-      modelOptions.codexInstructions = rendered
-    } else {
-      delete modelOptions.codexInstructions
+  const catalogModelFromOptions = isRecord(modelOptions.codexCatalogModel)
+    ? (modelOptions.codexCatalogModel as CodexModelInfo)
+    : undefined
+  let renderedCatalogInstructions = catalogModelFromOptions
+    ? resolveInstructionsForModel(catalogModelFromOptions, effectivePersonality)
+    : undefined
+
+  if (!renderedCatalogInstructions && catalogModelFallback) {
+    if (!catalogModelFromOptions) {
+      modelOptions.codexCatalogModel = catalogModelFallback
     }
-  } else if (catalogModelFallback) {
-    modelOptions.codexCatalogModel = catalogModelFallback
-    const rendered = resolveInstructionsForModel(catalogModelFallback, effectivePersonality)
-    if (rendered) {
-      modelOptions.codexInstructions = rendered
-    } else {
-      delete modelOptions.codexInstructions
-    }
+    renderedCatalogInstructions = resolveInstructionsForModel(catalogModelFallback, effectivePersonality)
     const defaults = getRuntimeDefaultsForModel(catalogModelFallback)
     if (defaults) {
       modelOptions.codexRuntimeDefaults = defaults
     }
-  } else if (asString(modelOptions.codexInstructions) === undefined) {
+  }
+
+  if (renderedCatalogInstructions) {
+    modelOptions.codexInstructions = renderedCatalogInstructions
+  } else {
     const directModelInstructions = asString((input.hookInput.model as Record<string, unknown>).instructions)
     if (directModelInstructions) {
       modelOptions.codexInstructions = directModelInstructions
+    } else if (asString(modelOptions.codexInstructions) === undefined) {
+      delete modelOptions.codexInstructions
     }
   }
   applyCodexRuntimeDefaultsToParams({

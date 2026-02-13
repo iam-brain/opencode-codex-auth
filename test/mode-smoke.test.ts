@@ -52,7 +52,7 @@ describe("mode smoke: native vs codex", () => {
       }
     } as any
 
-    const withHost = {
+    const withHost: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -62,7 +62,7 @@ describe("mode smoke: native vs codex", () => {
       }
     }
 
-    const withoutHost = {
+    const withoutHost: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -108,7 +108,7 @@ describe("mode smoke: native vs codex", () => {
       }
     } as any
 
-    const withHost = {
+    const withHost: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -128,5 +128,51 @@ describe("mode smoke: native vs codex", () => {
 
     expect(nativeOut.options.instructions).toBe("OpenCode Host Instructions")
     expect(codexOut.options.instructions).toBe("Catalog Instructions From Model")
+  })
+
+  it("prefers model.instructions over default codexInstructions when catalog rendering is unavailable", async () => {
+    const input = {
+      sessionID: "ses_mode_smoke_source_order",
+      agent: "default",
+      provider: {},
+      message: {},
+      model: {
+        id: "gpt-5.3-codex",
+        api: { id: "gpt-5.3-codex" },
+        providerID: "openai",
+        instructions: "Model Instructions From GitHub",
+        capabilities: { toolcall: true },
+        options: {
+          codexCatalogModel: {
+            slug: "gpt-5.3-codex",
+            model_messages: {
+              instructions_template: "{{ unsupported_marker }}"
+            }
+          },
+          codexInstructions: "Default codex-instructions"
+        }
+      }
+    } as any
+
+    const withHost = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {
+        instructions: "OpenCode Host Instructions",
+        include: ["web_search_call.action.sources"]
+      }
+    }
+
+    const nativeHooks = await CodexAuthPlugin({} as never, { spoofMode: "native" })
+    const codexHooks = await CodexAuthPlugin({} as never, { spoofMode: "codex" })
+
+    const nativeOut = structuredClone(withHost)
+    const codexOut = structuredClone(withHost)
+    await nativeHooks["chat.params"]?.(input, nativeOut as any)
+    await codexHooks["chat.params"]?.(input, codexOut as any)
+
+    expect(nativeOut.options.instructions).toBe("OpenCode Host Instructions")
+    expect(codexOut.options.instructions).toBe("Model Instructions From GitHub")
   })
 })

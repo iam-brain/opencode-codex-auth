@@ -8,6 +8,11 @@
    - `~/.local/share/opencode/auth.json`
    - `~/.config/opencode/codex-accounts.json`
 4. Confirm cache files exist (created on demand):
+   - `~/.config/opencode/cache/codex-client-version.json`
+   - `~/.config/opencode/cache/codex-models-cache-meta.json`
+   - `~/.config/opencode/cache/codex-models-cache.json`
+   - `~/.config/opencode/cache/codex-models-cache-<hash>.json`
+   - `~/.config/opencode/cache/codex-auth-models-<hash>.json`
    - `~/.config/opencode/cache/codex-session-affinity.json`
    - `~/.config/opencode/cache/codex-snapshots.json`
 
@@ -23,6 +28,12 @@
 - Re-run `opencode auth login`.
 - Verify both auth files above exist and are readable.
 - Confirm your selected model slug exists in provider model list.
+
+### `codex-models-cache.json` looks stale after version changes
+
+- `codex-models-cache.json` is the shared GitHub snapshot, refreshed by comparing cached `codex-models-cache-meta.json` tag against the target client version from `codex-client-version.json`.
+- Account shard files (`codex-auth-models-*.json`, `codex-models-cache-<hash>.json`) are server catalogs and can differ from shared GitHub cache.
+- If shared cache is stuck, remove `codex-models-cache.json` and `codex-models-cache-meta.json`, then rerun a model-catalog path (for example `opencode auth login` followed by a normal model request) to force repopulation.
 
 ### `/create-personality` command not found
 
