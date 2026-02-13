@@ -27,4 +27,4 @@ For matching OpenAI sessions, the plugin applies codex-rs compact template behav
 - Replaces the compaction prompt with the codex compact prompt template.
 - Prefixes compaction summary text with the codex `summary_prefix` handoff context.
 
-Implementation reference: `lib/codex-native.ts` hooks `experimental.session.compacting` and `experimental.text.complete`.
+Implementation reference: hook logic lives in `lib/codex-native/chat-hooks.ts` and is wired by `lib/codex-native.ts`.

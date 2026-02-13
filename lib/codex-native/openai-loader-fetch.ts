@@ -3,7 +3,7 @@ import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "
 import type { Logger } from "../logger"
 import type { CodexModelInfo } from "../model-catalog"
 import type { RotationStrategy } from "../types"
-import type { CodexSpoofMode, CustomSettings, PersonalityOption } from "../config"
+import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config"
 import type { OpenAIAuthMode } from "../types"
 import { acquireOpenAIAuth } from "./acquire-auth"
 import { resolveRequestUserAgent } from "./client-identity"
@@ -23,7 +23,7 @@ export type CreateOpenAIFetchHandlerInput = {
   authMode: OpenAIAuthMode
   spoofMode: CodexSpoofMode
   remapDeveloperMessagesToUserEnabled: boolean
-  customSettings?: CustomSettings
+  behaviorSettings?: BehaviorSettings
   personality?: PersonalityOption
   log?: Logger
   quietMode: boolean
@@ -73,7 +73,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       spoofMode: input.spoofMode,
       remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
       catalogModels: input.getCatalogModels(),
-      customSettings: input.customSettings,
+      behaviorSettings: input.behaviorSettings,
       fallbackPersonality: input.personality
     })
     outbound = transformed.request
@@ -155,7 +155,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           spoofMode: input.spoofMode,
           remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
           catalogModels: input.getCatalogModels(),
-          customSettings: input.customSettings,
+          behaviorSettings: input.behaviorSettings,
           fallbackPersonality: input.personality
         })
 

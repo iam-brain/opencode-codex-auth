@@ -1,4 +1,4 @@
-import type { CustomSettings, PersonalityOption } from "../config"
+import type { BehaviorSettings, PersonalityOption } from "../config"
 import type { CodexModelInfo } from "../model-catalog"
 import { resolveInstructionsForModel } from "../model-catalog"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer"
@@ -38,6 +38,22 @@ function normalizeReasoningSummaryOption(value: unknown): "auto" | "concise" | "
   const normalized = asString(value)?.toLowerCase()
   if (!normalized || normalized === "none") return undefined
   if (normalized === "auto" || normalized === "concise" || normalized === "detailed") return normalized
+  return undefined
+}
+
+function normalizeTextVerbosity(value: unknown): "low" | "medium" | "high" | undefined {
+  const normalized = asString(value)?.toLowerCase()
+  if (!normalized) return undefined
+  if (normalized === "low" || normalized === "medium" || normalized === "high") return normalized
+  return undefined
+}
+
+function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | undefined {
+  const normalized = asString(value)?.toLowerCase()
+  if (!normalized) return undefined
+  if (normalized === "default" || normalized === "low" || normalized === "medium" || normalized === "high") {
+    return normalized
+  }
   return undefined
 }
 
@@ -168,11 +184,11 @@ function resolveCaseInsensitiveEntry<T>(entries: Record<string, T> | undefined, 
 }
 
 function getModelPersonalityOverride(
-  customSettings: CustomSettings | undefined,
+  behaviorSettings: BehaviorSettings | undefined,
   modelCandidates: string[],
   variantCandidates: string[]
 ): string | undefined {
-  const models = customSettings?.models
+  const models = behaviorSettings?.perModel
   if (!models) return undefined
 
   for (const candidate of modelCandidates) {
@@ -181,11 +197,11 @@ function getModelPersonalityOverride(
 
     for (const variantCandidate of variantCandidates) {
       const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
-      const variantPersonality = normalizePersonalityKey(variantEntry?.options?.personality)
+      const variantPersonality = normalizePersonalityKey(variantEntry?.personality)
       if (variantPersonality) return variantPersonality
     }
 
-    const modelPersonality = normalizePersonalityKey(entry.options?.personality)
+    const modelPersonality = normalizePersonalityKey(entry.personality)
     if (modelPersonality) return modelPersonality
   }
 
@@ -193,11 +209,11 @@ function getModelPersonalityOverride(
 }
 
 export function getModelThinkingSummariesOverride(
-  customSettings: CustomSettings | undefined,
+  behaviorSettings: BehaviorSettings | undefined,
   modelCandidates: string[],
   variantCandidates: string[]
 ): boolean | undefined {
-  const models = customSettings?.models
+  const models = behaviorSettings?.perModel
   if (!models) return undefined
 
   for (const candidate of modelCandidates) {
@@ -219,20 +235,72 @@ export function getModelThinkingSummariesOverride(
   return undefined
 }
 
+export function getModelVerbosityEnabledOverride(
+  behaviorSettings: BehaviorSettings | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): boolean | undefined {
+  const models = behaviorSettings?.perModel
+  if (!models) return undefined
+
+  for (const candidate of modelCandidates) {
+    const entry = resolveCaseInsensitiveEntry(models, candidate)
+    if (!entry) continue
+
+    for (const variantCandidate of variantCandidates) {
+      const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
+      if (typeof variantEntry?.verbosityEnabled === "boolean") {
+        return variantEntry.verbosityEnabled
+      }
+    }
+
+    if (typeof entry.verbosityEnabled === "boolean") {
+      return entry.verbosityEnabled
+    }
+  }
+
+  return undefined
+}
+
+export function getModelVerbosityOverride(
+  behaviorSettings: BehaviorSettings | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): "default" | "low" | "medium" | "high" | undefined {
+  const models = behaviorSettings?.perModel
+  if (!models) return undefined
+
+  for (const candidate of modelCandidates) {
+    const entry = resolveCaseInsensitiveEntry(models, candidate)
+    if (!entry) continue
+
+    for (const variantCandidate of variantCandidates) {
+      const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
+      const variantVerbosity = normalizeVerbositySetting(variantEntry?.verbosity)
+      if (variantVerbosity) return variantVerbosity
+    }
+
+    const modelVerbosity = normalizeVerbositySetting(entry.verbosity)
+    if (modelVerbosity) return modelVerbosity
+  }
+
+  return undefined
+}
+
 export function resolvePersonalityForModel(input: {
-  customSettings?: CustomSettings
+  behaviorSettings?: BehaviorSettings
   modelCandidates: string[]
   variantCandidates: string[]
   fallback?: PersonalityOption
 }): string | undefined {
   const modelOverride = getModelPersonalityOverride(
-    input.customSettings,
+    input.behaviorSettings,
     input.modelCandidates,
     input.variantCandidates
   )
   if (modelOverride) return modelOverride
 
-  const globalOverride = normalizePersonalityKey(input.customSettings?.options?.personality)
+  const globalOverride = normalizePersonalityKey(input.behaviorSettings?.global?.personality)
   if (globalOverride) return globalOverride
 
   return normalizePersonalityKey(input.fallback)
@@ -242,6 +310,8 @@ export function applyCodexRuntimeDefaultsToParams(input: {
   modelOptions: Record<string, unknown>
   modelToolCallCapable: boolean | undefined
   thinkingSummariesOverride: boolean | undefined
+  verbosityEnabledOverride: boolean | undefined
+  verbosityOverride: "default" | "low" | "medium" | "high" | undefined
   preferCodexInstructions: boolean
   output: ChatParamsOutput
 }): void {
@@ -284,12 +354,26 @@ export function applyCodexRuntimeDefaultsToParams(input: {
     }
   }
 
-  if (
-    asString(options.textVerbosity) === undefined &&
-    defaults.defaultVerbosity &&
-    (defaults.supportsVerbosity ?? true)
-  ) {
-    options.textVerbosity = defaults.defaultVerbosity
+  const rawTextVerbosity = asString(options.textVerbosity)
+  const explicitTextVerbosity = normalizeTextVerbosity(rawTextVerbosity)
+  if (rawTextVerbosity !== undefined && !explicitTextVerbosity) {
+    delete options.textVerbosity
+  }
+
+  const verbosityEnabled = input.verbosityEnabledOverride ?? true
+  const verbositySetting = input.verbosityOverride ?? "default"
+  const supportsVerbosity = defaults.supportsVerbosity !== false
+
+  if (!supportsVerbosity || !verbosityEnabled) {
+    delete options.textVerbosity
+  } else if (normalizeTextVerbosity(options.textVerbosity) === undefined) {
+    if (verbositySetting === "default") {
+      if (defaults.defaultVerbosity) {
+        options.textVerbosity = defaults.defaultVerbosity
+      }
+    } else {
+      options.textVerbosity = verbositySetting
+    }
   }
 
   if (asString(options.applyPatchToolType) === undefined && defaults.applyPatchToolType) {
@@ -513,7 +597,7 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
   request: Request
   enabled: boolean
   catalogModels: CodexModelInfo[] | undefined
-  customSettings: CustomSettings | undefined
+  behaviorSettings: BehaviorSettings | undefined
   fallbackPersonality: PersonalityOption | undefined
 }): Promise<{ request: Request; changed: boolean; reason: string }> {
   if (!input.enabled) return { request: input.request, changed: false, reason: "disabled" }
@@ -543,7 +627,7 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
     modelSlug: modelSlugRaw
   })
   const effectivePersonality = resolvePersonalityForModel({
-    customSettings: input.customSettings,
+    behaviorSettings: input.behaviorSettings,
     modelCandidates,
     variantCandidates,
     fallback: input.fallbackPersonality

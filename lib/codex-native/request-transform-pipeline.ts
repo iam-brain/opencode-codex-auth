@@ -1,4 +1,4 @@
-import type { CodexSpoofMode, CustomSettings, PersonalityOption } from "../config"
+import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config"
 import type { CodexModelInfo } from "../model-catalog"
 import { applyCatalogInstructionOverrideToRequest, remapDeveloperMessagesToUserOnRequest } from "./request-transform"
 
@@ -15,14 +15,14 @@ export async function applyRequestTransformPipeline(input: {
   spoofMode: CodexSpoofMode
   remapDeveloperMessagesToUserEnabled: boolean
   catalogModels: CodexModelInfo[] | undefined
-  customSettings?: CustomSettings
+  behaviorSettings?: BehaviorSettings
   fallbackPersonality?: PersonalityOption
 }): Promise<RequestTransformPipelineResult> {
   const instructionOverride = await applyCatalogInstructionOverrideToRequest({
     request: input.request,
     enabled: input.spoofMode === "codex",
     catalogModels: input.catalogModels,
-    customSettings: input.customSettings,
+    behaviorSettings: input.behaviorSettings,
     fallbackPersonality: input.fallbackPersonality
   })
   const developerRoleRemap = await remapDeveloperMessagesToUserOnRequest({

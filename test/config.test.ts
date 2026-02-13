@@ -9,7 +9,7 @@ import {
   ensureDefaultConfigFile,
   getCompatInputSanitizerEnabled,
   getCodexCompactionOverrideEnabled,
-  getCustomSettings,
+  getBehaviorSettings,
   getDebugEnabled,
   getHeaderTransformDebugEnabled,
   getHeaderSnapshotsEnabled,
@@ -51,6 +51,11 @@ describe("config loading", () => {
 
   it("rejects unsafe personality names from env", () => {
     const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_PERSONALITY: "../pirate" } })
+    expect(getPersonality(cfg)).toBeUndefined()
+  })
+
+  it("ignores legacy top-level personality passed via resolveConfig file object", () => {
+    const cfg = resolveConfig({ env: {}, file: { personality: "friendly" } })
     expect(getPersonality(cfg)).toBeUndefined()
   })
 
@@ -170,16 +175,18 @@ describe("config loading", () => {
     expect(getHeaderTransformDebugEnabled(cfg)).toBe(true)
   })
 
-  it("reads personality + custom settings from file config", () => {
+  it("reads personality + behavior settings from file config", () => {
     const cfg = resolveConfig({
       env: {},
       file: {
-        customSettings: {
-          thinkingSummaries: false,
-          options: { personality: "friendly" },
-          models: {
+        behaviorSettings: {
+          global: {
+            personality: "friendly",
+            thinkingSummaries: false
+          },
+          perModel: {
             "gpt-5.3-codex": {
-              options: { personality: "pragmatic" }
+              personality: "pragmatic"
             }
           }
         }
@@ -188,34 +195,48 @@ describe("config loading", () => {
 
     expect(getPersonality(cfg)).toBe("friendly")
     expect(getThinkingSummariesOverride(cfg)).toBe(false)
-    expect(getCustomSettings(cfg)?.models?.["gpt-5.3-codex"]?.options?.personality).toBe("pragmatic")
+    expect(getBehaviorSettings(cfg)?.perModel?.["gpt-5.3-codex"]?.personality).toBe("pragmatic")
   })
 
-  it("lets env personality override file custom settings", () => {
+  it("lets env personality override file behavior settings", () => {
     const cfg = resolveConfig({
       env: { OPENCODE_OPENAI_MULTI_PERSONALITY: "pirate" },
       file: {
-        customSettings: {
-          options: { personality: "friendly" }
+        behaviorSettings: {
+          global: { personality: "friendly" }
         }
       }
     })
 
     expect(getPersonality(cfg)).toBe("pirate")
-    expect(getCustomSettings(cfg)?.options?.personality).toBe("pirate")
+    expect(getBehaviorSettings(cfg)?.global?.personality).toBe("pirate")
   })
 
-  it("lets env thinking summaries override file custom settings", () => {
+  it("lets env thinking summaries override file behavior settings", () => {
     const cfg = resolveConfig({
       env: { OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES: "1" },
       file: {
-        customSettings: {
-          thinkingSummaries: false
+        behaviorSettings: {
+          global: {
+            thinkingSummaries: false
+          }
         }
       }
     })
 
     expect(getThinkingSummariesOverride(cfg)).toBe(true)
+  })
+
+  it("parses verbosity overrides from env", () => {
+    const cfg = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED: "0",
+        OPENCODE_OPENAI_MULTI_VERBOSITY: "low"
+      }
+    })
+
+    expect(getBehaviorSettings(cfg)?.global?.verbosityEnabled).toBe(false)
+    expect(getBehaviorSettings(cfg)?.global?.verbosity).toBe("low")
   })
 })
 
@@ -307,14 +328,18 @@ describe("config file loading", () => {
         },
         global: {
           thinkingSummaries: true,
-          personality: "friendly"
+          personality: "friendly",
+          verbosityEnabled: true,
+          verbosity: "high"
         },
         perModel: {
           "gpt-5.3-codex": {
             personality: "pirate",
             thinkingSummaries: false,
+            verbosityEnabled: false,
+            verbosity: "default",
             variants: {
-              high: { personality: "strict", thinkingSummaries: true }
+              high: { personality: "strict", thinkingSummaries: true, verbosityEnabled: true, verbosity: "medium" }
             }
           }
         }
@@ -338,12 +363,18 @@ describe("config file loading", () => {
     expect(loaded.pidOffsetEnabled).toBe(true)
     expect(loaded.rotationStrategy).toBe("hybrid")
     expect(loaded.mode).toBe("codex")
-    expect(loaded.customSettings?.thinkingSummaries).toBe(true)
-    expect(loaded.customSettings?.options?.personality).toBe("friendly")
-    expect(loaded.customSettings?.models?.["gpt-5.3-codex"]?.options?.personality).toBe("pirate")
-    expect(loaded.customSettings?.models?.["gpt-5.3-codex"]?.thinkingSummaries).toBe(false)
-    expect(loaded.customSettings?.models?.["gpt-5.3-codex"]?.variants?.high?.options?.personality).toBe("strict")
-    expect(loaded.customSettings?.models?.["gpt-5.3-codex"]?.variants?.high?.thinkingSummaries).toBe(true)
+    expect(loaded.behaviorSettings?.global?.thinkingSummaries).toBe(true)
+    expect(loaded.behaviorSettings?.global?.verbosityEnabled).toBe(true)
+    expect(loaded.behaviorSettings?.global?.verbosity).toBe("high")
+    expect(loaded.behaviorSettings?.global?.personality).toBe("friendly")
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.personality).toBe("pirate")
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.thinkingSummaries).toBe(false)
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.verbosityEnabled).toBe(false)
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.verbosity).toBe("default")
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.personality).toBe("strict")
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.thinkingSummaries).toBe(true)
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.verbosityEnabled).toBe(true)
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.verbosity).toBe("medium")
     expect(loaded.personality).toBe("friendly")
   })
 
@@ -409,6 +440,26 @@ describe("config file loading", () => {
     expect(loaded.quietMode).toBe(true)
   })
 
+  it("ignores legacy top-level personality/customSettings keys in file config", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        personality: "friendly",
+        customSettings: {
+          thinkingSummaries: true,
+          options: { personality: "friendly" }
+        }
+      }),
+      "utf8"
+    )
+
+    const loaded = loadConfigFile({ env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath } })
+    expect(loaded.personality).toBeUndefined()
+    expect(loaded.behaviorSettings).toBeUndefined()
+  })
+
   it("creates default codex config when missing", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const result = await ensureDefaultConfigFile({ env: { XDG_CONFIG_HOME: root } })
@@ -419,6 +470,7 @@ describe("config file loading", () => {
     expect(raw).toContain('// default: "native"')
     expect(raw).toContain('// default: "sticky"')
     expect(raw).toContain("// Thinking summaries behavior:")
+    expect(raw).toContain("// Text verbosity behavior:")
     expect(written).toEqual(DEFAULT_CODEX_CONFIG)
   })
 

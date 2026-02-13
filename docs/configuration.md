@@ -45,7 +45,9 @@ The plugin loads config in this order:
     "pidOffset": false
   },
   "global": {
-    "personality": "pragmatic"
+    "personality": "pragmatic",
+    "verbosityEnabled": true,
+    "verbosity": "default"
   },
   "perModel": {}
 }
@@ -95,16 +97,30 @@ The plugin loads config in this order:
   - Personality key applied to all models unless overridden.
 - `global.thinkingSummaries: boolean`
   - Global thinking-summary preference. Omit to use model/catalog default.
+- `global.verbosityEnabled: boolean`
+  - Enables/disables `textVerbosity` injection globally (`true` default).
+- `global.verbosity: "default" | "low" | "medium" | "high"`
+  - Verbosity preference (`"default"` uses each model catalog default).
 - `perModel.<model>.personality: string`
   - Model-specific personality override.
 - `perModel.<model>.thinkingSummaries: boolean`
   - Model-specific summary override (`true` force-on, `false` force-off).
+- `perModel.<model>.verbosityEnabled: boolean`
+  - Model-specific enable/disable for `textVerbosity`.
+- `perModel.<model>.verbosity: "default" | "low" | "medium" | "high"`
+  - Model-specific verbosity setting.
 - `perModel.<model>.variants.<variant>.personality: string`
   - Variant-level personality override.
 - `perModel.<model>.variants.<variant>.thinkingSummaries: boolean`
   - Variant-level summary override (`true` force-on, `false` force-off).
+- `perModel.<model>.variants.<variant>.verbosityEnabled: boolean`
+  - Variant-level enable/disable for `textVerbosity`.
+- `perModel.<model>.variants.<variant>.verbosity: "default" | "low" | "medium" | "high"`
+  - Variant-level verbosity setting.
 
-Precedence for `personality` and `thinkingSummaries`:
+If a model reports `supportsVerbosity=false` in catalog/runtime defaults, verbosity overrides are ignored.
+
+Precedence for `personality`, `thinkingSummaries`, and verbosity settings:
 
 1. `perModel.<model>.variants.<variant>`
 2. `perModel.<model>`
@@ -183,6 +199,8 @@ Advanced path:
 - `OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY`: `sticky|hybrid|round_robin`.
 - `OPENCODE_OPENAI_MULTI_PERSONALITY`: personality key override.
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_VERBOSITY`: `default|low|medium|high`.
 - `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE`: `1|0|true|false`.
@@ -205,14 +223,11 @@ Advanced path:
 - `OPENCODE_NO_BROWSER=1`: disables browser auto-open.
 - `NO_COLOR=1`: disables ANSI color blocks in quota UI.
 
-## Compatibility keys (parsed, non-canonical)
+## Legacy keys
 
-Accepted for migration compatibility:
+Legacy behavior keys are no longer parsed from `codex-config.json`.
 
-- top-level `personality`
-- top-level `customSettings`
-- `customSettings.thinkingSummaries`
-- `customSettings.options.personality`
-- `customSettings.models`
+- `personality`
+- `customSettings` and all nested `customSettings.*`
 
-Prefer canonical keys (`global`, `perModel`) for all new edits.
+Use canonical `global` and `perModel` keys only.

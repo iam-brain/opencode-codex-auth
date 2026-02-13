@@ -26,7 +26,7 @@ This file describes how docs are organized and maintained.
 
 - Prefer canonical behavior from code over historical behavior.
 - Keep config docs aligned with `lib/config.ts`.
-- Keep auth/account docs aligned with `lib/storage.ts`, `lib/rotation.ts`, and `lib/codex-native.ts`.
+- Keep auth/account docs aligned with `lib/storage.ts`, `lib/rotation.ts`, `lib/codex-native.ts`, and `lib/codex-native/*.ts` helper modules.
 - Treat token/auth files as sensitive. Never paste raw secrets in docs.
 
 ## Local-only workflow directories

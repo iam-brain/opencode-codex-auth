@@ -159,7 +159,7 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
   try {
     const hooks = await CodexAuthPlugin({} as never, {
       spoofMode: "codex",
-      customSettings: { options: { personality: input.personalityKey } }
+      behaviorSettings: { global: { personality: input.personalityKey } }
     })
 
     const provider = {

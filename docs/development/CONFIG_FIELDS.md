@@ -27,10 +27,16 @@ Top-level:
 - `runtime.pidOffset: boolean`
 - `global.personality: string`
 - `global.thinkingSummaries: boolean`
+- `global.verbosityEnabled: boolean`
+- `global.verbosity: "default" | "low" | "medium" | "high"`
 - `perModel.<model>.personality: string`
 - `perModel.<model>.thinkingSummaries: boolean`
+- `perModel.<model>.verbosityEnabled: boolean`
+- `perModel.<model>.verbosity: "default" | "low" | "medium" | "high"`
 - `perModel.<model>.variants.<variant>.personality: string`
 - `perModel.<model>.variants.<variant>.thinkingSummaries: boolean`
+- `perModel.<model>.variants.<variant>.verbosityEnabled: boolean`
+- `perModel.<model>.variants.<variant>.verbosity: "default" | "low" | "medium" | "high"`
 
 Canonical user-edited file set:
 
@@ -54,15 +60,17 @@ Default generated values:
 - `runtime.headerTransformDebug: false`
 - `runtime.pidOffset: false`
 - `global.personality: "pragmatic"`
+- `global.verbosityEnabled: true`
+- `global.verbosity: "default"`
 - `perModel: {}`
 
-## Legacy compatibility keys (parsed, non-canonical)
+## Legacy compatibility keys
+
+Legacy behavior keys are not parsed anymore:
 
 - top-level `personality`
 - top-level `customSettings`
-- `customSettings.thinkingSummaries`
-- `customSettings.options.personality`
-- `customSettings.models`
+- any nested `customSettings.*`
 
 Note:
 
@@ -90,10 +98,12 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY`
 - `OPENCODE_OPENAI_MULTI_PERSONALITY`
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`
+- `OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED`
+- `OPENCODE_OPENAI_MULTI_VERBOSITY`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`
 
-Resolved by auth/runtime code (`lib/codex-native.ts`):
+Resolved by auth/runtime code (`lib/codex-native.ts` + helper modules under `lib/codex-native/`):
 
 - `CODEX_AUTH_DEBUG`
 - `CODEX_AUTH_DEBUG_MAX_BYTES`

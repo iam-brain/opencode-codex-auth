@@ -12,7 +12,7 @@ import {
   ensureDefaultConfigFile,
   getCompatInputSanitizerEnabled,
   getCodexCompactionOverrideEnabled,
-  getCustomSettings,
+  getBehaviorSettings,
   getDebugEnabled,
   getHeaderTransformDebugEnabled,
   getHeaderSnapshotsEnabled,
@@ -90,7 +90,7 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     codexCompactionOverride: getCodexCompactionOverrideEnabled(cfg),
     headerSnapshots: getHeaderSnapshotsEnabled(cfg),
     headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
-    customSettings: getCustomSettings(cfg)
+    behaviorSettings: getBehaviorSettings(cfg)
   })
 
   const z = tool.schema

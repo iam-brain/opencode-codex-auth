@@ -68,33 +68,6 @@
       "additionalProperties": {
         "$ref": "#/$defs/modelConfig"
       }
-    },
-    "personality": {
-      "$ref": "#/$defs/personality"
-    },
-    "customSettings": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "thinkingSummaries": {
-          "type": "boolean"
-        },
-        "options": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "personality": {
-              "$ref": "#/$defs/personality"
-            }
-          }
-        },
-        "models": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/modelConfig"
-          }
-        }
-      }
     }
   },
   "$defs": {
@@ -113,14 +86,12 @@
         "thinkingSummaries": {
           "type": "boolean"
         },
-        "options": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "personality": {
-              "$ref": "#/$defs/personality"
-            }
-          }
+        "verbosityEnabled": {
+          "type": "boolean"
+        },
+        "verbosity": {
+          "type": "string",
+          "enum": ["default", "low", "medium", "high"]
         }
       }
     },
@@ -139,14 +110,12 @@
             "thinkingSummaries": {
               "type": "boolean"
             },
-            "options": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "personality": {
-                  "$ref": "#/$defs/personality"
-                }
-              }
+            "verbosityEnabled": {
+              "type": "boolean"
+            },
+            "verbosity": {
+              "type": "string",
+              "enum": ["default", "low", "medium", "high"]
             },
             "variants": {
               "type": "object",

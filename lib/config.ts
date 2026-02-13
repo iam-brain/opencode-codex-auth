@@ -7,24 +7,22 @@ import type { RotationStrategy } from "./types"
 export type PersonalityOption = string
 export type CodexSpoofMode = "native" | "codex"
 export type PluginRuntimeMode = "native" | "codex"
+export type VerbosityOption = "default" | "low" | "medium" | "high"
 
 export type ModelBehaviorOverride = {
-  options?: {
-    personality?: PersonalityOption
-  }
+  personality?: PersonalityOption
   thinkingSummaries?: boolean
+  verbosityEnabled?: boolean
+  verbosity?: VerbosityOption
 }
 
 export type ModelConfigOverride = ModelBehaviorOverride & {
   variants?: Record<string, ModelBehaviorOverride>
 }
 
-export type CustomSettings = {
-  thinkingSummaries?: boolean
-  options?: {
-    personality?: PersonalityOption
-  }
-  models?: Record<string, ModelConfigOverride>
+export type BehaviorSettings = {
+  global?: ModelBehaviorOverride
+  perModel?: Record<string, ModelConfigOverride>
 }
 
 export type PluginConfig = {
@@ -42,7 +40,7 @@ export type PluginConfig = {
   codexCompactionOverride?: boolean
   headerSnapshots?: boolean
   headerTransformDebug?: boolean
-  customSettings?: CustomSettings
+  behaviorSettings?: BehaviorSettings
 }
 
 const CONFIG_FILE = "codex-config.json"
@@ -65,7 +63,9 @@ export const DEFAULT_CODEX_CONFIG = {
     pidOffset: false
   },
   global: {
-    personality: "pragmatic"
+    personality: "pragmatic",
+    verbosityEnabled: true,
+    verbosity: "default"
   },
   perModel: {}
 } as const
@@ -137,28 +137,43 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // built-ins: "pragmatic", "friendly"
     // custom: any lowercase key from personalities/<key>.md
     // default: "pragmatic"
-    "personality": "pragmatic"
+    "personality": "pragmatic",
 
     // Thinking summaries behavior:
     // true  => force on
     // false => force off
     // omit  => use model default from catalog cache (recommended)
     // "thinkingSummaries": true
+
+    // Text verbosity behavior:
+    // verbosityEnabled: true  => apply verbosity setting/default
+    // verbosityEnabled: false => do not send textVerbosity
+    // default: true
+    "verbosityEnabled": true,
+
+    // options: "default" | "low" | "medium" | "high"
+    // "default" uses each model's catalog default verbosity.
+    // default: "default"
+    "verbosity": "default"
   },
 
   // Optional model-specific overrides.
   // Supports same fields as global plus nested variants.
   "perModel": {
-    // "gpt-5.3-codex": {
-    //   "personality": "friendly",
-    //   "thinkingSummaries": true,
-    //   "variants": {
-    //     "high": {
-    //       "personality": "pragmatic",
-    //       "thinkingSummaries": false
-    //     }
-    //   }
-    // }
+     // "gpt-5.3-codex": {
+     //   "personality": "friendly",
+     //   "thinkingSummaries": true,
+     //   "verbosityEnabled": true,
+     //   "verbosity": "default",
+     //   "variants": {
+     //     "high": {
+     //       "personality": "pragmatic",
+     //       "thinkingSummaries": false,
+     //       "verbosityEnabled": true,
+     //       "verbosity": "high"
+     //     }
+     //   }
+     // }
   }
 }
 `
@@ -286,59 +301,48 @@ function parseRotationStrategy(value: unknown): RotationStrategy | undefined {
   return undefined
 }
 
-function normalizeCustomSettings(raw: unknown): CustomSettings | undefined {
-  if (!isRecord(raw)) return undefined
-
-  const out: CustomSettings = {}
-
-  if (typeof raw.thinkingSummaries === "boolean") {
-    out.thinkingSummaries = raw.thinkingSummaries
+function normalizeVerbosityOption(value: unknown): VerbosityOption | undefined {
+  if (typeof value !== "string") return undefined
+  const normalized = value.trim().toLowerCase()
+  if (normalized === "default" || normalized === "low" || normalized === "medium" || normalized === "high") {
+    return normalized
   }
-
-  const rawOptions = isRecord(raw.options) ? raw.options : undefined
-  const globalPersonality = normalizePersonalityOption(rawOptions?.personality)
-  if (globalPersonality) {
-    out.options = { personality: globalPersonality }
-  }
-
-  const rawModels = isRecord(raw.models) ? raw.models : undefined
-  if (rawModels) {
-    const models: NonNullable<CustomSettings["models"]> = {}
-    for (const [modelName, value] of Object.entries(rawModels)) {
-      const normalized = normalizeModelConfigOverride(value)
-      if (!normalized) continue
-      models[modelName] = normalized
-    }
-    if (Object.keys(models).length > 0) {
-      out.models = models
-    }
-  }
-
-  if (out.thinkingSummaries === undefined && !out.options && !out.models) {
-    return undefined
-  }
-
-  return out
+  return undefined
 }
 
 type ModelBehaviorSettings = {
   personality?: PersonalityOption
   thinkingSummaries?: boolean
+  verbosityEnabled?: boolean
+  verbosity?: VerbosityOption
 }
 
 function normalizeModelBehaviorSettings(raw: unknown): ModelBehaviorSettings | undefined {
   if (!isRecord(raw)) return undefined
   const out: ModelBehaviorSettings = {}
 
-  const options = isRecord(raw.options) ? raw.options : undefined
-  const personality = normalizePersonalityOption(raw.personality) ?? normalizePersonalityOption(options?.personality)
+  const personality = normalizePersonalityOption(raw.personality)
   if (personality) out.personality = personality
 
   if (typeof raw.thinkingSummaries === "boolean") {
     out.thinkingSummaries = raw.thinkingSummaries
   }
 
-  if (!out.personality && out.thinkingSummaries === undefined) {
+  if (typeof raw.verbosityEnabled === "boolean") {
+    out.verbosityEnabled = raw.verbosityEnabled
+  }
+
+  const verbosity = normalizeVerbosityOption(raw.verbosity)
+  if (verbosity) {
+    out.verbosity = verbosity
+  }
+
+  if (
+    !out.personality &&
+    out.thinkingSummaries === undefined &&
+    out.verbosityEnabled === undefined &&
+    out.verbosity === undefined
+  ) {
     return undefined
   }
 
@@ -358,8 +362,10 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
       const normalized = normalizeModelBehaviorSettings(value)
       if (!normalized) continue
       variantMap[variantName] = {
-        ...(normalized.personality ? { options: { personality: normalized.personality } } : {}),
-        ...(normalized.thinkingSummaries !== undefined ? { thinkingSummaries: normalized.thinkingSummaries } : {})
+        ...(normalized.personality ? { personality: normalized.personality } : {}),
+        ...(normalized.thinkingSummaries !== undefined ? { thinkingSummaries: normalized.thinkingSummaries } : {}),
+        ...(normalized.verbosityEnabled !== undefined ? { verbosityEnabled: normalized.verbosityEnabled } : {}),
+        ...(normalized.verbosity ? { verbosity: normalized.verbosity } : {})
       }
     }
     if (Object.keys(variantMap).length > 0) {
@@ -372,123 +378,74 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
   }
 
   return {
-    ...(modelBehavior?.personality ? { options: { personality: modelBehavior.personality } } : {}),
+    ...(modelBehavior?.personality ? { personality: modelBehavior.personality } : {}),
     ...(modelBehavior?.thinkingSummaries !== undefined ? { thinkingSummaries: modelBehavior.thinkingSummaries } : {}),
+    ...(modelBehavior?.verbosityEnabled !== undefined ? { verbosityEnabled: modelBehavior.verbosityEnabled } : {}),
+    ...(modelBehavior?.verbosity ? { verbosity: modelBehavior.verbosity } : {}),
     ...(variants ? { variants } : {})
   }
 }
 
-function normalizeNewBehaviorSections(raw: Record<string, unknown>): CustomSettings | undefined {
+function normalizeNewBehaviorSections(raw: Record<string, unknown>): BehaviorSettings | undefined {
   const global = normalizeModelBehaviorSettings(raw.global)
   const perModelRaw = isRecord(raw.perModel) ? raw.perModel : undefined
 
-  let models: CustomSettings["models"] | undefined
+  let perModel: BehaviorSettings["perModel"] | undefined
   if (perModelRaw) {
-    const modelMap: NonNullable<CustomSettings["models"]> = {}
+    const modelMap: NonNullable<BehaviorSettings["perModel"]> = {}
     for (const [modelName, value] of Object.entries(perModelRaw)) {
       const normalized = normalizeModelConfigOverride(value)
       if (!normalized) continue
       modelMap[modelName] = normalized
     }
     if (Object.keys(modelMap).length > 0) {
-      models = modelMap
+      perModel = modelMap
     }
   }
 
-  if (!global && !models) {
+  if (!global && !perModel) {
     return undefined
   }
 
   return {
-    ...(global?.personality ? { options: { personality: global.personality } } : {}),
-    ...(global?.thinkingSummaries !== undefined ? { thinkingSummaries: global.thinkingSummaries } : {}),
-    ...(models ? { models } : {})
+    ...(global ? { global } : {}),
+    ...(perModel ? { perModel } : {})
   }
 }
 
-function mergeCustomSettings(
-  primary: CustomSettings | undefined,
-  secondary: CustomSettings | undefined
-): CustomSettings | undefined {
-  if (!primary && !secondary) return undefined
-  if (!primary) return secondary
-  if (!secondary) return primary
-
-  const modelKeys = new Set<string>([...Object.keys(primary.models ?? {}), ...Object.keys(secondary.models ?? {})])
-  let models: CustomSettings["models"] | undefined
-  if (modelKeys.size > 0) {
-    const merged: NonNullable<CustomSettings["models"]> = {}
-    for (const key of modelKeys) {
-      const a = primary.models?.[key]
-      const b = secondary.models?.[key]
-      const personality = b?.options?.personality !== undefined ? b.options.personality : a?.options?.personality
-      const thinkingSummaries = b?.thinkingSummaries !== undefined ? b.thinkingSummaries : a?.thinkingSummaries
-      const variantKeys = new Set<string>([...Object.keys(a?.variants ?? {}), ...Object.keys(b?.variants ?? {})])
-      let variants: ModelConfigOverride["variants"] | undefined
-      if (variantKeys.size > 0) {
-        const variantMap: NonNullable<ModelConfigOverride["variants"]> = {}
-        for (const variantKey of variantKeys) {
-          const base = a?.variants?.[variantKey]
-          const override = b?.variants?.[variantKey]
-          const variantPersonality =
-            override?.options?.personality !== undefined ? override.options.personality : base?.options?.personality
-          const variantThinkingSummaries =
-            override?.thinkingSummaries !== undefined ? override.thinkingSummaries : base?.thinkingSummaries
-          if (variantPersonality === undefined && variantThinkingSummaries === undefined) continue
-          variantMap[variantKey] = {
-            ...(variantPersonality ? { options: { personality: variantPersonality } } : {}),
-            ...(variantThinkingSummaries !== undefined ? { thinkingSummaries: variantThinkingSummaries } : {})
-          }
-        }
-        if (Object.keys(variantMap).length > 0) {
-          variants = variantMap
-        }
-      }
-      if (personality === undefined && thinkingSummaries === undefined && !variants) continue
-      merged[key] = {
-        ...(personality ? { options: { personality } } : {}),
-        ...(thinkingSummaries !== undefined ? { thinkingSummaries } : {}),
-        ...(variants ? { variants } : {})
-      }
-    }
-    if (Object.keys(merged).length > 0) {
-      models = merged
-    }
-  }
-
-  const mergedPersonality =
-    secondary.options?.personality !== undefined ? secondary.options.personality : primary.options?.personality
-
-  return {
-    thinkingSummaries:
-      secondary.thinkingSummaries !== undefined ? secondary.thinkingSummaries : primary.thinkingSummaries,
-    ...(mergedPersonality ? { options: { personality: mergedPersonality } } : {}),
-    ...(models ? { models } : {})
-  }
-}
-
-function cloneCustomSettings(input: CustomSettings | undefined): CustomSettings | undefined {
+function cloneBehaviorSettings(input: BehaviorSettings | undefined): BehaviorSettings | undefined {
   if (!input) return undefined
   return {
-    thinkingSummaries: input.thinkingSummaries,
-    options: input.options ? { ...input.options } : undefined,
-    models: input.models
+    ...(input.global
+      ? {
+          global: {
+            ...input.global
+          }
+        }
+      : {}),
+    perModel: input.perModel
       ? Object.fromEntries(
-          Object.entries(input.models).map(([key, value]) => [
+          Object.entries(input.perModel).map(([key, value]) => [
             key,
             {
-              ...(value.options ? { options: { ...value.options } } : {}),
+              ...(value.personality !== undefined ? { personality: value.personality } : {}),
               ...(value.thinkingSummaries !== undefined ? { thinkingSummaries: value.thinkingSummaries } : {}),
+              ...(value.verbosityEnabled !== undefined ? { verbosityEnabled: value.verbosityEnabled } : {}),
+              ...(value.verbosity !== undefined ? { verbosity: value.verbosity } : {}),
               ...(value.variants
                 ? {
                     variants: Object.fromEntries(
                       Object.entries(value.variants).map(([variantKey, variantValue]) => [
                         variantKey,
                         {
-                          ...(variantValue.options ? { options: { ...variantValue.options } } : {}),
+                          ...(variantValue.personality !== undefined ? { personality: variantValue.personality } : {}),
                           ...(variantValue.thinkingSummaries !== undefined
                             ? { thinkingSummaries: variantValue.thinkingSummaries }
-                            : {})
+                            : {}),
+                          ...(variantValue.verbosityEnabled !== undefined
+                            ? { verbosityEnabled: variantValue.verbosityEnabled }
+                            : {}),
+                          ...(variantValue.verbosity !== undefined ? { verbosity: variantValue.verbosity } : {})
                         }
                       ])
                     )
@@ -504,11 +461,8 @@ function cloneCustomSettings(input: CustomSettings | undefined): CustomSettings 
 function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
   if (!isRecord(raw)) return {}
 
-  const explicitCustomSettings = normalizeCustomSettings(raw.customSettings)
-  const newCustomSettings = normalizeNewBehaviorSections(raw)
-  const customSettings = mergeCustomSettings(explicitCustomSettings, newCustomSettings)
-  const personalityFromTopLevel = normalizePersonalityOption(raw.personality)
-  const personalityFromCustom = customSettings?.options?.personality
+  const behaviorSettings = normalizeNewBehaviorSections(raw)
+  const personalityFromBehavior = behaviorSettings?.global?.personality
 
   const debug = typeof raw.debug === "boolean" ? raw.debug : undefined
   const proactiveRefresh =
@@ -544,7 +498,7 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     proactiveRefreshBufferMs,
     quietMode,
     pidOffsetEnabled,
-    personality: personalityFromTopLevel ?? personalityFromCustom,
+    personality: personalityFromBehavior,
     mode,
     rotationStrategy,
     spoofMode,
@@ -553,7 +507,7 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     codexCompactionOverride,
     headerSnapshots,
     headerTransformDebug,
-    customSettings
+    behaviorSettings
   }
 }
 
@@ -623,7 +577,7 @@ export function resolveConfig(input: {
 }): PluginConfig {
   const env = input.env
   const file = input.file ?? {}
-  const fileCustom = normalizeCustomSettings(file.customSettings)
+  const fileBehavior = cloneBehaviorSettings(file.behaviorSettings)
 
   const envDebug = env.OPENCODE_OPENAI_MULTI_DEBUG === "1" || env.DEBUG_CODEX_PLUGIN === "1"
 
@@ -636,6 +590,8 @@ export function resolveConfig(input: {
 
   const envPersonality = normalizePersonalityOption(env.OPENCODE_OPENAI_MULTI_PERSONALITY)
   const envThinkingSummaries = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES)
+  const envVerbosityEnabled = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED)
+  const envVerbosity = normalizeVerbosityOption(env.OPENCODE_OPENAI_MULTI_VERBOSITY)
   const spoofModeFromEnv = parseSpoofMode(env.OPENCODE_OPENAI_MULTI_SPOOF_MODE)
   const modeFromEnv = parseRuntimeMode(env.OPENCODE_OPENAI_MULTI_MODE)
   const modeFromSpoofEnv =
@@ -650,38 +606,37 @@ export function resolveConfig(input: {
     file.mode ??
     (spoofModeFromEnv === "codex" || file.spoofMode === "codex" ? "codex" : "native")
 
-  const customSettings = cloneCustomSettings(fileCustom)
+  const behaviorSettings = cloneBehaviorSettings(fileBehavior) ?? {}
+  const globalBehavior: ModelBehaviorOverride = {
+    ...(behaviorSettings.global ?? {})
+  }
 
   if (envPersonality) {
-    if (!customSettings) {
-      // Keep behavior deterministic by ensuring one source of truth for runtime resolution.
-      input.file = { ...file, customSettings: { options: { personality: envPersonality } } }
-    } else {
-      customSettings.options = { ...(customSettings.options ?? {}), personality: envPersonality }
-    }
+    globalBehavior.personality = envPersonality
   }
   if (envThinkingSummaries !== undefined) {
-    if (!customSettings) {
-      input.file = {
-        ...file,
-        customSettings: { ...(input.file?.customSettings ?? {}), thinkingSummaries: envThinkingSummaries }
-      }
-    } else {
-      customSettings.thinkingSummaries = envThinkingSummaries
-    }
+    globalBehavior.thinkingSummaries = envThinkingSummaries
+  }
+  if (envVerbosityEnabled !== undefined) {
+    globalBehavior.verbosityEnabled = envVerbosityEnabled
+  }
+  if (envVerbosity) {
+    globalBehavior.verbosity = envVerbosity
   }
 
-  const resolvedCustomSettings =
-    customSettings ??
-    cloneCustomSettings(normalizeCustomSettings(input.file?.customSettings)) ??
-    (envPersonality || envThinkingSummaries !== undefined
-      ? {
-          ...(envPersonality ? { options: { personality: envPersonality } } : {}),
-          ...(envThinkingSummaries !== undefined ? { thinkingSummaries: envThinkingSummaries } : {})
-        }
-      : undefined)
+  if (
+    globalBehavior.personality !== undefined ||
+    globalBehavior.thinkingSummaries !== undefined ||
+    globalBehavior.verbosityEnabled !== undefined ||
+    globalBehavior.verbosity !== undefined
+  ) {
+    behaviorSettings.global = globalBehavior
+  }
 
-  const personality = envPersonality ?? file.personality ?? resolvedCustomSettings?.options?.personality
+  const resolvedBehaviorSettings =
+    behaviorSettings.global !== undefined || behaviorSettings.perModel !== undefined ? behaviorSettings : undefined
+
+  const personality = envPersonality ?? resolvedBehaviorSettings?.global?.personality
 
   // Runtime mode is canonical; spoofMode remains a compatibility input only.
   // If runtime mode is explicitly set via env, ignore spoof env for consistency.
@@ -717,7 +672,7 @@ export function resolveConfig(input: {
     codexCompactionOverride,
     headerSnapshots,
     headerTransformDebug,
-    customSettings: resolvedCustomSettings
+    behaviorSettings: resolvedBehaviorSettings
   }
 }
 
@@ -783,10 +738,10 @@ export function getHeaderTransformDebugEnabled(cfg: PluginConfig): boolean {
   return cfg.headerTransformDebug === true
 }
 
-export function getCustomSettings(cfg: PluginConfig): CustomSettings | undefined {
-  return cfg.customSettings
+export function getBehaviorSettings(cfg: PluginConfig): BehaviorSettings | undefined {
+  return cfg.behaviorSettings
 }
 
 export function getThinkingSummariesOverride(cfg: PluginConfig): boolean | undefined {
-  return cfg.customSettings?.thinkingSummaries
+  return cfg.behaviorSettings?.global?.thinkingSummaries
 }

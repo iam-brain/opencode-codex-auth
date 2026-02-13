@@ -1,6 +1,6 @@
 import type { PluginInput } from "@opencode-ai/plugin"
 
-import type { CodexSpoofMode, CustomSettings, PersonalityOption } from "../config"
+import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config"
 import type { CodexModelInfo } from "../model-catalog"
 import { getRuntimeDefaultsForModel, resolveInstructionsForModel } from "../model-catalog"
 import {
@@ -8,6 +8,8 @@ import {
   findCatalogModelForCandidates,
   getModelLookupCandidates,
   getModelThinkingSummariesOverride,
+  getModelVerbosityEnabledOverride,
+  getModelVerbosityOverride,
   getVariantLookupCandidates,
   resolvePersonalityForModel
 } from "./request-transform"
@@ -20,6 +22,15 @@ import {
   readSessionMessageInfo,
   sessionUsesOpenAIProvider
 } from "./session-messages"
+
+function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | undefined {
+  if (typeof value !== "string") return undefined
+  const normalized = value.trim().toLowerCase()
+  if (normalized === "default" || normalized === "low" || normalized === "medium" || normalized === "high") {
+    return normalized
+  }
+  return undefined
+}
 
 export async function handleChatMessageHook(input: {
   hookInput: { model?: { providerID?: string }; sessionID: string }
@@ -53,7 +64,7 @@ export async function handleChatParamsHook(input: {
   }
   output: Parameters<typeof applyCodexRuntimeDefaultsToParams>[0]["output"]
   lastCatalogModels: CodexModelInfo[] | undefined
-  customSettings?: CustomSettings
+  behaviorSettings?: BehaviorSettings
   fallbackPersonality?: PersonalityOption
   spoofMode: CodexSpoofMode
 }): Promise<void> {
@@ -69,16 +80,26 @@ export async function handleChatParamsHook(input: {
   })
   const catalogModelFallback = findCatalogModelForCandidates(input.lastCatalogModels, modelCandidates)
   const effectivePersonality = resolvePersonalityForModel({
-    customSettings: input.customSettings,
+    behaviorSettings: input.behaviorSettings,
     modelCandidates,
     variantCandidates,
     fallback: input.fallbackPersonality
   })
   const modelThinkingSummariesOverride = getModelThinkingSummariesOverride(
-    input.customSettings,
+    input.behaviorSettings,
     modelCandidates,
     variantCandidates
   )
+  const modelVerbosityEnabledOverride = getModelVerbosityEnabledOverride(
+    input.behaviorSettings,
+    modelCandidates,
+    variantCandidates
+  )
+  const modelVerbosityOverride = getModelVerbosityOverride(input.behaviorSettings, modelCandidates, variantCandidates)
+  const globalBehavior = input.behaviorSettings?.global
+  const globalVerbosityEnabled =
+    typeof globalBehavior?.verbosityEnabled === "boolean" ? globalBehavior.verbosityEnabled : undefined
+  const globalVerbosity = normalizeVerbositySetting(globalBehavior?.verbosity)
   if (isRecord(modelOptions.codexCatalogModel)) {
     const rendered = resolveInstructionsForModel(modelOptions.codexCatalogModel as CodexModelInfo, effectivePersonality)
     if (rendered) {
@@ -107,7 +128,9 @@ export async function handleChatParamsHook(input: {
   applyCodexRuntimeDefaultsToParams({
     modelOptions,
     modelToolCallCapable: input.hookInput.model.capabilities?.toolcall,
-    thinkingSummariesOverride: modelThinkingSummariesOverride ?? input.customSettings?.thinkingSummaries,
+    thinkingSummariesOverride: modelThinkingSummariesOverride ?? globalBehavior?.thinkingSummaries,
+    verbosityEnabledOverride: modelVerbosityEnabledOverride ?? globalVerbosityEnabled,
+    verbosityOverride: modelVerbosityOverride ?? globalVerbosity,
     preferCodexInstructions: input.spoofMode === "codex",
     output: input.output
   })

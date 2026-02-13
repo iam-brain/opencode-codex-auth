@@ -240,8 +240,8 @@ describe("codex-native spoof + params hooks", () => {
   it("re-renders catalog instructions with configured personality in codex mode even when host instructions are set", async () => {
     const hooks = await CodexAuthPlugin({} as never, {
       spoofMode: "codex",
-      customSettings: {
-        options: { personality: "codex_mode_regression_voice_123" }
+      behaviorSettings: {
+        global: { personality: "codex_mode_regression_voice_123" }
       }
     })
     const chatParams = hooks["chat.params"]
@@ -287,10 +287,10 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.instructions).toBe("Base Regression voice")
   })
 
-  it("applies global custom_settings personality in chat.params", async () => {
+  it("applies global behavior settings personality in chat.params", async () => {
     const hooks = await CodexAuthPlugin({} as never, {
-      customSettings: {
-        options: { personality: "friendly" }
+      behaviorSettings: {
+        global: { personality: "friendly" }
       }
     })
     const chatParams = hooks["chat.params"]
@@ -348,13 +348,13 @@ describe("codex-native spoof + params hooks", () => {
     }
   })
 
-  it("applies per-model custom_settings personality override", async () => {
+  it("applies per-model behavior settings personality override", async () => {
     const hooks = await CodexAuthPlugin({} as never, {
-      customSettings: {
-        options: { personality: "friendly" },
-        models: {
+      behaviorSettings: {
+        global: { personality: "friendly" },
+        perModel: {
           "gpt-5.3-codex": {
-            options: { personality: "pragmatic" }
+            personality: "pragmatic"
           }
         }
       }
@@ -417,13 +417,13 @@ describe("codex-native spoof + params hooks", () => {
 
   it("prefers per-variant personality over per-model and global", async () => {
     const hooks = await CodexAuthPlugin({} as never, {
-      customSettings: {
-        options: { personality: "friendly" },
-        models: {
+      behaviorSettings: {
+        global: { personality: "friendly" },
+        perModel: {
           "gpt-5.3-codex": {
-            options: { personality: "pragmatic" },
+            personality: "pragmatic",
             variants: {
-              high: { options: { personality: "strict" } }
+              high: { personality: "strict" }
             }
           }
         }
@@ -476,8 +476,10 @@ describe("codex-native spoof + params hooks", () => {
 
   it("honors thinking_summaries false override", async () => {
     const hooks = await CodexAuthPlugin({} as never, {
-      customSettings: {
-        thinkingSummaries: false
+      behaviorSettings: {
+        global: {
+          thinkingSummaries: false
+        }
       }
     })
     const chatParams = hooks["chat.params"]
@@ -516,9 +518,11 @@ describe("codex-native spoof + params hooks", () => {
 
   it("prefers per-model thinking summaries over global setting", async () => {
     const hooks = await CodexAuthPlugin({} as never, {
-      customSettings: {
-        thinkingSummaries: true,
-        models: {
+      behaviorSettings: {
+        global: {
+          thinkingSummaries: true
+        },
+        perModel: {
           "gpt-5.3-codex": {
             thinkingSummaries: false
           }
@@ -561,9 +565,11 @@ describe("codex-native spoof + params hooks", () => {
 
   it("prefers per-variant thinking summaries over per-model and global", async () => {
     const hooks = await CodexAuthPlugin({} as never, {
-      customSettings: {
-        thinkingSummaries: false,
-        models: {
+      behaviorSettings: {
+        global: {
+          thinkingSummaries: false
+        },
+        perModel: {
           "gpt-5.3-codex": {
             thinkingSummaries: false,
             variants: {
@@ -605,6 +611,92 @@ describe("codex-native spoof + params hooks", () => {
 
     await chatParams?.(input, output)
     expect(output.options.reasoningSummary).toBe("auto")
+  })
+
+  it("applies global verbosity override when enabled", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      behaviorSettings: {
+        global: {
+          verbosityEnabled: true,
+          verbosity: "high"
+        }
+      }
+    })
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_verbosity_global",
+      agent: "default",
+      provider: {},
+      message: {},
+      model: {
+        id: "gpt-5.3-codex",
+        api: { id: "gpt-5.3-codex" },
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexRuntimeDefaults: {
+            supportsVerbosity: true,
+            defaultVerbosity: "medium"
+          }
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {}
+    }
+
+    await chatParams?.(input, output)
+    expect(output.options.textVerbosity).toBe("high")
+  })
+
+  it("ignores verbosity settings when the model reports no verbosity support", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      behaviorSettings: {
+        global: {
+          verbosityEnabled: true,
+          verbosity: "high"
+        }
+      }
+    })
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_verbosity_unsupported",
+      agent: "default",
+      provider: {},
+      message: {},
+      model: {
+        id: "gpt-5.3-codex",
+        api: { id: "gpt-5.3-codex" },
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexRuntimeDefaults: {
+            supportsVerbosity: false,
+            defaultVerbosity: "medium"
+          }
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {
+        textVerbosity: "high"
+      }
+    }
+
+    await chatParams?.(input, output)
+    expect(output.options.textVerbosity).toBeUndefined()
   })
 
   it("skips incompatible catalog instructions to avoid stale bridge/tool markers", async () => {

@@ -3,7 +3,7 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import { loadAuthStorage, setAccountCooldown } from "./storage"
 import type { Logger } from "./logger"
 import type { OpenAIAuthMode, RotationStrategy } from "./types"
-import type { CodexSpoofMode, CustomSettings, PersonalityOption, PluginRuntimeMode } from "./config"
+import type { BehaviorSettings, CodexSpoofMode, PersonalityOption, PluginRuntimeMode } from "./config"
 import { formatToastMessage } from "./toast"
 import type { CodexModelInfo } from "./model-catalog"
 import { createRequestSnapshots } from "./request-snapshots"
@@ -145,7 +145,7 @@ function modeForRuntimeMode(runtimeMode: PluginRuntimeMode): OpenAIAuthMode {
 export type CodexAuthPluginOptions = {
   log?: Logger
   personality?: PersonalityOption
-  customSettings?: CustomSettings
+  behaviorSettings?: BehaviorSettings
   mode?: PluginRuntimeMode
   quietMode?: boolean
   pidOffsetEnabled?: boolean
@@ -274,7 +274,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           authMode,
           spoofMode,
           remapDeveloperMessagesToUserEnabled,
-          customSettings: opts.customSettings,
+          behaviorSettings: opts.behaviorSettings,
           personality: opts.personality,
           log: opts.log,
           quietMode: opts.quietMode === true,
@@ -341,7 +341,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         hookInput,
         output,
         lastCatalogModels,
-        customSettings: opts.customSettings,
+        behaviorSettings: opts.behaviorSettings,
         fallbackPersonality: opts.personality,
         spoofMode
       })
