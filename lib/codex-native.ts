@@ -24,25 +24,9 @@ import type { CodexSpoofMode, CustomSettings, PersonalityOption, PluginRuntimeMo
 import { formatToastMessage } from "./toast"
 import { runAuthMenuOnce } from "./ui/auth-menu-runner"
 import { shouldUseColor } from "./ui/tty/ansi"
-import {
-  applyCodexCatalogToProviderModels,
-  getCodexModelCatalog,
-  getRuntimeDefaultsForModel,
-  resolveInstructionsForModel,
-  type CodexModelInfo
-} from "./model-catalog"
+import { applyCodexCatalogToProviderModels, getCodexModelCatalog, type CodexModelInfo } from "./model-catalog"
 import { createRequestSnapshots } from "./request-snapshots"
-import {
-  applyCatalogInstructionOverrideToRequest,
-  applyCodexRuntimeDefaultsToParams,
-  findCatalogModelForCandidates,
-  getModelLookupCandidates,
-  getModelThinkingSummariesOverride,
-  getVariantLookupCandidates,
-  remapDeveloperMessagesToUserOnRequest,
-  resolvePersonalityForModel,
-  sanitizeOutboundRequestIfNeeded
-} from "./codex-native/request-transform"
+import { sanitizeOutboundRequestIfNeeded } from "./codex-native/request-transform"
 import {
   createSessionExistsFn,
   loadSessionAffinity,
@@ -93,19 +77,21 @@ import {
   type PkceCodes,
   type TokenResponse
 } from "./codex-native/oauth-utils"
-import {
-  asString,
-  getMessageProviderID,
-  isRecord,
-  readSessionMessageInfo,
-  sessionUsesOpenAIProvider
-} from "./codex-native/session-messages"
+import { asString, isRecord } from "./codex-native/session-messages"
 import { assertAllowedOutboundUrl, rewriteUrl } from "./codex-native/request-routing"
 import { acquireOpenAIAuth } from "./codex-native/acquire-auth"
 import { refreshQuotaSnapshotsForAuthMenu as refreshQuotaSnapshotsForAuthMenuBase } from "./codex-native/auth-menu-quotas"
 import { persistOAuthTokensForMode } from "./codex-native/oauth-persistence"
 import { createBrowserOAuthAuthorize, createHeadlessOAuthAuthorize } from "./codex-native/oauth-auth-methods"
 import { runInteractiveAuthMenu as runInteractiveAuthMenuBase } from "./codex-native/auth-menu-flow"
+import {
+  handleChatHeadersHook,
+  handleChatMessageHook,
+  handleChatParamsHook,
+  handleSessionCompactingHook,
+  handleTextCompleteHook
+} from "./codex-native/chat-hooks"
+import { applyRequestTransformPipeline } from "./codex-native/request-transform-pipeline"
 export { browserOpenInvocationFor } from "./codex-native/browser"
 export { upsertAccount }
 export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken }
@@ -418,30 +404,26 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
             if (outbound.headers.has(INTERNAL_COLLABORATION_MODE_HEADER)) {
               outbound.headers.delete(INTERNAL_COLLABORATION_MODE_HEADER)
             }
-            const instructionOverride = await applyCatalogInstructionOverrideToRequest({
+            const transformed = await applyRequestTransformPipeline({
               request: outbound,
-              enabled: spoofMode === "codex",
+              spoofMode,
+              remapDeveloperMessagesToUserEnabled,
               catalogModels: lastCatalogModels,
               customSettings: opts.customSettings,
               fallbackPersonality: opts.personality
             })
-            const developerRoleRemap = await remapDeveloperMessagesToUserOnRequest({
-              request: instructionOverride.request,
-              enabled: remapDeveloperMessagesToUserEnabled
-            })
-            outbound = developerRoleRemap.request
-            const subagentHeader = outbound.headers.get("x-openai-subagent")?.trim()
-            const isSubagentRequest = Boolean(subagentHeader)
+            outbound = transformed.request
+            const isSubagentRequest = transformed.isSubagentRequest
             if (opts.headerTransformDebug === true) {
               await requestSnapshots.captureRequest("after-header-transform", outbound, {
                 spoofMode,
-                instructionsOverridden: instructionOverride.changed,
-                instructionOverrideReason: instructionOverride.reason,
-                developerMessagesRemapped: developerRoleRemap.changed,
-                developerMessageRemapReason: developerRoleRemap.reason,
-                developerMessageRemapCount: developerRoleRemap.remappedCount,
-                developerMessagePreservedCount: developerRoleRemap.preservedCount,
-                ...(isSubagentRequest ? { subagent: subagentHeader } : {})
+                instructionsOverridden: transformed.instructionOverride.changed,
+                instructionOverrideReason: transformed.instructionOverride.reason,
+                developerMessagesRemapped: transformed.developerRoleRemap.changed,
+                developerMessageRemapReason: transformed.developerRoleRemap.reason,
+                developerMessageRemapCount: transformed.developerRoleRemap.remappedCount,
+                developerMessagePreservedCount: transformed.developerRoleRemap.preservedCount,
+                ...(isSubagentRequest ? { subagent: transformed.subagentHeader } : {})
               })
             }
             let selectedIdentityKey: string | undefined
@@ -499,31 +481,28 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
               },
               showToast,
               onAttemptRequest: async ({ attempt, maxAttempts, request, auth, sessionKey }) => {
-                const instructionOverride = await applyCatalogInstructionOverrideToRequest({
+                const transformed = await applyRequestTransformPipeline({
                   request,
-                  enabled: spoofMode === "codex",
+                  spoofMode,
+                  remapDeveloperMessagesToUserEnabled,
                   catalogModels: lastCatalogModels,
                   customSettings: opts.customSettings,
                   fallbackPersonality: opts.personality
                 })
-                const developerRoleRemap = await remapDeveloperMessagesToUserOnRequest({
-                  request: instructionOverride.request,
-                  enabled: remapDeveloperMessagesToUserEnabled
-                })
-                await requestSnapshots.captureRequest("outbound-attempt", developerRoleRemap.request, {
+                await requestSnapshots.captureRequest("outbound-attempt", transformed.request, {
                   attempt: attempt + 1,
                   maxAttempts,
                   sessionKey,
                   identityKey: auth.identityKey,
                   accountLabel: auth.accountLabel,
-                  instructionsOverridden: instructionOverride.changed,
-                  instructionOverrideReason: instructionOverride.reason,
-                  developerMessagesRemapped: developerRoleRemap.changed,
-                  developerMessageRemapReason: developerRoleRemap.reason,
-                  developerMessageRemapCount: developerRoleRemap.remappedCount,
-                  developerMessagePreservedCount: developerRoleRemap.preservedCount
+                  instructionsOverridden: transformed.instructionOverride.changed,
+                  instructionOverrideReason: transformed.instructionOverride.reason,
+                  developerMessagesRemapped: transformed.developerRoleRemap.changed,
+                  developerMessageRemapReason: transformed.developerRoleRemap.reason,
+                  developerMessageRemapCount: transformed.developerRoleRemap.remappedCount,
+                  developerMessagePreservedCount: transformed.developerRoleRemap.preservedCount
                 })
-                return developerRoleRemap.request
+                return transformed.request
               },
               onAttemptResponse: async ({ attempt, maxAttempts, response, auth, sessionKey }) => {
                 await requestSnapshots.captureResponse("outbound-response", response, {
@@ -644,116 +623,45 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       ]
     },
     "chat.message": async (hookInput, output) => {
-      const directProviderID = hookInput.model?.providerID
-      const isOpenAI =
-        directProviderID === "openai" ||
-        (directProviderID === undefined && (await sessionUsesOpenAIProvider(input.client, hookInput.sessionID)))
-      if (!isOpenAI) return
-
-      for (const part of output.parts) {
-        const partRecord = part as unknown as Record<string, unknown>
-        if (asString(partRecord.type) !== "subtask") continue
-        if ((asString(partRecord.command) ?? "").trim().toLowerCase() !== "review") continue
-        partRecord.agent = "Codex Review"
-      }
+      await handleChatMessageHook({ hookInput, output, client: input.client })
     },
     "chat.params": async (hookInput, output) => {
-      if (hookInput.model.providerID !== "openai") return
-      const modelOptions = isRecord(hookInput.model.options) ? hookInput.model.options : {}
-      const modelCandidates = getModelLookupCandidates({
-        id: hookInput.model.id,
-        api: { id: hookInput.model.api?.id }
-      })
-      const variantCandidates = getVariantLookupCandidates({
-        message: hookInput.message,
-        modelCandidates
-      })
-      const catalogModelFallback = findCatalogModelForCandidates(lastCatalogModels, modelCandidates)
-      const effectivePersonality = resolvePersonalityForModel({
+      await handleChatParamsHook({
+        hookInput,
+        output,
+        lastCatalogModels,
         customSettings: opts.customSettings,
-        modelCandidates,
-        variantCandidates,
-        fallback: opts.personality
-      })
-      const modelThinkingSummariesOverride = getModelThinkingSummariesOverride(
-        opts.customSettings,
-        modelCandidates,
-        variantCandidates
-      )
-      if (isRecord(modelOptions.codexCatalogModel)) {
-        const rendered = resolveInstructionsForModel(
-          modelOptions.codexCatalogModel as CodexModelInfo,
-          effectivePersonality
-        )
-        if (rendered) {
-          modelOptions.codexInstructions = rendered
-        } else {
-          delete modelOptions.codexInstructions
-        }
-      } else if (catalogModelFallback) {
-        modelOptions.codexCatalogModel = catalogModelFallback
-        const rendered = resolveInstructionsForModel(catalogModelFallback, effectivePersonality)
-        if (rendered) {
-          modelOptions.codexInstructions = rendered
-        } else {
-          delete modelOptions.codexInstructions
-        }
-        const defaults = getRuntimeDefaultsForModel(catalogModelFallback)
-        if (defaults) {
-          modelOptions.codexRuntimeDefaults = defaults
-        }
-      } else if (asString(modelOptions.codexInstructions) === undefined) {
-        const directModelInstructions = asString((hookInput.model as Record<string, unknown>).instructions)
-        if (directModelInstructions) {
-          modelOptions.codexInstructions = directModelInstructions
-        }
-      }
-      applyCodexRuntimeDefaultsToParams({
-        modelOptions,
-        modelToolCallCapable: hookInput.model.capabilities?.toolcall,
-        thinkingSummariesOverride: modelThinkingSummariesOverride ?? opts.customSettings?.thinkingSummaries,
-        preferCodexInstructions: spoofMode === "codex",
-        output
+        fallbackPersonality: opts.personality,
+        spoofMode
       })
     },
     "chat.headers": async (hookInput, output) => {
-      if (hookInput.model.providerID !== "openai") return
-      const originator = resolveCodexOriginator(spoofMode)
-      output.headers.originator = originator
-      output.headers["User-Agent"] = resolveRequestUserAgent(spoofMode, originator)
-      if (spoofMode === "native") {
-        output.headers.session_id = hookInput.sessionID
-        delete output.headers["OpenAI-Beta"]
-        delete output.headers.conversation_id
-      } else {
-        output.headers.session_id = hookInput.sessionID
-        delete output.headers["OpenAI-Beta"]
-        delete output.headers.conversation_id
-        delete output.headers["x-openai-subagent"]
-        delete output.headers[INTERNAL_COLLABORATION_MODE_HEADER]
-      }
+      await handleChatHeadersHook({
+        hookInput,
+        output,
+        spoofMode,
+        internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER
+      })
     },
     "experimental.session.compacting": async (hookInput, output) => {
-      if (!codexCompactionOverrideEnabled) return
-      if (await sessionUsesOpenAIProvider(input.client, hookInput.sessionID)) {
-        output.prompt = CODEX_RS_COMPACT_PROMPT
-        codexCompactionSummaryPrefixSessions.add(hookInput.sessionID)
-      }
+      await handleSessionCompactingHook({
+        enabled: codexCompactionOverrideEnabled,
+        hookInput,
+        output,
+        client: input.client,
+        summaryPrefixSessions: codexCompactionSummaryPrefixSessions,
+        compactPrompt: CODEX_RS_COMPACT_PROMPT
+      })
     },
     "experimental.text.complete": async (hookInput, output) => {
-      if (!codexCompactionOverrideEnabled) return
-      if (!codexCompactionSummaryPrefixSessions.has(hookInput.sessionID)) return
-
-      const info = await readSessionMessageInfo(input.client, hookInput.sessionID, hookInput.messageID)
-      codexCompactionSummaryPrefixSessions.delete(hookInput.sessionID)
-      if (!info) return
-      if (asString(info.role) !== "assistant") return
-      if (asString(info.agent) !== "compaction") return
-      if (info.summary !== true) return
-      if (getMessageProviderID(info) !== "openai") return
-      if (output.text.startsWith(CODEX_RS_COMPACT_SUMMARY_PREFIX)) return
-
-      output.text = `${CODEX_RS_COMPACT_SUMMARY_PREFIX}\n${output.text.trimStart()}`
+      await handleTextCompleteHook({
+        enabled: codexCompactionOverrideEnabled,
+        hookInput,
+        output,
+        client: input.client,
+        summaryPrefixSessions: codexCompactionSummaryPrefixSessions,
+        compactSummaryPrefix: CODEX_RS_COMPACT_SUMMARY_PREFIX
+      })
     }
   }
 }
