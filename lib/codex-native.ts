@@ -1,12 +1,8 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 
 import { extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "./claims"
-import { CodexStatus, type HeaderMap } from "./codex-status"
-import { saveSnapshots } from "./codex-status-storage"
 import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "./fatal-errors"
 import { buildIdentityKey, ensureIdentityKey } from "./identity"
-import { defaultSessionAffinityPath, defaultSnapshotsPath } from "./paths"
-import { createStickySessionState } from "./rotation"
 import {
   ensureOpenAIOAuthDomain,
   getOpenAIOAuthDomain,
@@ -19,25 +15,16 @@ import {
 import { toolOutputForStatus } from "./codex-status-tool"
 import type { Logger } from "./logger"
 import type { AccountRecord, AuthFile, OpenAIAuthMode, OpenAIOAuthDomain, RotationStrategy } from "./types"
-import { FetchOrchestrator, createFetchOrchestratorState } from "./fetch-orchestrator"
+import { FetchOrchestrator } from "./fetch-orchestrator"
 import type { CodexSpoofMode, CustomSettings, PersonalityOption, PluginRuntimeMode } from "./config"
 import { formatToastMessage } from "./toast"
 import { runAuthMenuOnce } from "./ui/auth-menu-runner"
 import { shouldUseColor } from "./ui/tty/ansi"
-import { applyCodexCatalogToProviderModels, getCodexModelCatalog, type CodexModelInfo } from "./model-catalog"
+import type { CodexModelInfo } from "./model-catalog"
 import { createRequestSnapshots } from "./request-snapshots"
 import { sanitizeOutboundRequestIfNeeded } from "./codex-native/request-transform"
-import {
-  createSessionExistsFn,
-  loadSessionAffinity,
-  pruneSessionAffinitySnapshot,
-  readSessionAffinitySnapshot,
-  saveSessionAffinity,
-  writeSessionAffinitySnapshot
-} from "./session-affinity"
 import { resolveCodexOriginator, type CodexOriginator } from "./codex-native/originator"
 import { tryOpenUrlInBrowser as openUrlInBrowser } from "./codex-native/browser"
-import { selectCatalogAuthCandidate } from "./codex-native/catalog-auth"
 import {
   buildCodexUserAgent,
   refreshCodexClientVersionFromGitHub,
@@ -92,6 +79,9 @@ import {
   handleTextCompleteHook
 } from "./codex-native/chat-hooks"
 import { applyRequestTransformPipeline } from "./codex-native/request-transform-pipeline"
+import { createSessionAffinityRuntimeState } from "./codex-native/session-affinity-state"
+import { persistRateLimitSnapshotFromResponse } from "./codex-native/rate-limit-snapshots"
+import { initializeCatalogSync } from "./codex-native/catalog-sync"
 export { browserOpenInvocationFor } from "./codex-native/browser"
 export { upsertAccount }
 export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken }
@@ -291,91 +281,27 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         }
         if (!hasOAuth) return {}
 
-        const sessionAffinityPath = defaultSessionAffinityPath()
-        const loadedSessionAffinity = await loadSessionAffinity(sessionAffinityPath).catch(() => ({
-          version: 1 as const
-        }))
-        const initialSessionAffinity = readSessionAffinitySnapshot(loadedSessionAffinity, authMode)
-        const sessionExists = createSessionExistsFn(process.env)
-        await pruneSessionAffinitySnapshot(initialSessionAffinity, sessionExists, {
-          missingGraceMs: SESSION_AFFINITY_MISSING_GRACE_MS
-        }).catch(() => 0)
+        const { orchestratorState, stickySessionState, hybridSessionState, persistSessionAffinityState } =
+          await createSessionAffinityRuntimeState({
+            authMode,
+            env: process.env,
+            missingGraceMs: SESSION_AFFINITY_MISSING_GRACE_MS
+          })
 
-        const orchestratorState = createFetchOrchestratorState()
-        orchestratorState.seenSessionKeys = initialSessionAffinity.seenSessionKeys
-
-        const stickySessionState = createStickySessionState()
-        stickySessionState.bySessionKey = initialSessionAffinity.stickyBySessionKey
-        const hybridSessionState = createStickySessionState()
-        hybridSessionState.bySessionKey = initialSessionAffinity.hybridBySessionKey
-
-        let sessionAffinityPersistQueue = Promise.resolve()
-        const persistSessionAffinityState = (): void => {
-          sessionAffinityPersistQueue = sessionAffinityPersistQueue
-            .then(async () => {
-              await pruneSessionAffinitySnapshot(
-                {
-                  seenSessionKeys: orchestratorState.seenSessionKeys,
-                  stickyBySessionKey: stickySessionState.bySessionKey,
-                  hybridBySessionKey: hybridSessionState.bySessionKey
-                },
-                sessionExists,
-                {
-                  missingGraceMs: SESSION_AFFINITY_MISSING_GRACE_MS
-                }
-              )
-              await saveSessionAffinity(
-                async (current) =>
-                  writeSessionAffinitySnapshot(current, authMode, {
-                    seenSessionKeys: orchestratorState.seenSessionKeys,
-                    stickyBySessionKey: stickySessionState.bySessionKey,
-                    hybridBySessionKey: hybridSessionState.bySessionKey
-                  }),
-                sessionAffinityPath
-              )
-            })
-            .catch(() => {
-              // best-effort persistence
-            })
-        }
-
-        const catalogAuth = await selectCatalogAuthCandidate(
+        const syncCatalogFromAuth = await initializeCatalogSync({
           authMode,
-          opts.pidOffsetEnabled === true,
-          opts.rotationStrategy
-        )
-        const catalogModels = await getCodexModelCatalog({
-          accessToken: catalogAuth.accessToken,
-          accountId: catalogAuth.accountId,
-          ...resolveCatalogHeaders(),
-          onEvent: (event) => opts.log?.debug("codex model catalog", event)
-        })
-        const applyCatalogModels = (models: CodexModelInfo[] | undefined): void => {
-          if (models) {
+          pidOffsetEnabled: opts.pidOffsetEnabled === true,
+          rotationStrategy: opts.rotationStrategy,
+          resolveCatalogHeaders,
+          providerModels: provider.models as Record<string, Record<string, unknown>>,
+          fallbackModels: STATIC_FALLBACK_MODELS,
+          personality: opts.personality,
+          log: opts.log,
+          getLastCatalogModels: () => lastCatalogModels,
+          setLastCatalogModels: (models) => {
             lastCatalogModels = models
           }
-          applyCodexCatalogToProviderModels({
-            providerModels: provider.models as Record<string, Record<string, unknown>>,
-            catalogModels: models ?? lastCatalogModels,
-            fallbackModels: STATIC_FALLBACK_MODELS,
-            personality: opts.personality
-          })
-        }
-        applyCatalogModels(catalogModels)
-        const syncCatalogFromAuth = async (auth: {
-          accessToken?: string
-          accountId?: string
-        }): Promise<CodexModelInfo[] | undefined> => {
-          if (!auth.accessToken) return undefined
-          const refreshedCatalog = await getCodexModelCatalog({
-            accessToken: auth.accessToken,
-            accountId: auth.accountId,
-            ...resolveCatalogHeaders(),
-            onEvent: (event) => opts.log?.debug("codex model catalog", event)
-          })
-          applyCatalogModels(refreshedCatalog)
-          return refreshedCatalog
-        }
+        })
 
         return {
           apiKey: OAUTH_DUMMY_KEY,
@@ -567,26 +493,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
               )
             }
 
-            if (selectedIdentityKey) {
-              const headers: HeaderMap = {}
-              response.headers.forEach((value, key) => {
-                headers[key.toLowerCase()] = value
-              })
-
-              const status = new CodexStatus()
-              const snapshot = status.parseFromHeaders({
-                now: Date.now(),
-                modelFamily: "codex",
-                headers
-              })
-
-              if (snapshot.limits.length > 0) {
-                void saveSnapshots(defaultSnapshotsPath(), (current) => ({
-                  ...current,
-                  [selectedIdentityKey as string]: snapshot
-                })).catch(() => {})
-              }
-            }
+            persistRateLimitSnapshotFromResponse(response, selectedIdentityKey)
 
             return response
           }
