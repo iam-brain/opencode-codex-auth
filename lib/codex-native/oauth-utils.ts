@@ -9,7 +9,7 @@ import { CODEX_OAUTH_SUCCESS_HTML } from "../oauth-pages"
 export const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 export const ISSUER = "https://auth.openai.com"
 export const OAUTH_PORT = 1455
-export const OAUTH_LOOPBACK_HOST = "127.0.0.1"
+export const OAUTH_LOOPBACK_HOST = "localhost"
 export const OAUTH_CALLBACK_ORIGIN = `http://${OAUTH_LOOPBACK_HOST}:${OAUTH_PORT}`
 export const OAUTH_CALLBACK_PATH = "/auth/callback"
 export const OAUTH_CALLBACK_URI = `${OAUTH_CALLBACK_ORIGIN}${OAUTH_CALLBACK_PATH}`

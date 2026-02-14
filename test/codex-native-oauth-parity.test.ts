@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { __testOnly } from "../lib/codex-native"
+import { createHeadlessOAuthAuthorize } from "../lib/codex-native/oauth-auth-methods"
+import { OAUTH_CALLBACK_URI } from "../lib/codex-native/oauth-utils"
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe("codex-native oauth parity", () => {
   it("builds authorize URLs with codex-rs style encoding", () => {
@@ -41,5 +47,34 @@ describe("codex-native oauth parity", () => {
     expect(pkce.verifier).toMatch(/^[A-Za-z0-9_-]+$/)
     expect(pkce.challenge).toHaveLength(43)
     expect(pkce.challenge).toMatch(/^[A-Za-z0-9_-]+$/)
+  })
+
+  it("uses localhost callback URI for native oauth parity", () => {
+    expect(OAUTH_CALLBACK_URI).toBe("http://localhost:1455/auth/callback")
+  })
+
+  it("uses version-only native user-agent for headless device auth", async () => {
+    const fetchMock = vi.fn(async (inputUrl: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof inputUrl === "string" ? inputUrl : inputUrl.toString()
+      if (url.endsWith("/api/accounts/deviceauth/usercode")) {
+        return new Response(JSON.stringify({ device_auth_id: "device_123", user_code: "ABCD", interval: "5" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      }
+      throw new Error(`unexpected fetch URL in test: ${url}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const authorize = createHeadlessOAuthAuthorize({
+      spoofMode: "native",
+      persistOAuthTokens: async () => {}
+    })
+
+    await authorize()
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined
+    const headers = (init?.headers ?? {}) as Record<string, string>
+    expect(headers["User-Agent"]).toMatch(/^opencode\/\d+\.\d+\.\d+$/)
   })
 })

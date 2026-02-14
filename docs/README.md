@@ -30,6 +30,7 @@ This directory contains user and developer documentation for `opencode-codex-aut
 - `development/CONFIG_FLOW.md`
 - `development/CONFIG_FIELDS.md`
 - `development/TESTING.md`
+- `development/UPSTREAM_SYNC.md`
 
 ## Local planning and research
 

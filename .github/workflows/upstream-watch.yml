@@ -1,0 +1,82 @@
+name: Upstream Watch
+
+on:
+  schedule:
+    - cron: "17 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  upstream-watch:
+    name: Check upstream plugin drift
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Check upstream tracked files
+        id: check
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          node scripts/check-upstream-watch.js | tee upstream-watch-report.txt
+
+      - name: Upload upstream watch report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-watch-report
+          path: upstream-watch-report.txt
+
+      - name: Create or update upstream drift issue
+        if: steps.check.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "Upstream parity watch: tracked GitHub source changed"
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            const marker = "<!-- upstream-watch -->"
+            const body = `${marker}
+            Detected upstream drift in one or more tracked upstream GitHub sources.
+
+            - Workflow run: ${runUrl}
+            - Next step: run \`npm run check:upstream\`, review diffs, then apply updates.
+            - After syncing, run \`npm run check:upstream:update\` and commit \`docs/development/upstream-watch.json\`.
+            `
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100
+            })
+
+            const existing = issues.find((issue) => issue.title === title)
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body
+              })
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body
+              })
+            }
+
+      - name: Fail when upstream drift detected
+        if: steps.check.outcome == 'failure'
+        run: exit 1

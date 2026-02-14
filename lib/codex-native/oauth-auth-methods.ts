@@ -59,6 +59,14 @@ type HeadlessAuthorizeDeps = {
   persistOAuthTokens: (tokens: TokenResponse) => Promise<void>
 }
 
+function resolveDeviceAuthUserAgent(spoofMode: CodexSpoofMode): string {
+  const originator = resolveCodexOriginator(spoofMode)
+  const userAgent = resolveRequestUserAgent(spoofMode, originator)
+  if (spoofMode !== "native") return userAgent
+  const prefix = userAgent.split(" ", 1)[0]
+  return prefix || userAgent
+}
+
 function toOAuthSuccess(tokens: TokenResponse): OAuthSuccess {
   return {
     type: "success",
@@ -191,7 +199,7 @@ export function createHeadlessOAuthAuthorize(deps: HeadlessAuthorizeDeps) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "User-Agent": resolveRequestUserAgent(deps.spoofMode, resolveCodexOriginator(deps.spoofMode))
+          "User-Agent": resolveDeviceAuthUserAgent(deps.spoofMode)
         },
         body: JSON.stringify({ client_id: CLIENT_ID })
       },
@@ -227,7 +235,7 @@ export function createHeadlessOAuthAuthorize(deps: HeadlessAuthorizeDeps) {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                "User-Agent": resolveRequestUserAgent(deps.spoofMode, resolveCodexOriginator(deps.spoofMode))
+                "User-Agent": resolveDeviceAuthUserAgent(deps.spoofMode)
               },
               body: JSON.stringify({
                 device_auth_id: deviceData.device_auth_id,

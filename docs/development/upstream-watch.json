@@ -1,0 +1,98 @@
+{
+  "sources": [
+    {
+      "id": "opencode",
+      "repo": "anomalyco/opencode",
+      "baselineTag": "v1.2.2",
+      "updatedAt": "2026-02-14T22:10:41.847Z",
+      "files": [
+        {
+          "path": "packages/opencode/src/plugin/codex.ts",
+          "sha256": "b8b9d2ee27b4eafd0971d3a9c213b4c9a6ded050d7e3a5ec2aa94872de7f2fa5",
+          "localArea": "lib/codex-native/",
+          "reason": "Codex OAuth/auth headers/request routing parity"
+        },
+        {
+          "path": "packages/opencode/src/plugin/index.ts",
+          "sha256": "0d0b0bcb0466e16c712f53601e62a6ddb7b233f2da94b13c1dd5500cfe7bbdf8",
+          "localArea": "index.ts",
+          "reason": "Built-in plugin boot order affects auth integration behavior"
+        },
+        {
+          "path": "packages/opencode/src/provider/provider.ts",
+          "sha256": "11307de00a4202a15220da292ae149624392cb8354a16f650ea14bf2d889cd91",
+          "localArea": "lib/model-catalog.ts",
+          "reason": "OpenAI model surface and provider model wiring parity"
+        },
+        {
+          "path": "packages/opencode/src/provider/auth.ts",
+          "sha256": "8667a7fbc2ed4a8f7a1a98630b541118a4dd67578db0824b81f947b8f7ba42c5",
+          "localArea": "lib/storage.ts",
+          "reason": "OpenAI auth structure/parsing parity signals"
+        },
+        {
+          "path": "packages/opencode/src/provider/transform.ts",
+          "sha256": "ee0711a900274136a7a2987a37edfc8c570b0d7dd53d85c1fa265900b0be134e",
+          "localArea": "lib/codex-native/request-transform*.ts",
+          "reason": "Request transform behavior changes affecting auth/model requests"
+        },
+        {
+          "path": "packages/opencode/src/provider/error.ts",
+          "sha256": "926f0cdb69ba38712fcb34336a63e7a356461bff8869ca1b6d7b1d918774e283",
+          "localArea": "lib/codex-native/openai-loader-fetch.ts",
+          "reason": "OpenAI/Codex error semantics and retry-stop signals"
+        },
+        {
+          "path": "packages/opencode/src/provider/models.ts",
+          "sha256": "f1ea769b073587e5aeb83552bd5c909f70acd2c35b9743d4dc8c22a135148eda",
+          "localArea": "lib/model-catalog.ts",
+          "reason": "Provider model schema changes impacting catalog parsing"
+        },
+        {
+          "path": "packages/opencode/src/session/message-v2.ts",
+          "sha256": "70fd6a9482f0c2e270d24da8593bfc5ac706c912fcaaae4eddc25177bde6ba87",
+          "localArea": "lib/fetch-orchestrator.ts",
+          "reason": "Streaming error handling and retry behavior parity"
+        }
+      ]
+    },
+    {
+      "id": "codex-rs",
+      "repo": "openai/codex",
+      "baselineTag": "rust-v0.101.0",
+      "updatedAt": "2026-02-14T22:10:42.371Z",
+      "files": [
+        {
+          "path": "codex-rs/core/models.json",
+          "sha256": "709e780796db08aaea9e4140cef119bb89da8372dc1984ad1efa6cecfe66c4e5",
+          "localArea": "lib/model-catalog.ts",
+          "reason": "Model catalog defaults and capabilities parity"
+        },
+        {
+          "path": "codex-rs/core/src/auth.rs",
+          "sha256": "7dd07da87ddab6e4bc4724e02d75b9eeda4ec2cfe388246d26bf09005e32089b",
+          "localArea": "lib/codex-native/oauth-*.ts",
+          "reason": "OAuth flow constants and auth semantics parity"
+        },
+        {
+          "path": "codex-rs/core/src/client.rs",
+          "sha256": "50ee09b3ac4168dcf542698b2ba5f01271e432ce7b664deb4e030b104277985b",
+          "localArea": "lib/codex-native/chat-hooks.ts",
+          "reason": "Request header/user-agent and endpoint behavior parity"
+        },
+        {
+          "path": "codex-rs/core/src/codex.rs",
+          "sha256": "fca30214cbed7f881f6d1a198350269b520ec532aa11120a3cedeab4d57bed54",
+          "localArea": "lib/codex-native/openai-loader-fetch.ts",
+          "reason": "Core Codex request/runtime behavior parity"
+        },
+        {
+          "path": "codex-rs/core/src/compact.rs",
+          "sha256": "a1f15f8cc533abe1f2d5b4d7857c5c04ccd4f45a5f5528a7f08b700687fa76f0",
+          "localArea": "lib/codex-native.ts",
+          "reason": "Compaction prompt and handoff semantics parity"
+        }
+      ]
+    }
+  ]
+}

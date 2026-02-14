@@ -9,4 +9,4 @@ Recommended read order:
 3. `multi-account.md`
 4. `troubleshooting.md`
 
-Developer internals: `development/ARCHITECTURE.md`, `development/TESTING.md`.
+Developer internals: `development/ARCHITECTURE.md`, `development/TESTING.md`, `development/UPSTREAM_SYNC.md`.

@@ -39,6 +39,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "verify": "npm run typecheck && npm test && npm run build",
+    "check:upstream": "node scripts/check-upstream-watch.js",
+    "check:upstream:update": "node scripts/check-upstream-watch.js --update",
     "prepack": "npm run build",
     "release": "node scripts/release.js",
     "release:patch": "npm run release -- patch",
@@ -58,11 +60,11 @@
     "node": ">=20.0.0"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": "^1.0.150"
+    "@opencode-ai/plugin": "^1.2.2"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.0.150",
-    "@opencode-ai/sdk": "^1.0.150",
+    "@opencode-ai/plugin": "^1.2.2",
+    "@opencode-ai/sdk": "^1.2.2",
     "@types/node": "^24.6.2",
     "@types/proper-lockfile": "^4.1.2",
     "@typescript-eslint/eslint-plugin": "^8.55.0",

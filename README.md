@@ -113,6 +113,7 @@ Legacy sources can be imported explicitly from the auth menu:
 - Multi-account: `docs/multi-account.md`
 - Troubleshooting: `docs/troubleshooting.md`
 - Development docs: `docs/development/`
+- Upstream baseline/sync: `docs/development/UPSTREAM_SYNC.md`
 
 ## Development
 
