@@ -22,6 +22,17 @@ import {
   readSessionMessageInfo,
   sessionUsesOpenAIProvider
 } from "./session-messages"
+import {
+  CODEX_CODE_MODE_INSTRUCTIONS,
+  CODEX_ORCHESTRATOR_INSTRUCTIONS,
+  CODEX_PLAN_MODE_INSTRUCTIONS,
+  mergeInstructions,
+  resolveCollaborationInstructions,
+  resolveCollaborationProfile,
+  resolveSubagentHeaderValue,
+  resolveToolingInstructions,
+  type CollaborationToolProfile
+} from "./collaboration"
 
 function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | undefined {
   if (typeof value !== "string") return undefined
@@ -60,6 +71,7 @@ export async function handleChatParamsHook(input: {
       api?: { id?: string }
       capabilities?: { toolcall?: boolean }
     }
+    agent?: unknown
     message: unknown
   }
   output: Parameters<typeof applyCodexRuntimeDefaultsToParams>[0]["output"]
@@ -67,6 +79,9 @@ export async function handleChatParamsHook(input: {
   behaviorSettings?: BehaviorSettings
   fallbackPersonality?: PersonalityOption
   spoofMode: CodexSpoofMode
+  collaborationProfileEnabled: boolean
+  orchestratorSubagentsEnabled: boolean
+  collaborationToolProfile: CollaborationToolProfile
 }): Promise<void> {
   if (input.hookInput.model.providerID !== "openai") return
   const modelOptions = isRecord(input.hookInput.model.options) ? input.hookInput.model.options : {}
@@ -137,13 +152,34 @@ export async function handleChatParamsHook(input: {
     preferCodexInstructions: input.spoofMode === "codex",
     output: input.output
   })
+
+  if (!input.collaborationProfileEnabled) return
+
+  const profile = resolveCollaborationProfile(input.hookInput.agent)
+  if (!profile.enabled || !profile.kind) return
+
+  const collaborationInstructions = resolveCollaborationInstructions(profile.kind, {
+    plan: CODEX_PLAN_MODE_INSTRUCTIONS,
+    code: CODEX_CODE_MODE_INSTRUCTIONS
+  })
+  let mergedInstructions = mergeInstructions(asString(input.output.options.instructions), collaborationInstructions)
+
+  if (profile.isOrchestrator && input.orchestratorSubagentsEnabled) {
+    mergedInstructions = mergeInstructions(mergedInstructions, CODEX_ORCHESTRATOR_INSTRUCTIONS)
+  }
+
+  mergedInstructions = mergeInstructions(mergedInstructions, resolveToolingInstructions(input.collaborationToolProfile))
+
+  input.output.options.instructions = mergedInstructions
 }
 
 export async function handleChatHeadersHook(input: {
-  hookInput: { model: { providerID?: string }; sessionID: string }
+  hookInput: { model: { providerID?: string }; sessionID: string; agent?: unknown }
   output: { headers: Record<string, unknown> }
   spoofMode: CodexSpoofMode
   internalCollaborationModeHeader: string
+  collaborationProfileEnabled: boolean
+  orchestratorSubagentsEnabled: boolean
 }): Promise<void> {
   if (input.hookInput.model.providerID !== "openai") return
   const originator = resolveCodexOriginator(input.spoofMode)
@@ -152,10 +188,33 @@ export async function handleChatHeadersHook(input: {
   input.output.headers.session_id = input.hookInput.sessionID
   delete input.output.headers["OpenAI-Beta"]
   delete input.output.headers.conversation_id
-  if (input.spoofMode !== "native") {
+
+  if (!input.collaborationProfileEnabled) {
     delete input.output.headers["x-openai-subagent"]
     delete input.output.headers[input.internalCollaborationModeHeader]
+    return
   }
+
+  const profile = resolveCollaborationProfile(input.hookInput.agent)
+  if (!profile.enabled || !profile.kind) {
+    delete input.output.headers["x-openai-subagent"]
+    delete input.output.headers[input.internalCollaborationModeHeader]
+    return
+  }
+
+  input.output.headers[input.internalCollaborationModeHeader] = profile.kind
+
+  if (input.orchestratorSubagentsEnabled) {
+    const subagentHeader = resolveSubagentHeaderValue(input.hookInput.agent)
+    if (subagentHeader) {
+      input.output.headers["x-openai-subagent"] = subagentHeader
+    } else {
+      delete input.output.headers["x-openai-subagent"]
+    }
+    return
+  }
+
+  delete input.output.headers["x-openai-subagent"]
 }
 
 export async function handleSessionCompactingHook(input: {

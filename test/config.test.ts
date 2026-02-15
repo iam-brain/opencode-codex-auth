@@ -8,6 +8,8 @@ import {
   DEFAULT_CODEX_CONFIG,
   ensureDefaultConfigFile,
   getCompatInputSanitizerEnabled,
+  getCollaborationProfileEnabled,
+  getCollaborationToolProfile,
   getCodexCompactionOverrideEnabled,
   getBehaviorSettings,
   getDebugEnabled,
@@ -15,6 +17,7 @@ import {
   getHeaderSnapshotsEnabled,
   getMode,
   getPromptCacheKeyStrategy,
+  getOrchestratorSubagentsEnabled,
   getRemapDeveloperMessagesToUserEnabled,
   getRotationStrategy,
   getPidOffsetEnabled,
@@ -186,6 +189,49 @@ describe("config loading", () => {
     expect(getHeaderTransformDebugEnabled(cfg)).toBe(true)
   })
 
+  it("parses collaboration profile gate from env", () => {
+    const enabled = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_MODE: "codex",
+        OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE: "1"
+      }
+    })
+    const disabled = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_MODE: "native",
+        OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE: "1"
+      }
+    })
+    expect(getCollaborationProfileEnabled(enabled)).toBe(true)
+    expect(getCollaborationProfileEnabled(disabled)).toBe(true)
+  })
+
+  it("parses orchestrator subagent gate from env", () => {
+    const enabled = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_MODE: "codex",
+        OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE: "1",
+        OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS: "1"
+      }
+    })
+    const disabled = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_MODE: "codex",
+        OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE: "0",
+        OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS: "0"
+      }
+    })
+    expect(getOrchestratorSubagentsEnabled(enabled)).toBe(true)
+    expect(getOrchestratorSubagentsEnabled(disabled)).toBe(false)
+  })
+
+  it("parses collaboration tooling profile from env", () => {
+    const codex = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE: "codex" } })
+    const opencode = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE: "opencode" } })
+    expect(getCollaborationToolProfile(codex)).toBe("codex")
+    expect(getCollaborationToolProfile(opencode)).toBe("opencode")
+  })
+
   it("reads personality + behavior settings from file config", () => {
     const cfg = resolveConfig({
       env: {},
@@ -296,6 +342,26 @@ describe("config", () => {
     expect(getCodexCompactionOverrideEnabled({ mode: "codex" })).toBe(true)
   })
 
+  it("defaults collaboration gates to codex-on, native-off", () => {
+    expect(getCollaborationProfileEnabled({ mode: "native" })).toBe(false)
+    expect(getCollaborationProfileEnabled({ mode: "codex" })).toBe(true)
+    expect(getOrchestratorSubagentsEnabled({ mode: "native" })).toBe(false)
+    expect(getOrchestratorSubagentsEnabled({ mode: "codex" })).toBe(true)
+  })
+
+  it("allows overriding collaboration gates in any mode", () => {
+    expect(getCollaborationProfileEnabled({ mode: "native", collaborationProfileEnabled: true })).toBe(true)
+    expect(getCollaborationProfileEnabled({ mode: "codex", collaborationProfileEnabled: false })).toBe(false)
+    expect(getCollaborationProfileEnabled({ mode: "codex", collaborationProfileEnabled: true })).toBe(true)
+    expect(
+      getOrchestratorSubagentsEnabled({
+        mode: "native",
+        collaborationProfileEnabled: true,
+        orchestratorSubagentsEnabled: true
+      })
+    ).toBe(true)
+  })
+
   it("allows enabling codex compaction override in native mode", () => {
     expect(
       getCodexCompactionOverrideEnabled({
@@ -336,7 +402,10 @@ describe("config file loading", () => {
           codexCompactionOverride: true,
           headerSnapshots: true,
           headerTransformDebug: true,
-          pidOffset: true
+          pidOffset: true,
+          collaborationProfile: true,
+          orchestratorSubagents: true,
+          collaborationToolProfile: "codex"
         },
         global: {
           thinkingSummaries: true,
@@ -373,6 +442,9 @@ describe("config file loading", () => {
     expect(loaded.headerSnapshots).toBe(true)
     expect(loaded.headerTransformDebug).toBe(true)
     expect(loaded.pidOffsetEnabled).toBe(true)
+    expect(loaded.collaborationProfileEnabled).toBe(true)
+    expect(loaded.orchestratorSubagentsEnabled).toBe(true)
+    expect(loaded.collaborationToolProfile).toBe("codex")
     expect(loaded.rotationStrategy).toBe("hybrid")
     expect(loaded.promptCacheKeyStrategy).toBe("project")
     expect(loaded.mode).toBe("codex")

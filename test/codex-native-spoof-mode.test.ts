@@ -736,7 +736,7 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.instructions).toBeUndefined()
   })
 
-  it("does not inject collaboration instructions for Codex agents in codex mode", async () => {
+  it("injects collaboration instructions for Codex agents by default in codex mode", async () => {
     const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex", mode: "codex" })
     const chatParams = hooks["chat.params"]
     expect(chatParams).toBeTypeOf("function")
@@ -766,8 +766,9 @@ describe("codex-native spoof + params hooks", () => {
     }
 
     await chatParams?.(input, output)
-    expect(output.options.instructions).toBe("Catalog instructions")
-    expect(output.options.instructions).not.toContain("# Plan Mode")
+    expect(output.options.instructions).toContain("Catalog instructions")
+    expect(output.options.instructions).toContain("# Plan Mode (Conversational)")
+    expect(output.options.instructions).toContain("Tooling Compatibility (OpenCode)")
   })
 
   it("does not enable codex collaboration profile for native OpenCode agents", async () => {
@@ -927,7 +928,7 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.headers.conversation_id).toBeUndefined()
   })
 
-  it("does not set collaboration headers for Codex agents in codex mode", async () => {
+  it("sets collaboration headers for Codex agents by default in codex mode", async () => {
     const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex", mode: "codex" })
     const chatHeaders = hooks["chat.headers"]
     expect(chatHeaders).toBeTypeOf("function")
@@ -941,8 +942,8 @@ describe("codex-native spoof + params hooks", () => {
     const output = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
-    expect(output.headers["x-openai-subagent"]).toBeUndefined()
-    expect(output.headers["x-opencode-collaboration-mode-kind"]).toBeUndefined()
+    expect(output.headers["x-openai-subagent"]).toBe("review")
+    expect(output.headers["x-opencode-collaboration-mode-kind"]).toBe("code")
   })
 
   it("does not set codex collaboration headers for native OpenCode agents", async () => {
@@ -963,6 +964,57 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.headers["x-opencode-collaboration-mode-kind"]).toBeUndefined()
   })
 
+  it("allows collaboration injection in native mode when explicitly enabled", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      spoofMode: "native",
+      mode: "native",
+      collaborationProfileEnabled: true,
+      orchestratorSubagentsEnabled: true,
+      collaborationToolProfile: "codex"
+    } as never)
+    const chatParams = hooks["chat.params"]
+    const chatHeaders = hooks["chat.headers"]
+    expect(chatParams).toBeTypeOf("function")
+    expect(chatHeaders).toBeTypeOf("function")
+
+    const paramsInput = {
+      sessionID: "ses_native_collab_params",
+      agent: "orchestrator",
+      provider: {},
+      message: {},
+      model: {
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexInstructions: "Catalog instructions"
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const paramsOutput = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {}
+    }
+
+    await chatParams?.(paramsInput, paramsOutput)
+    expect(paramsOutput.options.instructions).toContain("Catalog instructions")
+    expect(paramsOutput.options.instructions).toContain("# Sub-agents")
+    expect(paramsOutput.options.instructions).toContain("Tooling Compatibility (Codex-style)")
+
+    const headersInput = {
+      sessionID: "ses_native_collab_headers",
+      agent: "Codex Review",
+      model: { providerID: "openai", options: {} }
+    } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
+
+    const headersOutput = { headers: {} as Record<string, string> }
+    await chatHeaders?.(headersInput, headersOutput)
+    expect(headersOutput.headers["x-opencode-collaboration-mode-kind"]).toBe("code")
+    expect(headersOutput.headers["x-openai-subagent"]).toBe("review")
+  })
+
   it("does not set codex collaboration headers for legacy Orchestrator agent names", async () => {
     const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex" })
     const chatHeaders = hooks["chat.headers"]
@@ -979,5 +1031,123 @@ describe("codex-native spoof + params hooks", () => {
 
     expect(output.headers["x-openai-subagent"]).toBeUndefined()
     expect(output.headers["x-opencode-collaboration-mode-kind"]).toBeUndefined()
+  })
+
+  it("injects plan-mode collaboration instructions when experimental collaboration profile is enabled", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      spoofMode: "codex",
+      mode: "codex",
+      collaborationProfileEnabled: true
+    } as never)
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_plan_collab_enabled",
+      agent: "plan",
+      provider: {},
+      message: {},
+      model: {
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexInstructions: "Catalog instructions"
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {}
+    }
+
+    await chatParams?.(input, output)
+
+    expect(output.options.instructions).toContain("Catalog instructions")
+    expect(output.options.instructions).toContain("# Plan Mode (Conversational)")
+  })
+
+  it("injects orchestrator collaboration instructions when experimental collaboration profile is enabled", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      spoofMode: "codex",
+      mode: "codex",
+      collaborationProfileEnabled: true,
+      orchestratorSubagentsEnabled: true
+    } as never)
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_orchestrator_collab_enabled",
+      agent: "orchestrator",
+      provider: {},
+      message: {},
+      model: {
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexInstructions: "Catalog instructions"
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {}
+    }
+
+    await chatParams?.(input, output)
+
+    expect(output.options.instructions).toContain("Catalog instructions")
+    expect(output.options.instructions).toContain("# Sub-agents")
+  })
+
+  it("sets collaboration-mode header for plan agent when experimental collaboration profile is enabled", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      spoofMode: "codex",
+      mode: "codex",
+      collaborationProfileEnabled: true
+    } as never)
+    const chatHeaders = hooks["chat.headers"]
+    expect(chatHeaders).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_plan_collab_headers",
+      agent: "plan",
+      model: { providerID: "openai", options: {} }
+    } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
+
+    const output = { headers: {} as Record<string, string> }
+    await chatHeaders?.(input, output)
+
+    expect(output.headers["x-opencode-collaboration-mode-kind"]).toBe("plan")
+    expect(output.headers["x-openai-subagent"]).toBeUndefined()
+  })
+
+  it("sets subagent + collaboration headers for codex review helper when orchestrator subagents are enabled", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      spoofMode: "codex",
+      mode: "codex",
+      collaborationProfileEnabled: true,
+      orchestratorSubagentsEnabled: true
+    } as never)
+    const chatHeaders = hooks["chat.headers"]
+    expect(chatHeaders).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_review_collab_headers",
+      agent: "Codex Review",
+      model: { providerID: "openai", options: {} }
+    } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
+
+    const output = { headers: {} as Record<string, string> }
+    await chatHeaders?.(input, output)
+
+    expect(output.headers["x-opencode-collaboration-mode-kind"]).toBe("code")
+    expect(output.headers["x-openai-subagent"]).toBe("review")
   })
 })

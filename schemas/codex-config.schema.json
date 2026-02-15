@@ -61,6 +61,16 @@
         },
         "pidOffset": {
           "type": "boolean"
+        },
+        "collaborationProfile": {
+          "type": "boolean"
+        },
+        "orchestratorSubagents": {
+          "type": "boolean"
+        },
+        "collaborationToolProfile": {
+          "type": "string",
+          "enum": ["opencode", "codex"]
         }
       }
     },

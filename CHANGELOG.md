@@ -7,6 +7,10 @@ All notable changes to this project will be documented in this file.
 - Removed experimental `collab` runtime mode and related template wiring from mainline plugin behavior.
 - Simplified installer surface to a single idempotent `install` flow.
 - Updated docs, schema, and workflow configuration for current supported modes (`native`, `codex`).
+- Added experimental Codex collaboration profile gates (`runtime.collaborationProfile`, `runtime.orchestratorSubagents`) for plan/orchestrator parity.
+- Collaboration features now auto-enable by default in `runtime.mode="codex"` and can be explicitly enabled/disabled in any mode.
+- Added `runtime.collaborationToolProfile` (`opencode` | `codex`) to choose OpenCode tool translation guidance vs codex-style tool semantics in injected collaboration instructions.
+- Added managed `orchestrator` agent template sync under `~/.config/opencode/agents`, with visibility auto-gated by runtime mode.
 
 ## 0.2.3 - 2026-02-11
 

@@ -94,6 +94,18 @@ The plugin loads config in this order:
   - Adds explicit `before-header-transform` and `after-header-transform` request snapshots for message fetches.
 - `runtime.pidOffset: boolean`
   - Enables session-aware offset behavior for account selection.
+- `runtime.collaborationProfile: boolean`
+  - Experimental: enables Codex-style collaboration mode mapping from agent names (`plan` -> plan mode, `orchestrator` -> code mode profile).
+  - If omitted, defaults to `true` in `runtime.mode="codex"` and `false` otherwise.
+  - Explicit `true`/`false` works in any mode.
+- `runtime.orchestratorSubagents: boolean`
+  - Experimental: enables Codex-style subagent header hints for helper agents under collaboration profile mode.
+  - If omitted, inherits `runtime.collaborationProfile` effective value.
+  - Explicit `true`/`false` works in any mode.
+- `runtime.collaborationToolProfile: "opencode" | "codex"`
+  - Controls tool-language guidance in injected collaboration instructions.
+  - `opencode` (default): translates Codex semantics to OpenCode tool names.
+  - `codex`: prefers Codex tool semantics and falls back to OpenCode equivalents.
 
 ### Model behavior
 

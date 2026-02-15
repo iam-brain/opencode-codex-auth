@@ -2,7 +2,8 @@ import path from "node:path"
 
 import { installCreatePersonalityCommand } from "./personality-command.js"
 import { installPersonalityBuilderSkill } from "./personality-skill.js"
-import { ensureDefaultConfigFile } from "./config.js"
+import { ensureDefaultConfigFile, getCollaborationProfileEnabled, getMode, loadConfigFile, resolveConfig } from "./config.js"
+import { reconcileOrchestratorAgentVisibility } from "./orchestrator-agent.js"
 import { DEFAULT_PLUGIN_SPECIFIER, defaultOpencodeConfigPath, ensurePluginInstalled } from "./opencode-install.js"
 
 type InstallerIo = {
@@ -106,6 +107,20 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
   io.out(
     `personality-builder skill synchronized: ${
       skillResult.created ? "created" : skillResult.updated ? "updated" : "unchanged"
+    }`
+  )
+
+  const resolvedConfig = resolveConfig({
+    env: process.env,
+    file: loadConfigFile({ env: process.env })
+  })
+  const runtimeMode = getMode(resolvedConfig)
+  const collaborationProfileEnabled = getCollaborationProfileEnabled(resolvedConfig)
+  const orchestratorResult = await reconcileOrchestratorAgentVisibility({ visible: collaborationProfileEnabled })
+  io.out(`Orchestrator agent file: ${orchestratorResult.filePath}`)
+  io.out(
+    `Orchestrator agent visible in current mode (${runtimeMode}, collaboration=${collaborationProfileEnabled ? "on" : "off"}): ${
+      orchestratorResult.visible ? "yes" : "no"
     }`
   )
 

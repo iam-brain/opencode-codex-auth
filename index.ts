@@ -13,9 +13,12 @@ import {
   getCompatInputSanitizerEnabled,
   getCodexCompactionOverrideEnabled,
   getBehaviorSettings,
+  getCollaborationToolProfile,
+  getCollaborationProfileEnabled,
   getDebugEnabled,
   getHeaderTransformDebugEnabled,
   getHeaderSnapshotsEnabled,
+  getOrchestratorSubagentsEnabled,
   getMode,
   getRemapDeveloperMessagesToUserEnabled,
   getRotationStrategy,
@@ -34,6 +37,7 @@ import { generatePersonaSpec } from "./lib/persona-tool"
 import { createPersonalityFile } from "./lib/personality-create"
 import { installCreatePersonalityCommand } from "./lib/personality-command"
 import { installPersonalityBuilderSkill } from "./lib/personality-skill"
+import { reconcileOrchestratorAgentVisibility } from "./lib/orchestrator-agent"
 import { runOneProactiveRefreshTick } from "./lib/proactive-refresh"
 import { toolOutputForStatus } from "./lib/codex-status-tool"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage"
@@ -56,7 +60,10 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     file: loadConfigFile({ env: process.env })
   })
   const runtimeMode = getMode(cfg)
+  const collaborationProfileEnabled = getCollaborationProfileEnabled(cfg)
   const log = createLogger({ debug: getDebugEnabled(cfg) })
+
+  await reconcileOrchestratorAgentVisibility({ visible: collaborationProfileEnabled }).catch(() => {})
 
   if (getProactiveRefreshEnabled(cfg)) {
     const bufferMs = getProactiveRefreshBufferMs(cfg)
@@ -92,11 +99,13 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     codexCompactionOverride: getCodexCompactionOverrideEnabled(cfg),
     headerSnapshots: getHeaderSnapshotsEnabled(cfg),
     headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
+    collaborationProfileEnabled,
+    orchestratorSubagentsEnabled: getOrchestratorSubagentsEnabled(cfg),
+    collaborationToolProfile: getCollaborationToolProfile(cfg),
     behaviorSettings: getBehaviorSettings(cfg)
   })
 
   const z = tool.schema
-
   hooks.tool = {
     ...hooks.tool,
     "codex-status": tool({
