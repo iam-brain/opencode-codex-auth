@@ -8,6 +8,7 @@ export type PersonalityOption = string
 export type CodexSpoofMode = "native" | "codex"
 export type PluginRuntimeMode = "native" | "codex"
 export type VerbosityOption = "default" | "low" | "medium" | "high"
+export type PromptCacheKeyStrategy = "default" | "project"
 
 export type ModelBehaviorOverride = {
   personality?: PersonalityOption
@@ -40,6 +41,7 @@ export type PluginConfig = {
   codexCompactionOverride?: boolean
   headerSnapshots?: boolean
   headerTransformDebug?: boolean
+  promptCacheKeyStrategy?: PromptCacheKeyStrategy
   behaviorSettings?: BehaviorSettings
 }
 
@@ -58,6 +60,7 @@ export const DEFAULT_CODEX_CONFIG = {
     rotationStrategy: "sticky",
     sanitizeInputs: false,
     developerMessagesToUser: true,
+    promptCacheKeyStrategy: "default",
     headerSnapshots: false,
     headerTransformDebug: false,
     pidOffset: false
@@ -115,6 +118,13 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // options: true | false
     // default: true
     "developerMessagesToUser": true,
+
+    // Prompt cache key policy.
+    // "default" keeps upstream session-based keys.
+    // "project" overrides with a hashed project path + runtime mode key.
+    // options: "default" | "project"
+    // default: "default"
+    "promptCacheKeyStrategy": "default",
 
     // Write request header snapshots to plugin logs.
     // options: true | false
@@ -301,6 +311,13 @@ function parseRotationStrategy(value: unknown): RotationStrategy | undefined {
   return undefined
 }
 
+function parsePromptCacheKeyStrategy(value: unknown): PromptCacheKeyStrategy | undefined {
+  if (typeof value !== "string") return undefined
+  const normalized = value.trim().toLowerCase()
+  if (normalized === "default" || normalized === "project") return normalized
+  return undefined
+}
+
 function normalizeVerbosityOption(value: unknown): VerbosityOption | undefined {
   if (typeof value !== "string") return undefined
   const normalized = value.trim().toLowerCase()
@@ -472,6 +489,9 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
   const quietMode = typeof raw.quiet === "boolean" ? raw.quiet : undefined
   const mode = parseRuntimeMode(isRecord(raw.runtime) ? raw.runtime.mode : undefined)
   const rotationStrategy = parseRotationStrategy(isRecord(raw.runtime) ? raw.runtime.rotationStrategy : undefined)
+  const promptCacheKeyStrategy = parsePromptCacheKeyStrategy(
+    isRecord(raw.runtime) ? raw.runtime.promptCacheKeyStrategy : undefined
+  )
   const spoofMode = mode === "native" ? "native" : mode === "codex" ? "codex" : undefined
   const compatInputSanitizer =
     isRecord(raw.runtime) && typeof raw.runtime.sanitizeInputs === "boolean" ? raw.runtime.sanitizeInputs : undefined
@@ -501,6 +521,7 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     personality: personalityFromBehavior,
     mode,
     rotationStrategy,
+    promptCacheKeyStrategy,
     spoofMode,
     compatInputSanitizer,
     remapDeveloperMessagesToUser,
@@ -587,6 +608,8 @@ export function resolveConfig(input: {
   const quietMode = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_QUIET) ?? file.quietMode
   const pidOffsetEnabled = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_PID_OFFSET) ?? file.pidOffsetEnabled
   const rotationStrategy = parseRotationStrategy(env.OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY) ?? file.rotationStrategy
+  const promptCacheKeyStrategy =
+    parsePromptCacheKeyStrategy(env.OPENCODE_OPENAI_MULTI_PROMPT_CACHE_KEY_STRATEGY) ?? file.promptCacheKeyStrategy
 
   const envPersonality = normalizePersonalityOption(env.OPENCODE_OPENAI_MULTI_PERSONALITY)
   const envThinkingSummaries = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES)
@@ -666,6 +689,7 @@ export function resolveConfig(input: {
     personality,
     mode,
     rotationStrategy,
+    promptCacheKeyStrategy,
     spoofMode,
     compatInputSanitizer,
     remapDeveloperMessagesToUser,
@@ -713,6 +737,10 @@ export function getMode(cfg: PluginConfig): PluginRuntimeMode {
 
 export function getRotationStrategy(cfg: PluginConfig): RotationStrategy {
   return cfg.rotationStrategy === "hybrid" || cfg.rotationStrategy === "round_robin" ? cfg.rotationStrategy : "sticky"
+}
+
+export function getPromptCacheKeyStrategy(cfg: PluginConfig): PromptCacheKeyStrategy {
+  return cfg.promptCacheKeyStrategy === "project" ? "project" : "default"
 }
 
 export function getCompatInputSanitizerEnabled(cfg: PluginConfig): boolean {

@@ -422,6 +422,52 @@ export async function sanitizeOutboundRequestIfNeeded(
   return { request: sanitizedRequest, changed: true }
 }
 
+export async function applyPromptCacheKeyOverrideToRequest(input: {
+  request: Request
+  enabled: boolean
+  promptCacheKey?: string
+}): Promise<{ request: Request; changed: boolean; reason: string }> {
+  if (!input.enabled) {
+    return { request: input.request, changed: false, reason: "disabled" }
+  }
+
+  const promptCacheKey = asString(input.promptCacheKey)
+  if (!promptCacheKey) {
+    return { request: input.request, changed: false, reason: "missing_key" }
+  }
+
+  const method = input.request.method.toUpperCase()
+  if (method !== "POST") {
+    return { request: input.request, changed: false, reason: "non_post" }
+  }
+
+  let payload: unknown
+  try {
+    const raw = await input.request.clone().text()
+    if (!raw) return { request: input.request, changed: false, reason: "empty_body" }
+    payload = JSON.parse(raw)
+  } catch {
+    return { request: input.request, changed: false, reason: "invalid_json" }
+  }
+
+  if (!isRecord(payload)) {
+    return { request: input.request, changed: false, reason: "non_object_body" }
+  }
+
+  const current = asString(payload.prompt_cache_key)
+  if (current === promptCacheKey) {
+    return { request: input.request, changed: false, reason: "already_matches" }
+  }
+
+  payload.prompt_cache_key = promptCacheKey
+  const updatedRequest = rebuildRequestWithJsonBody(input.request, payload)
+  return {
+    request: updatedRequest,
+    changed: true,
+    reason: current ? "replaced" : "set"
+  }
+}
+
 function rebuildRequestWithJsonBody(request: Request, body: unknown): Request {
   const headers = new Headers(request.headers)
   headers.set("content-type", "application/json")
@@ -573,6 +619,178 @@ export async function remapDeveloperMessagesToUserOnRequest(input: { request: Re
     reason: "updated",
     remappedCount,
     preservedCount
+  }
+}
+
+function stripReasoningReplayFields(value: unknown): { value: unknown; removed: number } {
+  if (Array.isArray(value)) {
+    let removed = 0
+    const next = value.map((entry) => {
+      const result = stripReasoningReplayFields(entry)
+      removed += result.removed
+      return result.value
+    })
+    return { value: next, removed }
+  }
+
+  if (!isRecord(value)) {
+    return { value, removed: 0 }
+  }
+
+  let removed = 0
+  const out: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value)) {
+    if (key.toLowerCase() === "reasoning_content") {
+      removed += 1
+      continue
+    }
+    const result = stripReasoningReplayFields(entry)
+    removed += result.removed
+    out[key] = result.value
+  }
+  return { value: out, removed }
+}
+
+function isReasoningReplayPart(entry: unknown): boolean {
+  if (!isRecord(entry)) return false
+  const type = asString(entry.type)?.toLowerCase()
+  if (!type) return false
+  return type.startsWith("reasoning")
+}
+
+export async function stripReasoningReplayFromRequest(input: { request: Request; enabled: boolean }): Promise<{
+  request: Request
+  changed: boolean
+  reason: string
+  removedPartCount: number
+  removedFieldCount: number
+}> {
+  if (!input.enabled) {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "disabled",
+      removedPartCount: 0,
+      removedFieldCount: 0
+    }
+  }
+
+  const method = input.request.method.toUpperCase()
+  if (method !== "POST") {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "non_post",
+      removedPartCount: 0,
+      removedFieldCount: 0
+    }
+  }
+
+  let payload: unknown
+  try {
+    const raw = await input.request.clone().text()
+    if (!raw) {
+      return {
+        request: input.request,
+        changed: false,
+        reason: "empty_body",
+        removedPartCount: 0,
+        removedFieldCount: 0
+      }
+    }
+    payload = JSON.parse(raw)
+  } catch {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "invalid_json",
+      removedPartCount: 0,
+      removedFieldCount: 0
+    }
+  }
+
+  if (!isRecord(payload)) {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "non_object_body",
+      removedPartCount: 0,
+      removedFieldCount: 0
+    }
+  }
+  if (!Array.isArray(payload.input)) {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "missing_input_array",
+      removedPartCount: 0,
+      removedFieldCount: 0
+    }
+  }
+
+  let changed = false
+  let removedPartCount = 0
+  let removedFieldCount = 0
+  const nextInput: unknown[] = []
+
+  for (const item of payload.input) {
+    if (isReasoningReplayPart(item)) {
+      changed = true
+      removedPartCount += 1
+      continue
+    }
+
+    if (!isRecord(item)) {
+      nextInput.push(item)
+      continue
+    }
+
+    const nextItem: Record<string, unknown> = { ...item }
+    const role = asString(nextItem.role)?.toLowerCase()
+    if (role === "assistant" && Array.isArray(nextItem.content)) {
+      const contentOut: unknown[] = []
+      for (const entry of nextItem.content) {
+        if (isReasoningReplayPart(entry)) {
+          changed = true
+          removedPartCount += 1
+          continue
+        }
+        const strippedEntry = stripReasoningReplayFields(entry)
+        if (strippedEntry.removed > 0) {
+          changed = true
+          removedFieldCount += strippedEntry.removed
+        }
+        contentOut.push(strippedEntry.value)
+      }
+      nextItem.content = contentOut
+    }
+
+    const strippedItem = stripReasoningReplayFields(nextItem)
+    if (strippedItem.removed > 0) {
+      changed = true
+      removedFieldCount += strippedItem.removed
+    }
+    nextInput.push(strippedItem.value)
+  }
+
+  if (!changed) {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "no_reasoning_replay",
+      removedPartCount,
+      removedFieldCount
+    }
+  }
+
+  payload.input = nextInput
+  const updatedRequest = rebuildRequestWithJsonBody(input.request, payload)
+  return {
+    request: updatedRequest,
+    changed: true,
+    reason: "updated",
+    removedPartCount,
+    removedFieldCount
   }
 }
 

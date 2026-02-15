@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { remapDeveloperMessagesToUserOnRequest } from "../lib/codex-native/request-transform"
+import {
+  remapDeveloperMessagesToUserOnRequest,
+  stripReasoningReplayFromRequest
+} from "../lib/codex-native/request-transform"
 
 describe("codex request role remap", () => {
   it("remaps non-permissions developer messages to user", async () => {
@@ -142,5 +145,85 @@ describe("codex request role remap", () => {
 
     controller.abort()
     expect(remapped.request.signal.aborted).toBe(true)
+  })
+})
+
+describe("codex reasoning replay stripping", () => {
+  it("removes assistant reasoning replay parts and fields", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [
+              { type: "reasoning_summary", text: "secret summary" },
+              { type: "output_text", text: "visible", reasoning_content: "should-strip" }
+            ]
+          },
+          {
+            type: "reasoning",
+            summary: [{ text: "remove whole item" }]
+          },
+          {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "keep user input" }]
+          }
+        ],
+        reasoning: {
+          effort: "high",
+          summary: "auto"
+        }
+      })
+    })
+
+    const stripped = await stripReasoningReplayFromRequest({ request, enabled: true })
+
+    expect(stripped.changed).toBe(true)
+    expect(stripped.reason).toBe("updated")
+    expect(stripped.removedPartCount).toBe(2)
+    expect(stripped.removedFieldCount).toBe(1)
+
+    const body = JSON.parse(await stripped.request.text()) as {
+      input: Array<{ role?: string; content?: Array<Record<string, unknown>> }>
+      reasoning?: { effort?: string; summary?: string }
+    }
+    expect(body.input).toHaveLength(2)
+    expect(body.input[0]?.role).toBe("assistant")
+    expect(body.input[0]?.content).toEqual([{ type: "output_text", text: "visible" }])
+    expect(body.reasoning).toEqual({ effort: "high", summary: "auto" })
+  })
+
+  it("is a no-op when payload has no reasoning replay artifacts", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "safe output" }]
+          },
+          {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "safe input" }]
+          }
+        ]
+      })
+    })
+
+    const stripped = await stripReasoningReplayFromRequest({ request, enabled: true })
+
+    expect(stripped.changed).toBe(false)
+    expect(stripped.reason).toBe("no_reasoning_replay")
+    expect(stripped.removedPartCount).toBe(0)
+    expect(stripped.removedFieldCount).toBe(0)
   })
 })

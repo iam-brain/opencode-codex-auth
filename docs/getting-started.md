@@ -106,6 +106,11 @@ Runtime mode is configured in `codex-config.json`.
 - `native`: default
 - `codex`
 
+Prompt cache key strategy is also configurable under `runtime.promptCacheKeyStrategy`:
+
+- `default`: keeps upstream session-based keying
+- `project`: uses a project-path + mode hash
+
 Managed templates are synchronized at plugin startup:
 
 - `/create-personality` command is refreshed to the managed latest template

@@ -24,6 +24,7 @@ Config resolution has two stages.
 - overlays env variables on file values
 - normalizes booleans/numbers/enum-like values
 - resolves runtime mode + spoof mode defaults
+- resolves prompt-cache-key strategy (`default` or `project`)
 - resolves behavior settings (`global`/`perModel`/`variants`)
 
 ## Behavior precedence

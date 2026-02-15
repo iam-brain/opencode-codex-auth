@@ -14,6 +14,7 @@ import {
   getHeaderTransformDebugEnabled,
   getHeaderSnapshotsEnabled,
   getMode,
+  getPromptCacheKeyStrategy,
   getRemapDeveloperMessagesToUserEnabled,
   getRotationStrategy,
   getPidOffsetEnabled,
@@ -79,6 +80,16 @@ describe("config loading", () => {
   it("defaults rotation strategy to sticky", () => {
     const cfg = resolveConfig({ env: {} })
     expect(getRotationStrategy(cfg)).toBe("sticky")
+  })
+
+  it("defaults prompt cache key strategy to default", () => {
+    const cfg = resolveConfig({ env: {} })
+    expect(getPromptCacheKeyStrategy(cfg)).toBe("default")
+  })
+
+  it("parses prompt cache key strategy from env", () => {
+    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_PROMPT_CACHE_KEY_STRATEGY: "project" } })
+    expect(getPromptCacheKeyStrategy(cfg)).toBe("project")
   })
 
   it("parses rotation strategy from env", () => {
@@ -319,6 +330,7 @@ describe("config file loading", () => {
         runtime: {
           mode: "codex",
           rotationStrategy: "hybrid",
+          promptCacheKeyStrategy: "project",
           sanitizeInputs: true,
           developerMessagesToUser: true,
           codexCompactionOverride: true,
@@ -362,6 +374,7 @@ describe("config file loading", () => {
     expect(loaded.headerTransformDebug).toBe(true)
     expect(loaded.pidOffsetEnabled).toBe(true)
     expect(loaded.rotationStrategy).toBe("hybrid")
+    expect(loaded.promptCacheKeyStrategy).toBe("project")
     expect(loaded.mode).toBe("codex")
     expect(loaded.behaviorSettings?.global?.thinkingSummaries).toBe(true)
     expect(loaded.behaviorSettings?.global?.verbosityEnabled).toBe(true)

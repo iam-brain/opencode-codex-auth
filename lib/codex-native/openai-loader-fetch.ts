@@ -3,15 +3,20 @@ import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "
 import type { Logger } from "../logger"
 import type { CodexModelInfo } from "../model-catalog"
 import type { RotationStrategy } from "../types"
-import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config"
+import type { BehaviorSettings, CodexSpoofMode, PersonalityOption, PromptCacheKeyStrategy } from "../config"
 import type { OpenAIAuthMode } from "../types"
 import { acquireOpenAIAuth } from "./acquire-auth"
 import { resolveRequestUserAgent } from "./client-identity"
 import { resolveCodexOriginator } from "./originator"
+import { buildProjectPromptCacheKey } from "../prompt-cache-key"
 import { persistRateLimitSnapshotFromResponse } from "./rate-limit-snapshots"
 import { assertAllowedOutboundUrl, rewriteUrl } from "./request-routing"
 import { applyRequestTransformPipeline } from "./request-transform-pipeline"
-import { sanitizeOutboundRequestIfNeeded } from "./request-transform"
+import {
+  applyPromptCacheKeyOverrideToRequest,
+  sanitizeOutboundRequestIfNeeded,
+  stripReasoningReplayFromRequest
+} from "./request-transform"
 import type { SessionAffinityRuntimeState } from "./session-affinity-state"
 
 type SnapshotRecorder = {
@@ -25,6 +30,8 @@ export type CreateOpenAIFetchHandlerInput = {
   remapDeveloperMessagesToUserEnabled: boolean
   behaviorSettings?: BehaviorSettings
   personality?: PersonalityOption
+  promptCacheKeyStrategy?: PromptCacheKeyStrategy
+  projectPath?: string
   log?: Logger
   quietMode: boolean
   pidOffsetEnabled: boolean
@@ -94,6 +101,18 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
 
     let selectedIdentityKey: string | undefined
 
+    const replaySanitized = await stripReasoningReplayFromRequest({
+      request: outbound,
+      enabled: true
+    })
+    outbound = replaySanitized.request
+    if (replaySanitized.changed) {
+      input.log?.debug("reasoning replay stripped", {
+        removedPartCount: replaySanitized.removedPartCount,
+        removedFieldCount: replaySanitized.removedFieldCount
+      })
+    }
+
     await input.requestSnapshots.captureRequest("before-auth", outbound, { spoofMode: input.spoofMode })
 
     const { orchestratorState, stickySessionState, hybridSessionState, persistSessionAffinityState } =
@@ -159,7 +178,24 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           fallbackPersonality: input.personality
         })
 
-        await input.requestSnapshots.captureRequest("outbound-attempt", transformed.request, {
+        const promptCacheKeyStrategy = input.promptCacheKeyStrategy ?? "default"
+        const promptCacheKeyOverride =
+          promptCacheKeyStrategy === "project"
+            ? await applyPromptCacheKeyOverrideToRequest({
+                request: transformed.request,
+                enabled: true,
+                promptCacheKey: buildProjectPromptCacheKey({
+                  projectPath: input.projectPath ?? process.cwd(),
+                  spoofMode: input.spoofMode
+                })
+              })
+            : {
+                request: transformed.request,
+                changed: false,
+                reason: "default_strategy"
+              }
+
+        await input.requestSnapshots.captureRequest("outbound-attempt", promptCacheKeyOverride.request, {
           attempt: attempt + 1,
           maxAttempts,
           sessionKey,
@@ -170,10 +206,12 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           developerMessagesRemapped: transformed.developerRoleRemap.changed,
           developerMessageRemapReason: transformed.developerRoleRemap.reason,
           developerMessageRemapCount: transformed.developerRoleRemap.remappedCount,
-          developerMessagePreservedCount: transformed.developerRoleRemap.preservedCount
+          developerMessagePreservedCount: transformed.developerRoleRemap.preservedCount,
+          promptCacheKeyOverridden: promptCacheKeyOverride.changed,
+          promptCacheKeyOverrideReason: promptCacheKeyOverride.reason
         })
 
-        return transformed.request
+        return promptCacheKeyOverride.request
       },
       onAttemptResponse: async ({ attempt, maxAttempts, response, auth, sessionKey }) => {
         await input.requestSnapshots.captureResponse("outbound-response", response, {

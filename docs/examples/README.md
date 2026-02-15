@@ -16,6 +16,7 @@ This directory contains starter config files.
 3. Customize:
    - `runtime.mode` (`native`, `codex`)
    - `runtime.developerMessagesToUser` (codex-mode role remap toggle)
+   - `runtime.promptCacheKeyStrategy` (`default`, `project`)
    - `global` personality/summaries
    - `perModel` and `variants`
 4. Validate with schemas:

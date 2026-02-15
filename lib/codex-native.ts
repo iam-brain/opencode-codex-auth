@@ -1,9 +1,16 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
+import process from "node:process"
 
 import { loadAuthStorage, setAccountCooldown } from "./storage"
 import type { Logger } from "./logger"
 import type { OpenAIAuthMode, RotationStrategy } from "./types"
-import type { BehaviorSettings, CodexSpoofMode, PersonalityOption, PluginRuntimeMode } from "./config"
+import type {
+  BehaviorSettings,
+  CodexSpoofMode,
+  PersonalityOption,
+  PluginRuntimeMode,
+  PromptCacheKeyStrategy
+} from "./config"
 import { formatToastMessage } from "./toast"
 import type { CodexModelInfo } from "./model-catalog"
 import { createRequestSnapshots } from "./request-snapshots"
@@ -150,6 +157,7 @@ export type CodexAuthPluginOptions = {
   quietMode?: boolean
   pidOffsetEnabled?: boolean
   rotationStrategy?: RotationStrategy
+  promptCacheKeyStrategy?: PromptCacheKeyStrategy
   spoofMode?: CodexSpoofMode
   compatInputSanitizer?: boolean
   remapDeveloperMessagesToUser?: boolean
@@ -273,6 +281,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         const fetch = createOpenAIFetchHandler({
           authMode,
           spoofMode,
+          promptCacheKeyStrategy: opts.promptCacheKeyStrategy,
+          projectPath: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
           remapDeveloperMessagesToUserEnabled,
           behaviorSettings: opts.behaviorSettings,
           personality: opts.personality,

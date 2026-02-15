@@ -46,6 +46,10 @@
         "developerMessagesToUser": {
           "type": "boolean"
         },
+        "promptCacheKeyStrategy": {
+          "type": "string",
+          "enum": ["default", "project"]
+        },
         "codexCompactionOverride": {
           "type": "boolean"
         },

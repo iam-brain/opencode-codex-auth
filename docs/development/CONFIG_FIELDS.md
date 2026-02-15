@@ -21,6 +21,7 @@ Top-level:
 - `runtime.rotationStrategy: "sticky" | "hybrid" | "round_robin"`
 - `runtime.sanitizeInputs: boolean`
 - `runtime.developerMessagesToUser: boolean`
+- `runtime.promptCacheKeyStrategy: "default" | "project"`
 - `runtime.codexCompactionOverride: boolean`
 - `runtime.headerSnapshots: boolean`
 - `runtime.headerTransformDebug: boolean`
@@ -55,6 +56,7 @@ Default generated values:
 - `runtime.rotationStrategy: "sticky"`
 - `runtime.sanitizeInputs: false`
 - `runtime.developerMessagesToUser: true`
+- `runtime.promptCacheKeyStrategy: "default"`
 - `runtime.codexCompactionOverride`: mode-derived when unset (`true` in `codex`, `false` in `native`)
 - `runtime.headerSnapshots: false`
 - `runtime.headerTransformDebug: false`
@@ -96,6 +98,7 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_QUIET`
 - `OPENCODE_OPENAI_MULTI_PID_OFFSET`
 - `OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY`
+- `OPENCODE_OPENAI_MULTI_PROMPT_CACHE_KEY_STRATEGY`
 - `OPENCODE_OPENAI_MULTI_PERSONALITY`
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`
 - `OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED`

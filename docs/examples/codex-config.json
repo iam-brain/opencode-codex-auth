@@ -11,6 +11,7 @@
     "rotationStrategy": "sticky",
     "sanitizeInputs": false,
     "developerMessagesToUser": true,
+    "promptCacheKeyStrategy": "default",
     "headerSnapshots": false,
     "headerTransformDebug": false,
     "pidOffset": false

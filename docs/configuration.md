@@ -40,6 +40,7 @@ The plugin loads config in this order:
     "rotationStrategy": "sticky",
     "sanitizeInputs": false,
     "developerMessagesToUser": true,
+    "promptCacheKeyStrategy": "default",
     "headerSnapshots": false,
     "headerTransformDebug": false,
     "pidOffset": false
@@ -80,6 +81,9 @@ The plugin loads config in this order:
 - `runtime.developerMessagesToUser: boolean`
   - In `codex` mode, remaps non-permissions `developer` messages to `user` (`true` default).
   - Set to `false` to preserve all `developer` roles.
+- `runtime.promptCacheKeyStrategy: "default" | "project"`
+  - `default`: preserve upstream `prompt_cache_key` behavior (session-based keying).
+  - `project`: override `prompt_cache_key` with a versioned hash of project path + mode.
 - `runtime.codexCompactionOverride: boolean`
   - Enables codex-rs compact prompt + `summary_prefix` handoff behavior for OpenAI sessions.
   - Mode defaults: `true` in `codex`, `false` in `native`.
@@ -197,6 +201,7 @@ Advanced path:
 - `OPENCODE_OPENAI_MULTI_QUIET`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_PID_OFFSET`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY`: `sticky|hybrid|round_robin`.
+- `OPENCODE_OPENAI_MULTI_PROMPT_CACHE_KEY_STRATEGY`: `default|project`.
 - `OPENCODE_OPENAI_MULTI_PERSONALITY`: personality key override.
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED`: `1|0|true|false`.
