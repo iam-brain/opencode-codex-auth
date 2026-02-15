@@ -248,9 +248,10 @@ export function createOAuthServerController<TPkce, TTokens>(
         setResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
         res.end("Not found")
       } catch (error) {
+        emitDebug("callback_unhandled_error", { error: (error as Error).message })
         res.statusCode = 500
         setResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
-        res.end(`Server error: ${(error as Error).message}`)
+        res.end("Internal server error")
       }
     })
 

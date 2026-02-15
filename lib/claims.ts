@@ -7,6 +7,13 @@ export interface IdTokenClaims {
   "https://api.openai.com/profile"?: { email?: string }
 }
 
+/**
+ * Decode the payload section of a JWT without verifying the signature.
+ *
+ * This is intentional: the plugin uses claims only for identity hints
+ * (email, accountId, plan) extracted from tokens received directly from
+ * OpenAI's auth server. No authorization decisions depend on these values.
+ */
 export function parseJwtClaims(token: string): IdTokenClaims | undefined {
   const parts = token.split(".")
   if (parts.length !== 3) return undefined

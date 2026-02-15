@@ -278,6 +278,9 @@ function stripJsonComments(raw: string): string {
     out += ch
   }
 
+  // Strip trailing commas before ] and } (common in hand-edited JSONC)
+  out = out.replace(/,\s*([\]}])/g, "$1")
+
   return out
 }
 
@@ -715,8 +718,7 @@ export function resolveConfig(input: {
   const orchestratorSubagentsEnabled =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS) ?? file.orchestratorSubagentsEnabled
   const collaborationToolProfile =
-    parseCollaborationToolProfile(env.OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE) ??
-    file.collaborationToolProfile
+    parseCollaborationToolProfile(env.OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE) ?? file.collaborationToolProfile
 
   return {
     ...file,

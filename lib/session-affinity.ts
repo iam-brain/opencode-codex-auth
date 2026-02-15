@@ -198,7 +198,7 @@ async function readUnlocked(filePath: string): Promise<SessionAffinityFile> {
 
 async function writeUnlocked(filePath: string, file: SessionAffinityFile): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const tmpPath = `${filePath}.tmp`
+  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now().toString(36)}`
   await fs.writeFile(tmpPath, `${JSON.stringify(file, null, 2)}\n`, {
     encoding: "utf8",
     mode: 0o600
@@ -214,7 +214,26 @@ async function writeUnlocked(filePath: string, file: SessionAffinityFile): Promi
 export async function loadSessionAffinity(
   filePath: string = defaultSessionAffinityPath()
 ): Promise<SessionAffinityFile> {
-  return readUnlocked(filePath)
+  try {
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    const release = await lockfile.lock(filePath, {
+      realpath: false,
+      retries: {
+        retries: 20,
+        minTimeout: 10,
+        maxTimeout: 100
+      }
+    })
+
+    try {
+      return await readUnlocked(filePath)
+    } finally {
+      await release()
+    }
+  } catch {
+    // If locking fails (e.g., file doesn't exist yet), fall back to unlocked read
+    return readUnlocked(filePath)
+  }
 }
 
 export async function saveSessionAffinity(

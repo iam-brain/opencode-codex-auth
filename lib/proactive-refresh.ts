@@ -28,7 +28,8 @@ export async function runOneProactiveRefreshTick(input: {
   const leaseMs = 120_000
 
   const processDomain = async (authMode: OpenAIAuthMode): Promise<void> => {
-    while (true) {
+    const MAX_REFRESH_ITERATIONS = 50
+    for (let iteration = 0; iteration < MAX_REFRESH_ITERATIONS; iteration++) {
       let claimed: { identityKey: string; refresh: string } | undefined
 
       await saveAuthStorage(input.authPath, (auth) => {

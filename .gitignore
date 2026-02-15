@@ -10,3 +10,6 @@ docs/research/
 # local-only agent instructions
 AGENTS.md
 .worktrees/
+.agents/
+.agent/
+.cursor/

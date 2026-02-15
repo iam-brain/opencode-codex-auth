@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Security
+
+- Fixed OAuth callback server leaking internal error messages to HTTP response body (H1).
+- Replaced `lastResponse!` non-null assertion in FetchOrchestrator with safe `??` fallback producing a synthetic 502 response (H2).
+
+### Hardening
+
+- Added iteration cap (`MAX_REFRESH_ITERATIONS = 50`) to proactive refresh loop to prevent unbounded retries (M2).
+- Added file lock around `loadSessionAffinity` reads to prevent torn reads under concurrent writes (M3).
+- `stripJsonComments` now strips trailing commas before `]` and `}` in JSONC config files (M5).
+- Temp files during atomic writes now use unique suffixes (`pid.timestamp`) instead of a fixed `.tmp` extension to prevent collision under concurrent processes (M6).
+- In-memory model catalog map is now bounded at 50 entries with LRU eviction (L3).
+- Plugin init `.catch()` handlers now log errors instead of silently swallowing them (L4).
+- Synthetic error responses now include a `Content-Length` header for correct framing (L6).
+
+### Documentation
+
+- Added JSDoc noting JWT claims are parsed without signature verification (intentional for non-security uses) (M1).
+- Added JSDoc noting module-level `process.env` resolution for timeout constants (M4).
+- Added JSDoc noting `accounts-tools.ts` operates on a merged view of domain-scoped accounts (M7).
+- Added JSDoc noting `synchronizeIdentityKey` silently replaces mismatched keys (L5).
+
 - Removed experimental `collab` runtime mode and related template wiring from mainline plugin behavior.
 - Simplified installer surface to a single idempotent `install` flow.
 - Updated docs, schema, and workflow configuration for current supported modes (`native`, `codex`).

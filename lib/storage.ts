@@ -590,7 +590,7 @@ export function listOpenAIOAuthDomains(auth: AuthFile): Array<{ mode: OpenAIAuth
 }
 
 async function writeAuthUnlocked(filePath: string, auth: AuthFile): Promise<void> {
-  const tmpPath = `${filePath}.tmp`
+  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now().toString(36)}`
   const serialized = `${JSON.stringify(auth, null, 2)}\n`
   await fs.writeFile(tmpPath, serialized, { mode: 0o600 })
   await fs.rename(tmpPath, filePath)

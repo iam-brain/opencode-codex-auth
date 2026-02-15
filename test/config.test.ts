@@ -612,4 +612,13 @@ describe("config file loading", () => {
     expect(loaded.mode).toBe("codex")
     expect(loaded.spoofMode).toBe("codex")
   })
+
+  it("parseConfigJsonWithComments handles trailing commas", () => {
+    const input = `{
+      "debug": true,
+      "quiet": false,
+    }`
+    const result = parseConfigJsonWithComments(input)
+    expect(result).toEqual({ debug: true, quiet: false })
+  })
 })

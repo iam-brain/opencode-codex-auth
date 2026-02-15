@@ -98,6 +98,7 @@ const OPENCODE_MODELS_CACHE_PREFIX = "codex-models-cache"
 const CODEX_AUTH_MODELS_CACHE_PREFIX = "codex-auth-models-"
 const OPENCODE_MODELS_META_FILE = "codex-models-cache-meta.json"
 const DEFAULT_CLIENT_VERSION = "0.97.0"
+const MAX_CATALOG_CACHE_ENTRIES = 50
 const CACHE_TTL_MS = 15 * 60 * 1000
 const FETCH_TIMEOUT_MS = 5000
 const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
@@ -124,6 +125,16 @@ const TEXT_VERBOSITY = new Set(["low", "medium", "high"])
 
 const inMemoryCatalog = new Map<string, CodexModelsCache>()
 const inFlightCatalogFetches = new Map<string, Promise<CodexModelInfo[] | undefined>>()
+
+function setInMemoryCatalog(key: string, cache: CodexModelsCache): void {
+  inMemoryCatalog.set(key, cache)
+  if (inMemoryCatalog.size > MAX_CATALOG_CACHE_ENTRIES) {
+    const oldest = inMemoryCatalog.keys().next().value as string | undefined
+    if (oldest && oldest !== key) {
+      inMemoryCatalog.delete(oldest)
+    }
+  }
+}
 
 function normalizeAccountId(accountId?: string): string | undefined {
   const next = accountId?.trim()
@@ -578,7 +589,7 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   const codexCliCacheFallback = await readCatalogFromCodexCliCache()
   const hasFreshDisk = !!disk && isFresh(disk, now)
   if (hasFreshDisk && !input.forceRefresh) {
-    inMemoryCatalog.set(key, disk)
+    setInMemoryCatalog(key, disk)
     emitEvent(input, { type: "disk_cache_hit" })
     return disk.models
   }
@@ -586,17 +597,17 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   if (!input.accessToken) {
     if (disk) {
       emitEvent(input, { type: "stale_cache_used", reason: "missing_access_token" })
-      inMemoryCatalog.set(key, disk)
+      setInMemoryCatalog(key, disk)
       return disk.models
     }
     if (opencodeCacheFallback) {
       emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
-      inMemoryCatalog.set(key, opencodeCacheFallback)
+      setInMemoryCatalog(key, opencodeCacheFallback)
       return opencodeCacheFallback.models
     }
     if (codexCliCacheFallback) {
       emitEvent(input, { type: "stale_cache_used", reason: "codex_cli_cache_fallback" })
-      inMemoryCatalog.set(key, codexCliCacheFallback)
+      setInMemoryCatalog(key, codexCliCacheFallback)
       return codexCliCacheFallback.models
     }
     emitEvent(input, { type: "catalog_unavailable", reason: "missing_access_token" })
@@ -654,24 +665,24 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
         fetchedAt: now,
         models
       }
-      inMemoryCatalog.set(key, nextCache)
+      setInMemoryCatalog(key, nextCache)
       await writeCatalogToDisk(cacheDir, accountId, nextCache)
       emitEvent(input, { type: "network_fetch_success" })
       return nextCache.models
     } catch (error) {
       emitEvent(input, { type: "network_fetch_failed", reason: deriveReason(error) })
       if (disk) {
-        inMemoryCatalog.set(key, disk)
+        setInMemoryCatalog(key, disk)
         emitEvent(input, { type: "stale_cache_used", reason: "network_fetch_failed" })
         return disk.models
       }
       if (opencodeCacheFallback) {
-        inMemoryCatalog.set(key, opencodeCacheFallback)
+        setInMemoryCatalog(key, opencodeCacheFallback)
         emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
         return opencodeCacheFallback.models
       }
       if (codexCliCacheFallback) {
-        inMemoryCatalog.set(key, codexCliCacheFallback)
+        setInMemoryCatalog(key, codexCliCacheFallback)
         emitEvent(input, { type: "stale_cache_used", reason: "codex_cli_cache_fallback" })
         return codexCliCacheFallback.models
       }

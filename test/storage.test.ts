@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -460,7 +460,10 @@ describe("auth storage", () => {
     const mode = (await stat(filePath)).mode & 0o777
     expect(mode).toBe(0o600)
 
-    await expect(stat(`${filePath}.tmp`)).rejects.toBeDefined()
+    // After atomic write, no .tmp* leftover files should remain
+    const siblings = await readdir(path.dirname(filePath))
+    const tmpFiles = siblings.filter((f) => f.startsWith(path.basename(filePath) + ".tmp"))
+    expect(tmpFiles).toHaveLength(0)
   })
 
   it("saveAuthStorage migrates before applying update", async () => {

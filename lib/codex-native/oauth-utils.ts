@@ -22,6 +22,9 @@ function resolveTimeoutSetting(raw: string | undefined, fallbackMs: number, minM
   return Number.isFinite(parsed) && parsed >= minMs ? parsed : fallbackMs
 }
 
+// Timeout constants are resolved once at module load from process.env.
+// Changes to environment variables after import are NOT reflected.
+// This is acceptable because plugin configuration is set before launch.
 export const OAUTH_HTTP_TIMEOUT_MS = resolveTimeoutSetting(process.env.CODEX_OAUTH_HTTP_TIMEOUT_MS, 15_000, 1_000)
 export const OAUTH_DEVICE_AUTH_TIMEOUT_MS = resolveTimeoutSetting(
   process.env.CODEX_DEVICE_AUTH_TIMEOUT_MS,

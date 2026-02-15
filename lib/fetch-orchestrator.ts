@@ -315,6 +315,14 @@ export class FetchOrchestrator {
       )
     }
 
-    return lastResponse!
+    return (
+      lastResponse ??
+      createSyntheticErrorResponse(
+        "No response received from OpenAI. Retry or run `opencode auth login`.",
+        502,
+        "no_response_received",
+        "request"
+      )
+    )
   }
 }

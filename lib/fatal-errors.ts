@@ -40,9 +40,13 @@ export function createSyntheticErrorResponse(
     errorPayload.error.param = param
   }
 
-  return new Response(JSON.stringify(errorPayload), {
+  const body = JSON.stringify(errorPayload)
+  return new Response(body, {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" }
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": String(new TextEncoder().encode(body).byteLength)
+    }
   })
 }
 
