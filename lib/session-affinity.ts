@@ -33,6 +33,16 @@ export type PruneSessionAffinityOptions = {
 }
 
 const DEFAULT_FILE: SessionAffinityFile = { version: 1 }
+const PRIVATE_DIR_MODE = 0o700
+
+async function ensurePrivateDir(dirPath: string): Promise<void> {
+  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
+  try {
+    await fs.chmod(dirPath, PRIVATE_DIR_MODE)
+  } catch {
+    // best-effort permissions
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -197,7 +207,7 @@ async function readUnlocked(filePath: string): Promise<SessionAffinityFile> {
 }
 
 async function writeUnlocked(filePath: string, file: SessionAffinityFile): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  await ensurePrivateDir(path.dirname(filePath))
   const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now().toString(36)}`
   await fs.writeFile(tmpPath, `${JSON.stringify(file, null, 2)}\n`, {
     encoding: "utf8",
@@ -215,7 +225,7 @@ export async function loadSessionAffinity(
   filePath: string = defaultSessionAffinityPath()
 ): Promise<SessionAffinityFile> {
   try {
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await ensurePrivateDir(path.dirname(filePath))
     const release = await lockfile.lock(filePath, {
       realpath: false,
       retries: {
@@ -240,7 +250,7 @@ export async function saveSessionAffinity(
   update: (current: SessionAffinityFile) => SessionAffinityFile | Promise<SessionAffinityFile>,
   filePath: string = defaultSessionAffinityPath()
 ): Promise<SessionAffinityFile> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  await ensurePrivateDir(path.dirname(filePath))
   const release = await lockfile.lock(filePath, {
     realpath: false,
     retries: {

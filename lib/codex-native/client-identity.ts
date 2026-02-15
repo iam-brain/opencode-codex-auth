@@ -220,7 +220,13 @@ function writeCodexClientVersionCache(
   cacheFilePath: string = CODEX_CLIENT_VERSION_CACHE_FILE
 ): void {
   try {
-    mkdirSync(path.dirname(cacheFilePath), { recursive: true })
+    const cacheDir = path.dirname(cacheFilePath)
+    mkdirSync(cacheDir, { recursive: true, mode: 0o700 })
+    try {
+      chmodSync(cacheDir, 0o700)
+    } catch {
+      // best-effort permissions
+    }
     const tempFilePath = `${cacheFilePath}.tmp.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
     writeFileSync(tempFilePath, `${JSON.stringify(entry, null, 2)}\n`, { mode: 0o600 })
     renameSync(tempFilePath, cacheFilePath)

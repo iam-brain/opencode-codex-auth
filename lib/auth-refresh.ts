@@ -1,0 +1,1 @@
+export const OPENAI_AUTH_REFRESH_LEASE_MS = 120_000

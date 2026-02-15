@@ -53,6 +53,16 @@ type LegacyCodexAccountsRecord = {
 
 const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
 const OPENAI_AUTH_MODES: OpenAIAuthMode[] = ["native", "codex"]
+const PRIVATE_DIR_MODE = 0o700
+
+async function ensurePrivateDir(dirPath: string): Promise<void> {
+  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
+  try {
+    await fs.chmod(dirPath, PRIVATE_DIR_MODE)
+  } catch {
+    // best-effort permissions
+  }
+}
 
 function normalizeAccountAuthTypes(input: unknown): AccountAuthType[] {
   const source = Array.isArray(input) ? input : ["native"]
@@ -602,7 +612,7 @@ async function writeAuthUnlocked(filePath: string, auth: AuthFile): Promise<void
 }
 
 async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  await ensurePrivateDir(path.dirname(filePath))
   const release = await lockfile.lock(filePath, {
     realpath: false,
     retries: {

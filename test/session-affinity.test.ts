@@ -17,7 +17,7 @@ import {
 describe("session affinity storage", () => {
   it("persists sticky/hybrid maps and seen sessions by mode", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-session-affinity-"))
-    const filePath = path.join(root, "codex-session-affinity.json")
+    const filePath = path.join(root, "nested", "codex-session-affinity.json")
 
     await saveSessionAffinity(
       async (current) =>
@@ -36,6 +36,8 @@ describe("session affinity storage", () => {
     expect(snapshot.hybridBySessionKey.get("ses_b")).toBe("id_b")
     const mode = (await fs.stat(filePath)).mode & 0o777
     expect(mode).toBe(0o600)
+    const dirMode = (await fs.stat(path.dirname(filePath))).mode & 0o777
+    expect(dirMode & 0o077).toBe(0)
   })
 
   it("tolerates missing or malformed files", async () => {

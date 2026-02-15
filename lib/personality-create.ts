@@ -3,6 +3,13 @@ import path from "node:path"
 
 import { defaultConfigRoot, normalizePersonalityKey } from "./personalities"
 
+const PRIVATE_DIR_MODE = 0o700
+
+async function ensurePrivateDir(dirPath: string): Promise<void> {
+  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
+  await fs.chmod(dirPath, PRIVATE_DIR_MODE).catch(() => {})
+}
+
 export type PersonalityScope = "global" | "project"
 
 export type CreatePersonalityInput = {
@@ -134,7 +141,7 @@ export async function createPersonalityFile(input: CreatePersonalityInput): Prom
     created = true
   }
 
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  await ensurePrivateDir(path.dirname(filePath))
   await fs.writeFile(filePath, finalContent, { encoding: "utf8", mode: 0o600 })
   return { key, filePath, scope, created }
 }

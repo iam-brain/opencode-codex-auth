@@ -580,6 +580,8 @@ export type EnsureDefaultConfigFileResult = {
   created: boolean
 }
 
+const PRIVATE_DIR_MODE = 0o700
+
 export async function ensureDefaultConfigFile(
   input: {
     env?: Record<string, string | undefined>
@@ -595,7 +597,9 @@ export async function ensureDefaultConfigFile(
     return { filePath, created: false }
   }
 
-  await fsPromises.mkdir(path.dirname(filePath), { recursive: true })
+  const parentDir = path.dirname(filePath)
+  await fsPromises.mkdir(parentDir, { recursive: true, mode: PRIVATE_DIR_MODE })
+  await fsPromises.chmod(parentDir, PRIVATE_DIR_MODE).catch(() => {})
   const content = DEFAULT_CODEX_CONFIG_TEMPLATE
   await fsPromises.writeFile(filePath, content, { encoding: "utf8", mode: 0o600 })
   return { filePath, created: true }

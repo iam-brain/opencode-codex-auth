@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import lockfile from "proper-lockfile"
 import { resolveCustomPersonalityDescription } from "./personalities"
+import { defaultOpencodeCachePath } from "./paths"
 
 export type PersonalityOption = string
 
@@ -93,7 +94,7 @@ export type ApplyCodexCatalogInput = {
 
 const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
 const CODEX_GITHUB_MODELS_URL_PREFIX = "https://raw.githubusercontent.com/openai/codex"
-const DEFAULT_CACHE_DIR = path.join(os.homedir(), ".config", "opencode", "cache")
+const DEFAULT_CACHE_DIR = defaultOpencodeCachePath()
 const OPENCODE_MODELS_CACHE_PREFIX = "codex-models-cache"
 const CODEX_AUTH_MODELS_CACHE_PREFIX = "codex-auth-models-"
 const OPENCODE_MODELS_META_FILE = "codex-models-cache-meta.json"
@@ -118,6 +119,16 @@ const LOCK_OPTIONS = {
     maxTimeout: 100
   },
   realpath: false
+}
+const PRIVATE_DIR_MODE = 0o700
+
+async function ensurePrivateDir(dirPath: string): Promise<void> {
+  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
+  try {
+    await fs.chmod(dirPath, PRIVATE_DIR_MODE)
+  } catch {
+    // best-effort permissions
+  }
 }
 
 const REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"])
@@ -232,7 +243,7 @@ async function readGitHubModelsCacheMeta(cacheDir: string): Promise<GitHubModels
 async function writeGitHubModelsCacheMeta(cacheDir: string, meta: GitHubModelsCacheMeta): Promise<void> {
   try {
     const file = path.join(cacheDir, OPENCODE_MODELS_META_FILE)
-    await fs.mkdir(path.dirname(file), { recursive: true })
+    await ensurePrivateDir(path.dirname(file))
     await fs.writeFile(file, `${JSON.stringify(meta, null, 2)}\n`, { mode: 0o600 })
     await fs.chmod(file, 0o600).catch(() => {})
   } catch {
@@ -291,7 +302,7 @@ async function refreshSharedGitHubModelsCache(input: {
     const etag = response.headers.get("etag")?.trim() || (existingMeta?.url === url ? existingMeta.etag : undefined)
 
     const file = opencodeSharedCachePath(input.cacheDir)
-    await fs.mkdir(path.dirname(file), { recursive: true })
+    await ensurePrivateDir(path.dirname(file))
     await fs.writeFile(file, `${JSON.stringify({ fetchedAt: input.now, source: "github", models }, null, 2)}\n`, {
       mode: 0o600
     })
@@ -416,7 +427,7 @@ function isFresh(cache: CodexModelsCache, now: number): boolean {
 }
 
 async function withCacheLock<T>(cacheDir: string, fn: () => Promise<T>): Promise<T> {
-  await fs.mkdir(cacheDir, { recursive: true })
+  await ensurePrivateDir(cacheDir)
   const release = await lockfile.lock(cacheDir, LOCK_OPTIONS)
   try {
     return await fn()
@@ -520,7 +531,7 @@ async function writeCatalogToDisk(
     const content = `${JSON.stringify(cache, null, 2)}\n`
     const files = compatFile ? [primaryFile, compatFile] : [primaryFile]
     for (const file of files) {
-      await fs.mkdir(path.dirname(file), { recursive: true })
+      await ensurePrivateDir(path.dirname(file))
       await fs.writeFile(file, content, { mode: 0o600 })
       await fs.chmod(file, 0o600).catch(() => {})
     }

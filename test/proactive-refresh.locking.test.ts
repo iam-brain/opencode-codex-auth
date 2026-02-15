@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
 describe("proactive refresh locking", () => {
-  it("does not use loadAuthStorage plus separate writes", async () => {
+  it("loads domains once via locked read before refresh writes", async () => {
     vi.resetModules()
 
     const loadAuthStorage = vi.fn(async () => ({}))
@@ -57,7 +57,7 @@ describe("proactive refresh locking", () => {
       refresh: async () => ({ access: "a", refresh: "r", expires: 5000 })
     })
 
-    expect(loadAuthStorage).not.toHaveBeenCalled()
+    expect(loadAuthStorage).toHaveBeenCalledTimes(1)
     expect(saveAuthStorage).toHaveBeenCalled()
   })
 })

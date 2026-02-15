@@ -1,13 +1,21 @@
 import fs from "node:fs/promises"
-import os from "node:os"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
+import lockfile from "proper-lockfile"
 
 import type { Logger } from "./logger"
+import { defaultOpencodeConfigPath } from "./paths"
 
-const DEFAULT_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
+const DEFAULT_LOG_DIR = path.join(defaultOpencodeConfigPath(), "logs", "codex-plugin")
 const REDACTED = "[redacted]"
-const REDACTED_HEADERS = new Set(["authorization", "cookie", "set-cookie", "proxy-authorization"])
+const REDACTED_HEADERS = new Set([
+  "authorization",
+  "cookie",
+  "set-cookie",
+  "proxy-authorization",
+  "chatgpt-account-id",
+  "session_id"
+])
 const REDACTED_BODY_KEYS = new Set([
   "access_token",
   "refresh_token",
@@ -17,7 +25,23 @@ const REDACTED_BODY_KEYS = new Set([
   "refreshtoken",
   "idtoken"
 ])
+const REDACTED_METADATA_KEYS = new Set(["sessionkey", "identitykey", "accountlabel", "accountid", "email", "plan"])
 const LIVE_HEADERS_LOG_FILE = "live-headers.jsonl"
+const PRIVATE_DIR_MODE = 0o700
+const SNAPSHOT_LOCK_RETRIES = {
+  retries: 20,
+  minTimeout: 10,
+  maxTimeout: 100
+}
+
+async function ensurePrivateDir(dirPath: string): Promise<void> {
+  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
+  try {
+    await fs.chmod(dirPath, PRIVATE_DIR_MODE)
+  } catch {
+    // best-effort permissions
+  }
+}
 
 async function enforceOwnerOnlyPermissions(filePath: string): Promise<void> {
   try {
@@ -52,6 +76,15 @@ function sanitizeBodyValue(value: unknown): unknown {
   const out: Record<string, unknown> = {}
   for (const [key, entry] of Object.entries(value)) {
     out[key] = REDACTED_BODY_KEYS.has(key.toLowerCase()) ? REDACTED : sanitizeBodyValue(entry)
+  }
+  return out
+}
+
+function sanitizeMetadata(meta: SnapshotMeta): Record<string, unknown> {
+  if (!meta) return {}
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(meta)) {
+    out[key] = REDACTED_METADATA_KEYS.has(key.toLowerCase()) ? REDACTED : sanitizeBodyValue(value)
   }
   return out
 }
@@ -113,7 +146,21 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
   let responseCounter = 0
 
   const ensureDir = async (): Promise<void> => {
-    await fs.mkdir(dir, { recursive: true })
+    await ensurePrivateDir(dir)
+  }
+
+  const withSnapshotLock = async <T>(fn: () => Promise<T>): Promise<T> => {
+    await ensureDir()
+    const lockTarget = path.join(dir, ".request-snapshots.lock")
+    const release = await lockfile.lock(lockTarget, {
+      realpath: false,
+      retries: SNAPSHOT_LOCK_RETRIES
+    })
+    try {
+      return await fn()
+    } finally {
+      await release()
+    }
   }
 
   const pruneSnapshotFiles = async (): Promise<void> => {
@@ -186,6 +233,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
       const timestamp = new Date().toISOString()
       const body = await serializeRequestBody(request)
       const headers = sanitizeHeaders(request.headers)
+      const sanitizedMeta = sanitizeMetadata(meta)
       const payload = {
         timestamp,
         runId,
@@ -195,35 +243,40 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
         url: request.url,
         headers,
         body,
-        ...(meta ?? {})
+        ...sanitizedMeta
       }
-      await writeJson(`request-${requestId}-${stage}.json`, {
-        ...payload
-      })
-      await appendJsonl(LIVE_HEADERS_LOG_FILE, {
-        timestamp,
-        runId,
-        requestId,
-        stage,
-        method: request.method,
-        url: request.url,
-        headers,
-        prompt_cache_key: getPromptCacheKey(body),
-        ...(meta ?? {})
+      await withSnapshotLock(async () => {
+        await writeJson(`request-${requestId}-${stage}.json`, {
+          ...payload
+        })
+        await appendJsonl(LIVE_HEADERS_LOG_FILE, {
+          timestamp,
+          runId,
+          requestId,
+          stage,
+          method: request.method,
+          url: request.url,
+          headers,
+          prompt_cache_key: getPromptCacheKey(body),
+          ...sanitizedMeta
+        })
       })
     },
     captureResponse: async (stage, response, meta) => {
       const responseId = ++responseCounter
       const timestamp = new Date().toISOString()
-      await writeJson(`response-${responseId}-${stage}.json`, {
-        timestamp,
-        runId,
-        responseId,
-        stage,
-        status: response.status,
-        statusText: response.statusText,
-        headers: sanitizeHeaders(response.headers),
-        ...(meta ?? {})
+      const sanitizedMeta = sanitizeMetadata(meta)
+      await withSnapshotLock(async () => {
+        await writeJson(`response-${responseId}-${stage}.json`, {
+          timestamp,
+          runId,
+          responseId,
+          stage,
+          status: response.status,
+          statusText: response.statusText,
+          headers: sanitizeHeaders(response.headers),
+          ...sanitizedMeta
+        })
       })
     }
   }

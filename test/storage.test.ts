@@ -40,7 +40,9 @@ describe("auth storage", () => {
     const auth = await loadAuthStorage(filePath)
 
     expect(auth).toEqual({})
-    await expect(stat(path.dirname(filePath))).resolves.toBeDefined()
+    const parent = await stat(path.dirname(filePath))
+    expect(parent).toBeDefined()
+    expect(parent.mode & 0o077).toBe(0)
   })
 
   it("migrates single-account openai oauth to multi-account schema", async () => {
@@ -439,11 +441,16 @@ describe("auth storage", () => {
 
     const multiJson = await readFile(fixturePath("auth-multi.json"), "utf8")
     const expected = JSON.parse(multiJson) as {
-      openai: { accounts: Array<{ identityKey: string }>; activeIdentityKey?: string; strategy?: string }
+      openai: {
+        type: "oauth"
+        accounts: Array<{ identityKey: string }>
+        activeIdentityKey?: string
+        strategy?: string
+      }
     }
 
     await saveAuthStorage(filePath, (auth) => {
-      auth.openai = expected.openai
+      auth.openai = expected.openai as typeof auth.openai
       return auth
     })
 

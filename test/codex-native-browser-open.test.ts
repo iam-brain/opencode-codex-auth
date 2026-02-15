@@ -12,8 +12,8 @@ describe("codex native browser launch", () => {
 
   it("builds Windows start invocation", () => {
     expect(browserOpenInvocationFor("https://example.com", "win32")).toEqual({
-      command: "cmd",
-      args: ["/c", "start", "", "https://example.com"]
+      command: "rundll32",
+      args: ["url.dll,FileProtocolHandler", "https://example.com"]
     })
   })
 

@@ -1,4 +1,5 @@
 import type { AuthData, FetchOrchestratorAuthContext } from "../fetch-orchestrator"
+import { OPENAI_AUTH_REFRESH_LEASE_MS } from "../auth-refresh"
 import { PluginFatalError, formatWaitTime, isPluginFatalError } from "../fatal-errors"
 import { ensureIdentityKey, normalizeEmail, normalizePlan } from "../identity"
 import type { Logger } from "../logger"
@@ -10,7 +11,6 @@ import { formatAccountLabel } from "./accounts"
 import { extractAccountId, refreshAccessToken, type OAuthTokenRefreshError } from "./oauth-utils"
 
 const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
-const AUTH_REFRESH_LEASE_MS = 30_000
 
 function isOAuthTokenRefreshError(value: unknown): value is OAuthTokenRefreshError {
   return value instanceof Error && ("status" in value || "oauthCode" in value)
@@ -204,7 +204,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
           return
         }
 
-        selected.refreshLeaseUntil = now + AUTH_REFRESH_LEASE_MS
+        selected.refreshLeaseUntil = now + OPENAI_AUTH_REFRESH_LEASE_MS
         refreshClaim = {
           identityKey: selected.identityKey,
           refreshToken: selected.refresh

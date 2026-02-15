@@ -10,7 +10,7 @@ import { loadSnapshots, saveSnapshots } from "../lib/codex-status-storage"
 describe("codex-status storage", () => {
   it("writes and reads snapshots atomically", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-status-"))
-    const p = path.join(dir, "snapshots.json")
+    const p = path.join(dir, "nested", "snapshots.json")
 
     await saveSnapshots(p, (cur) => ({
       ...cur,
@@ -21,6 +21,8 @@ describe("codex-status storage", () => {
     expect(next["acc|u@e.com|plus"]?.limits[0]?.leftPct).toBe(50)
     const mode = (await fs.stat(p)).mode & 0o777
     expect(mode).toBe(0o600)
+    const dirMode = (await fs.stat(path.dirname(p))).mode & 0o777
+    expect(dirMode & 0o077).toBe(0)
 
     // Cleanup
     await fs.rm(dir, { recursive: true, force: true })

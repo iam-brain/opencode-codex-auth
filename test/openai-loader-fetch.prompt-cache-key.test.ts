@@ -156,4 +156,135 @@ describe("openai loader fetch prompt cache key", () => {
       })
     )
   })
+
+  it("overrides disallowed inbound originator in native mode", async () => {
+    vi.resetModules()
+
+    const acquireOpenAIAuth = vi.fn(async () => ({
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus"
+    }))
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({ acquireOpenAIAuth }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    let capturedOriginator = ""
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const request = input as Request
+        capturedOriginator = request.headers.get("originator") ?? ""
+        return new Response("ok", { status: 200 })
+      })
+    )
+
+    const handler = createOpenAIFetchHandler({
+      authMode: "native",
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState: () => {}
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth: async () => undefined,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    await handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        originator: "codex_exec"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
+    })
+
+    expect(acquireOpenAIAuth).toHaveBeenCalled()
+    expect(capturedOriginator).toBe("opencode")
+  })
+
+  it("overrides disallowed inbound originator in codex mode", async () => {
+    vi.resetModules()
+
+    const prevArgv = process.argv
+    process.argv = ["node", "opencode"]
+
+    try {
+      const acquireOpenAIAuth = vi.fn(async () => ({
+        access: "access-token",
+        accountId: "acc_123",
+        identityKey: "acc_123|user@example.com|plus"
+      }))
+      vi.doMock("../lib/codex-native/acquire-auth", () => ({ acquireOpenAIAuth }))
+
+      const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+      const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+      const { createStickySessionState } = await import("../lib/rotation")
+
+      let capturedOriginator = ""
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const request = input as Request
+          capturedOriginator = request.headers.get("originator") ?? ""
+          return new Response("ok", { status: 200 })
+        })
+      )
+
+      const handler = createOpenAIFetchHandler({
+        authMode: "codex",
+        spoofMode: "codex",
+        remapDeveloperMessagesToUserEnabled: false,
+        quietMode: true,
+        pidOffsetEnabled: false,
+        headerTransformDebug: false,
+        compatInputSanitizerEnabled: false,
+        internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+        requestSnapshots: {
+          captureRequest: async () => {},
+          captureResponse: async () => {}
+        },
+        sessionAffinityState: {
+          orchestratorState: createFetchOrchestratorState(),
+          stickySessionState: createStickySessionState(),
+          hybridSessionState: createStickySessionState(),
+          persistSessionAffinityState: () => {}
+        },
+        getCatalogModels: () => undefined,
+        syncCatalogFromAuth: async () => undefined,
+        setCooldown: async () => {},
+        showToast: async () => {}
+      })
+
+      await handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          originator: "opencode"
+        },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
+      })
+
+      expect(acquireOpenAIAuth).toHaveBeenCalled()
+      expect(capturedOriginator).toBe("codex_cli_rs")
+    } finally {
+      process.argv = prevArgv
+    }
+  })
 })

@@ -58,10 +58,11 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
 
     let outbound = new Request(rewriteUrl(baseRequest), baseRequest)
     const inboundOriginator = outbound.headers.get("originator")?.trim()
+    const canPreserveInboundOriginator =
+      (input.spoofMode === "native" && inboundOriginator === "opencode") ||
+      (input.spoofMode !== "native" && (inboundOriginator === "codex_exec" || inboundOriginator === "codex_cli_rs"))
     const outboundOriginator =
-      inboundOriginator === "opencode" || inboundOriginator === "codex_exec" || inboundOriginator === "codex_cli_rs"
-        ? inboundOriginator
-        : resolveCodexOriginator(input.spoofMode)
+      canPreserveInboundOriginator && inboundOriginator ? inboundOriginator : resolveCodexOriginator(input.spoofMode)
     outbound.headers.set("originator", outboundOriginator)
 
     const inboundUserAgent = outbound.headers.get("user-agent")?.trim()
@@ -198,9 +199,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         await input.requestSnapshots.captureRequest("outbound-attempt", promptCacheKeyOverride.request, {
           attempt: attempt + 1,
           maxAttempts,
-          sessionKey,
-          identityKey: auth.identityKey,
-          accountLabel: auth.accountLabel,
+          hasSessionKey: Boolean(sessionKey),
+          hasIdentityKey: Boolean(auth.identityKey),
+          hasAccountLabel: Boolean(auth.accountLabel),
           instructionsOverridden: transformed.instructionOverride.changed,
           instructionOverrideReason: transformed.instructionOverride.reason,
           developerMessagesRemapped: transformed.developerRoleRemap.changed,
@@ -217,9 +218,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         await input.requestSnapshots.captureResponse("outbound-response", response, {
           attempt: attempt + 1,
           maxAttempts,
-          sessionKey,
-          identityKey: auth.identityKey,
-          accountLabel: auth.accountLabel
+          hasSessionKey: Boolean(sessionKey),
+          hasIdentityKey: Boolean(auth.identityKey),
+          hasAccountLabel: Boolean(auth.accountLabel)
         })
       }
     })

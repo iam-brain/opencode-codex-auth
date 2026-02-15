@@ -1,8 +1,8 @@
 import http from "node:http"
-import os from "node:os"
 import path from "node:path"
 import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs"
 
+import { defaultOpencodeConfigPath } from "../paths"
 import type { OpenAIAuthMode } from "../types"
 
 type OAuthServerStopReason = "success" | "error" | "other"
@@ -66,7 +66,7 @@ export function createOAuthServerController<TPkce, TTokens>(
   scheduleStop: (delayMs: number, reason: OAuthServerStopReason) => void
   waitForCallback: (pkce: TPkce, state: string, authMode: OpenAIAuthMode) => Promise<TTokens>
 } {
-  const debugLogDir = input.debugLogDir ?? path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
+  const debugLogDir = input.debugLogDir ?? path.join(defaultOpencodeConfigPath(), "logs", "codex-plugin")
   const debugLogFile = input.debugLogFile ?? path.join(debugLogDir, "oauth-lifecycle.log")
   const debugLogMaxBytes = resolveDebugLogMaxBytes()
 
@@ -95,6 +95,7 @@ export function createOAuthServerController<TPkce, TTokens>(
     }
     try {
       mkdirSync(debugLogDir, { recursive: true, mode: 0o700 })
+      chmodSync(debugLogDir, 0o700)
       rotateDebugLogIfNeeded(debugLogFile, debugLogMaxBytes)
       appendFileSync(debugLogFile, `${line}\n`, { encoding: "utf8", mode: 0o600 })
       chmodSync(debugLogFile, 0o600)
@@ -271,6 +272,16 @@ export function createOAuthServerController<TPkce, TTokens>(
         server?.close()
       } catch {
         // best-effort cleanup
+      }
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        (error as { code?: unknown }).code === "EADDRINUSE"
+      ) {
+        throw new Error(
+          `OAuth callback port ${input.port} is already in use. Close the other login flow or set CODEX_OAUTH_PORT.`
+        )
       }
       throw error
     }

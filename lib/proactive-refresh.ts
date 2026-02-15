@@ -1,4 +1,5 @@
-import { ensureOpenAIOAuthDomain, listOpenAIOAuthDomains, saveAuthStorage } from "./storage"
+import { OPENAI_AUTH_REFRESH_LEASE_MS } from "./auth-refresh"
+import { ensureOpenAIOAuthDomain, listOpenAIOAuthDomains, loadAuthStorage, saveAuthStorage } from "./storage"
 import type { OpenAIAuthMode } from "./types"
 
 const PROACTIVE_REFRESH_FAILURE_COOLDOWN_MS = 30_000
@@ -25,8 +26,6 @@ export async function runOneProactiveRefreshTick(input: {
   bufferMs: number
   refresh: (refreshToken: string) => Promise<{ access: string; refresh: string; expires: number }>
 }): Promise<void> {
-  const leaseMs = 120_000
-
   const processDomain = async (authMode: OpenAIAuthMode): Promise<void> => {
     const MAX_REFRESH_ITERATIONS = 50
     for (let iteration = 0; iteration < MAX_REFRESH_ITERATIONS; iteration++) {
@@ -57,7 +56,7 @@ export async function runOneProactiveRefreshTick(input: {
         const refreshToken = account.refresh
         if (!identityKey || !refreshToken) return
 
-        account.refreshLeaseUntil = now + leaseMs
+        account.refreshLeaseUntil = now + OPENAI_AUTH_REFRESH_LEASE_MS
         claimed = {
           identityKey,
           refresh: refreshToken
@@ -111,7 +110,7 @@ export async function runOneProactiveRefreshTick(input: {
     }
   }
 
-  const initial = await saveAuthStorage(input.authPath, (auth) => auth)
+  const initial = await loadAuthStorage(input.authPath)
   const modes = listOpenAIOAuthDomains(initial).map((entry) => entry.mode)
   for (const authMode of modes) {
     await processDomain(authMode)
