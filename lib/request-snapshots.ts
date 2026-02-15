@@ -28,6 +28,7 @@ const REDACTED_BODY_KEYS = new Set([
 const REDACTED_METADATA_KEYS = new Set(["sessionkey", "identitykey", "accountlabel", "accountid", "email", "plan"])
 const LIVE_HEADERS_LOG_FILE = "live-headers.jsonl"
 const PRIVATE_DIR_MODE = 0o700
+const SNAPSHOT_LOCK_STALE_MS = 10_000
 const SNAPSHOT_LOCK_RETRIES = {
   retries: 20,
   minTimeout: 10,
@@ -89,14 +90,38 @@ function sanitizeMetadata(meta: SnapshotMeta): Record<string, unknown> {
   return out
 }
 
+function sanitizeUrlForSnapshot(url: string): string {
+  try {
+    const parsed = new URL(url)
+    const base = `${parsed.origin}${parsed.pathname}`
+    return parsed.search ? `${base}?[redacted]` : base
+  } catch {
+    const [base] = url.split("?", 1)
+    return url.includes("?") ? `${base}?[redacted]` : base
+  }
+}
+
 async function serializeRequestBody(request: Request): Promise<unknown> {
   try {
     const raw = await request.clone().text()
     if (!raw) return undefined
+
+    const contentType = request.headers.get("content-type")?.toLowerCase() ?? ""
     try {
       return sanitizeBodyValue(JSON.parse(raw))
     } catch {
-      return raw.length > 8000 ? `${raw.slice(0, 8000)}... [truncated]` : raw
+      if (contentType.includes("application/x-www-form-urlencoded")) {
+        const params = new URLSearchParams(raw)
+        const out: Record<string, unknown> = {}
+        for (const [key, value] of params.entries()) {
+          out[key] = REDACTED_BODY_KEYS.has(key.toLowerCase()) ? REDACTED : value
+        }
+        return out
+      }
+      if (contentType.startsWith("text/") || contentType.includes("application/xml") || contentType.includes("+xml")) {
+        return raw.length > 8000 ? `${raw.slice(0, 8000)}... [truncated]` : raw
+      }
+      return "[non-json body omitted]"
     }
   } catch {
     return undefined
@@ -154,6 +179,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
     const lockTarget = path.join(dir, ".request-snapshots.lock")
     const release = await lockfile.lock(lockTarget, {
       realpath: false,
+      stale: SNAPSHOT_LOCK_STALE_MS,
       retries: SNAPSHOT_LOCK_RETRIES
     })
     try {
@@ -240,7 +266,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
         requestId,
         stage,
         method: request.method,
-        url: request.url,
+        url: sanitizeUrlForSnapshot(request.url),
         headers,
         body,
         ...sanitizedMeta
@@ -255,7 +281,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
           requestId,
           stage,
           method: request.method,
-          url: request.url,
+          url: sanitizeUrlForSnapshot(request.url),
           headers,
           prompt_cache_key: getPromptCacheKey(body),
           ...sanitizedMeta

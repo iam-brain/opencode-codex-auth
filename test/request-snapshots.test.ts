@@ -45,12 +45,14 @@ describe("request snapshots", () => {
       headers: Record<string, string>
       body: Record<string, unknown>
       attempt: number
+      url?: string
       sessionKey?: string
       identityKey?: string
       accountLabel?: string
     }
 
     expect(payload.attempt).toBe(1)
+    expect(payload.url).toBe("https://chatgpt.com/backend-api/codex/responses")
     expect(payload.headers.authorization).toBe("Bearer [redacted]")
     expect(payload.headers["chatgpt-account-id"]).toBe("[redacted]")
     expect(payload.body.prompt_cache_key).toBe("ses_snap_1")
@@ -78,6 +80,29 @@ describe("request snapshots", () => {
     expect(requestMode).toBe(0o600)
     expect(liveHeadersMode).toBe(0o600)
     expect(dirMode & 0o077).toBe(0)
+  })
+
+  it("redacts URL query string in snapshots", async () => {
+    const baseRoot = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-url-"))
+    const root = path.join(baseRoot, "nested")
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root })
+
+    const request = new Request("https://api.openai.com/v1/responses?access_token=secret&x=1#frag", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex" })
+    })
+
+    await snapshots.captureRequest("with-query", request)
+
+    const files = await fs.readdir(root)
+    const snapshot = files.find((file) => file.includes("request-1-with-query"))
+    expect(snapshot).toBeDefined()
+    const filePath = path.join(root, snapshot as string)
+    const payload = JSON.parse(await fs.readFile(filePath, "utf8")) as { url: string }
+    expect(payload.url).toBe("https://api.openai.com/v1/responses?[redacted]")
   })
 
   it("skips writing files when disabled", async () => {

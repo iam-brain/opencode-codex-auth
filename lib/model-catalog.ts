@@ -240,11 +240,17 @@ async function readGitHubModelsCacheMeta(cacheDir: string): Promise<GitHubModels
   }
 }
 
+async function writeFileAtomic(filePath: string, content: string, mode: number): Promise<void> {
+  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now().toString(36)}`
+  await fs.writeFile(tmpPath, content, { mode })
+  await fs.rename(tmpPath, filePath)
+}
+
 async function writeGitHubModelsCacheMeta(cacheDir: string, meta: GitHubModelsCacheMeta): Promise<void> {
   try {
     const file = path.join(cacheDir, OPENCODE_MODELS_META_FILE)
     await ensurePrivateDir(path.dirname(file))
-    await fs.writeFile(file, `${JSON.stringify(meta, null, 2)}\n`, { mode: 0o600 })
+    await writeFileAtomic(file, `${JSON.stringify(meta, null, 2)}\n`, 0o600)
     await fs.chmod(file, 0o600).catch(() => {})
   } catch {
     // Best effort metadata persistence.
@@ -257,66 +263,70 @@ async function refreshSharedGitHubModelsCache(input: {
   now: number
   fetchImpl: typeof fetch
 }): Promise<void> {
-  const targetVersion = normalizeSemver(input.targetClientVersion)
-  if (!targetVersion) return
+  await withCacheLock(input.cacheDir, async () => {
+    const targetVersion = normalizeSemver(input.targetClientVersion)
+    if (!targetVersion) return
 
-  const existingMeta = await readGitHubModelsCacheMeta(input.cacheDir)
-  const existingVersion = parseSemver(semverFromTag(existingMeta?.tag))
-  const target = parseSemver(targetVersion)
-  if (!target) return
-  if (existingVersion && compareSemver(existingVersion, target) >= 0) return
+    const existingMeta = await readGitHubModelsCacheMeta(input.cacheDir)
+    const existingVersion = parseSemver(semverFromTag(existingMeta?.tag))
+    const target = parseSemver(targetVersion)
+    if (!target) return
+    if (existingVersion && compareSemver(existingVersion, target) >= 0) return
 
-  const tag = githubModelsTag(targetVersion)
-  const url = githubModelsUrl(targetVersion)
-  const requestHeaders: Record<string, string> = {}
-  if (existingMeta?.url === url && existingMeta.etag) {
-    requestHeaders["if-none-match"] = existingMeta.etag
-  }
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-    let response: Response
-    try {
-      response = await input.fetchImpl(url, {
-        method: "GET",
-        ...(Object.keys(requestHeaders).length > 0 ? { headers: requestHeaders } : {}),
-        signal: controller.signal
-      })
-    } finally {
-      clearTimeout(timeout)
+    const tag = githubModelsTag(targetVersion)
+    const url = githubModelsUrl(targetVersion)
+    const requestHeaders: Record<string, string> = {}
+    if (existingMeta?.url === url && existingMeta.etag) {
+      requestHeaders["if-none-match"] = existingMeta.etag
     }
-    if (response.status === 304 && existingMeta) {
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+      let response: Response
+      try {
+        response = await input.fetchImpl(url, {
+          method: "GET",
+          ...(Object.keys(requestHeaders).length > 0 ? { headers: requestHeaders } : {}),
+          signal: controller.signal
+        })
+      } finally {
+        clearTimeout(timeout)
+      }
+      if (response.status === 304 && existingMeta) {
+        await writeGitHubModelsCacheMeta(input.cacheDir, {
+          etag: existingMeta.etag,
+          tag,
+          lastChecked: input.now,
+          url
+        })
+        return
+      }
+      if (!response.ok) return
+
+      const payload = (await response.json()) as unknown
+      const models = parseCatalogResponse(payload)
+      if (models.length === 0) return
+      const etag = response.headers.get("etag")?.trim() || (existingMeta?.url === url ? existingMeta.etag : undefined)
+
+      const file = opencodeSharedCachePath(input.cacheDir)
+      await ensurePrivateDir(path.dirname(file))
+      await writeFileAtomic(
+        file,
+        `${JSON.stringify({ fetchedAt: input.now, source: "github", models }, null, 2)}\n`,
+        0o600
+      )
+      await fs.chmod(file, 0o600).catch(() => {})
+
       await writeGitHubModelsCacheMeta(input.cacheDir, {
-        etag: existingMeta.etag,
+        etag,
         tag,
         lastChecked: input.now,
         url
       })
-      return
+    } catch {
+      // Best effort refresh; continue without blocking catalog load.
     }
-    if (!response.ok) return
-
-    const payload = (await response.json()) as unknown
-    const models = parseCatalogResponse(payload)
-    if (models.length === 0) return
-    const etag = response.headers.get("etag")?.trim() || (existingMeta?.url === url ? existingMeta.etag : undefined)
-
-    const file = opencodeSharedCachePath(input.cacheDir)
-    await ensurePrivateDir(path.dirname(file))
-    await fs.writeFile(file, `${JSON.stringify({ fetchedAt: input.now, source: "github", models }, null, 2)}\n`, {
-      mode: 0o600
-    })
-    await fs.chmod(file, 0o600).catch(() => {})
-
-    await writeGitHubModelsCacheMeta(input.cacheDir, {
-      etag,
-      tag,
-      lastChecked: input.now,
-      url
-    })
-  } catch {
-    // Best effort refresh; continue without blocking catalog load.
-  }
+  })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

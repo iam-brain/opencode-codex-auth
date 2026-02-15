@@ -47,6 +47,24 @@ export type CreateOpenAIFetchHandlerInput = {
   showToast: (message: string, variant?: "info" | "success" | "warning" | "error", quietMode?: boolean) => Promise<void>
 }
 
+const MAX_INBOUND_USER_AGENT_LENGTH = 512
+
+function isPrintableAscii(value: string): boolean {
+  if (!value) return false
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code < 0x20 || code > 0x7e) return false
+  }
+  return true
+}
+
+function sanitizeInboundUserAgent(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  if (!trimmed) return undefined
+  if (trimmed.length > MAX_INBOUND_USER_AGENT_LENGTH) return undefined
+  return isPrintableAscii(trimmed) ? trimmed : undefined
+}
+
 export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
   return async (requestInput: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const baseRequest = new Request(requestInput, init)
@@ -65,7 +83,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       canPreserveInboundOriginator && inboundOriginator ? inboundOriginator : resolveCodexOriginator(input.spoofMode)
     outbound.headers.set("originator", outboundOriginator)
 
-    const inboundUserAgent = outbound.headers.get("user-agent")?.trim()
+    const inboundUserAgent = sanitizeInboundUserAgent(outbound.headers.get("user-agent") ?? undefined)
     if (input.spoofMode === "native" && inboundUserAgent) {
       outbound.headers.set("user-agent", inboundUserAgent)
     } else {

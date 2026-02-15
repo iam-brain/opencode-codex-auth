@@ -51,6 +51,11 @@ function rotateDebugLogIfNeeded(debugLogFile: string, maxBytes: number): void {
       // ignore missing previous rotation file
     }
     renameSync(debugLogFile, rotatedPath)
+    try {
+      chmodSync(rotatedPath, 0o600)
+    } catch {
+      // best-effort permissions
+    }
   } catch {
     // ignore when file does not exist or cannot be inspected
   }
