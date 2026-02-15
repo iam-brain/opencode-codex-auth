@@ -27,7 +27,7 @@ async function readJson(filePath: string): Promise<SnapshotMap> {
 
 async function writeAtomic(filePath: string, data: SnapshotMap) {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const tmpPath = `${filePath}.tmp`
+  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now().toString(36)}`
   const serialized = `${JSON.stringify(data, null, 2)}\n`
   await fs.writeFile(tmpPath, serialized, { mode: 0o600 })
   await fs.rename(tmpPath, filePath)
