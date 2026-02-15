@@ -815,6 +815,24 @@ function getVariantCandidatesFromBody(input: { body: Record<string, unknown>; mo
   return out
 }
 
+const COLLABORATION_INSTRUCTION_MARKERS = ["# Plan Mode (Conversational)", "# Sub-agents", "# Tooling Compatibility ("]
+
+function extractCollaborationInstructionTail(instructions: string): string | undefined {
+  const normalized = instructions.trim()
+  if (!normalized) return undefined
+
+  let markerIndex: number | undefined
+  for (const marker of COLLABORATION_INSTRUCTION_MARKERS) {
+    const index = normalized.indexOf(marker)
+    if (index < 0) continue
+    if (markerIndex === undefined || index < markerIndex) markerIndex = index
+  }
+
+  if (markerIndex === undefined) return undefined
+  const tail = normalized.slice(markerIndex).trim()
+  return tail.length > 0 ? tail : undefined
+}
+
 export async function applyCatalogInstructionOverrideToRequest(input: {
   request: Request
   enabled: boolean
@@ -860,11 +878,24 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
   const rendered = resolveInstructionsForModel(catalogModel, effectivePersonality)
   if (!rendered) return { request: input.request, changed: false, reason: "rendered_empty_or_unsafe" }
 
-  if (asString(payload.instructions) === rendered) {
+  const currentInstructions = asString(payload.instructions)
+
+  if (currentInstructions === rendered) {
     return { request: input.request, changed: false, reason: "already_matches" }
   }
 
-  payload.instructions = rendered
+  if (currentInstructions && currentInstructions.includes(rendered)) {
+    return { request: input.request, changed: false, reason: "already_contains_rendered" }
+  }
+
+  const collaborationTail = currentInstructions ? extractCollaborationInstructionTail(currentInstructions) : undefined
+  const nextInstructions = collaborationTail ? `${rendered}\n\n${collaborationTail}` : rendered
+
+  if (currentInstructions === nextInstructions) {
+    return { request: input.request, changed: false, reason: "already_matches" }
+  }
+
+  payload.instructions = nextInstructions
   const updatedRequest = rebuildRequestWithJsonBody(input.request, payload)
   return { request: updatedRequest, changed: true, reason: "updated" }
 }

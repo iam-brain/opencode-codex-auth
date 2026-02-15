@@ -11,6 +11,10 @@ type InVivoProbeInput = {
   personalityKey: string
   personalityText: string
   modelSlug?: string
+  agent?: string
+  collaborationProfileEnabled?: boolean
+  orchestratorSubagentsEnabled?: boolean
+  collaborationToolProfile?: "opencode" | "codex"
   stripModelOptionsBeforeParams?: boolean
   modelInstructionsFallback?: string
   omitModelIdentityBeforeParams?: boolean
@@ -159,7 +163,10 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
   try {
     const hooks = await CodexAuthPlugin({} as never, {
       spoofMode: "codex",
-      behaviorSettings: { global: { personality: input.personalityKey } }
+      behaviorSettings: { global: { personality: input.personalityKey } },
+      collaborationProfileEnabled: input.collaborationProfileEnabled,
+      orchestratorSubagentsEnabled: input.orchestratorSubagentsEnabled,
+      collaborationToolProfile: input.collaborationToolProfile
     })
 
     const provider = {
@@ -193,7 +200,7 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
     await hooks["chat.params"]?.(
       {
         sessionID: "ses_vivo_1",
-        agent: "default",
+        agent: input.agent ?? "default",
         provider: {},
         message: {},
         model: {

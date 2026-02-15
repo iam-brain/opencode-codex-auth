@@ -11,6 +11,7 @@ import type {
   PluginRuntimeMode,
   PromptCacheKeyStrategy
 } from "./config"
+import type { CollaborationToolProfile } from "./codex-native/collaboration"
 import { formatToastMessage } from "./toast"
 import type { CodexModelInfo } from "./model-catalog"
 import { createRequestSnapshots } from "./request-snapshots"
@@ -164,6 +165,9 @@ export type CodexAuthPluginOptions = {
   codexCompactionOverride?: boolean
   headerSnapshots?: boolean
   headerTransformDebug?: boolean
+  collaborationProfileEnabled?: boolean
+  orchestratorSubagentsEnabled?: boolean
+  collaborationToolProfile?: CollaborationToolProfile
 }
 
 export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginOptions = {}): Promise<Hooks> {
@@ -179,6 +183,14 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   const remapDeveloperMessagesToUserEnabled = spoofMode === "codex" && opts.remapDeveloperMessagesToUser !== false
   const codexCompactionOverrideEnabled =
     opts.codexCompactionOverride !== undefined ? opts.codexCompactionOverride : runtimeMode === "codex"
+  const collaborationProfileEnabled =
+    typeof opts.collaborationProfileEnabled === "boolean" ? opts.collaborationProfileEnabled : runtimeMode === "codex"
+  const orchestratorSubagentsEnabled =
+    typeof opts.orchestratorSubagentsEnabled === "boolean"
+      ? opts.orchestratorSubagentsEnabled
+      : collaborationProfileEnabled
+  const collaborationToolProfile: CollaborationToolProfile =
+    opts.collaborationToolProfile === "codex" ? "codex" : "opencode"
   void refreshCodexClientVersionFromGitHub(opts.log).catch(() => {})
   const resolveCatalogHeaders = (): {
     originator: string
@@ -353,7 +365,10 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         lastCatalogModels,
         behaviorSettings: opts.behaviorSettings,
         fallbackPersonality: opts.personality,
-        spoofMode
+        spoofMode,
+        collaborationProfileEnabled,
+        orchestratorSubagentsEnabled,
+        collaborationToolProfile
       })
     },
     "chat.headers": async (hookInput, output) => {
@@ -361,7 +376,9 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         hookInput,
         output,
         spoofMode,
-        internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER
+        internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
+        collaborationProfileEnabled,
+        orchestratorSubagentsEnabled
       })
     },
     "experimental.session.compacting": async (hookInput, output) => {

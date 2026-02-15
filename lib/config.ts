@@ -9,6 +9,7 @@ export type CodexSpoofMode = "native" | "codex"
 export type PluginRuntimeMode = "native" | "codex"
 export type VerbosityOption = "default" | "low" | "medium" | "high"
 export type PromptCacheKeyStrategy = "default" | "project"
+export type CollaborationToolProfile = "opencode" | "codex"
 
 export type ModelBehaviorOverride = {
   personality?: PersonalityOption
@@ -42,6 +43,9 @@ export type PluginConfig = {
   headerSnapshots?: boolean
   headerTransformDebug?: boolean
   promptCacheKeyStrategy?: PromptCacheKeyStrategy
+  collaborationProfileEnabled?: boolean
+  orchestratorSubagentsEnabled?: boolean
+  collaborationToolProfile?: CollaborationToolProfile
   behaviorSettings?: BehaviorSettings
 }
 
@@ -140,6 +144,11 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // options: true | false
     // default: false
     "pidOffset": false
+
+    // Experimental collaboration controls (optional):
+    // "collaborationProfile": true,
+    // "orchestratorSubagents": true,
+    // "collaborationToolProfile": "opencode" // "opencode" | "codex"
   },
 
   "global": {
@@ -315,6 +324,15 @@ function parsePromptCacheKeyStrategy(value: unknown): PromptCacheKeyStrategy | u
   if (typeof value !== "string") return undefined
   const normalized = value.trim().toLowerCase()
   if (normalized === "default" || normalized === "project") return normalized
+  return undefined
+}
+
+function parseCollaborationToolProfile(value: unknown): CollaborationToolProfile | undefined {
+  if (typeof value !== "string") return undefined
+  const normalized = value.trim().toLowerCase()
+  if (normalized === "opencode" || normalized === "codex") {
+    return normalized
+  }
   return undefined
 }
 
@@ -511,6 +529,17 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
       : undefined
   const pidOffsetEnabled =
     isRecord(raw.runtime) && typeof raw.runtime.pidOffset === "boolean" ? raw.runtime.pidOffset : undefined
+  const collaborationProfileEnabled =
+    isRecord(raw.runtime) && typeof raw.runtime.collaborationProfile === "boolean"
+      ? raw.runtime.collaborationProfile
+      : undefined
+  const orchestratorSubagentsEnabled =
+    isRecord(raw.runtime) && typeof raw.runtime.orchestratorSubagents === "boolean"
+      ? raw.runtime.orchestratorSubagents
+      : undefined
+  const collaborationToolProfile = parseCollaborationToolProfile(
+    isRecord(raw.runtime) ? raw.runtime.collaborationToolProfile : undefined
+  )
 
   return {
     debug,
@@ -528,6 +557,9 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     codexCompactionOverride,
     headerSnapshots,
     headerTransformDebug,
+    collaborationProfileEnabled,
+    orchestratorSubagentsEnabled,
+    collaborationToolProfile,
     behaviorSettings
   }
 }
@@ -678,6 +710,13 @@ export function resolveConfig(input: {
   const headerSnapshots = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS) ?? file.headerSnapshots
   const headerTransformDebug =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG) ?? file.headerTransformDebug
+  const collaborationProfileEnabled =
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE) ?? file.collaborationProfileEnabled
+  const orchestratorSubagentsEnabled =
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS) ?? file.orchestratorSubagentsEnabled
+  const collaborationToolProfile =
+    parseCollaborationToolProfile(env.OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE) ??
+    file.collaborationToolProfile
 
   return {
     ...file,
@@ -696,6 +735,9 @@ export function resolveConfig(input: {
     codexCompactionOverride,
     headerSnapshots,
     headerTransformDebug,
+    collaborationProfileEnabled,
+    orchestratorSubagentsEnabled,
+    collaborationToolProfile,
     behaviorSettings: resolvedBehaviorSettings
   }
 }
@@ -764,6 +806,22 @@ export function getHeaderSnapshotsEnabled(cfg: PluginConfig): boolean {
 
 export function getHeaderTransformDebugEnabled(cfg: PluginConfig): boolean {
   return cfg.headerTransformDebug === true
+}
+
+export function getCollaborationProfileEnabled(cfg: PluginConfig): boolean {
+  if (cfg.collaborationProfileEnabled === true) return true
+  if (cfg.collaborationProfileEnabled === false) return false
+  return getMode(cfg) === "codex"
+}
+
+export function getOrchestratorSubagentsEnabled(cfg: PluginConfig): boolean {
+  if (cfg.orchestratorSubagentsEnabled === true) return true
+  if (cfg.orchestratorSubagentsEnabled === false) return false
+  return getCollaborationProfileEnabled(cfg)
+}
+
+export function getCollaborationToolProfile(cfg: PluginConfig): CollaborationToolProfile {
+  return cfg.collaborationToolProfile === "codex" ? "codex" : "opencode"
 }
 
 export function getBehaviorSettings(cfg: PluginConfig): BehaviorSettings | undefined {
