@@ -21,6 +21,11 @@ const REDACTED_BODY_KEYS = new Set([
   "refresh_token",
   "id_token",
   "authorization",
+  "api_key",
+  "apikey",
+  "client_secret",
+  "clientsecret",
+  "password",
   "accesstoken",
   "refreshtoken",
   "idtoken"
@@ -96,8 +101,9 @@ function sanitizeUrlForSnapshot(url: string): string {
     const base = `${parsed.origin}${parsed.pathname}`
     return parsed.search ? `${base}?[redacted]` : base
   } catch {
-    const [base] = url.split("?", 1)
-    return url.includes("?") ? `${base}?[redacted]` : base
+    const withoutFragment = url.split("#", 1)[0] ?? url
+    const [base] = withoutFragment.split("?", 1)
+    return withoutFragment.includes("?") ? `${base}?[redacted]` : base
   }
 }
 

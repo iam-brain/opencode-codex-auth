@@ -615,6 +615,7 @@ async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<
   await ensurePrivateDir(path.dirname(filePath))
   const release = await lockfile.lock(filePath, {
     realpath: false,
+    stale: 10_000,
     retries: {
       retries: 20,
       minTimeout: 10,

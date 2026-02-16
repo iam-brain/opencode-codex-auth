@@ -287,4 +287,69 @@ describe("openai loader fetch prompt cache key", () => {
       process.argv = prevArgv
     }
   })
+
+  it("sanitizes inbound user-agent in native mode", async () => {
+    vi.resetModules()
+
+    const acquireOpenAIAuth = vi.fn(async () => ({
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus"
+    }))
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({ acquireOpenAIAuth }))
+    vi.doMock("../lib/codex-native/client-identity", () => ({
+      resolveRequestUserAgent: () => "generated-ua"
+    }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    let capturedUserAgent = ""
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const request = input as Request
+        capturedUserAgent = request.headers.get("user-agent") ?? ""
+        return new Response("ok", { status: 200 })
+      })
+    )
+
+    const handler = createOpenAIFetchHandler({
+      authMode: "native",
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState: () => {}
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth: async () => undefined,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    await handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "a".repeat(600)
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
+    })
+
+    expect(acquireOpenAIAuth).toHaveBeenCalled()
+    expect(capturedUserAgent).toBe("generated-ua")
+  })
 })

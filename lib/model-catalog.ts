@@ -542,7 +542,7 @@ async function writeCatalogToDisk(
     const files = compatFile ? [primaryFile, compatFile] : [primaryFile]
     for (const file of files) {
       await ensurePrivateDir(path.dirname(file))
-      await fs.writeFile(file, content, { mode: 0o600 })
+      await writeFileAtomic(file, content, 0o600)
       await fs.chmod(file, 0o600).catch(() => {})
     }
   }).catch(() => {

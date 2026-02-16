@@ -228,6 +228,7 @@ export async function loadSessionAffinity(
     await ensurePrivateDir(path.dirname(filePath))
     const release = await lockfile.lock(filePath, {
       realpath: false,
+      stale: 10_000,
       retries: {
         retries: 20,
         minTimeout: 10,
@@ -253,6 +254,7 @@ export async function saveSessionAffinity(
   await ensurePrivateDir(path.dirname(filePath))
   const release = await lockfile.lock(filePath, {
     realpath: false,
+    stale: 10_000,
     retries: {
       retries: 20,
       minTimeout: 10,

@@ -60,6 +60,7 @@ export async function saveSnapshots(
 
   const release = await lockfile.lock(filePath, {
     realpath: false,
+    stale: 10_000,
     retries: {
       retries: 20,
       minTimeout: 10,

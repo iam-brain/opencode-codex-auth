@@ -105,6 +105,54 @@ describe("request snapshots", () => {
     expect(payload.url).toBe("https://api.openai.com/v1/responses?[redacted]")
   })
 
+  it("redacts form-url-encoded bodies by key", async () => {
+    const baseRoot = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-form-"))
+    const root = path.join(baseRoot, "nested")
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root })
+
+    const request = new Request("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: "access_token=secret&x=1&client_secret=topsecret"
+    })
+
+    await snapshots.captureRequest("form", request)
+
+    const files = await fs.readdir(root)
+    const snapshot = files.find((file) => file.includes("request-1-form"))
+    expect(snapshot).toBeDefined()
+    const payload = JSON.parse(await fs.readFile(path.join(root, snapshot as string), "utf8")) as {
+      body: Record<string, unknown>
+    }
+    expect(payload.body.access_token).toBe("[redacted]")
+    expect(payload.body.client_secret).toBe("[redacted]")
+    expect(payload.body.x).toBe("1")
+  })
+
+  it("omits non-json non-text bodies", async () => {
+    const baseRoot = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-binary-"))
+    const root = path.join(baseRoot, "nested")
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root })
+
+    const request = new Request("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream"
+      },
+      body: "binary-secret"
+    })
+
+    await snapshots.captureRequest("binary", request)
+
+    const files = await fs.readdir(root)
+    const snapshot = files.find((file) => file.includes("request-1-binary"))
+    expect(snapshot).toBeDefined()
+    const payload = JSON.parse(await fs.readFile(path.join(root, snapshot as string), "utf8")) as { body: unknown }
+    expect(payload.body).toBe("[non-json body omitted]")
+  })
+
   it("skips writing files when disabled", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
     const snapshots = createRequestSnapshots({ enabled: false, dir: root })

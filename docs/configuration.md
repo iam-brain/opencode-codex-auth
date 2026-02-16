@@ -89,7 +89,7 @@ The plugin loads config in this order:
   - Mode defaults: `true` in `codex`, `false` in `native`.
   - Explicit boolean value overrides mode default.
 - `runtime.headerSnapshots: boolean`
-  - Writes before/after request header snapshots to debug logs.
+  - Writes redacted request/response snapshots to debug logs (includes a sanitized body for JSON/forms; may include truncated text bodies).
 - `runtime.headerTransformDebug: boolean`
   - Adds explicit `before-header-transform` and `after-header-transform` request snapshots for message fetches.
 - `runtime.pidOffset: boolean`

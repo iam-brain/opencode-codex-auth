@@ -130,7 +130,8 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // default: "default"
     "promptCacheKeyStrategy": "default",
 
-    // Write request header snapshots to plugin logs.
+    // Write redacted request/response snapshots to plugin logs.
+    // Includes a sanitized request body (JSON/forms) and may include truncated text bodies.
     // options: true | false
     // default: false
     "headerSnapshots": false,
