@@ -352,4 +352,74 @@ describe("openai loader fetch prompt cache key", () => {
     expect(acquireOpenAIAuth).toHaveBeenCalled()
     expect(capturedUserAgent).toBe("generated-ua")
   })
+
+  it("strips sensitive inbound hop-by-hop headers", async () => {
+    vi.resetModules()
+
+    const acquireOpenAIAuth = vi.fn(async () => ({
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus"
+    }))
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({ acquireOpenAIAuth }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    let outboundHeaders: Headers | undefined
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const request = input as Request
+        outboundHeaders = request.headers
+        return new Response("ok", { status: 200 })
+      })
+    )
+
+    const handler = createOpenAIFetchHandler({
+      authMode: "native",
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState: () => {}
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth: async () => undefined,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    await handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: "foo=bar",
+        connection: "keep-alive",
+        forwarded: "for=1.2.3.4",
+        host: "api.openai.com",
+        "x-custom": "kept"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
+    })
+
+    expect(acquireOpenAIAuth).toHaveBeenCalled()
+    expect(outboundHeaders?.get("cookie")).toBeNull()
+    expect(outboundHeaders?.get("connection")).toBeNull()
+    expect(outboundHeaders?.get("forwarded")).toBeNull()
+    expect(outboundHeaders?.get("host")).toBeNull()
+    expect(outboundHeaders?.get("x-custom")).toBe("kept")
+  })
 })

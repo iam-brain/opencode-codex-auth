@@ -513,9 +513,23 @@ function parseFetchedAtFromUnknown(value: unknown): number {
   return 0
 }
 
+async function isTrustedCodexCliCacheFile(filePath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(filePath)
+    if (!stat.isFile()) return false
+    if (process.platform === "win32") return true
+    if ((stat.mode & 0o022) !== 0) return false
+    if (typeof process.getuid === "function" && stat.uid !== process.getuid()) return false
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function readCatalogFromCodexCliCache(): Promise<CodexModelsCache | undefined> {
   try {
     const file = path.join(os.homedir(), ".codex", "models_cache.json")
+    if (!(await isTrustedCodexCliCacheFile(file))) return undefined
     const raw = await fs.readFile(file, "utf8")
     const parsed = JSON.parse(raw) as unknown
     if (!isRecord(parsed)) return undefined

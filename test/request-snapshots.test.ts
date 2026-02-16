@@ -11,7 +11,7 @@ describe("request snapshots", () => {
   it("writes redacted request snapshots when enabled", async () => {
     const baseRoot = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
     const root = path.join(baseRoot, "nested")
-    const snapshots = createRequestSnapshots({ enabled: true, dir: root })
+    const snapshots = createRequestSnapshots({ enabled: true, includeRequestBody: true, dir: root })
 
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
@@ -108,7 +108,7 @@ describe("request snapshots", () => {
   it("redacts form-url-encoded bodies by key", async () => {
     const baseRoot = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-form-"))
     const root = path.join(baseRoot, "nested")
-    const snapshots = createRequestSnapshots({ enabled: true, dir: root })
+    const snapshots = createRequestSnapshots({ enabled: true, includeRequestBody: true, dir: root })
 
     const request = new Request("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -134,7 +134,7 @@ describe("request snapshots", () => {
   it("omits non-json non-text bodies", async () => {
     const baseRoot = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-binary-"))
     const root = path.join(baseRoot, "nested")
-    const snapshots = createRequestSnapshots({ enabled: true, dir: root })
+    const snapshots = createRequestSnapshots({ enabled: true, includeRequestBody: true, dir: root })
 
     const request = new Request("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -151,6 +151,30 @@ describe("request snapshots", () => {
     expect(snapshot).toBeDefined()
     const payload = JSON.parse(await fs.readFile(path.join(root, snapshot as string), "utf8")) as { body: unknown }
     expect(payload.body).toBe("[non-json body omitted]")
+  })
+
+  it("does not include request body by default", async () => {
+    const baseRoot = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-nobody-"))
+    const root = path.join(baseRoot, "nested")
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root })
+
+    const request = new Request("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex", prompt_cache_key: "ses_1" })
+    })
+
+    await snapshots.captureRequest("nobody", request)
+
+    const files = await fs.readdir(root)
+    const snapshot = files.find((file) => file.includes("request-1-nobody"))
+    expect(snapshot).toBeDefined()
+    const payload = JSON.parse(await fs.readFile(path.join(root, snapshot as string), "utf8")) as {
+      body?: unknown
+    }
+    expect(payload.body).toBeUndefined()
   })
 
   it("skips writing files when disabled", async () => {

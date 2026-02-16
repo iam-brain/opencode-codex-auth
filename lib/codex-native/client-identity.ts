@@ -13,6 +13,8 @@ const DEFAULT_CODEX_CLIENT_VERSION = "0.97.0"
 const CODEX_CLIENT_VERSION_CACHE_FILE = path.join(defaultOpencodeCachePath(), "codex-client-version.json")
 const CODEX_CLIENT_VERSION_TTL_MS = 60 * 60 * 1000
 const CODEX_CLIENT_VERSION_FETCH_TIMEOUT_MS = 5000
+const CLIENT_IDENTITY_EXEC_TIMEOUT_MS = 500
+const CLIENT_IDENTITY_EXEC_MAX_BUFFER = 16 * 1024
 const CODEX_GITHUB_RELEASES_API = "https://api.github.com/repos/openai/codex/releases/latest"
 const CODEX_GITHUB_RELEASES_HTML = "https://github.com/openai/codex/releases/latest"
 
@@ -70,7 +72,11 @@ function splitProgramAndVersion(value: string): { program: string; version?: str
 
 function tmuxDisplayMessage(format: string): string | undefined {
   try {
-    const value = execFileSync("tmux", ["display-message", "-p", format], { encoding: "utf8" }).trim()
+    const value = execFileSync("tmux", ["display-message", "-p", format], {
+      encoding: "utf8",
+      timeout: CLIENT_IDENTITY_EXEC_TIMEOUT_MS,
+      maxBuffer: CLIENT_IDENTITY_EXEC_MAX_BUFFER
+    }).trim()
     return value || undefined
   } catch {
     return undefined
@@ -351,7 +357,11 @@ export function resolveCodexClientVersion(cacheFilePath: string = CODEX_CLIENT_V
 function resolveMacProductVersion(): string {
   if (cachedMacProductVersion) return cachedMacProductVersion
   try {
-    const value = execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).trim()
+    const value = execFileSync("sw_vers", ["-productVersion"], {
+      encoding: "utf8",
+      timeout: CLIENT_IDENTITY_EXEC_TIMEOUT_MS,
+      maxBuffer: CLIENT_IDENTITY_EXEC_MAX_BUFFER
+    }).trim()
     cachedMacProductVersion = value || os.release()
   } catch {
     cachedMacProductVersion = os.release()

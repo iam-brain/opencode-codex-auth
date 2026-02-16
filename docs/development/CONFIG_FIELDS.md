@@ -24,6 +24,7 @@ Top-level:
 - `runtime.promptCacheKeyStrategy: "default" | "project"`
 - `runtime.codexCompactionOverride: boolean`
 - `runtime.headerSnapshots: boolean`
+- `runtime.headerSnapshotBodies: boolean`
 - `runtime.headerTransformDebug: boolean`
 - `runtime.pidOffset: boolean`
 - `global.personality: string`
@@ -59,6 +60,7 @@ Default generated values:
 - `runtime.promptCacheKeyStrategy: "default"`
 - `runtime.codexCompactionOverride`: mode-derived when unset (`true` in `codex`, `false` in `native`)
 - `runtime.headerSnapshots: false`
+- `runtime.headerSnapshotBodies: false`
 - `runtime.headerTransformDebug: false`
 - `runtime.pidOffset: false`
 - `global.personality: "pragmatic"`
@@ -94,6 +96,7 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER`
 - `OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE`
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`
+- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES`
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`
 - `OPENCODE_OPENAI_MULTI_QUIET`
 - `OPENCODE_OPENAI_MULTI_PID_OFFSET`

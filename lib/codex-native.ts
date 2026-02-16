@@ -164,6 +164,7 @@ export type CodexAuthPluginOptions = {
   remapDeveloperMessagesToUser?: boolean
   codexCompactionOverride?: boolean
   headerSnapshots?: boolean
+  headerSnapshotBodies?: boolean
   headerTransformDebug?: boolean
   collaborationProfileEnabled?: boolean
   orchestratorSubagentsEnabled?: boolean
@@ -211,6 +212,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   }
   const requestSnapshots = createRequestSnapshots({
     enabled: opts.headerSnapshots === true || opts.headerTransformDebug === true,
+    includeRequestBody: opts.headerSnapshotBodies === true,
     log: opts.log
   })
   let lastCatalogModels: CodexModelInfo[] | undefined

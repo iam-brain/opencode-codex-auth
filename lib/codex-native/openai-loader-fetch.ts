@@ -48,6 +48,23 @@ export type CreateOpenAIFetchHandlerInput = {
 }
 
 const MAX_INBOUND_USER_AGENT_LENGTH = 512
+const STRIPPED_INBOUND_HEADERS = new Set([
+  "cookie",
+  "set-cookie",
+  "proxy-authorization",
+  "connection",
+  "keep-alive",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "host",
+  "content-length",
+  "forwarded",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto"
+])
 
 function isPrintableAscii(value: string): boolean {
   if (!value) return false
@@ -65,6 +82,12 @@ function sanitizeInboundUserAgent(value: string | undefined): string | undefined
   return isPrintableAscii(trimmed) ? trimmed : undefined
 }
 
+function stripUnsafeInboundHeaders(headers: Headers): void {
+  for (const name of STRIPPED_INBOUND_HEADERS) {
+    if (headers.has(name)) headers.delete(name)
+  }
+}
+
 export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
   return async (requestInput: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const baseRequest = new Request(requestInput, init)
@@ -75,6 +98,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
     }
 
     let outbound = new Request(rewriteUrl(baseRequest), baseRequest)
+    stripUnsafeInboundHeaders(outbound.headers)
     const inboundOriginator = outbound.headers.get("originator")?.trim()
     const canPreserveInboundOriginator =
       (input.spoofMode === "native" && inboundOriginator === "opencode") ||
