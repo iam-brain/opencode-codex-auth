@@ -627,14 +627,15 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   }
 
   const disk = await readCatalogFromDisk(cacheDir, input.accountId)
-  const opencodeCacheFallback = await readCatalogFromOpencodeCache(cacheDir)
-  const codexCliCacheFallback = await readCatalogFromCodexCliCache()
   const hasFreshDisk = !!disk && isFresh(disk, now)
   if (hasFreshDisk && !input.forceRefresh) {
     inMemoryCatalog.set(key, disk)
     emitEvent(input, { type: "disk_cache_hit" })
     return disk.models
   }
+
+  const opencodeCacheFallback = await readCatalogFromOpencodeCache(cacheDir)
+  const codexCliCacheFallback = await readCatalogFromCodexCliCache()
 
   if (!input.accessToken) {
     if (disk) {

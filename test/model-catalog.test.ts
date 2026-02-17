@@ -200,6 +200,42 @@ describe("model catalog", () => {
     expect(secondResult?.map((m) => m.slug)).toEqual(["gpt-5.2-codex", "gpt-5.4-codex"])
   })
 
+  it("returns fresh primary disk cache without scanning fallback caches", async () => {
+    const cacheDir = await makeCacheDir()
+
+    await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      forceRefresh: true,
+      cacheDir,
+      now: () => 1000,
+      fetchImpl: async () => {
+        return new Response(
+          JSON.stringify({
+            models: [{ slug: "gpt-5.3-codex" }]
+          }),
+          { status: 200 }
+        )
+      }
+    })
+
+    const readdirSpy = vi.spyOn(fs, "readdir")
+
+    const models = await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      cacheDir,
+      now: () => 1001,
+      fetchImpl: async () => {
+        throw new Error("should not refetch network")
+      }
+    })
+
+    expect(models?.map((model) => model.slug)).toEqual(["gpt-5.3-codex"])
+    expect(readdirSpy).not.toHaveBeenCalledWith(cacheDir)
+    readdirSpy.mockRestore()
+  })
+
   it("honors caller-provided originator/user-agent/beta headers", async () => {
     const cacheDir = await makeCacheDir()
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {

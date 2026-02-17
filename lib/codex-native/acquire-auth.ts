@@ -20,6 +20,7 @@ type RefreshClaim = {
   identityKey: string
   refreshToken: string
   leaseUntil: number
+  selectedIndex: number
 }
 
 export type AcquireOpenAIAuthInput = {
@@ -233,7 +234,8 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
         refreshClaim = {
           identityKey: selected.identityKey,
           refreshToken: selected.refresh,
-          leaseUntil
+          leaseUntil,
+          selectedIndex: selectedIndex >= 0 ? selectedIndex : 0
         }
       })
 
@@ -286,7 +288,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
           delete selected.cooldownUntil
           if (selected.identityKey) domain.activeIdentityKey = selected.identityKey
 
-          accountLabel = formatAccountLabel(selected, 0)
+          accountLabel = formatAccountLabel(selected, refreshClaim?.selectedIndex ?? 0)
           email = selected.email
           plan = selected.plan
           access = selected.access

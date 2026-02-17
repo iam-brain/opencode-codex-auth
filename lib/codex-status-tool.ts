@@ -13,7 +13,7 @@ export async function toolOutputForStatus(
   snapshotsPath: string = defaultSnapshotsPath(),
   options: { style?: StatusRenderStyle; useColor?: boolean } = {}
 ): Promise<string> {
-  const authFile = await loadAuthStorage(authPath)
+  const authFile = await loadAuthStorage(authPath, { lockReads: false })
   const snapshots = await loadSnapshots(snapshotsPath)
   const style = options.style ?? "plain"
   const useColor = options.useColor ?? (style === "menu" ? shouldUseColor() : false)

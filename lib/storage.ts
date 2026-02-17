@@ -52,7 +52,7 @@ type LegacyCodexAccountsRecord = {
   cooldownUntil?: unknown
 }
 
-type AuthLoadOptions = { quarantineDir?: string; now?: () => number; keep?: number }
+type AuthLoadOptions = { quarantineDir?: string; now?: () => number; keep?: number; lockReads?: boolean }
 
 const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
 const OPENAI_AUTH_MODES: OpenAIAuthMode[] = ["native", "codex"]
@@ -654,6 +654,13 @@ export async function loadAuthStorage(filePath: string = defaultAuthPath(), opts
     quarantineDir: opts?.quarantineDir ?? path.join(path.dirname(filePath), "quarantine"),
     now: opts?.now ?? Date.now,
     keep: opts?.keep
+  }
+  if (opts?.lockReads === false) {
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    if (path.basename(filePath) === CODEX_ACCOUNTS_FILE) {
+      await ensureConfigDirGitignore(path.dirname(filePath))
+    }
+    return readAuthUnlocked(filePath, normalizedOpts)
   }
   return withFileLock(filePath, async () => readAuthUnlocked(filePath, normalizedOpts))
 }

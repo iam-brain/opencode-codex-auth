@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -40,6 +40,29 @@ describe("auth storage", () => {
 
     expect(auth).toEqual({})
     await expect(stat(path.dirname(filePath))).resolves.toBeDefined()
+  })
+
+  it("loadAuthStorage skips lock acquisition when lockReads is disabled", async () => {
+    vi.resetModules()
+    const lock = vi.fn(async () => {
+      throw new Error("should not lock")
+    })
+
+    vi.doMock("proper-lockfile", () => ({
+      default: { lock },
+      lock
+    }))
+
+    const { loadAuthStorage: loadAuthStorageWithMock } = await import("../lib/storage")
+
+    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const filePath = path.join(dir, "auth.json")
+    await writeFile(filePath, "{}\n", { mode: 0o600 })
+
+    const auth = await loadAuthStorageWithMock(filePath, { lockReads: false })
+
+    expect(auth).toEqual({})
+    expect(lock).not.toHaveBeenCalled()
   })
 
   it("creates config-dir .gitignore entries for codex account storage", async () => {
