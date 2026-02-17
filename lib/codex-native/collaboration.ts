@@ -180,8 +180,6 @@ const OPENCODE_TOOLING_HEADER_REGEX = /^\s{0,3}#{1,6}\s*tooling\s+compatibility\
 const CODEX_TOOL_NAME_REGEX =
   /\b(exec_command|read_file|search_files|list_dir|write_stdin|spawn_agent|send_input|close_agent|edit_file|apply_patch)\b/i
 
-const CODEX_WAIT_MARKER_REGEX = /\bwait\s*\/\s*send_input(?:-style)?\b|\bwait\s*\(/i
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -283,7 +281,7 @@ export function resolveToolingInstructions(profile: CollaborationToolProfile): s
 
 export function hasCodexToolNameMarkers(instructions: string | undefined): boolean {
   if (!instructions) return false
-  return CODEX_TOOL_NAME_REGEX.test(instructions) || CODEX_WAIT_MARKER_REGEX.test(instructions)
+  return CODEX_TOOL_NAME_REGEX.test(instructions)
 }
 
 export function hasOpenCodeToolingCompatibility(instructions: string | undefined): boolean {

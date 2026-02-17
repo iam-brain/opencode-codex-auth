@@ -64,15 +64,9 @@ describe("codex collaboration profile", () => {
     expect(hasCodexToolNameMarkers(codexInstructions)).toBe(true)
     expect(ensureOpenCodeToolingCompatibility(codexInstructions)).toContain("Tooling Compatibility (OpenCode)")
 
-    const waitOnly = "Wait for worker completion, then continue."
-    expect(hasCodexToolNameMarkers(waitOnly)).toBe(false)
-    expect(ensureOpenCodeToolingCompatibility(waitOnly)).toBe(waitOnly)
-
-    const codexWaitPattern = "Coordinate with wait/send_input-style flow between workers."
-    expect(hasCodexToolNameMarkers(codexWaitPattern)).toBe(true)
-    const waitOnlyCompat = ensureOpenCodeToolingCompatibility(codexWaitPattern)
-    expect(waitOnlyCompat).toContain("Tooling Compatibility (OpenCode)")
-    expect(hasOpenCodeToolingCompatibility(waitOnlyCompat)).toBe(true)
+    const toolCompat = ensureOpenCodeToolingCompatibility(codexInstructions)
+    expect(toolCompat).toContain("Tooling Compatibility (OpenCode)")
+    expect(hasOpenCodeToolingCompatibility(toolCompat)).toBe(true)
 
     const writeStdin = "If needed, call write_stdin to continue the worker session."
     expect(hasCodexToolNameMarkers(writeStdin)).toBe(true)
