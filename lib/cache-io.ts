@@ -46,8 +46,8 @@ export async function writeJsonFileBestEffort(filePath: string, value: unknown):
   try {
     await writeJsonFile(filePath, value)
   } catch (error) {
-    if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
-      throw error
+    if (error instanceof Error) {
+      // best-effort persistence
     }
   }
 }
@@ -56,8 +56,8 @@ export async function writeJsonFileAtomicBestEffort(filePath: string, value: unk
   try {
     await writeJsonFileAtomic(filePath, value)
   } catch (error) {
-    if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
-      throw error
+    if (error instanceof Error) {
+      // best-effort persistence
     }
   }
 }
@@ -67,14 +67,12 @@ export async function writeJsonFileBestEffortLogged(
   value: unknown,
   options: { log?: Logger; context: string }
 ): Promise<void> {
-  try {
-    await writeJsonFileBestEffort(filePath, value)
-  } catch (error) {
+  await writeJsonFile(filePath, value).catch((error) => {
     options.log?.warn(`${options.context} write failed`, {
       filePath,
       error: error instanceof Error ? error.message : String(error)
     })
-  }
+  })
 }
 
 export async function writeJsonFileAtomicBestEffortLogged(
@@ -82,12 +80,10 @@ export async function writeJsonFileAtomicBestEffortLogged(
   value: unknown,
   options: { log?: Logger; context: string }
 ): Promise<void> {
-  try {
-    await writeJsonFileAtomicBestEffort(filePath, value)
-  } catch (error) {
+  await writeJsonFileAtomic(filePath, value).catch((error) => {
     options.log?.warn(`${options.context} write failed`, {
       filePath,
       error: error instanceof Error ? error.message : String(error)
     })
-  }
+  })
 }

@@ -281,4 +281,30 @@ describe("catalog instruction override orchestrator preservation gating", () => 
     const body = JSON.parse(await replaced.request.text()) as { instructions?: string }
     expect(body.instructions).toContain("Base Default voice")
   })
+
+  it("preserves orchestrator-style instructions by default when preserve flag is omitted", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: [
+          "You are Codex, a coding agent based on GPT-5.",
+          "",
+          "# Sub-agents",
+          "If `spawn_agent` is unavailable or fails, ignore this section and proceed solo."
+        ].join("\n")
+      })
+    })
+
+    const preserved = await applyCatalogInstructionOverrideToRequest({
+      request,
+      enabled: true,
+      catalogModels,
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined
+    })
+    expect(preserved.changed).toBe(false)
+    expect(preserved.reason).toBe("orchestrator_instructions_preserved")
+  })
 })

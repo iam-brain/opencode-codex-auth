@@ -55,7 +55,7 @@ export async function fetchRemoteText(
       return {
         key: request.key,
         status: "not_modified",
-        etag: request.etag
+        etag: response.headers.get("etag")?.trim() || request.etag
       }
     }
 

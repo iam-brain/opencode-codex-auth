@@ -897,7 +897,8 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
 
   const currentInstructions = asString(payload.instructions)
 
-  if (input.preserveOrchestratorInstructions === true && isOrchestratorInstructions(currentInstructions)) {
+  const preserveOrchestratorInstructions = input.preserveOrchestratorInstructions !== false
+  if (preserveOrchestratorInstructions && isOrchestratorInstructions(currentInstructions)) {
     return { request: input.request, changed: false, reason: "orchestrator_instructions_preserved" }
   }
 
