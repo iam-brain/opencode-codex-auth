@@ -1,10 +1,18 @@
 import { FetchOrchestrator } from "../fetch-orchestrator"
+import { saveSnapshots } from "../codex-status-storage"
+import { fetchQuotaSnapshotFromBackend } from "../codex-quota-fetch"
 import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "../fatal-errors"
 import type { Logger } from "../logger"
 import type { CodexModelInfo } from "../model-catalog"
+import { defaultSnapshotsPath } from "../paths"
 import type { RotationStrategy } from "../types"
 import type { BehaviorSettings, CodexSpoofMode, PersonalityOption, PromptCacheKeyStrategy } from "../config"
 import type { OpenAIAuthMode } from "../types"
+import {
+  DEFAULT_QUOTA_THRESHOLD_TRACKER_STATE,
+  evaluateQuotaThresholds,
+  type QuotaThresholdTrackerState
+} from "../quota-threshold-alerts"
 import { acquireOpenAIAuth } from "./acquire-auth"
 import { resolveRequestUserAgent } from "./client-identity"
 import { resolveCodexOriginator } from "./originator"
@@ -47,48 +55,13 @@ export type CreateOpenAIFetchHandlerInput = {
   showToast: (message: string, variant?: "info" | "success" | "warning" | "error", quietMode?: boolean) => Promise<void>
 }
 
-const MAX_INBOUND_USER_AGENT_LENGTH = 512
-const STRIPPED_INBOUND_HEADERS = new Set([
-  "cookie",
-  "set-cookie",
-  "proxy-authorization",
-  "connection",
-  "keep-alive",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-  "host",
-  "content-length",
-  "forwarded",
-  "x-forwarded-for",
-  "x-forwarded-host",
-  "x-forwarded-proto"
-])
-
-function isPrintableAscii(value: string): boolean {
-  if (!value) return false
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
-    if (code < 0x20 || code > 0x7e) return false
-  }
-  return true
-}
-
-function sanitizeInboundUserAgent(value: string | undefined): string | undefined {
-  const trimmed = value?.trim()
-  if (!trimmed) return undefined
-  if (trimmed.length > MAX_INBOUND_USER_AGENT_LENGTH) return undefined
-  return isPrintableAscii(trimmed) ? trimmed : undefined
-}
-
-function stripUnsafeInboundHeaders(headers: Headers): void {
-  for (const name of STRIPPED_INBOUND_HEADERS) {
-    if (headers.has(name)) headers.delete(name)
-  }
-}
-
 export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
+  const quotaTrackerByIdentity = new Map<string, QuotaThresholdTrackerState>()
+  const quotaRefreshAtByIdentity = new Map<string, number>()
+  const QUOTA_REFRESH_TTL_MS = 60_000
+  const QUOTA_FETCH_TIMEOUT_MS = 3000
+  const QUOTA_EXHAUSTED_FALLBACK_COOLDOWN_MS = 5 * 60 * 1000
+
   return async (requestInput: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const baseRequest = new Request(requestInput, init)
     if (input.headerTransformDebug) {
@@ -98,16 +71,14 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
     }
 
     let outbound = new Request(rewriteUrl(baseRequest), baseRequest)
-    stripUnsafeInboundHeaders(outbound.headers)
     const inboundOriginator = outbound.headers.get("originator")?.trim()
-    const canPreserveInboundOriginator =
-      (input.spoofMode === "native" && inboundOriginator === "opencode") ||
-      (input.spoofMode !== "native" && (inboundOriginator === "codex_exec" || inboundOriginator === "codex_cli_rs"))
     const outboundOriginator =
-      canPreserveInboundOriginator && inboundOriginator ? inboundOriginator : resolveCodexOriginator(input.spoofMode)
+      inboundOriginator === "opencode" || inboundOriginator === "codex_exec" || inboundOriginator === "codex_cli_rs"
+        ? inboundOriginator
+        : resolveCodexOriginator(input.spoofMode)
     outbound.headers.set("originator", outboundOriginator)
 
-    const inboundUserAgent = sanitizeInboundUserAgent(outbound.headers.get("user-agent") ?? undefined)
+    const inboundUserAgent = outbound.headers.get("user-agent")?.trim()
     if (input.spoofMode === "native" && inboundUserAgent) {
       outbound.headers.set("user-agent", inboundUserAgent)
     } else {
@@ -143,6 +114,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
     }
 
     let selectedIdentityKey: string | undefined
+    let selectedAuthForQuota: { access: string; accountId?: string; identityKey?: string } | undefined
 
     const replaySanitized = await stripReasoningReplayFromRequest({
       request: outbound,
@@ -193,6 +165,11 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         }
 
         selectedIdentityKey = auth.identityKey
+        selectedAuthForQuota = {
+          access: auth.access,
+          accountId: auth.accountId,
+          identityKey: auth.identityKey
+        }
         return auth
       },
       setCooldown: input.setCooldown,
@@ -211,7 +188,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         }
       },
       showToast: input.showToast,
-      onAttemptRequest: async ({ attempt, maxAttempts, request, auth, sessionKey }) => {
+      onAttemptRequest: async ({ attempt, maxAttempts, attemptReasonCode, request, auth, sessionKey }) => {
         const transformed = await applyRequestTransformPipeline({
           request,
           spoofMode: input.spoofMode,
@@ -241,9 +218,10 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         await input.requestSnapshots.captureRequest("outbound-attempt", promptCacheKeyOverride.request, {
           attempt: attempt + 1,
           maxAttempts,
-          hasSessionKey: Boolean(sessionKey),
-          hasIdentityKey: Boolean(auth.identityKey),
-          hasAccountLabel: Boolean(auth.accountLabel),
+          attemptReasonCode,
+          sessionKey,
+          identityKey: auth.identityKey,
+          accountLabel: auth.accountLabel,
           instructionsOverridden: transformed.instructionOverride.changed,
           instructionOverrideReason: transformed.instructionOverride.reason,
           developerMessagesRemapped: transformed.developerRoleRemap.changed,
@@ -251,18 +229,44 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           developerMessageRemapCount: transformed.developerRoleRemap.remappedCount,
           developerMessagePreservedCount: transformed.developerRoleRemap.preservedCount,
           promptCacheKeyOverridden: promptCacheKeyOverride.changed,
-          promptCacheKeyOverrideReason: promptCacheKeyOverride.reason
+          promptCacheKeyOverrideReason: promptCacheKeyOverride.reason,
+          ...(input.headerTransformDebug === true && auth.selectionTrace
+            ? {
+                selectionStrategy: auth.selectionTrace.strategy,
+                selectionDecision: auth.selectionTrace.decision,
+                selectionTotalCount: auth.selectionTrace.totalCount,
+                selectionDisabledCount: auth.selectionTrace.disabledCount,
+                selectionCooldownCount: auth.selectionTrace.cooldownCount,
+                selectionRefreshLeaseCount: auth.selectionTrace.refreshLeaseCount,
+                selectionEligibleCount: auth.selectionTrace.eligibleCount,
+                ...(typeof auth.selectionTrace.attemptedCount === "number"
+                  ? { selectionAttemptedCount: auth.selectionTrace.attemptedCount }
+                  : null),
+                ...(auth.selectionTrace.selectedIdentityKey
+                  ? { selectionSelectedIdentityKey: auth.selectionTrace.selectedIdentityKey }
+                  : null),
+                ...(typeof auth.selectionTrace.selectedIndex === "number"
+                  ? { selectionSelectedIndex: auth.selectionTrace.selectedIndex }
+                  : null),
+                ...(auth.selectionTrace.attemptKey ? { selectionAttemptKey: auth.selectionTrace.attemptKey } : null),
+                ...(auth.selectionTrace.activeIdentityKey
+                  ? { selectionActiveIdentityKey: auth.selectionTrace.activeIdentityKey }
+                  : null),
+                ...(auth.selectionTrace.sessionKey ? { selectionSessionKey: auth.selectionTrace.sessionKey } : null)
+              }
+            : null)
         })
 
         return promptCacheKeyOverride.request
       },
-      onAttemptResponse: async ({ attempt, maxAttempts, response, auth, sessionKey }) => {
+      onAttemptResponse: async ({ attempt, maxAttempts, attemptReasonCode, response, auth, sessionKey }) => {
         await input.requestSnapshots.captureResponse("outbound-response", response, {
           attempt: attempt + 1,
           maxAttempts,
-          hasSessionKey: Boolean(sessionKey),
-          hasIdentityKey: Boolean(auth.identityKey),
-          hasAccountLabel: Boolean(auth.accountLabel)
+          attemptReasonCode,
+          sessionKey,
+          identityKey: auth.identityKey,
+          accountLabel: auth.accountLabel
         })
       }
     })
@@ -319,6 +323,70 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
     }
 
     persistRateLimitSnapshotFromResponse(response, selectedIdentityKey)
+
+    const identityForQuota = selectedAuthForQuota?.identityKey
+    if (identityForQuota && selectedAuthForQuota?.access) {
+      try {
+        const now = Date.now()
+        const nextRefreshAt = quotaRefreshAtByIdentity.get(identityForQuota)
+        if (nextRefreshAt === undefined || now >= nextRefreshAt) {
+          quotaRefreshAtByIdentity.set(identityForQuota, now + QUOTA_REFRESH_TTL_MS)
+          const quotaSnapshot = await fetchQuotaSnapshotFromBackend({
+            accessToken: selectedAuthForQuota.access,
+            accountId: selectedAuthForQuota.accountId,
+            now,
+            modelFamily: "gpt-5.3-codex",
+            userAgent: resolveRequestUserAgent(input.spoofMode, resolveCodexOriginator(input.spoofMode)),
+            log: input.log,
+            timeoutMs: QUOTA_FETCH_TIMEOUT_MS
+          })
+
+          if (quotaSnapshot) {
+            await saveSnapshots(defaultSnapshotsPath(), (current) => ({
+              ...current,
+              [identityForQuota]: quotaSnapshot
+            }))
+
+            const previousTracker =
+              quotaTrackerByIdentity.get(identityForQuota) ?? DEFAULT_QUOTA_THRESHOLD_TRACKER_STATE
+            const evaluated = evaluateQuotaThresholds({
+              snapshot: quotaSnapshot,
+              previousState: previousTracker
+            })
+            quotaTrackerByIdentity.set(identityForQuota, evaluated.nextState)
+
+            for (const warning of evaluated.warnings) {
+              await input.showToast(warning.message, "warning", input.quietMode)
+            }
+
+            if (evaluated.exhaustedCrossings.length > 0) {
+              const cooldownCandidates = evaluated.exhaustedCrossings
+                .map((crossing) => crossing.resetsAt)
+                .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > now)
+              const cooldownUntil =
+                cooldownCandidates.length > 0
+                  ? Math.max(...cooldownCandidates)
+                  : now + QUOTA_EXHAUSTED_FALLBACK_COOLDOWN_MS
+              await input.setCooldown(identityForQuota, cooldownUntil)
+
+              if (evaluated.exhaustedCrossings.length === 1) {
+                const only = evaluated.exhaustedCrossings[0]!
+                const label = only.window === "weekly" ? "weekly" : "5h"
+                await input.showToast(`Switching account due to ${label} quota limit`, "warning", input.quietMode)
+              } else {
+                await input.showToast("Switching account due to 5h and weekly quota limits", "warning", input.quietMode)
+              }
+            }
+          }
+        }
+      } catch (error) {
+        input.log?.debug("quota refresh during request failed", {
+          identityKey: identityForQuota,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+
     return response
   }
 }

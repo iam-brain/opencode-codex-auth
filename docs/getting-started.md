@@ -61,6 +61,8 @@ Account manager highlights:
 
 - Add multiple accounts in one run (`Add new account` returns to menu)
 - Check live quotas (`5h`, `Weekly`, `Credits`)
+- Receive quota warning toasts at low-remaining thresholds (`25%`, `20%`, `10%`, `5%`, `2.5%`, `0%`)
+- Auto-switch accounts when `5h` or `weekly` quota is exhausted
 - Enable/disable accounts
 - Refresh tokens
 - Scoped delete and delete-all actions

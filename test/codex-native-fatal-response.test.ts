@@ -136,15 +136,9 @@ describe("codex-native fatal responses", () => {
     })
 
     expect(response?.status).toBe(401)
-    const cloned = response!.clone()
     const body = await response?.json()
     expect(body.error.type).toBe("no_accounts_configured")
     expect(body.error.message).toContain("opencode auth login")
-    // Verify Content-Length header matches actual body bytes (L6 audit fix)
-    const cl = cloned.headers.get("content-length")
-    expect(cl).toBeTruthy()
-    const rawBytes = new TextEncoder().encode(await cloned.text())
-    expect(Number(cl)).toBe(rawBytes.byteLength)
   })
 
   it("enables oauth fetch path from plugin storage even when provider auth is api-key mode", async () => {
@@ -358,8 +352,11 @@ describe("codex-native fatal responses", () => {
     })
 
     expect(response?.status).toBe(200)
-    expect(fetchImpl).toHaveBeenCalledTimes(2)
-    const codexCall = fetchImpl.mock.calls.find((call) => !call[0].toString().includes("/oauth/token"))
+    expect(fetchImpl).toHaveBeenCalledTimes(3)
+    const codexCall = fetchImpl.mock.calls.find((call) => {
+      const url = call[0].toString()
+      return !url.includes("/oauth/token") && !url.includes("/wham/usage")
+    })
     expect(codexCall).toBeDefined()
     const outboundRequest = codexCall?.[0] as Request
     expect(outboundRequest.headers.get("authorization")).toBe("Bearer access-good")

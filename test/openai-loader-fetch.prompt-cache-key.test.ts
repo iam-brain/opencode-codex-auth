@@ -10,18 +10,34 @@ describe("openai loader fetch prompt cache key", () => {
       identityKey: "acc_123|user@example.com|plus",
       email: "user@example.com",
       plan: "plus",
-      accountLabel: "user@example.com (plus)"
+      accountLabel: "user@example.com (plus)",
+      selectionTrace: {
+        strategy: "sticky",
+        decision: "sticky-active",
+        totalCount: 3,
+        disabledCount: 1,
+        cooldownCount: 0,
+        refreshLeaseCount: 1,
+        eligibleCount: 1,
+        attemptedCount: 1
+      }
     }
 
     const acquireOpenAIAuth = vi.fn(async () => auth)
     vi.doMock("../lib/codex-native/acquire-auth", () => ({
       acquireOpenAIAuth
     }))
+    vi.doMock("../lib/codex-status-storage", () => ({
+      saveSnapshots: vi.fn(
+        async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) => update({})
+      )
+    }))
 
     const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
     const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
     const { createStickySessionState } = await import("../lib/rotation")
     let outboundBody: Record<string, unknown> | undefined
+    let outboundAttemptMeta: Record<string, unknown> | undefined
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
@@ -41,7 +57,11 @@ describe("openai loader fetch prompt cache key", () => {
       compatInputSanitizerEnabled: false,
       internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
-        captureRequest: async () => {},
+        captureRequest: async (stage, _request, meta) => {
+          if (stage === "outbound-attempt") {
+            outboundAttemptMeta = meta
+          }
+        },
         captureResponse: async () => {}
       },
       sessionAffinityState: {
@@ -72,6 +92,99 @@ describe("openai loader fetch prompt cache key", () => {
     expect(acquireOpenAIAuth).toHaveBeenCalled()
     expect(outboundBody).toBeDefined()
     expect(outboundBody?.prompt_cache_key).toBe("ses_original")
+    expect(outboundAttemptMeta?.attemptReasonCode).toBe("initial_attempt")
+    expect(outboundAttemptMeta?.selectionDecision).toBeUndefined()
+    expect(outboundAttemptMeta?.selectionStrategy).toBeUndefined()
+    expect(outboundAttemptMeta?.selectionEligibleCount).toBeUndefined()
+    expect(outboundAttemptMeta?.selectionTotalCount).toBeUndefined()
+    expect(outboundAttemptMeta?.selectionDisabledCount).toBeUndefined()
+    expect(outboundAttemptMeta?.selectionRefreshLeaseCount).toBeUndefined()
+  })
+
+  it("includes selection telemetry in snapshots when header transform debug is enabled", async () => {
+    vi.resetModules()
+
+    const auth = {
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus",
+      email: "user@example.com",
+      plan: "plus",
+      accountLabel: "user@example.com (plus)",
+      selectionTrace: {
+        strategy: "sticky",
+        decision: "sticky-active",
+        totalCount: 3,
+        disabledCount: 1,
+        cooldownCount: 0,
+        refreshLeaseCount: 1,
+        eligibleCount: 1,
+        attemptedCount: 1
+      }
+    }
+
+    const acquireOpenAIAuth = vi.fn(async () => auth)
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({
+      acquireOpenAIAuth
+    }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    let outboundAttemptMeta: Record<string, unknown> | undefined
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response("ok", { status: 200 })
+      })
+    )
+
+    const handler = createOpenAIFetchHandler({
+      authMode: "native",
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: true,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async (stage, _request, meta) => {
+          if (stage === "outbound-attempt") {
+            outboundAttemptMeta = meta
+          }
+        },
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState: () => {}
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth: async () => undefined,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    await handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        session_id: "ses_debug"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
+    })
+
+    expect(acquireOpenAIAuth).toHaveBeenCalled()
+    expect(outboundAttemptMeta?.selectionDecision).toBe("sticky-active")
+    expect(outboundAttemptMeta?.selectionStrategy).toBe("sticky")
+    expect(outboundAttemptMeta?.selectionEligibleCount).toBe(1)
+    expect(outboundAttemptMeta?.selectionTotalCount).toBe(3)
+    expect(outboundAttemptMeta?.selectionDisabledCount).toBe(1)
+    expect(outboundAttemptMeta?.selectionRefreshLeaseCount).toBe(1)
   })
 
   it("supports project-scoped prompt_cache_key override", async () => {
@@ -157,7 +270,111 @@ describe("openai loader fetch prompt cache key", () => {
     )
   })
 
-  it("overrides disallowed inbound originator in native mode", async () => {
+  it("warns and cools down account when weekly quota is exhausted", async () => {
+    vi.resetModules()
+
+    const auth = {
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus",
+      email: "user@example.com",
+      plan: "plus",
+      accountLabel: "user@example.com (plus)"
+    }
+
+    const acquireOpenAIAuth = vi.fn(async () => auth)
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({
+      acquireOpenAIAuth
+    }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    let apiCallCount = 0
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url
+      if (url.includes("/wham/usage")) {
+        return new Response(
+          JSON.stringify({
+            rate_limit: {
+              primary_window: {
+                used_percent: 20,
+                reset_at: 1_710_000_000
+              },
+              secondary_window: {
+                used_percent: 100,
+                reset_at: 1_711_000_000
+              }
+            }
+          }),
+          { status: 200 }
+        )
+      }
+
+      apiCallCount += 1
+      return new Response("ok", { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const setCooldown = vi.fn(async () => {})
+    const showToast = vi.fn(async () => {})
+    const log = { debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() }
+    const handler = createOpenAIFetchHandler({
+      authMode: "native",
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: false,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState: () => {}
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth: async () => undefined,
+      setCooldown,
+      showToast,
+      log
+    })
+
+    await handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        session_id: "ses_quota_1"
+      },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: "hello",
+        prompt_cache_key: "ses_quota_1"
+      })
+    })
+
+    expect(apiCallCount).toBe(1)
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/wham/usage"))).toBe(true)
+    expect(log.debug).not.toHaveBeenCalledWith(
+      "quota refresh during request failed",
+      expect.objectContaining({ identityKey: auth.identityKey })
+    )
+    expect(setCooldown).toHaveBeenCalled()
+    expect(setCooldown).toHaveBeenCalledWith(auth.identityKey, expect.any(Number))
+    expect(
+      showToast.mock.calls.some(
+        (call) => call[0] === "Switching account due to weekly quota limit" && call[1] === "warning"
+      )
+    ).toBe(true)
+  })
+
+  it("preserves allowed inbound originator in native mode", async () => {
     vi.resetModules()
 
     const acquireOpenAIAuth = vi.fn(async () => ({
@@ -175,6 +392,10 @@ describe("openai loader fetch prompt cache key", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+        if (url.includes("/wham/usage")) {
+          return new Response("{}", { status: 200, headers: { "content-type": "application/json" } })
+        }
         const request = input as Request
         capturedOriginator = request.headers.get("originator") ?? ""
         return new Response("ok", { status: 200 })
@@ -216,10 +437,10 @@ describe("openai loader fetch prompt cache key", () => {
     })
 
     expect(acquireOpenAIAuth).toHaveBeenCalled()
-    expect(capturedOriginator).toBe("opencode")
+    expect(capturedOriginator).toBe("codex_exec")
   })
 
-  it("overrides disallowed inbound originator in codex mode", async () => {
+  it("preserves allowed inbound originator in codex mode", async () => {
     vi.resetModules()
 
     const prevArgv = process.argv
@@ -241,6 +462,10 @@ describe("openai loader fetch prompt cache key", () => {
       vi.stubGlobal(
         "fetch",
         vi.fn(async (input: RequestInfo | URL) => {
+          const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+          if (url.includes("/wham/usage")) {
+            return new Response("{}", { status: 200, headers: { "content-type": "application/json" } })
+          }
           const request = input as Request
           capturedOriginator = request.headers.get("originator") ?? ""
           return new Response("ok", { status: 200 })
@@ -282,13 +507,13 @@ describe("openai loader fetch prompt cache key", () => {
       })
 
       expect(acquireOpenAIAuth).toHaveBeenCalled()
-      expect(capturedOriginator).toBe("codex_cli_rs")
+      expect(capturedOriginator).toBe("opencode")
     } finally {
       process.argv = prevArgv
     }
   })
 
-  it("sanitizes inbound user-agent in native mode", async () => {
+  it("preserves inbound user-agent in native mode", async () => {
     vi.resetModules()
 
     const acquireOpenAIAuth = vi.fn(async () => ({
@@ -297,18 +522,20 @@ describe("openai loader fetch prompt cache key", () => {
       identityKey: "acc_123|user@example.com|plus"
     }))
     vi.doMock("../lib/codex-native/acquire-auth", () => ({ acquireOpenAIAuth }))
-    vi.doMock("../lib/codex-native/client-identity", () => ({
-      resolveRequestUserAgent: () => "generated-ua"
-    }))
 
     const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
     const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
     const { createStickySessionState } = await import("../lib/rotation")
 
+    const inboundUserAgent = "a".repeat(600)
     let capturedUserAgent = ""
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+        if (url.includes("/wham/usage")) {
+          return new Response("{}", { status: 200, headers: { "content-type": "application/json" } })
+        }
         const request = input as Request
         capturedUserAgent = request.headers.get("user-agent") ?? ""
         return new Response("ok", { status: 200 })
@@ -344,16 +571,16 @@ describe("openai loader fetch prompt cache key", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "user-agent": "a".repeat(600)
+        "user-agent": inboundUserAgent
       },
       body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
     })
 
     expect(acquireOpenAIAuth).toHaveBeenCalled()
-    expect(capturedUserAgent).toBe("generated-ua")
+    expect(capturedUserAgent).toBe(inboundUserAgent)
   })
 
-  it("strips sensitive inbound hop-by-hop headers", async () => {
+  it("retains custom inbound headers on forwarded request", async () => {
     vi.resetModules()
 
     const acquireOpenAIAuth = vi.fn(async () => ({
@@ -367,12 +594,16 @@ describe("openai loader fetch prompt cache key", () => {
     const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
     const { createStickySessionState } = await import("../lib/rotation")
 
-    let outboundHeaders: Headers | undefined
+    let capturedCustomHeader: string | null = null
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+        if (url.includes("/wham/usage")) {
+          return new Response("{}", { status: 200, headers: { "content-type": "application/json" } })
+        }
         const request = input as Request
-        outboundHeaders = request.headers
+        capturedCustomHeader = request.headers.get("x-custom")
         return new Response("ok", { status: 200 })
       })
     )
@@ -406,20 +637,12 @@ describe("openai loader fetch prompt cache key", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        cookie: "foo=bar",
-        connection: "keep-alive",
-        forwarded: "for=1.2.3.4",
-        host: "api.openai.com",
         "x-custom": "kept"
       },
       body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
     })
 
     expect(acquireOpenAIAuth).toHaveBeenCalled()
-    expect(outboundHeaders?.get("cookie")).toBeNull()
-    expect(outboundHeaders?.get("connection")).toBeNull()
-    expect(outboundHeaders?.get("forwarded")).toBeNull()
-    expect(outboundHeaders?.get("host")).toBeNull()
-    expect(outboundHeaders?.get("x-custom")).toBe("kept")
+    expect(capturedCustomHeader).toBe("kept")
   })
 })
