@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 import { defaultConfigRoot, normalizePersonalityKey } from "./personalities"
+import { isFsErrorCode } from "./cache-io"
 
 export type PersonalityScope = "global" | "project"
 
@@ -28,10 +29,6 @@ export type CreatePersonalityResult = {
 }
 
 const PERSONALITIES_DIR = "personalities"
-
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
 
 const CORE_POLICY_LINES = [
   "You are Codex, a coding agent in a terminal-first workflow.",

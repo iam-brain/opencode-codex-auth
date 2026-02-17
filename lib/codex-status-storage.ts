@@ -1,51 +1,19 @@
-import lockfile from "proper-lockfile"
-
 import fs from "node:fs/promises"
-import path from "node:path"
 
 import type { CodexRateLimitSnapshot } from "./types"
+import { withLockedFile } from "./cache-lock"
+import { readJsonFileBestEffort, writeJsonFileAtomicBestEffort } from "./cache-io"
 
 export type SnapshotMap = Record<string, CodexRateLimitSnapshot>
 
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
-
 async function readJson(filePath: string): Promise<SnapshotMap> {
-  let raw: string
-  try {
-    raw = await fs.readFile(filePath, "utf8")
-  } catch (error: unknown) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      return {}
-    }
-    throw error
-  }
-
-  try {
-    return JSON.parse(raw) as SnapshotMap
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) {
-      // treat malformed snapshot content as empty
-    }
-    return {}
-  }
+  const parsed = await readJsonFileBestEffort(filePath)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {}
+  return parsed as SnapshotMap
 }
 
 async function writeAtomic(filePath: string, data: SnapshotMap) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const tmpPath = `${filePath}.tmp`
-  const serialized = `${JSON.stringify(data, null, 2)}\n`
-  await fs.writeFile(tmpPath, serialized, { mode: 0o600 })
-  await fs.rename(tmpPath, filePath)
-  try {
-    await fs.chmod(filePath, 0o600)
-  } catch (error) {
-    if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
-      // best-effort permissions
-    }
-    // best-effort permissions
-  }
+  await writeJsonFileAtomicBestEffort(filePath, data)
 }
 
 export async function loadSnapshots(filePath: string): Promise<SnapshotMap> {
@@ -56,23 +24,10 @@ export async function saveSnapshots(
   filePath: string,
   update: (current: SnapshotMap) => SnapshotMap | Promise<SnapshotMap>
 ): Promise<SnapshotMap> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-
-  const release = await lockfile.lock(filePath, {
-    realpath: false,
-    retries: {
-      retries: 20,
-      minTimeout: 10,
-      maxTimeout: 100
-    }
-  })
-
-  try {
+  return withLockedFile(filePath, async () => {
     const cur = await loadSnapshots(filePath)
     const next = await update(cur)
     await writeAtomic(filePath, next)
     return next
-  } finally {
-    await release()
-  }
+  })
 }

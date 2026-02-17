@@ -1,9 +1,19 @@
-import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import lockfile from "proper-lockfile"
 import { resolveCustomPersonalityDescription } from "./personalities"
+import { fetchRemoteText } from "./remote-cache-fetch"
+import { isFsErrorCode, readJsonFileBestEffort, writeJsonFileBestEffort } from "./cache-io"
+import { withLockedDirectory } from "./cache-lock"
+import {
+  buildCodexModelsMemoryCacheKey,
+  codexAuthModelsCachePath,
+  codexModelsCompatShardPath,
+  codexModelsMetaPath,
+  codexModelsSharedCachePath,
+  isCodexModelsCacheFileName,
+  resolveCodexCacheDir
+} from "./codex-cache-layout"
 
 export type PersonalityOption = string
 
@@ -93,10 +103,6 @@ export type ApplyCodexCatalogInput = {
 
 const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
 const CODEX_GITHUB_MODELS_URL_PREFIX = "https://raw.githubusercontent.com/openai/codex"
-const DEFAULT_CACHE_DIR = path.join(os.homedir(), ".config", "opencode", "cache")
-const OPENCODE_MODELS_CACHE_PREFIX = "codex-models-cache"
-const CODEX_AUTH_MODELS_CACHE_PREFIX = "codex-auth-models-"
-const OPENCODE_MODELS_META_FILE = "codex-models-cache-meta.json"
 const DEFAULT_CLIENT_VERSION = "0.97.0"
 const CACHE_TTL_MS = 15 * 60 * 1000
 const FETCH_TIMEOUT_MS = 5000
@@ -109,59 +115,26 @@ const STALE_BRIDGE_MARKERS = [
   /recipient_name\s*[:=]/i
 ]
 
-const LOCK_OPTIONS = {
-  stale: 10_000,
-  retries: {
-    retries: 20,
-    minTimeout: 10,
-    maxTimeout: 100
-  },
-  realpath: false
-}
-
 const REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"])
 const TEXT_VERBOSITY = new Set(["low", "medium", "high"])
 
 const inMemoryCatalog = new Map<string, CodexModelsCache>()
 const inFlightCatalogFetches = new Map<string, Promise<CodexModelInfo[] | undefined>>()
 
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError"
-}
-
-function normalizeAccountId(accountId?: string): string | undefined {
-  const next = accountId?.trim()
-  return next ? next : undefined
-}
-
-function hashAccountId(accountId: string): string {
-  return createHash("sha256").update(accountId).digest("hex").slice(0, 16)
-}
-
 function cacheKey(cacheDir: string, accountId?: string): string {
-  return `${cacheDir}::${normalizeAccountId(accountId) ?? "shared"}`
+  return buildCodexModelsMemoryCacheKey(cacheDir, accountId)
 }
 
 function cachePath(cacheDir: string, accountId?: string): string {
-  const normalized = normalizeAccountId(accountId)
-  if (!normalized) {
-    return path.join(cacheDir, "codex-auth-models-shared.json")
-  }
-  return path.join(cacheDir, `codex-auth-models-${hashAccountId(normalized)}.json`)
+  return codexAuthModelsCachePath(cacheDir, accountId)
 }
 
 function opencodeShardCachePath(cacheDir: string, accountId?: string): string | undefined {
-  const normalized = normalizeAccountId(accountId)
-  if (!normalized) return undefined
-  return path.join(cacheDir, `codex-models-cache-${hashAccountId(normalized)}.json`)
+  return codexModelsCompatShardPath(cacheDir, accountId)
 }
 
 function opencodeSharedCachePath(cacheDir: string): string {
-  return path.join(cacheDir, "codex-models-cache.json")
+  return codexModelsSharedCachePath(cacheDir)
 }
 
 type GitHubModelsCacheMeta = {
@@ -207,46 +180,23 @@ function semverFromTag(tag: string | undefined): string | undefined {
 }
 
 async function readGitHubModelsCacheMeta(cacheDir: string): Promise<GitHubModelsCacheMeta | undefined> {
-  try {
-    const file = path.join(cacheDir, OPENCODE_MODELS_META_FILE)
-    const raw = await fs.readFile(file, "utf8")
-    const parsed = JSON.parse(raw) as unknown
-    if (!isRecord(parsed)) return undefined
-    const parsedVersion = normalizeSemver(typeof parsed.version === "string" ? parsed.version : undefined)
-    const parsedTag = typeof parsed.tag === "string" ? parsed.tag.trim() : ""
-    const tag = parsedTag || (parsedVersion ? githubModelsTag(parsedVersion) : "")
-    const url = typeof parsed.url === "string" ? parsed.url.trim() : ""
-    const lastChecked =
-      typeof parsed.lastChecked === "number" && Number.isFinite(parsed.lastChecked) ? parsed.lastChecked : 0
-    const etag = typeof parsed.etag === "string" ? parsed.etag.trim() : undefined
-    if (!tag || !url) return undefined
-    return { etag, tag, url, lastChecked }
-  } catch (error) {
-    if (!isFsErrorCode(error, "ENOENT")) {
-      // Ignore malformed/unreadable metadata and continue with defaults.
-    }
-    return undefined
-  }
+  const file = codexModelsMetaPath(cacheDir)
+  const parsed = await readJsonFileBestEffort(file)
+  if (!isRecord(parsed)) return undefined
+  const parsedVersion = normalizeSemver(typeof parsed.version === "string" ? parsed.version : undefined)
+  const parsedTag = typeof parsed.tag === "string" ? parsed.tag.trim() : ""
+  const tag = parsedTag || (parsedVersion ? githubModelsTag(parsedVersion) : "")
+  const url = typeof parsed.url === "string" ? parsed.url.trim() : ""
+  const lastChecked =
+    typeof parsed.lastChecked === "number" && Number.isFinite(parsed.lastChecked) ? parsed.lastChecked : 0
+  const etag = typeof parsed.etag === "string" ? parsed.etag.trim() : undefined
+  if (!tag || !url) return undefined
+  return { etag, tag, url, lastChecked }
 }
 
 async function writeGitHubModelsCacheMeta(cacheDir: string, meta: GitHubModelsCacheMeta): Promise<void> {
-  try {
-    const file = path.join(cacheDir, OPENCODE_MODELS_META_FILE)
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    await fs.writeFile(file, `${JSON.stringify(meta, null, 2)}\n`, { mode: 0o600 })
-    try {
-      await fs.chmod(file, 0o600)
-    } catch (error) {
-      if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
-        // Best effort metadata persistence.
-      }
-    }
-  } catch (error) {
-    if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
-      // Best effort metadata persistence.
-    }
-    // Best effort metadata persistence.
-  }
+  const file = codexModelsMetaPath(cacheDir)
+  await writeJsonFileBestEffort(file, meta)
 }
 
 async function refreshSharedGitHubModelsCache(input: {
@@ -266,51 +216,40 @@ async function refreshSharedGitHubModelsCache(input: {
 
   const tag = githubModelsTag(targetVersion)
   const url = githubModelsUrl(targetVersion)
-  const requestHeaders: Record<string, string> = {}
-  if (existingMeta?.url === url && existingMeta.etag) {
-    requestHeaders["if-none-match"] = existingMeta.etag
-  }
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-    let response: Response
-    try {
-      response = await input.fetchImpl(url, {
-        method: "GET",
-        ...(Object.keys(requestHeaders).length > 0 ? { headers: requestHeaders } : {}),
-        signal: controller.signal
-      })
-    } finally {
-      clearTimeout(timeout)
+  const result = await fetchRemoteText(
+    {
+      key: "models",
+      url,
+      etag: existingMeta?.url === url ? existingMeta.etag : undefined
+    },
+    {
+      fetchImpl: input.fetchImpl,
+      timeoutMs: FETCH_TIMEOUT_MS
     }
-    if (response.status === 304 && existingMeta) {
-      await writeGitHubModelsCacheMeta(input.cacheDir, {
-        etag: existingMeta.etag,
-        tag,
-        lastChecked: input.now,
-        url
-      })
-      return
-    }
-    if (!response.ok) return
+  )
 
-    const payload = (await response.json()) as unknown
+  if (result.status === "not_modified" && existingMeta) {
+    await writeGitHubModelsCacheMeta(input.cacheDir, {
+      etag: existingMeta.etag,
+      tag,
+      lastChecked: input.now,
+      url
+    })
+    return
+  }
+
+  if (result.status !== "ok") {
+    return
+  }
+
+  try {
+    const payload = JSON.parse(result.text) as unknown
     const models = parseCatalogResponse(payload)
     if (models.length === 0) return
-    const etag = response.headers.get("etag")?.trim() || (existingMeta?.url === url ? existingMeta.etag : undefined)
+    const etag = result.etag || (existingMeta?.url === url ? existingMeta.etag : undefined)
 
     const file = opencodeSharedCachePath(input.cacheDir)
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    await fs.writeFile(file, `${JSON.stringify({ fetchedAt: input.now, source: "github", models }, null, 2)}\n`, {
-      mode: 0o600
-    })
-    try {
-      await fs.chmod(file, 0o600)
-    } catch (error) {
-      if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
-        // Best effort cache file permissions.
-      }
-    }
+    await writeJsonFileBestEffort(file, { fetchedAt: input.now, source: "github", models })
 
     await writeGitHubModelsCacheMeta(input.cacheDir, {
       etag,
@@ -319,9 +258,6 @@ async function refreshSharedGitHubModelsCache(input: {
       url
     })
   } catch (error) {
-    if (isAbortError(error)) {
-      return
-    }
     // Best effort refresh; continue without blocking catalog load.
   }
 }
@@ -434,33 +370,19 @@ function isFresh(cache: CodexModelsCache, now: number): boolean {
 }
 
 async function withCacheLock<T>(cacheDir: string, fn: () => Promise<T>): Promise<T> {
-  await fs.mkdir(cacheDir, { recursive: true })
-  const release = await lockfile.lock(cacheDir, LOCK_OPTIONS)
-  try {
-    return await fn()
-  } finally {
-    await release()
-  }
+  return withLockedDirectory(cacheDir, fn, { staleMs: 10_000 })
 }
 
 async function readCatalogFromDisk(cacheDir: string, accountId?: string): Promise<CodexModelsCache | undefined> {
   return withCacheLock(cacheDir, async () => {
-    try {
-      const file = cachePath(cacheDir, accountId)
-      const raw = await fs.readFile(file, "utf8")
-      const parsed = JSON.parse(raw) as unknown
-      if (!isRecord(parsed)) return undefined
-      if (typeof parsed.fetchedAt !== "number") return undefined
-      const models = parseCatalogResponse({ models: parsed.models })
-      return {
-        fetchedAt: parsed.fetchedAt,
-        models
-      }
-    } catch (error) {
-      if (!isFsErrorCode(error, "ENOENT")) {
-        // Ignore malformed/unreadable cache and continue with fallback paths.
-      }
-      return undefined
+    const file = cachePath(cacheDir, accountId)
+    const parsed = await readJsonFileBestEffort(file)
+    if (!isRecord(parsed)) return undefined
+    if (typeof parsed.fetchedAt !== "number") return undefined
+    const models = parseCatalogResponse({ models: parsed.models })
+    return {
+      fetchedAt: parsed.fetchedAt,
+      models
     }
   })
 }
@@ -469,31 +391,22 @@ async function readCatalogFromOpencodeCache(cacheDir: string): Promise<CodexMode
   try {
     const entries = await fs.readdir(cacheDir)
     const candidates = entries.filter((name) => {
-      if (!name.endsWith(".json")) return false
-      return name.startsWith(OPENCODE_MODELS_CACHE_PREFIX) || name.startsWith(CODEX_AUTH_MODELS_CACHE_PREFIX)
+      return isCodexModelsCacheFileName(name)
     })
     if (candidates.length === 0) return undefined
 
     let best: CodexModelsCache | undefined
     for (const fileName of candidates) {
-      try {
-        const raw = await fs.readFile(path.join(cacheDir, fileName), "utf8")
-        const parsed = JSON.parse(raw) as unknown
-        if (!isRecord(parsed)) continue
-        const models = parseCatalogResponse({ models: parsed.models })
-        if (models.length === 0) continue
-        const fetchedAt = typeof parsed.fetchedAt === "number" ? parsed.fetchedAt : 0
-        if (!best || fetchedAt > best.fetchedAt) {
-          best = {
-            fetchedAt,
-            models
-          }
+      const parsed = await readJsonFileBestEffort(path.join(cacheDir, fileName))
+      if (!isRecord(parsed)) continue
+      const models = parseCatalogResponse({ models: parsed.models })
+      if (models.length === 0) continue
+      const fetchedAt = typeof parsed.fetchedAt === "number" ? parsed.fetchedAt : 0
+      if (!best || fetchedAt > best.fetchedAt) {
+        best = {
+          fetchedAt,
+          models
         }
-      } catch (error) {
-        if (!isFsErrorCode(error, "ENOENT")) {
-          // Best effort parse; skip malformed cache files.
-        }
-        // Best effort parse; skip malformed cache files.
       }
     }
 
@@ -520,22 +433,14 @@ function parseFetchedAtFromUnknown(value: unknown): number {
 }
 
 async function readCatalogFromCodexCliCache(): Promise<CodexModelsCache | undefined> {
-  try {
-    const file = path.join(os.homedir(), ".codex", "models_cache.json")
-    const raw = await fs.readFile(file, "utf8")
-    const parsed = JSON.parse(raw) as unknown
-    if (!isRecord(parsed)) return undefined
-    const models = parseCatalogResponse({ models: parsed.models })
-    if (models.length === 0) return undefined
-    return {
-      fetchedAt: parseFetchedAtFromUnknown(parsed.fetched_at ?? parsed.fetchedAt),
-      models
-    }
-  } catch (error) {
-    if (!isFsErrorCode(error, "ENOENT")) {
-      // Ignore malformed/unreadable codex-cli cache.
-    }
-    return undefined
+  const file = path.join(os.homedir(), ".codex", "models_cache.json")
+  const parsed = await readJsonFileBestEffort(file)
+  if (!isRecord(parsed)) return undefined
+  const models = parseCatalogResponse({ models: parsed.models })
+  if (models.length === 0) return undefined
+  return {
+    fetchedAt: parseFetchedAtFromUnknown(parsed.fetched_at ?? parsed.fetchedAt),
+    models
   }
 }
 
@@ -547,18 +452,9 @@ async function writeCatalogToDisk(
   await withCacheLock(cacheDir, async () => {
     const primaryFile = cachePath(cacheDir, accountId)
     const compatFile = opencodeShardCachePath(cacheDir, accountId)
-    const content = `${JSON.stringify(cache, null, 2)}\n`
     const files = compatFile ? [primaryFile, compatFile] : [primaryFile]
     for (const file of files) {
-      await fs.mkdir(path.dirname(file), { recursive: true })
-      await fs.writeFile(file, content, { mode: 0o600 })
-      try {
-        await fs.chmod(file, 0o600)
-      } catch (error) {
-        if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
-          // Best effort cache file permissions.
-        }
-      }
+      await writeJsonFileBestEffort(file, cache)
     }
   }).catch((error) => {
     if (error instanceof Error) {
@@ -572,7 +468,7 @@ function emitEvent(input: GetCodexModelCatalogInput, event: Omit<CodexModelCatal
   try {
     input.onEvent?.({
       ...event,
-      scope: normalizeAccountId(input.accountId) ? "account" : "shared"
+      scope: input.accountId?.trim() ? "account" : "shared"
     })
   } catch (error) {
     if (error instanceof Error) {
@@ -603,7 +499,7 @@ function buildModelsEndpoint(clientVersion: string): string {
 
 export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Promise<CodexModelInfo[] | undefined> {
   const now = (input.now ?? Date.now)()
-  const cacheDir = input.cacheDir ?? DEFAULT_CACHE_DIR
+  const cacheDir = resolveCodexCacheDir(input.cacheDir)
   const key = cacheKey(cacheDir, input.accountId)
   const fetchImpl = input.fetchImpl ?? fetch
   const targetClientVersion = normalizeSemver(input.clientVersion) ?? normalizeSemver(input.versionHeader)
@@ -675,7 +571,7 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   if (userAgent) headers["user-agent"] = userAgent
   const betaValue = input.openaiBeta?.trim()
   if (betaValue) headers["openai-beta"] = betaValue
-  const accountId = normalizeAccountId(input.accountId)
+  const accountId = input.accountId?.trim() || undefined
   if (accountId) {
     headers["chatgpt-account-id"] = accountId
   }

@@ -4,6 +4,7 @@ import path from "node:path"
 import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs"
 
 import type { OpenAIAuthMode } from "../types"
+import { isFsErrorCode } from "../cache-io"
 
 type OAuthServerStopReason = "success" | "error" | "other"
 
@@ -31,10 +32,6 @@ type PendingOAuth<TPkce, TTokens> = {
 }
 
 const DEFAULT_DEBUG_LOG_MAX_BYTES = 1_000_000
-
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
 
 function resolveDebugLogMaxBytes(): number {
   const raw = process.env.CODEX_AUTH_DEBUG_MAX_BYTES

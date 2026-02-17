@@ -1,9 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
+import { enforceOwnerOnlyPermissions, isFsErrorCode } from "./cache-io"
 
 export async function quarantineFile(input: {
   sourcePath: string
@@ -30,7 +27,7 @@ export async function quarantineFile(input: {
 
   // best-effort permissions
   try {
-    await fs.chmod(dest, 0o600)
+    await enforceOwnerOnlyPermissions(dest)
   } catch (error) {
     if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
       // ignore

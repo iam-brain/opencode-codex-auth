@@ -2,11 +2,9 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-const PERSONALITY_DIRS = ["personalities", "Personalities"] as const
+import { isFsErrorCode } from "./cache-io"
 
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
+const PERSONALITY_DIRS = ["personalities", "Personalities"] as const
 
 export function isSafePersonalityKey(value: string): boolean {
   return !value.includes("/") && !value.includes("\\") && !value.includes("..")

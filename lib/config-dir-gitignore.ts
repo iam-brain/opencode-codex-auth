@@ -1,9 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
+import { isFsErrorCode } from "./cache-io"
 
 export const CONFIG_DIR_GITIGNORE_ENTRIES = [
   ".gitignore",

@@ -6,13 +6,14 @@ import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "n
 import type { CodexSpoofMode } from "../config"
 import type { Logger } from "../logger"
 import { defaultOpencodeCachePath } from "../paths"
+import { fetchRemoteText } from "../remote-cache-fetch"
+import { isFsErrorCode } from "../cache-io"
 import type { CodexOriginator } from "./originator"
 
 const DEFAULT_PLUGIN_VERSION = "0.1.0"
 const DEFAULT_CODEX_CLIENT_VERSION = "0.97.0"
 const CODEX_CLIENT_VERSION_CACHE_FILE = path.join(defaultOpencodeCachePath(), "codex-client-version.json")
 const CODEX_CLIENT_VERSION_TTL_MS = 60 * 60 * 1000
-const CODEX_CLIENT_VERSION_FETCH_TIMEOUT_MS = 5000
 const CODEX_GITHUB_RELEASES_API = "https://api.github.com/repos/openai/codex/releases/latest"
 const CODEX_GITHUB_RELEASES_HTML = "https://github.com/openai/codex/releases/latest"
 
@@ -21,10 +22,6 @@ let cachedMacProductVersion: string | undefined
 let cachedTerminalUserAgentToken: string | undefined
 let cachedCodexClientVersion: string | undefined
 let codexClientVersionRefreshPromise: Promise<string> | undefined
-
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
 
 function opencodeUserAgent(): string {
   const version = resolvePluginVersion()
@@ -252,32 +249,44 @@ function extractSemverFromTag(tag: string): string | undefined {
 }
 
 async function fetchLatestCodexReleaseTag(fetchImpl: typeof fetch = fetch): Promise<string> {
-  try {
-    const apiResponse = await fetchImpl(CODEX_GITHUB_RELEASES_API)
-    if (apiResponse.ok) {
-      const payload = (await apiResponse.json()) as { tag_name?: unknown }
-      const tagName = normalizeCodexClientVersion(payload.tag_name)
-      if (tagName) return tagName
+  const apiResult = await fetchRemoteText(
+    {
+      key: "codex-release-api",
+      url: CODEX_GITHUB_RELEASES_API
+    },
+    {
+      fetchImpl,
+      timeoutMs: 5000
     }
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      // fallback to HTML release page
-    }
-    // fallback to HTML release page
+  )
+  if (apiResult.status === "ok") {
+    const payload = JSON.parse(apiResult.text) as { tag_name?: unknown }
+    const tagName = normalizeCodexClientVersion(payload.tag_name)
+    if (tagName) return tagName
   }
 
-  const htmlResponse = await fetchImpl(CODEX_GITHUB_RELEASES_HTML, { redirect: "follow" })
-  if (!htmlResponse.ok) {
-    throw new Error(`failed to fetch codex release tag: ${htmlResponse.status}`)
+  const htmlResult = await fetchRemoteText(
+    {
+      key: "codex-release-html",
+      url: CODEX_GITHUB_RELEASES_HTML
+    },
+    {
+      fetchImpl,
+      timeoutMs: 5000
+    }
+  )
+
+  if (htmlResult.status !== "ok") {
+    throw new Error("failed to fetch codex release tag")
   }
 
-  const finalUrl = htmlResponse.url
+  const finalUrl = htmlResult.finalUrl ?? CODEX_GITHUB_RELEASES_HTML
   if (finalUrl.includes("/tag/")) {
     const tag = finalUrl.split("/tag/").pop()
     if (tag && !tag.includes("/")) return tag
   }
 
-  const html = await htmlResponse.text()
+  const html = htmlResult.text
   const match = html.match(/\/openai\/codex\/releases\/tag\/([^"'/]+)/)
   if (match?.[1]) return match[1]
   throw new Error("failed to parse codex release tag")
@@ -308,23 +317,15 @@ export async function refreshCodexClientVersionFromGitHub(
 
   const run = async (): Promise<string> => {
     try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), CODEX_CLIENT_VERSION_FETCH_TIMEOUT_MS)
-      try {
-        const fetchWithTimeout: typeof fetch = (input, init) =>
-          (options.fetchImpl ?? fetch)(input, { ...(init ?? {}), signal: controller.signal })
-        const releaseTag = await fetchLatestCodexReleaseTag(fetchWithTimeout)
-        const semver = extractSemverFromTag(releaseTag)
-        if (!semver) throw new Error(`invalid_codex_release_tag:${releaseTag}`)
-        const nextEntry: CodexClientVersionCacheEntry = { version: semver, fetchedAt: now() }
-        writeCodexClientVersionCache(nextEntry, cacheFilePath)
-        if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE) {
-          cachedCodexClientVersion = semver
-        }
-        return semver
-      } finally {
-        clearTimeout(timeout)
+      const releaseTag = await fetchLatestCodexReleaseTag(options.fetchImpl ?? fetch)
+      const semver = extractSemverFromTag(releaseTag)
+      if (!semver) throw new Error(`invalid_codex_release_tag:${releaseTag}`)
+      const nextEntry: CodexClientVersionCacheEntry = { version: semver, fetchedAt: now() }
+      writeCodexClientVersionCache(nextEntry, cacheFilePath)
+      if (cacheFilePath === CODEX_CLIENT_VERSION_CACHE_FILE) {
+        cachedCodexClientVersion = semver
       }
+      return semver
     } catch (error) {
       log?.debug("codex client version refresh failed", {
         error: error instanceof Error ? error.message : String(error)

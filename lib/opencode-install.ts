@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 
 import { quarantineFile } from "./quarantine"
+import { isFsErrorCode, writeJsonFile } from "./cache-io"
 
 export const DEFAULT_PLUGIN_SPECIFIER = "@iam-brain/opencode-codex-auth@latest"
 
@@ -40,10 +41,6 @@ function normalizePluginList(raw: unknown): string[] {
     return [raw]
   }
   return []
-}
-
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
 }
 
 async function quarantineMalformedConfig(configPath: string): Promise<void> {
@@ -93,8 +90,7 @@ export async function ensurePluginInstalled(
 
   if (created || changed || !Array.isArray(current.plugin)) {
     const next: OpencodeConfigShape = { ...current, plugin: plugins }
-    await fs.mkdir(path.dirname(configPath), { recursive: true })
-    await fs.writeFile(configPath, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 })
+    await writeJsonFile(configPath, next)
   }
 
   return {

@@ -1,5 +1,3 @@
-import lockfile from "proper-lockfile"
-
 import fs from "node:fs/promises"
 import path from "node:path"
 
@@ -13,6 +11,8 @@ import {
   legacyOpenAICodexAccountsPathFor
 } from "./paths"
 import { ensureConfigDirGitignore } from "./config-dir-gitignore"
+import { withLockedFile } from "./cache-lock"
+import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io"
 import type {
   AccountAuthType,
   AccountRecord,
@@ -56,10 +56,6 @@ type AuthLoadOptions = { quarantineDir?: string; now?: () => number; keep?: numb
 
 const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
 const OPENAI_AUTH_MODES: OpenAIAuthMode[] = ["native", "codex"]
-
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
 
 function normalizeAccountAuthTypes(input: unknown): AccountAuthType[] {
   const source = Array.isArray(input) ? input : ["native"]
@@ -613,18 +609,7 @@ export function listOpenAIOAuthDomains(auth: AuthFile): Array<{ mode: OpenAIAuth
 }
 
 async function writeAuthUnlocked(filePath: string, auth: AuthFile): Promise<void> {
-  const tmpPath = `${filePath}.tmp`
-  const serialized = `${JSON.stringify(auth, null, 2)}\n`
-  await fs.writeFile(tmpPath, serialized, { mode: 0o600 })
-  await fs.rename(tmpPath, filePath)
-  try {
-    await fs.chmod(filePath, 0o600)
-  } catch (error) {
-    if (!isFsErrorCode(error, "EPERM") && !isFsErrorCode(error, "EACCES")) {
-      // best-effort permissions
-    }
-    // best-effort permissions
-  }
+  await writeJsonFileAtomic(filePath, auth)
 }
 
 async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
@@ -633,20 +618,7 @@ async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<
   if (path.basename(filePath) === CODEX_ACCOUNTS_FILE) {
     await ensureConfigDirGitignore(dirPath)
   }
-  const release = await lockfile.lock(filePath, {
-    realpath: false,
-    retries: {
-      retries: 20,
-      minTimeout: 10,
-      maxTimeout: 100
-    }
-  })
-
-  try {
-    return await fn()
-  } finally {
-    await release()
-  }
+  return withLockedFile(filePath, fn)
 }
 
 export async function loadAuthStorage(filePath: string = defaultAuthPath(), opts?: AuthLoadOptions): Promise<AuthFile> {

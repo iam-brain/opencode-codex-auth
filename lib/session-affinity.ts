@@ -1,10 +1,10 @@
-import lockfile from "proper-lockfile"
-
 import fs from "node:fs/promises"
 import path from "node:path"
 
 import { defaultSessionAffinityPath, opencodeSessionFilePath } from "./paths"
 import type { OpenAIAuthMode } from "./types"
+import { withLockedFile } from "./cache-lock"
+import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io"
 
 export const MAX_SESSION_AFFINITY_ENTRIES = 200
 
@@ -33,10 +33,6 @@ export type PruneSessionAffinityOptions = {
 }
 
 const DEFAULT_FILE: SessionAffinityFile = { version: 1 }
-
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -213,21 +209,7 @@ async function readUnlocked(filePath: string): Promise<SessionAffinityFile> {
 }
 
 async function writeUnlocked(filePath: string, file: SessionAffinityFile): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const tmpPath = `${filePath}.tmp`
-  await fs.writeFile(tmpPath, `${JSON.stringify(file, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600
-  })
-  await fs.rename(tmpPath, filePath)
-  try {
-    await fs.chmod(filePath, 0o600)
-  } catch (error) {
-    if (!isFsErrorCode(error, "EPERM") && !isFsErrorCode(error, "EACCES")) {
-      // best-effort permissions
-    }
-    // best-effort permissions
-  }
+  await writeJsonFileAtomic(filePath, file)
 }
 
 export async function loadSessionAffinity(
@@ -240,22 +222,10 @@ export async function saveSessionAffinity(
   update: (current: SessionAffinityFile) => SessionAffinityFile | Promise<SessionAffinityFile>,
   filePath: string = defaultSessionAffinityPath()
 ): Promise<SessionAffinityFile> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const release = await lockfile.lock(filePath, {
-    realpath: false,
-    retries: {
-      retries: 20,
-      minTimeout: 10,
-      maxTimeout: 100
-    }
-  })
-
-  try {
+  return withLockedFile(filePath, async () => {
     const current = await readUnlocked(filePath)
     const next = sanitizeFile(await update(current))
     await writeUnlocked(filePath, next)
     return next
-  } finally {
-    await release()
-  }
+  })
 }

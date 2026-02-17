@@ -4,6 +4,7 @@ import path from "node:path"
 import { randomUUID } from "node:crypto"
 
 import type { Logger } from "./logger"
+import { enforceOwnerOnlyPermissions, isFsErrorCode } from "./cache-io"
 
 const DEFAULT_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
 const REDACTED = "[redacted]"
@@ -18,21 +19,6 @@ const REDACTED_BODY_KEYS = new Set([
   "idtoken"
 ])
 const LIVE_HEADERS_LOG_FILE = "live-headers.jsonl"
-
-function isFsErrorCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code
-}
-
-async function enforceOwnerOnlyPermissions(filePath: string): Promise<void> {
-  try {
-    await fs.chmod(filePath, 0o600)
-  } catch (error) {
-    if (!isFsErrorCode(error, "EPERM") && !isFsErrorCode(error, "EACCES")) {
-      // best-effort permissions
-    }
-    // best-effort permissions
-  }
-}
 
 function sanitizeHeaderValue(name: string, value: string): string {
   const lower = name.toLowerCase()
