@@ -307,4 +307,60 @@ describe("catalog instruction override orchestrator preservation gating", () => 
     expect(preserved.changed).toBe(false)
     expect(preserved.reason).toBe("orchestrator_instructions_preserved")
   })
+
+  it("preserves marker-based orchestrator instructions without spawn_agent token", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: [
+          "Any lead-in",
+          "# Sub-agents",
+          "Coordinate them via wait / send_input.",
+          "Ask the user before shutting sub-agents down unless you need to because you reached the agent limit."
+        ].join("\n")
+      })
+    })
+
+    const preserved = await applyCatalogInstructionOverrideToRequest({
+      request,
+      enabled: true,
+      catalogModels,
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined
+    })
+
+    expect(preserved.changed).toBe(false)
+    expect(preserved.reason).toBe("orchestrator_instructions_preserved")
+  })
+
+  it("does not preserve generic wait/send_input prose under sub-agents header", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: [
+          "Operations note",
+          "# Sub-agents",
+          "Please wait for approval before deploy.",
+          "Then send_input from the release form."
+        ].join("\n")
+      })
+    })
+
+    const result = await applyCatalogInstructionOverrideToRequest({
+      request,
+      enabled: true,
+      catalogModels,
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined
+    })
+
+    expect(result.changed).toBe(true)
+    expect(result.reason).toBe("updated")
+    const body = JSON.parse(await result.request.text()) as { instructions?: string }
+    expect(body.instructions).toContain("Base Default voice")
+  })
 })

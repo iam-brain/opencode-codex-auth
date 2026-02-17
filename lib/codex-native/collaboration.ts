@@ -290,10 +290,29 @@ export function isOrchestratorInstructions(instructions: string | undefined): bo
   }
   if (!normalized.includes("# Sub-agents")) return false
 
+  const lower = normalized.toLowerCase()
+  if (/\bspawn_agent\b/.test(lower)) return true
+
+  const legacyMarkers = [
+    "you are codex, a coding agent based on gpt-5.",
+    "you and the user share the same workspace and collaborate to achieve the user's goals."
+  ]
+  if (legacyMarkers.some((marker) => lower.includes(marker))) return true
+
+  const strongMarkers = [
+    "if subagent tools are unavailable, proceed solo and ignore subagent-specific guidance.",
+    "when subagents are available, delegate independent work in parallel, coordinate them with wait/send_input-style flow, and synthesize results before finalizing.",
+    "when subagents are active, your primary role is coordination and synthesis; avoid doing worker implementation in parallel with active workers unless needed for unblock/fallback.",
+    "coordinate them via wait / send_input",
+    "sub-agents are their to make you go fast",
+    "ask the user before shutting sub-agents down unless you need to because you reached the agent limit"
+  ]
+  if (strongMarkers.some((marker) => lower.includes(marker))) return true
+
   return (
-    normalized.includes("You are Codex, a coding agent based on GPT-5.") ||
-    normalized.includes("You and the user share the same workspace and collaborate to achieve the user's goals.") ||
-    normalized.includes("You are the Orchestrator agent.")
+    lower.includes("delegate independent work in parallel") &&
+    (lower.includes("wait/send_input-style flow") || lower.includes("wait / send_input")) &&
+    lower.includes("synthesize")
   )
 }
 

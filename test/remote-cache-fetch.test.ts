@@ -45,6 +45,65 @@ describe("remote cache fetch helper", () => {
     expect(result.status).toBe("not_modified")
   })
 
+  it("captures fresh etag on 304 response", async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response(null, {
+        status: 304,
+        headers: { etag: 'W/"next"' }
+      })
+    })
+
+    const result = await fetchRemoteText(
+      {
+        key: "k2b",
+        url: "https://example.com/b",
+        etag: 'W/"prev"'
+      },
+      { fetchImpl, timeoutMs: 1000 }
+    )
+
+    expect(result.status).toBe("not_modified")
+    if (result.status !== "not_modified") throw new Error("expected not_modified")
+    expect(result.etag).toBe('W/"next"')
+  })
+
+  it("retains previous etag when 304 has no etag", async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response(null, { status: 304 })
+    })
+
+    const result = await fetchRemoteText(
+      {
+        key: "k2c",
+        url: "https://example.com/c",
+        etag: 'W/"prev"'
+      },
+      { fetchImpl, timeoutMs: 1000 }
+    )
+
+    expect(result.status).toBe("not_modified")
+    if (result.status !== "not_modified") throw new Error("expected not_modified")
+    expect(result.etag).toBe('W/"prev"')
+  })
+
+  it("returns undefined etag when 304 has no etag and request had none", async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response(null, { status: 304 })
+    })
+
+    const result = await fetchRemoteText(
+      {
+        key: "k2d",
+        url: "https://example.com/d"
+      },
+      { fetchImpl, timeoutMs: 1000 }
+    )
+
+    expect(result.status).toBe("not_modified")
+    if (result.status !== "not_modified") throw new Error("expected not_modified")
+    expect(result.etag).toBeUndefined()
+  })
+
   it("fetches batches in parallel", async () => {
     const resolvers = new Map<string, (value: Response) => void>()
     const started: string[] = []

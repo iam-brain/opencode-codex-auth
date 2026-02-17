@@ -78,5 +78,45 @@ describe("codex collaboration profile", () => {
       )
     ).toBe(true)
     expect(isOrchestratorInstructions("Catalog instructions\n\n# Plan Mode (Conversational)")).toBe(false)
+    expect(
+      isOrchestratorInstructions(
+        [
+          "Any lead-in",
+          "# Sub-agents",
+          "If spawn_agent fails, proceed solo.",
+          "Coordinate subagent workers and synthesize output."
+        ].join("\n")
+      )
+    ).toBe(true)
+    expect(
+      isOrchestratorInstructions(
+        [
+          "Any lead-in",
+          "# Sub-agents",
+          "Coordinate them via wait / send_input.",
+          "General guidance only."
+        ].join("\n")
+      )
+    ).toBe(true)
+    expect(
+      isOrchestratorInstructions(
+        [
+          "Team playbook",
+          "# Sub-agents",
+          "Ask a subagent to summarize docs for context.",
+          "An orchestrator can help planning discussions."
+        ].join("\n")
+      )
+    ).toBe(false)
+    expect(
+      isOrchestratorInstructions(
+        [
+          "Operations note",
+          "# Sub-agents",
+          "Please wait for approval before deploy.",
+          "Then send_input from the release form."
+        ].join("\n")
+      )
+    ).toBe(false)
   })
 })

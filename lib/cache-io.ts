@@ -2,6 +2,24 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import type { Logger } from "./logger"
 
+type OnIoFailure = (event: { operation: string; filePath: string; error: unknown }) => void
+
+let cacheIoFailureObserver: OnIoFailure | undefined
+
+export function setCacheIoFailureObserver(observer: OnIoFailure | undefined): void {
+  cacheIoFailureObserver = observer
+}
+
+function notifyCacheIoFailure(operation: string, filePath: string, error: unknown): void {
+  try {
+    cacheIoFailureObserver?.({ operation, filePath, error })
+  } catch (observerError) {
+    if (observerError instanceof Error) {
+      // best-effort failure observer
+    }
+  }
+}
+
 export function isFsErrorCode(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code
 }
@@ -21,6 +39,9 @@ export async function readJsonFileBestEffort(filePath: string): Promise<unknown 
     const raw = await fs.readFile(filePath, "utf8")
     return JSON.parse(raw) as unknown
   } catch (error) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      notifyCacheIoFailure("readJsonFileBestEffort", filePath, error)
+    }
     if (error instanceof SyntaxError || isFsErrorCode(error, "ENOENT")) {
       return undefined
     }
@@ -46,6 +67,7 @@ export async function writeJsonFileBestEffort(filePath: string, value: unknown):
   try {
     await writeJsonFile(filePath, value)
   } catch (error) {
+    notifyCacheIoFailure("writeJsonFileBestEffort", filePath, error)
     if (error instanceof Error) {
       // best-effort persistence
     }
@@ -56,6 +78,7 @@ export async function writeJsonFileAtomicBestEffort(filePath: string, value: unk
   try {
     await writeJsonFileAtomic(filePath, value)
   } catch (error) {
+    notifyCacheIoFailure("writeJsonFileAtomicBestEffort", filePath, error)
     if (error instanceof Error) {
       // best-effort persistence
     }
