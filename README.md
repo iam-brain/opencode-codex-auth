@@ -5,7 +5,7 @@
 
 OpenCode plugin for OpenAI ChatGPT OAuth with multi-account management, Codex-compatible request modes, and dynamic model behavior controls.
 
-Quick links: `docs/getting-started.md` · `docs/configuration.md` · `docs/multi-account.md` · `docs/troubleshooting.md` · `docs/persona-tool.md`
+Quick links: [Getting Started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Multi-account](docs/multi-account.md) · [Troubleshooting](docs/troubleshooting.md) · [Persona Tool](docs/persona-tool.md)
 
 ## Why this plugin
 
@@ -106,15 +106,15 @@ Legacy sources can be imported explicitly from the auth menu:
 
 ## Documentation
 
-- Docs portal: `docs/README.md`
-- Getting started: `docs/getting-started.md`
-- Configuration: `docs/configuration.md`
-- Compaction: `docs/compaction.md`
-- Multi-account: `docs/multi-account.md`
-- Troubleshooting: `docs/troubleshooting.md`
-- Persona tool: `docs/persona-tool.md`
-- Development docs: `docs/development/`
-- Upstream baseline/sync: `docs/development/UPSTREAM_SYNC.md`
+- [Docs portal](docs/README.md)
+- [Getting started](docs/getting-started.md)
+- [Configuration](docs/configuration.md)
+- [Compaction](docs/compaction.md)
+- [Multi-account](docs/multi-account.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Persona tool](docs/persona-tool.md)
+- [Development docs](docs/development/README.md)
+- [Upstream baseline/sync](docs/development/UPSTREAM_SYNC.md)
 
 ## Development
 
