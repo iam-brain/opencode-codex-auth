@@ -1,5 +1,6 @@
 import { fetchRemoteTextBatch, type RemoteTextFetchResult } from "./remote-cache-fetch"
 import { readJsonFileBestEffort, writeJsonFileBestEffort } from "./cache-io"
+import { withLockedDirectory } from "./cache-lock"
 import {
   CODEX_PROMPTS_CACHE_FILE,
   CODEX_PROMPTS_CACHE_META_FILE,
@@ -103,6 +104,8 @@ async function writePromptsCacheMeta(cacheDir: string, meta: CodexPromptsCacheMe
   await writeJsonFileBestEffort(codexPromptsCacheMetaPath(cacheDir), meta)
 }
 
+const inFlightRefreshByCacheDir = new Map<string, Promise<RefreshResult>>()
+
 function resolvePrompt(result: RemoteTextFetchResult | undefined, existing: string | undefined): string | undefined {
   if (!result) return undefined
   if (result.status === "ok") {
@@ -147,82 +150,104 @@ export async function refreshCachedCodexPrompts(
   const now = (input.now ?? Date.now)()
   const fetchImpl = input.fetchImpl ?? fetch
 
-  const existingCache = await readPromptsCache(cacheDir)
-  const existingMeta = await readPromptsCacheMeta(cacheDir)
+  const run = async (): Promise<RefreshResult> =>
+    withLockedDirectory(
+      cacheDir,
+      async () => {
+        const existingCache = await readPromptsCache(cacheDir)
+        const existingMeta = await readPromptsCacheMeta(cacheDir)
 
-  const cacheIsFresh =
-    existingCache &&
-    existingMeta &&
-    existingMeta.urls.orchestrator === CODEX_ORCHESTRATOR_PROMPT_URL &&
-    existingMeta.urls.plan === CODEX_PLAN_PROMPT_URL &&
-    now - existingMeta.lastChecked < CACHE_TTL_MS
+        const cacheIsFresh =
+          existingCache &&
+          existingMeta &&
+          existingMeta.urls.orchestrator === CODEX_ORCHESTRATOR_PROMPT_URL &&
+          existingMeta.urls.plan === CODEX_PLAN_PROMPT_URL &&
+          now - existingMeta.lastChecked < CACHE_TTL_MS
 
-  if (cacheIsFresh && input.forceRefresh !== true) {
-    return {
-      orchestrator: existingCache.prompts.orchestrator,
-      plan: existingCache.prompts.plan
-    }
-  }
-
-  const results = await fetchRemoteTextBatch(
-    {
-      requests: [
-        {
-          key: "orchestrator",
-          url: CODEX_ORCHESTRATOR_PROMPT_URL,
-          etag:
-            existingMeta?.urls.orchestrator === CODEX_ORCHESTRATOR_PROMPT_URL
-              ? existingMeta?.etags?.orchestrator
-              : undefined
-        },
-        {
-          key: "plan",
-          url: CODEX_PLAN_PROMPT_URL,
-          etag: existingMeta?.urls.plan === CODEX_PLAN_PROMPT_URL ? existingMeta?.etags?.plan : undefined
+        if (cacheIsFresh && input.forceRefresh !== true) {
+          return {
+            orchestrator: existingCache.prompts.orchestrator,
+            plan: existingCache.prompts.plan
+          }
         }
-      ]
-    },
-    {
-      fetchImpl,
-      timeoutMs: FETCH_TIMEOUT_MS
-    }
-  )
-  const orchestratorResult = results.find((result) => result.key === "orchestrator")
-  const planResult = results.find((result) => result.key === "plan")
 
-  const orchestrator = resolvePrompt(orchestratorResult, existingCache?.prompts.orchestrator)
-  const plan = resolvePrompt(planResult, existingCache?.prompts.plan)
+        const results = await fetchRemoteTextBatch(
+          {
+            requests: [
+              {
+                key: "orchestrator",
+                url: CODEX_ORCHESTRATOR_PROMPT_URL,
+                etag:
+                  existingMeta?.urls.orchestrator === CODEX_ORCHESTRATOR_PROMPT_URL
+                    ? existingMeta?.etags?.orchestrator
+                    : undefined
+              },
+              {
+                key: "plan",
+                url: CODEX_PLAN_PROMPT_URL,
+                etag: existingMeta?.urls.plan === CODEX_PLAN_PROMPT_URL ? existingMeta?.etags?.plan : undefined
+              }
+            ]
+          },
+          {
+            fetchImpl,
+            timeoutMs: FETCH_TIMEOUT_MS
+          }
+        )
+        const orchestratorResult = results.find((result) => result.key === "orchestrator")
+        const planResult = results.find((result) => result.key === "plan")
 
-  if (!orchestrator || !plan) {
-    return {
-      orchestrator: existingCache?.prompts.orchestrator,
-      plan: existingCache?.prompts.plan
-    }
+        const orchestrator = resolvePrompt(orchestratorResult, existingCache?.prompts.orchestrator)
+        const plan = resolvePrompt(planResult, existingCache?.prompts.plan)
+
+        if (!orchestrator || !plan) {
+          return {
+            orchestrator: existingCache?.prompts.orchestrator,
+            plan: existingCache?.prompts.plan
+          }
+        }
+
+        const nextCache: CodexPromptsCache = {
+          fetchedAt: now,
+          source: "github",
+          prompts: {
+            orchestrator,
+            plan
+          }
+        }
+        await writePromptsCache(cacheDir, nextCache)
+        await writePromptsCacheMeta(cacheDir, {
+          lastChecked: now,
+          urls: {
+            orchestrator: CODEX_ORCHESTRATOR_PROMPT_URL,
+            plan: CODEX_PLAN_PROMPT_URL
+          },
+          etags: {
+            orchestrator: resolveEtag(orchestratorResult, existingMeta?.etags?.orchestrator),
+            plan: resolveEtag(planResult, existingMeta?.etags?.plan)
+          }
+        })
+
+        return {
+          orchestrator,
+          plan
+        }
+      },
+      { staleMs: 10_000 }
+    )
+
+  if (input.forceRefresh === true) {
+    return run()
   }
 
-  const nextCache: CodexPromptsCache = {
-    fetchedAt: now,
-    source: "github",
-    prompts: {
-      orchestrator,
-      plan
-    }
-  }
-  await writePromptsCache(cacheDir, nextCache)
-  await writePromptsCacheMeta(cacheDir, {
-    lastChecked: now,
-    urls: {
-      orchestrator: CODEX_ORCHESTRATOR_PROMPT_URL,
-      plan: CODEX_PLAN_PROMPT_URL
-    },
-    etags: {
-      orchestrator: resolveEtag(orchestratorResult, existingMeta?.etags?.orchestrator),
-      plan: resolveEtag(planResult, existingMeta?.etags?.plan)
+  const existingInFlight = inFlightRefreshByCacheDir.get(cacheDir)
+  if (existingInFlight) return existingInFlight
+
+  const inFlight = run().finally(() => {
+    if (inFlightRefreshByCacheDir.get(cacheDir) === inFlight) {
+      inFlightRefreshByCacheDir.delete(cacheDir)
     }
   })
-
-  return {
-    orchestrator,
-    plan
-  }
+  inFlightRefreshByCacheDir.set(cacheDir, inFlight)
+  return inFlight
 }

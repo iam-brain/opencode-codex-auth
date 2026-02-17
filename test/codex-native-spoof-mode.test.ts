@@ -1186,6 +1186,7 @@ describe("codex-native spoof + params hooks", () => {
     await chatHeaders?.(input, output)
 
     expect(output.headers["x-opencode-collaboration-mode-kind"]).toBe("plan")
+    expect(output.headers["x-opencode-collaboration-agent-kind"]).toBe("plan")
     expect(output.headers["x-openai-subagent"]).toBeUndefined()
   })
 
@@ -1212,6 +1213,34 @@ describe("codex-native spoof + params hooks", () => {
     await chatHeaders?.(input, output)
 
     expect(output.headers["x-opencode-collaboration-mode-kind"]).toBe("code")
+    expect(output.headers["x-opencode-collaboration-agent-kind"]).toBe("code")
     expect(output.headers["x-openai-subagent"]).toBe("review")
+  })
+
+  it("sets orchestrator collaboration agent header for orchestrator profile", async () => {
+    const hooks = await CodexAuthPlugin(
+      {} as never,
+      {
+        spoofMode: "codex",
+        mode: "codex",
+        collaborationProfileEnabled: true,
+        orchestratorSubagentsEnabled: true
+      } as never
+    )
+    const chatHeaders = hooks["chat.headers"]
+    expect(chatHeaders).toBeTypeOf("function")
+
+    const output = { headers: {} as Record<string, string> }
+    await chatHeaders?.(
+      {
+        sessionID: "ses_orchestrator_collab_headers",
+        agent: "orchestrator",
+        model: { providerID: "openai", options: {} }
+      } as never,
+      output
+    )
+
+    expect(output.headers["x-opencode-collaboration-mode-kind"]).toBe("code")
+    expect(output.headers["x-opencode-collaboration-agent-kind"]).toBe("orchestrator")
   })
 })

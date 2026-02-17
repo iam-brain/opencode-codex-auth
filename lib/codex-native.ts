@@ -62,6 +62,7 @@ export { upsertAccount } from "./codex-native/accounts"
 export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from "./codex-native/oauth-utils"
 
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
+const INTERNAL_COLLABORATION_AGENT_HEADER = "x-opencode-collaboration-agent-kind"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
 
 const STATIC_FALLBACK_MODELS = [
@@ -315,6 +316,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           headerTransformDebug: opts.headerTransformDebug === true,
           compatInputSanitizerEnabled: opts.compatInputSanitizer === true,
           internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
+          internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
           requestSnapshots,
           sessionAffinityState: {
             orchestratorState,
@@ -387,6 +389,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         output,
         spoofMode,
         internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
+        internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
         collaborationProfileEnabled,
         orchestratorSubagentsEnabled
       })

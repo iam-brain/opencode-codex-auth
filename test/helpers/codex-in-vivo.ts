@@ -219,7 +219,7 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
     await hooks["chat.headers"]?.(
       {
         sessionID: "ses_vivo_1",
-        agent: "default",
+        agent: input.agent ?? "default",
         model: { providerID: "openai", options: { promptCacheKey: "ses_vivo_1" } }
       } as never,
       headersOutput as never

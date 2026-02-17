@@ -852,6 +852,7 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
   catalogModels: CodexModelInfo[] | undefined
   behaviorSettings: BehaviorSettings | undefined
   fallbackPersonality: PersonalityOption | undefined
+  preserveOrchestratorInstructions?: boolean
 }): Promise<{ request: Request; changed: boolean; reason: string }> {
   if (!input.enabled) return { request: input.request, changed: false, reason: "disabled" }
 
@@ -896,7 +897,7 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
 
   const currentInstructions = asString(payload.instructions)
 
-  if (isOrchestratorInstructions(currentInstructions)) {
+  if (input.preserveOrchestratorInstructions === true && isOrchestratorInstructions(currentInstructions)) {
     return { request: input.request, changed: false, reason: "orchestrator_instructions_preserved" }
   }
 

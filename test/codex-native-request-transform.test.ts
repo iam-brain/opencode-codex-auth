@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  applyCatalogInstructionOverrideToRequest,
   remapDeveloperMessagesToUserOnRequest,
   stripReasoningReplayFromRequest
 } from "../lib/codex-native/request-transform"
@@ -225,5 +226,59 @@ describe("codex reasoning replay stripping", () => {
     expect(stripped.reason).toBe("no_reasoning_replay")
     expect(stripped.removedPartCount).toBe(0)
     expect(stripped.removedFieldCount).toBe(0)
+  })
+})
+
+describe("catalog instruction override orchestrator preservation gating", () => {
+  const catalogModels = [
+    {
+      slug: "gpt-5.3-codex",
+      model_messages: {
+        instructions_template: "Base {{ personality }}",
+        instructions_variables: {
+          personality_default: "Default voice"
+        }
+      }
+    }
+  ]
+
+  it("preserves orchestrator-style instructions only when preserve flag is enabled", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: [
+          "You are Codex, a coding agent based on GPT-5.",
+          "",
+          "# Sub-agents",
+          "If `spawn_agent` is unavailable or fails, ignore this section and proceed solo."
+        ].join("\n")
+      })
+    })
+
+    const preserved = await applyCatalogInstructionOverrideToRequest({
+      request,
+      enabled: true,
+      catalogModels,
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined,
+      preserveOrchestratorInstructions: true
+    })
+    expect(preserved.changed).toBe(false)
+    expect(preserved.reason).toBe("orchestrator_instructions_preserved")
+
+    const replaced = await applyCatalogInstructionOverrideToRequest({
+      request,
+      enabled: true,
+      catalogModels,
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined,
+      preserveOrchestratorInstructions: false
+    })
+    expect(replaced.changed).toBe(true)
+    expect(replaced.reason).toBe("updated")
+    const body = JSON.parse(await replaced.request.text()) as { instructions?: string }
+    expect(body.instructions).toContain("Base Default voice")
   })
 })

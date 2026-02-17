@@ -182,6 +182,7 @@ export async function handleChatHeadersHook(input: {
   output: { headers: Record<string, unknown> }
   spoofMode: CodexSpoofMode
   internalCollaborationModeHeader: string
+  internalCollaborationAgentHeader: string
   collaborationProfileEnabled: boolean
   orchestratorSubagentsEnabled: boolean
 }): Promise<void> {
@@ -196,6 +197,7 @@ export async function handleChatHeadersHook(input: {
   if (!input.collaborationProfileEnabled) {
     delete input.output.headers["x-openai-subagent"]
     delete input.output.headers[input.internalCollaborationModeHeader]
+    delete input.output.headers[input.internalCollaborationAgentHeader]
     return
   }
 
@@ -203,10 +205,12 @@ export async function handleChatHeadersHook(input: {
   if (!profile.enabled || !profile.kind) {
     delete input.output.headers["x-openai-subagent"]
     delete input.output.headers[input.internalCollaborationModeHeader]
+    delete input.output.headers[input.internalCollaborationAgentHeader]
     return
   }
 
   input.output.headers[input.internalCollaborationModeHeader] = profile.kind
+  input.output.headers[input.internalCollaborationAgentHeader] = profile.isOrchestrator ? "orchestrator" : profile.kind
 
   if (input.orchestratorSubagentsEnabled) {
     const subagentHeader = resolveSubagentHeaderValue(input.hookInput.agent)

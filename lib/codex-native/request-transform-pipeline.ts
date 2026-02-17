@@ -17,13 +17,15 @@ export async function applyRequestTransformPipeline(input: {
   catalogModels: CodexModelInfo[] | undefined
   behaviorSettings?: BehaviorSettings
   fallbackPersonality?: PersonalityOption
+  preserveOrchestratorInstructions?: boolean
 }): Promise<RequestTransformPipelineResult> {
   const instructionOverride = await applyCatalogInstructionOverrideToRequest({
     request: input.request,
     enabled: input.spoofMode === "codex",
     catalogModels: input.catalogModels,
     behaviorSettings: input.behaviorSettings,
-    fallbackPersonality: input.fallbackPersonality
+    fallbackPersonality: input.fallbackPersonality,
+    preserveOrchestratorInstructions: input.preserveOrchestratorInstructions
   })
   const developerRoleRemap = await remapDeveloperMessagesToUserOnRequest({
     request: instructionOverride.request,

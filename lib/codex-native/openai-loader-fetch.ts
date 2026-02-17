@@ -47,6 +47,7 @@ export type CreateOpenAIFetchHandlerInput = {
   headerTransformDebug: boolean
   compatInputSanitizerEnabled: boolean
   internalCollaborationModeHeader: string
+  internalCollaborationAgentHeader?: string
   requestSnapshots: SnapshotRecorder
   sessionAffinityState: SessionAffinityRuntimeState
   getCatalogModels: () => CodexModelInfo[] | undefined
@@ -56,6 +57,7 @@ export type CreateOpenAIFetchHandlerInput = {
 }
 
 export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
+  const internalCollaborationAgentHeader = input.internalCollaborationAgentHeader ?? "x-opencode-collaboration-agent-kind"
   const quotaTrackerByIdentity = new Map<string, QuotaThresholdTrackerState>()
   const quotaRefreshAtByIdentity = new Map<string, number>()
   const QUOTA_REFRESH_TTL_MS = 60_000
@@ -71,6 +73,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
     }
 
     let outbound = new Request(rewriteUrl(baseRequest), baseRequest)
+    const collaborationAgentKind = outbound.headers.get(internalCollaborationAgentHeader)?.trim() || undefined
     const inboundOriginator = outbound.headers.get("originator")?.trim()
     const outboundOriginator =
       inboundOriginator === "opencode" || inboundOriginator === "codex_exec" || inboundOriginator === "codex_cli_rs"
@@ -88,6 +91,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
     if (outbound.headers.has(input.internalCollaborationModeHeader)) {
       outbound.headers.delete(input.internalCollaborationModeHeader)
     }
+    if (outbound.headers.has(internalCollaborationAgentHeader)) {
+      outbound.headers.delete(internalCollaborationAgentHeader)
+    }
 
     const transformed = await applyRequestTransformPipeline({
       request: outbound,
@@ -95,7 +101,8 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
       catalogModels: input.getCatalogModels(),
       behaviorSettings: input.behaviorSettings,
-      fallbackPersonality: input.personality
+      fallbackPersonality: input.personality,
+      preserveOrchestratorInstructions: collaborationAgentKind === "orchestrator"
     })
     outbound = transformed.request
     const isSubagentRequest = transformed.isSubagentRequest
@@ -206,7 +213,8 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
           catalogModels: input.getCatalogModels(),
           behaviorSettings: input.behaviorSettings,
-          fallbackPersonality: input.personality
+          fallbackPersonality: input.personality,
+          preserveOrchestratorInstructions: collaborationAgentKind === "orchestrator"
         })
 
         const promptCacheKeyStrategy = input.promptCacheKeyStrategy ?? "default"

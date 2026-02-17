@@ -285,6 +285,9 @@ export function isOrchestratorInstructions(instructions: string | undefined): bo
   if (!instructions) return false
   const normalized = instructions.trim()
   if (!normalized) return false
+  if (normalized.includes("description: Codex-style orchestration profile for parallel delegation and synthesis.")) {
+    return true
+  }
   if (!normalized.includes("# Sub-agents")) return false
 
   return (

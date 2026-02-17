@@ -67,6 +67,16 @@ describe("codex collaboration profile", () => {
         ].join("\n")
       )
     ).toBe(true)
+    expect(
+      isOrchestratorInstructions(
+        [
+          "---",
+          "description: Codex-style orchestration profile for parallel delegation and synthesis.",
+          "mode: primary",
+          "---"
+        ].join("\n")
+      )
+    ).toBe(true)
     expect(isOrchestratorInstructions("Catalog instructions\n\n# Plan Mode (Conversational)")).toBe(false)
   })
 })

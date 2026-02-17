@@ -153,6 +153,36 @@ describe("orchestrator agent installer", () => {
     expect(await fs.readFile(visible.filePath, "utf8")).toContain("You are Codex, a coding agent based on GPT-5.")
   })
 
+  it("applies force refresh while moving disabled->enabled and enabled->disabled", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("You are Codex, a coding agent based on GPT-5.\n\n# Sub-agents\nupstream", {
+            status: 200,
+            headers: { "content-type": "text/plain" }
+          })
+      )
+    )
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-orchestrator-agent-force-toggle-"))
+    const agentsDir = path.join(root, "agents")
+    const cacheDir = path.join(root, "cache")
+    const enabledPath = path.join(agentsDir, CODEX_ORCHESTRATOR_AGENT_FILE)
+    const disabledPath = path.join(agentsDir, CODEX_ORCHESTRATOR_AGENT_FILE_DISABLED)
+
+    await fs.mkdir(agentsDir, { recursive: true })
+    await fs.writeFile(disabledPath, "stale disabled", "utf8")
+    const visible = await reconcileOrchestratorAgentVisibility({ agentsDir, cacheDir, visible: true, force: true })
+    expect(visible.moved).toBe(true)
+    expect(await fs.readFile(enabledPath, "utf8")).toContain("You are Codex, a coding agent based on GPT-5.")
+
+    await fs.writeFile(enabledPath, "stale enabled", "utf8")
+    const hidden = await reconcileOrchestratorAgentVisibility({ agentsDir, cacheDir, visible: false, force: true })
+    expect(hidden.moved).toBe(true)
+    expect(await fs.readFile(disabledPath, "utf8")).toContain("You are Codex, a coding agent based on GPT-5.")
+  })
+
   it("falls back to bundled full orchestrator prompt when upstream fetch fails", async () => {
     vi.stubGlobal(
       "fetch",

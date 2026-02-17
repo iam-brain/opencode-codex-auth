@@ -263,12 +263,13 @@ export async function reconcileOrchestratorAgentVisibility(
     if (disabledExists) {
       await fs.mkdir(path.dirname(enabledPath), { recursive: true })
       await fs.rename(disabledPath, enabledPath)
+      const ensured = await ensureTemplateFile(enabledPath, force, input.cacheDir)
       return {
         agentsDir,
         filePath: enabledPath,
         visible: true,
-        created: false,
-        updated: false,
+        created: ensured.created,
+        updated: ensured.updated,
         moved: true
       }
     }
@@ -299,12 +300,13 @@ export async function reconcileOrchestratorAgentVisibility(
   if (enabledExists) {
     await fs.mkdir(path.dirname(disabledPath), { recursive: true })
     await fs.rename(enabledPath, disabledPath)
+    const ensured = await ensureTemplateFile(disabledPath, force, input.cacheDir)
     return {
       agentsDir,
       filePath: disabledPath,
       visible: false,
-      created: false,
-      updated: false,
+      created: ensured.created,
+      updated: ensured.updated,
       moved: true
     }
   }
