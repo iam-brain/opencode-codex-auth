@@ -416,7 +416,50 @@ describe("FetchOrchestrator", () => {
 
     const response = await orch.execute("https://api.com")
     expect(response.status).toBe(200)
-    expect(showToast).toHaveBeenCalledWith("Rate limited - switching account", "warning", false)
+    expect(showToast).toHaveBeenCalledWith(
+      "Rate limited - switching account [retry_pending_after_429]",
+      "warning",
+      false
+    )
+  })
+
+  it("tags account-switch toast with reason code when switched after 429", async () => {
+    const auths = [
+      { access: "a1", identityKey: "id1", accountId: "acc1", accountLabel: "one@example.com (plus)" },
+      { access: "a2", identityKey: "id2", accountId: "acc2", accountLabel: "two@example.com (plus)" }
+    ]
+    let idx = 0
+    const acquireAuth = vi.fn(async () => auths[idx++])
+    const setCooldown = vi.fn(async () => {})
+    const showToast = vi.fn(async () => {})
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        if (idx === 1) {
+          return new Response("Too Many Requests", { status: 429, headers: { "Retry-After": "1" } })
+        }
+        return new Response("OK", { status: 200 })
+      })
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      maxAttempts: 2
+    })
+
+    const response = await orch.execute("https://api.com")
+    expect(response.status).toBe(200)
+    expect(
+      showToast.mock.calls.some(
+        (call) =>
+          call[0] === "Account switched after rate limit: two@example.com (plus) [retry_switched_account_after_429]" &&
+          call[1] === "info" &&
+          call[2] === false
+      )
+    ).toBe(true)
   })
 
   it("reuses shared session state across orchestrator instances to avoid duplicate new-chat toasts", async () => {
@@ -628,6 +671,50 @@ describe("FetchOrchestrator", () => {
     expect(response.status).toBe(200)
     expect(onAttemptRequest).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("provides standardized failover reason codes to attempt hooks", async () => {
+    const auths = [
+      { access: "a1", identityKey: "id1", accountId: "acc1" },
+      { access: "a2", identityKey: "id2", accountId: "acc2" }
+    ]
+    let authIdx = 0
+    const acquireAuth = vi.fn(async () => auths[authIdx++])
+    const setCooldown = vi.fn(async () => {})
+
+    const requestReasons: string[] = []
+    const responseReasons: string[] = []
+    const onAttemptRequest = vi.fn(async ({ attemptReasonCode }) => {
+      requestReasons.push(attemptReasonCode)
+    })
+    const onAttemptResponse = vi.fn(async ({ attemptReasonCode }) => {
+      responseReasons.push(attemptReasonCode)
+    })
+
+    let fetchCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCount += 1
+        if (fetchCount === 1) {
+          return new Response("RL", { status: 429, headers: { "Retry-After": "1" } })
+        }
+        return new Response("OK", { status: 200 })
+      })
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      maxAttempts: 2,
+      onAttemptRequest,
+      onAttemptResponse
+    })
+
+    const response = await orch.execute("https://api.com")
+    expect(response.status).toBe(200)
+    expect(requestReasons).toEqual(["initial_attempt", "retry_switched_account_after_429"])
+    expect(responseReasons).toEqual(["initial_attempt", "retry_switched_account_after_429"])
   })
 
   it("does not emit session observation when session_id is missing", async () => {

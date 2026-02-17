@@ -18,8 +18,11 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - top-level plugin wiring + hook registration (delegates to focused modules)
 - `lib/codex-native/openai-loader-fetch.ts`
   - OpenAI fetch pipeline (header shaping, request transforms, auth acquisition, retries, response snapshots)
+  - periodic quota usage refresh + threshold warnings (`25%`, `20%`, `10%`, `5%`, `2.5%`, `0%`)
+  - automatic cooldown/switch trigger when `5h` or `weekly` quota reaches `0%`
 - `lib/codex-native/acquire-auth.ts`
   - account selection + token refresh/cooldown/invalid-grant handling
+  - selection health telemetry (eligible/disabled/cooldown/lease counts + decision code)
 - `lib/codex-native/auth-menu-flow.ts`
   - interactive account menu wiring + transfer/toggle/delete/refresh actions
 - `lib/codex-native/auth-menu-quotas.ts`
@@ -38,6 +41,8 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - `sticky`, `hybrid`, `round_robin` account selection
 - `lib/fetch-orchestrator.ts`
   - retry/failover control around backend requests
+  - standardized per-attempt failover reason codes (`initial_attempt`, `retry_same_account_after_429`, `retry_switched_account_after_429`) for snapshot/debug observability
+  - failover toasts include explicit taxonomy tags (for example `retry_pending_after_429`) to aid operator diagnosis
 - `lib/proactive-refresh.ts`
   - optional background refresh with lease/cooldown guards
 - `lib/model-catalog.ts`

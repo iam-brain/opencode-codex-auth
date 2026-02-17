@@ -168,6 +168,33 @@ describe("rotation", () => {
     ).toBe("b")
   })
 
+  it("emits health counts in debug telemetry", () => {
+    const now = 1000
+    const accounts: AccountRecord[] = [
+      { identityKey: "a", enabled: false },
+      { identityKey: "b", enabled: true, cooldownUntil: now + 1000 },
+      { identityKey: "c", enabled: true, refreshLeaseUntil: now + 1000 },
+      { identityKey: "d", enabled: true }
+    ]
+    const events: Array<Record<string, unknown>> = []
+
+    const selected = selectAccount({
+      accounts,
+      strategy: "sticky",
+      now,
+      onDebug: (event) => events.push(event as unknown as Record<string, unknown>)
+    })
+
+    expect(selected?.identityKey).toBe("d")
+    expect(events.length).toBeGreaterThan(0)
+    const latest = events[events.length - 1]!
+    expect(latest.totalCount).toBe(4)
+    expect(latest.disabledCount).toBe(1)
+    expect(latest.cooldownCount).toBe(1)
+    expect(latest.refreshLeaseCount).toBe(1)
+    expect(latest.eligibleCount).toBe(1)
+  })
+
   it("sticky session mode rotates to next healthy account for new sessions", () => {
     const accounts: AccountRecord[] = [
       { identityKey: "a", enabled: true },

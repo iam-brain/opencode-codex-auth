@@ -46,8 +46,20 @@ export type RotationDebugEvent = {
   selectedIdentityKey?: string
   activeIdentityKey?: string
   sessionKey?: string
+  totalCount: number
+  disabledCount: number
+  cooldownCount: number
+  refreshLeaseCount: number
   eligibleCount: number
   extra?: Record<string, unknown>
+}
+
+type RotationHealthCounts = {
+  totalCount: number
+  disabledCount: number
+  cooldownCount: number
+  refreshLeaseCount: number
+  eligibleCount: number
 }
 
 function isEligible(account: AccountRecord, now: number): boolean {
@@ -59,6 +71,60 @@ function isEligible(account: AccountRecord, now: number): boolean {
     return false
   }
   return true
+}
+
+function computeRotationHealthCounts(accounts: AccountRecord[], now: number): RotationHealthCounts {
+  let disabledCount = 0
+  let cooldownCount = 0
+  let refreshLeaseCount = 0
+  let eligibleCount = 0
+
+  for (const account of accounts) {
+    const disabled = account.enabled === false
+    const cooling = typeof account.cooldownUntil === "number" && account.cooldownUntil > now
+    const leased = typeof account.refreshLeaseUntil === "number" && account.refreshLeaseUntil > now
+
+    if (disabled) {
+      disabledCount += 1
+      continue
+    }
+    if (cooling) {
+      cooldownCount += 1
+      continue
+    }
+    if (leased) {
+      refreshLeaseCount += 1
+      continue
+    }
+
+    eligibleCount += 1
+  }
+
+  return {
+    totalCount: accounts.length,
+    disabledCount,
+    cooldownCount,
+    refreshLeaseCount,
+    eligibleCount
+  }
+}
+
+function emitRotationDebug(
+  input: SelectAccountInput,
+  event: Omit<RotationDebugEvent, "totalCount" | "disabledCount" | "cooldownCount" | "refreshLeaseCount" | "eligibleCount"> & {
+    eligibleCount?: number
+  }
+): void {
+  if (!input.onDebug) return
+  const counts = computeRotationHealthCounts(input.accounts, input.now)
+  input.onDebug({
+    ...event,
+    totalCount: counts.totalCount,
+    disabledCount: counts.disabledCount,
+    cooldownCount: counts.cooldownCount,
+    refreshLeaseCount: counts.refreshLeaseCount,
+    eligibleCount: event.eligibleCount ?? counts.eligibleCount
+  })
 }
 
 function toNonNegativeInt(value: unknown): number {
@@ -92,7 +158,7 @@ function resolveAssignedSessionAccount(
     return undefined
   }
 
-  input.onDebug?.({
+  emitRotationDebug(input, {
     strategy,
     decision: strategy === "sticky" ? "sticky-session-reuse" : "hybrid-session-reuse",
     selectedIdentityKey: assigned.identityKey,
@@ -121,7 +187,7 @@ function assignSessionAccount(
     state.bySessionKey.delete(oldest)
   }
 
-  input.onDebug?.({
+  emitRotationDebug(input, {
     strategy,
     decision: strategy === "sticky" ? "sticky-session-assign" : "hybrid-session-assign",
     selectedIdentityKey: selected.identityKey,
@@ -175,7 +241,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
 
   const eligible = accounts.filter((acc) => isEligible(acc, now))
   if (eligible.length === 0) {
-    input.onDebug?.({
+    emitRotationDebug(input, {
       strategy,
       decision: "none-eligible",
       activeIdentityKey,
@@ -195,7 +261,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
     if (activeIndex >= 0) {
       const selected = eligible[activeIndex]
       assignSessionAccount(input, selected, "sticky")
-      input.onDebug?.({
+      emitRotationDebug(input, {
         strategy,
         decision: "sticky-active",
         selectedIdentityKey: selected?.identityKey,
@@ -207,7 +273,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
     if (input.stickyPidOffset !== true) {
       const selected = eligible[0]
       assignSessionAccount(input, selected, "sticky")
-      input.onDebug?.({
+      emitRotationDebug(input, {
         strategy,
         decision: "sticky-fallback-first",
         selectedIdentityKey: selected?.identityKey,
@@ -219,7 +285,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
     const offsetIndex = resolveOffsetIndex(input, eligible.length)
     const selected = eligible[offsetIndex]
     assignSessionAccount(input, selected, "sticky", { offsetIndex })
-    input.onDebug?.({
+    emitRotationDebug(input, {
       strategy,
       decision: "sticky-pid-offset",
       selectedIdentityKey: selected?.identityKey,
@@ -240,7 +306,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
     if (activeIndex >= 0) {
       const selected = eligible[activeIndex]
       assignSessionAccount(input, selected, "hybrid")
-      input.onDebug?.({
+      emitRotationDebug(input, {
         strategy,
         decision: "hybrid-active",
         selectedIdentityKey: selected?.identityKey,
@@ -263,7 +329,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
       }
     }
     assignSessionAccount(input, selected, "hybrid", { lastUsed: selected.lastUsed ?? 0 })
-    input.onDebug?.({
+    emitRotationDebug(input, {
       strategy,
       decision: "hybrid-lru",
       selectedIdentityKey: selected.identityKey,
@@ -277,7 +343,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
   if (activeIndex < 0) {
     const offsetIndex = resolveOffsetIndex(input, eligible.length)
     const selected = eligible[offsetIndex]
-    input.onDebug?.({
+    emitRotationDebug(input, {
       strategy,
       decision: "round-robin-pid-offset",
       selectedIdentityKey: selected?.identityKey,
@@ -288,7 +354,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
     return selected
   }
   const selected = eligible[(activeIndex + 1) % eligible.length]
-  input.onDebug?.({
+  emitRotationDebug(input, {
     strategy,
     decision: "round-robin-next",
     selectedIdentityKey: selected?.identityKey,

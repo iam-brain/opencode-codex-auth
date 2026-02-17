@@ -1,6 +1,22 @@
 import { computeBackoffMs, parseRetryAfterMs } from "./rate-limit"
 import { createSyntheticErrorResponse, formatWaitTime } from "./fatal-errors"
 
+export type AccountSelectionTrace = {
+  strategy: string
+  decision: string
+  totalCount: number
+  disabledCount: number
+  cooldownCount: number
+  refreshLeaseCount: number
+  eligibleCount: number
+  attemptedCount?: number
+  selectedIdentityKey?: string
+  selectedIndex?: number
+  attemptKey?: string
+  activeIdentityKey?: string
+  sessionKey?: string
+}
+
 export type AuthData = {
   access: string
   accountId?: string
@@ -8,6 +24,7 @@ export type AuthData = {
   email?: string
   plan?: string
   accountLabel?: string
+  selectionTrace?: AccountSelectionTrace
 }
 
 export type FetchOrchestratorAuthContext = {
@@ -21,6 +38,8 @@ export type FetchOrchestratorState = {
   rateLimitToastShownAt: Map<string, number>
   toastShownAt: Map<string, number>
 }
+
+export type FetchAttemptReasonCode = "initial_attempt" | "retry_same_account_after_429" | "retry_switched_account_after_429"
 
 export function createFetchOrchestratorState(): FetchOrchestratorState {
   return {
@@ -44,6 +63,7 @@ export type FetchOrchestratorDeps = {
   onAttemptRequest?: (input: {
     attempt: number
     maxAttempts: number
+    attemptReasonCode: FetchAttemptReasonCode
     request: Request
     auth: AuthData
     sessionKey: string | null
@@ -51,6 +71,7 @@ export type FetchOrchestratorDeps = {
   onAttemptResponse?: (input: {
     attempt: number
     maxAttempts: number
+    attemptReasonCode: FetchAttemptReasonCode
     response: Response
     auth: AuthData
     sessionKey: string | null
@@ -209,6 +230,8 @@ export class FetchOrchestrator {
     }
     let sessionToastEmitted = false
     let lastResponse: Response | undefined
+    let previousAttemptStatus: number | null = null
+    let previousAttemptAccountKey: string | null = null
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const now = nowFn()
@@ -216,6 +239,12 @@ export class FetchOrchestrator {
       const accountLabel = formatAccountLabel(auth)
       const accountKey =
         auth.identityKey?.trim() || auth.accountId?.trim() || auth.email?.trim()?.toLowerCase() || accountLabel
+      const attemptReasonCode: FetchAttemptReasonCode =
+        attempt === 0 || previousAttemptStatus !== 429
+          ? "initial_attempt"
+          : previousAttemptAccountKey && previousAttemptAccountKey !== accountKey
+            ? "retry_switched_account_after_429"
+            : "retry_same_account_after_429"
 
       if (sessionEvent && !sessionToastEmitted) {
         const message =
@@ -233,7 +262,11 @@ export class FetchOrchestrator {
       }
 
       if (this.state.lastAccountKey !== null && this.state.lastAccountKey !== accountKey) {
-        await this.maybeShowToast(`Account switched: ${accountLabel}`, "info", {
+        const accountSwitchMessage =
+          attemptReasonCode === "retry_switched_account_after_429"
+            ? `Account switched after rate limit: ${accountLabel} [${attemptReasonCode}]`
+            : `Account switched: ${accountLabel}`
+        await this.maybeShowToast(accountSwitchMessage, "info", {
           dedupeKey: "account:switch",
           debounceMs: DEFAULT_ACCOUNT_SWITCH_TOAST_DEBOUNCE_MS,
           now
@@ -251,6 +284,7 @@ export class FetchOrchestrator {
           const maybeRequest = await this.deps.onAttemptRequest({
             attempt,
             maxAttempts,
+            attemptReasonCode,
             request,
             auth,
             sessionKey
@@ -269,6 +303,7 @@ export class FetchOrchestrator {
           await this.deps.onAttemptResponse({
             attempt,
             maxAttempts,
+            attemptReasonCode,
             response: response.clone(),
             auth,
             sessionKey
@@ -282,6 +317,8 @@ export class FetchOrchestrator {
       }
 
       lastResponse = response
+      previousAttemptStatus = response.status
+      previousAttemptAccountKey = accountKey
 
       // Handle 429
       const retryAfterStr = response.headers.get("retry-after")
@@ -299,7 +336,7 @@ export class FetchOrchestrator {
       }
 
       if (attempt < maxAttempts - 1 && this.shouldShowRateLimitToast(auth.identityKey, now)) {
-        await this.maybeShowToast("Rate limited - switching account", "warning")
+        await this.maybeShowToast("Rate limited - switching account [retry_pending_after_429]", "warning")
       }
     }
 
@@ -315,14 +352,6 @@ export class FetchOrchestrator {
       )
     }
 
-    return (
-      lastResponse ??
-      createSyntheticErrorResponse(
-        "No response received from OpenAI. Retry or run `opencode auth login`.",
-        502,
-        "no_response_received",
-        "request"
-      )
-    )
+    return lastResponse!
   }
 }

@@ -1,5 +1,4 @@
-import type { AuthData, FetchOrchestratorAuthContext } from "../fetch-orchestrator"
-import { OPENAI_AUTH_REFRESH_LEASE_MS } from "../auth-refresh"
+import type { AccountSelectionTrace, AuthData, FetchOrchestratorAuthContext } from "../fetch-orchestrator"
 import { PluginFatalError, formatWaitTime, isPluginFatalError } from "../fatal-errors"
 import { ensureIdentityKey, normalizeEmail, normalizePlan } from "../identity"
 import type { Logger } from "../logger"
@@ -11,6 +10,7 @@ import { formatAccountLabel } from "./accounts"
 import { extractAccountId, refreshAccessToken, type OAuthTokenRefreshError } from "./oauth-utils"
 
 const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
+const AUTH_REFRESH_LEASE_MS = 30_000
 
 function isOAuthTokenRefreshError(value: unknown): value is OAuthTokenRefreshError {
   return value instanceof Error && ("status" in value || "oauthCode" in value)
@@ -57,6 +57,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
   let sawMissingRefresh = false
   let totalAccounts = 0
   let rotationLogged = false
+  let lastSelectionTrace: AccountSelectionTrace | undefined
 
   try {
     if (input.isSubagentRequest && input.context?.sessionKey) {
@@ -136,6 +137,19 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
           stickySessionKey: input.isSubagentRequest ? undefined : input.context?.sessionKey,
           stickySessionState: sessionState,
           onDebug: (event) => {
+            lastSelectionTrace = {
+              strategy: event.strategy,
+              decision: event.decision,
+              totalCount: event.totalCount,
+              disabledCount: event.disabledCount,
+              cooldownCount: event.cooldownCount,
+              refreshLeaseCount: event.refreshLeaseCount,
+              eligibleCount: event.eligibleCount,
+              attemptedCount: attempted.size + (event.selectedIdentityKey ? 1 : 0),
+              ...(event.selectedIdentityKey ? { selectedIdentityKey: event.selectedIdentityKey } : null),
+              ...(event.activeIdentityKey ? { activeIdentityKey: event.activeIdentityKey } : null),
+              ...(event.sessionKey ? { sessionKey: event.sessionKey } : null)
+            }
             input.log?.debug("rotation decision", event)
           }
         })
@@ -178,6 +192,15 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
           selectedCooldownUntil: selected.cooldownUntil ?? null,
           selectedExpires: selected.expires ?? null
         })
+        if (lastSelectionTrace) {
+          lastSelectionTrace = {
+            ...lastSelectionTrace,
+            attemptedCount: attempted.size,
+            ...(selected.identityKey ? { selectedIdentityKey: selected.identityKey } : null),
+            ...(selectedIndex >= 0 ? { selectedIndex } : null),
+            attemptKey
+          }
+        }
 
         accountLabel = formatAccountLabel(selected, selectedIndex >= 0 ? selectedIndex : 0)
         email = selected.email
@@ -204,7 +227,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
           return
         }
 
-        selected.refreshLeaseUntil = now + OPENAI_AUTH_REFRESH_LEASE_MS
+        selected.refreshLeaseUntil = now + AUTH_REFRESH_LEASE_MS
         refreshClaim = {
           identityKey: selected.identityKey,
           refreshToken: selected.refresh
@@ -392,5 +415,13 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
     })
   }
 
-  return { access, accountId, identityKey, accountLabel, email, plan }
+  return {
+    access,
+    accountId,
+    identityKey,
+    accountLabel,
+    email,
+    plan,
+    ...(lastSelectionTrace ? { selectionTrace: lastSelectionTrace } : null)
+  }
 }
