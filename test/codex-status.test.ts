@@ -47,6 +47,46 @@ describe("CodexStatus headers", () => {
     expect(snap.limits[0]?.resetsAt).toBe(1700 * 1000)
   })
 
+  it("parses reset time values in milliseconds", () => {
+    const s = new CodexStatus()
+    const snap = s.parseFromHeaders({
+      now: 1000,
+      modelFamily: "gpt-5.2",
+      headers: {
+        "x-ratelimit-remaining-requests": "75",
+        "x-ratelimit-limit-requests": "100",
+        "x-ratelimit-reset-requests": "1700000000000"
+      }
+    })
+
+    expect(snap.limits[0]?.resetsAt).toBe(1700000000000)
+  })
+
+  it("parses reset time values with duration suffixes", () => {
+    const s = new CodexStatus()
+    const seconds = s.parseFromHeaders({
+      now: 1000,
+      modelFamily: "gpt-5.2",
+      headers: {
+        "x-ratelimit-remaining-requests": "75",
+        "x-ratelimit-limit-requests": "100",
+        "x-ratelimit-reset-requests": "1.5s"
+      }
+    })
+    const millis = s.parseFromHeaders({
+      now: 1000,
+      modelFamily: "gpt-5.2",
+      headers: {
+        "x-ratelimit-remaining-requests": "75",
+        "x-ratelimit-limit-requests": "100",
+        "x-ratelimit-reset-requests": "1500ms"
+      }
+    })
+
+    expect(seconds.limits[0]?.resetsAt).toBe(1500)
+    expect(millis.limits[0]?.resetsAt).toBe(1500)
+  })
+
   it("handles missing headers gracefully", () => {
     const s = new CodexStatus()
     const snap = s.parseFromHeaders({

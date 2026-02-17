@@ -221,6 +221,7 @@ describe("model catalog", () => {
 
     const readdirSpy = vi.spyOn(fs, "readdir")
 
+    const events: CodexModelCatalogEvent[] = []
     const models = await getCodexModelCatalog({
       accessToken: "at",
       accountId: "acc_123",
@@ -228,11 +229,14 @@ describe("model catalog", () => {
       now: () => 1001,
       fetchImpl: async () => {
         throw new Error("should not refetch network")
-      }
+      },
+      onEvent: (event) => events.push(event)
     })
 
     expect(models?.map((model) => model.slug)).toEqual(["gpt-5.3-codex"])
     expect(readdirSpy).not.toHaveBeenCalledWith(cacheDir)
+    expect(events.some((event) => event.type === "memory_cache_hit" || event.type === "disk_cache_hit")).toBe(true)
+    expect(events.some((event) => event.type === "network_fetch_failed")).toBe(false)
     readdirSpy.mockRestore()
   })
 

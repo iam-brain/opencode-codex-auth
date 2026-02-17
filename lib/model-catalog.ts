@@ -634,10 +634,17 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
     return disk.models
   }
 
-  const opencodeCacheFallback = await readCatalogFromOpencodeCache(cacheDir)
-  const codexCliCacheFallback = await readCatalogFromCodexCliCache()
+  let opencodeCacheFallback: CodexModelsCache | undefined
+  let codexCliCacheFallback: CodexModelsCache | undefined
+
+  const ensureFallbackCaches = async (): Promise<void> => {
+    if (opencodeCacheFallback !== undefined || codexCliCacheFallback !== undefined) return
+    opencodeCacheFallback = await readCatalogFromOpencodeCache(cacheDir)
+    codexCliCacheFallback = await readCatalogFromCodexCliCache()
+  }
 
   if (!input.accessToken) {
+    await ensureFallbackCaches()
     if (disk) {
       emitEvent(input, { type: "stale_cache_used", reason: "missing_access_token" })
       inMemoryCatalog.set(key, disk)
@@ -714,6 +721,7 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
       return nextCache.models
     } catch (error) {
       emitEvent(input, { type: "network_fetch_failed", reason: deriveReason(error) })
+      await ensureFallbackCaches()
       if (disk) {
         inMemoryCatalog.set(key, disk)
         emitEvent(input, { type: "stale_cache_used", reason: "network_fetch_failed" })
