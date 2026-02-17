@@ -8,7 +8,7 @@ import { CODEX_OAUTH_SUCCESS_HTML } from "../oauth-pages"
 
 export const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 export const ISSUER = "https://auth.openai.com"
-export const OAUTH_PORT = resolvePortSetting(process.env.CODEX_OAUTH_PORT, 1455)
+export const OAUTH_PORT = 1455
 export const OAUTH_LOOPBACK_HOST = "localhost"
 export const OAUTH_CALLBACK_ORIGIN = `http://${OAUTH_LOOPBACK_HOST}:${OAUTH_PORT}`
 export const OAUTH_CALLBACK_PATH = "/auth/callback"
@@ -22,18 +22,6 @@ function resolveTimeoutSetting(raw: string | undefined, fallbackMs: number, minM
   return Number.isFinite(parsed) && parsed >= minMs ? parsed : fallbackMs
 }
 
-function resolvePortSetting(raw: string | undefined, fallbackPort: number): number {
-  if (!raw) return fallbackPort
-  const parsed = Number(raw)
-  if (!Number.isFinite(parsed)) return fallbackPort
-  const rounded = Math.floor(parsed)
-  if (rounded < 1 || rounded > 65535) return fallbackPort
-  return rounded
-}
-
-// Timeout constants are resolved once at module load from process.env.
-// Changes to environment variables after import are NOT reflected.
-// This is acceptable because plugin configuration is set before launch.
 export const OAUTH_HTTP_TIMEOUT_MS = resolveTimeoutSetting(process.env.CODEX_OAUTH_HTTP_TIMEOUT_MS, 15_000, 1_000)
 export const OAUTH_DEVICE_AUTH_TIMEOUT_MS = resolveTimeoutSetting(
   process.env.CODEX_DEVICE_AUTH_TIMEOUT_MS,

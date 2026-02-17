@@ -6,16 +6,6 @@ import path from "node:path"
 import type { CodexRateLimitSnapshot } from "./types"
 
 export type SnapshotMap = Record<string, CodexRateLimitSnapshot>
-const PRIVATE_DIR_MODE = 0o700
-
-async function ensurePrivateDir(dirPath: string): Promise<void> {
-  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
-  try {
-    await fs.chmod(dirPath, PRIVATE_DIR_MODE)
-  } catch {
-    // best-effort permissions
-  }
-}
 
 async function readJson(filePath: string): Promise<SnapshotMap> {
   let raw: string
@@ -36,8 +26,8 @@ async function readJson(filePath: string): Promise<SnapshotMap> {
 }
 
 async function writeAtomic(filePath: string, data: SnapshotMap) {
-  await ensurePrivateDir(path.dirname(filePath))
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now().toString(36)}`
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  const tmpPath = `${filePath}.tmp`
   const serialized = `${JSON.stringify(data, null, 2)}\n`
   await fs.writeFile(tmpPath, serialized, { mode: 0o600 })
   await fs.rename(tmpPath, filePath)
@@ -56,11 +46,10 @@ export async function saveSnapshots(
   filePath: string,
   update: (current: SnapshotMap) => SnapshotMap | Promise<SnapshotMap>
 ): Promise<SnapshotMap> {
-  await ensurePrivateDir(path.dirname(filePath))
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
 
   const release = await lockfile.lock(filePath, {
     realpath: false,
-    stale: 10_000,
     retries: {
       retries: 20,
       minTimeout: 10,

@@ -1,17 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-const PRIVATE_DIR_MODE = 0o700
-
-async function ensurePrivateDir(dirPath: string): Promise<void> {
-  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
-  try {
-    await fs.chmod(dirPath, PRIVATE_DIR_MODE)
-  } catch {
-    // best-effort permissions
-  }
-}
-
 export async function quarantineFile(input: {
   sourcePath: string
   quarantineDir: string
@@ -19,7 +8,7 @@ export async function quarantineFile(input: {
   keep?: number
 }): Promise<{ quarantinedPath: string }> {
   const keep = typeof input.keep === "number" && Number.isFinite(input.keep) ? Math.max(1, Math.floor(input.keep)) : 5
-  await ensurePrivateDir(input.quarantineDir)
+  await fs.mkdir(input.quarantineDir, { recursive: true })
 
   const base = path.basename(input.sourcePath)
   const dest = path.join(input.quarantineDir, `${base}.${input.now()}.quarantine.json`)

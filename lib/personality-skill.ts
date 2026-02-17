@@ -114,12 +114,6 @@ const MANAGED_SKILL_FILES: ManagedSkillFile[] = [
     content: PERSONALITY_PATTERNS_REFERENCE
   }
 ]
-const PRIVATE_DIR_MODE = 0o700
-
-async function ensurePrivateDir(dirPath: string): Promise<void> {
-  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
-  await fs.chmod(dirPath, PRIVATE_DIR_MODE).catch(() => {})
-}
 
 export function defaultOpencodeSkillsDir(env: Record<string, string | undefined> = process.env): string {
   const xdgRoot = env.XDG_CONFIG_HOME?.trim()
@@ -156,7 +150,7 @@ export async function installPersonalityBuilderSkill(
       continue
     }
 
-    await ensurePrivateDir(path.dirname(filePath))
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
     await fs.writeFile(filePath, file.content, { encoding: "utf8", mode: 0o600 })
     written.push(filePath)
 

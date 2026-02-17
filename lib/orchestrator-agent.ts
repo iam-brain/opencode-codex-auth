@@ -4,12 +4,6 @@ import path from "node:path"
 
 export const CODEX_ORCHESTRATOR_AGENT_FILE = "orchestrator.md"
 export const CODEX_ORCHESTRATOR_AGENT_FILE_DISABLED = `${CODEX_ORCHESTRATOR_AGENT_FILE}.disabled`
-const PRIVATE_DIR_MODE = 0o700
-
-async function ensurePrivateDir(dirPath: string): Promise<void> {
-  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
-  await fs.chmod(dirPath, PRIVATE_DIR_MODE).catch(() => {})
-}
 
 const CODEX_ORCHESTRATOR_AGENT_TEMPLATE = `---
 description: Codex-style orchestration profile for parallel delegation and synthesis.
@@ -89,7 +83,7 @@ async function ensureTemplateFile(filePath: string, force: boolean): Promise<{ c
     return { created: false, updated: false }
   }
 
-  await ensurePrivateDir(path.dirname(filePath))
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
   await fs.writeFile(filePath, CODEX_ORCHESTRATOR_AGENT_TEMPLATE, { encoding: "utf8", mode: 0o600 })
 
   return {
@@ -137,7 +131,7 @@ export async function reconcileOrchestratorAgentVisibility(
     }
 
     if (disabledExists) {
-      await ensurePrivateDir(path.dirname(enabledPath))
+      await fs.mkdir(path.dirname(enabledPath), { recursive: true })
       await fs.rename(disabledPath, enabledPath)
       return {
         agentsDir,
@@ -173,7 +167,7 @@ export async function reconcileOrchestratorAgentVisibility(
   }
 
   if (enabledExists) {
-    await ensurePrivateDir(path.dirname(disabledPath))
+    await fs.mkdir(path.dirname(disabledPath), { recursive: true })
     await fs.rename(enabledPath, disabledPath)
     return {
       agentsDir,

@@ -3,12 +3,6 @@ import os from "node:os"
 import path from "node:path"
 
 export const CREATE_PERSONALITY_COMMAND_FILE = "create-personality.md"
-const PRIVATE_DIR_MODE = 0o700
-
-async function ensurePrivateDir(dirPath: string): Promise<void> {
-  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
-  await fs.chmod(dirPath, PRIVATE_DIR_MODE).catch(() => {})
-}
 
 const CREATE_PERSONALITY_COMMAND_TEMPLATE = `---
 description: Build a custom coding personality and save it with the create-personality tool.
@@ -86,7 +80,7 @@ export async function installCreatePersonalityCommand(
     return { commandsDir, filePath, created: false, updated: false }
   }
 
-  await ensurePrivateDir(commandsDir)
+  await fs.mkdir(commandsDir, { recursive: true })
   await fs.writeFile(filePath, CREATE_PERSONALITY_COMMAND_TEMPLATE, { encoding: "utf8", mode: 0o600 })
   return {
     commandsDir,

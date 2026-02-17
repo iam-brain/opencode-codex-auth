@@ -35,12 +35,6 @@ function isCanonicalIdentityKey(value: string): boolean {
   return parts.every((part) => part.trim().length > 0)
 }
 
-/**
- * Ensure `account.identityKey` matches the canonical form derived from
- * accountId, email, and plan. If the existing key is in canonical format
- * but differs (e.g., email or plan changed), it is silently replaced.
- * Non-canonical keys (e.g., legacy or manually assigned) are preserved.
- */
 export function synchronizeIdentityKey(account: AccountRecord): AccountRecord {
   const canonical = buildIdentityKey(account)
   if (!canonical) return account

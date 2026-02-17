@@ -3,13 +3,6 @@ import path from "node:path"
 
 import { generatePersonaSpec, type PersonaDomain, type PersonaTargetStyle } from "./persona-tool"
 
-const PRIVATE_DIR_MODE = 0o700
-
-async function ensurePrivateDir(dirPath: string): Promise<void> {
-  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
-  await fs.chmod(dirPath, PRIVATE_DIR_MODE).catch(() => {})
-}
-
 type CliIo = {
   out: (message: string) => void
   err: (message: string) => void
@@ -154,7 +147,7 @@ export async function runPersonaToolCli(args: string[], io: CliIo = DEFAULT_IO):
 
   if (parsed.outPath) {
     const outputPath = path.resolve(parsed.outPath)
-    await ensurePrivateDir(path.dirname(outputPath))
+    await fs.mkdir(path.dirname(outputPath), { recursive: true })
     await fs.writeFile(outputPath, result.agent_markdown, { encoding: "utf8", mode: 0o600 })
   } else {
     io.out(result.agent_markdown.trimEnd())
@@ -162,7 +155,7 @@ export async function runPersonaToolCli(args: string[], io: CliIo = DEFAULT_IO):
 
   if (parsed.jsonPath) {
     const jsonPath = path.resolve(parsed.jsonPath)
-    await ensurePrivateDir(path.dirname(jsonPath))
+    await fs.mkdir(path.dirname(jsonPath), { recursive: true })
     await fs.writeFile(jsonPath, `${JSON.stringify(result, null, 2)}\n`, {
       encoding: "utf8",
       mode: 0o600

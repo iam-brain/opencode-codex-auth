@@ -3,7 +3,6 @@ import os from "node:os"
 import path from "node:path"
 
 export const DEFAULT_PLUGIN_SPECIFIER = "@iam-brain/opencode-codex-auth@latest"
-const PRIVATE_DIR_MODE = 0o700
 
 export function defaultOpencodeConfigPath(env: Record<string, string | undefined> = process.env): string {
   const xdgRoot = env.XDG_CONFIG_HOME?.trim()
@@ -66,9 +65,7 @@ export async function ensurePluginInstalled(
 
   if (created || changed || !Array.isArray(current.plugin)) {
     const next: OpencodeConfigShape = { ...current, plugin: plugins }
-    const parentDir = path.dirname(configPath)
-    await fs.mkdir(parentDir, { recursive: true, mode: PRIVATE_DIR_MODE })
-    await fs.chmod(parentDir, PRIVATE_DIR_MODE).catch(() => {})
+    await fs.mkdir(path.dirname(configPath), { recursive: true })
     await fs.writeFile(configPath, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 })
   }
 

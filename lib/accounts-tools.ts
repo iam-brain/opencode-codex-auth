@@ -1,12 +1,5 @@
 import type { AccountRecord, OpenAIMultiOauthAuth } from "./types"
 
-/**
- * Account management operations for tool invocations (codex-switch-accounts, etc.).
- *
- * These functions operate on the merged `openai.accounts` compatibility array,
- * NOT on domain-specific arrays (native/codex). Mutations are reconciled back
- * to domain-specific storage via `normalizeOpenAIOAuthState` during `saveAuthStorage`.
- */
 export type ToolAccountRow = {
   displayIndex: number // 1-based, matches tools
   identityKey: string
