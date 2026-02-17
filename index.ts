@@ -51,9 +51,21 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     scheduler = undefined
   }
 
-  await ensureDefaultConfigFile({ env: process.env }).catch(() => {})
-  await installCreatePersonalityCommand({ force: true }).catch(() => {})
-  await installPersonalityBuilderSkill({ force: true }).catch(() => {})
+  await ensureDefaultConfigFile({ env: process.env }).catch((error) => {
+    if (error instanceof Error) {
+      // best-effort bootstrap
+    }
+  })
+  await installCreatePersonalityCommand({ force: true }).catch((error) => {
+    if (error instanceof Error) {
+      // best-effort bootstrap
+    }
+  })
+  await installPersonalityBuilderSkill({ force: true }).catch((error) => {
+    if (error instanceof Error) {
+      // best-effort bootstrap
+    }
+  })
 
   const cfg = resolveConfig({
     env: process.env,
@@ -63,7 +75,11 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
   const collaborationProfileEnabled = getCollaborationProfileEnabled(cfg)
   const log = createLogger({ debug: getDebugEnabled(cfg) })
 
-  await reconcileOrchestratorAgentVisibility({ visible: collaborationProfileEnabled }).catch(() => {})
+  await reconcileOrchestratorAgentVisibility({ visible: collaborationProfileEnabled }).catch((error) => {
+    if (error instanceof Error) {
+      // best-effort bootstrap
+    }
+  })
 
   if (getProactiveRefreshEnabled(cfg)) {
     const bufferMs = getProactiveRefreshBufferMs(cfg)
@@ -79,7 +95,11 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
             expires: Date.now() + (tokens.expires_in ?? 3600) * 1000
           }
         }
-      }).catch(() => {})
+      }).catch((error) => {
+        if (error instanceof Error) {
+          // best-effort background scheduler
+        }
+      })
     }, 60_000)
     scheduler = { stop: () => clearInterval(timer) }
   }

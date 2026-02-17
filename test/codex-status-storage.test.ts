@@ -7,6 +7,10 @@ import path from "node:path"
 
 import { loadSnapshots, saveSnapshots } from "../lib/codex-status-storage"
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 describe("codex-status storage", () => {
   it("writes and reads snapshots atomically", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-status-"))
@@ -71,7 +75,10 @@ describe("codex-status storage", () => {
     let exists = true
     try {
       await fs.stat(p)
-    } catch {
+    } catch (error) {
+      if (!isFsErrorCode(error, "ENOENT")) {
+        throw error
+      }
       exists = false
     }
 

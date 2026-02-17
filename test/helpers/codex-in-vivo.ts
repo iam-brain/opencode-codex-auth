@@ -257,6 +257,12 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
     else process.env.XDG_CONFIG_HOME = previousEnv.XDG_CONFIG_HOME
     if (previousEnv.XDG_DATA_HOME === undefined) delete process.env.XDG_DATA_HOME
     else process.env.XDG_DATA_HOME = previousEnv.XDG_DATA_HOME
-    await fs.rm(root, { recursive: true, force: true }).catch(() => {})
+    try {
+      await fs.rm(root, { recursive: true, force: true })
+    } catch (error) {
+      if (error instanceof Error) {
+        // best-effort test cleanup
+      }
+    }
   }
 }
