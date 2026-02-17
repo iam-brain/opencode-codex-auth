@@ -19,7 +19,7 @@ Quick links: `docs/getting-started.md` · `docs/configuration.md` · `docs/multi
 Install and register the plugin (recommended):
 
 ```bash
-npx -y @iam-brain/opencode-codex-auth
+npx -y @iam-brain/opencode-codex-auth@latest
 ```
 
 Then authenticate:
