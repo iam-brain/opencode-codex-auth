@@ -19,6 +19,7 @@ function isOAuthTokenRefreshError(value: unknown): value is OAuthTokenRefreshErr
 type RefreshClaim = {
   identityKey: string
   refreshToken: string
+  leaseUntil: number
 }
 
 export type AcquireOpenAIAuthInput = {
@@ -227,10 +228,12 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
           return
         }
 
-        selected.refreshLeaseUntil = now + AUTH_REFRESH_LEASE_MS
+        const leaseUntil = now + AUTH_REFRESH_LEASE_MS
+        selected.refreshLeaseUntil = leaseUntil
         refreshClaim = {
           identityKey: selected.identityKey,
-          refreshToken: selected.refresh
+          refreshToken: selected.refresh,
+          leaseUntil
         }
       })
 
@@ -253,13 +256,20 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
           const selected = domain.accounts.find((account) => account.identityKey === refreshClaim?.identityKey)
           if (!selected) return
 
-          if (selected.enabled === false) {
-            delete selected.refreshLeaseUntil
+          const now = Date.now()
+          if (
+            typeof selected.refreshLeaseUntil !== "number" ||
+            selected.refreshLeaseUntil !== refreshClaim?.leaseUntil ||
+            selected.refreshLeaseUntil <= now ||
+            selected.refresh !== refreshClaim?.refreshToken
+          ) {
+            if (selected.refreshLeaseUntil === refreshClaim?.leaseUntil) {
+              delete selected.refreshLeaseUntil
+            }
             return
           }
 
-          const now = Date.now()
-          if (typeof selected.refreshLeaseUntil !== "number" || selected.refreshLeaseUntil <= now) {
+          if (selected.enabled === false) {
             delete selected.refreshLeaseUntil
             return
           }
@@ -295,6 +305,13 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
           const domain = ensureOpenAIOAuthDomain(authFile, input.authMode)
           const selected = domain.accounts.find((account) => account.identityKey === refreshClaim?.identityKey)
           if (!selected) return
+
+          if (
+            selected.refreshLeaseUntil !== refreshClaim?.leaseUntil ||
+            selected.refresh !== refreshClaim?.refreshToken
+          ) {
+            return
+          }
 
           delete selected.refreshLeaseUntil
           if (invalidGrant) {

@@ -20,7 +20,6 @@ const AUTH_MENU_QUOTA_FETCH_CONCURRENCY = 4
 
 type RefreshClaim = {
   mode: OpenAIAuthMode
-  index: number
   identityKey: string
   refreshToken: string
   leaseUntil: number
@@ -28,12 +27,12 @@ type RefreshClaim = {
 
 async function claimRefreshForQuotaSnapshot(input: {
   mode: OpenAIAuthMode
-  index: number
+  identityKey: string
 }): Promise<RefreshClaim | undefined> {
   let claim: RefreshClaim | undefined
   await saveAuthStorage(undefined, (authFile) => {
     const domain = ensureOpenAIOAuthDomain(authFile, input.mode)
-    const target = domain.accounts[input.index]
+    const target = domain.accounts.find((account) => account.identityKey === input.identityKey)
     if (!target || target.enabled === false || !target.refresh || !target.identityKey) return authFile
     const now = Date.now()
     if (typeof target.refreshLeaseUntil === "number" && target.refreshLeaseUntil > now) return authFile
@@ -41,7 +40,6 @@ async function claimRefreshForQuotaSnapshot(input: {
     target.refreshLeaseUntil = leaseUntil
     claim = {
       mode: input.mode,
-      index: input.index,
       identityKey: target.identityKey,
       refreshToken: target.refresh,
       leaseUntil
@@ -147,7 +145,6 @@ export type RefreshQuotaSnapshotsInput = {
 
 type RefreshCandidate = {
   mode: OpenAIAuthMode
-  index: number
   identityKey: string
   mirror: {
     refresh?: string
@@ -198,7 +195,6 @@ export async function refreshQuotaSnapshotsForAuthMenu(input: RefreshQuotaSnapsh
         if (identityKey) {
           refreshCandidates.push({
             mode,
-            index,
             identityKey,
             mirror: account
           })
@@ -219,7 +215,7 @@ export async function refreshQuotaSnapshotsForAuthMenu(input: RefreshQuotaSnapsh
   await runWithConcurrency(refreshCandidates, AUTH_MENU_QUOTA_FETCH_CONCURRENCY, async (candidate) => {
     let refreshClaim: RefreshClaim | undefined
     try {
-      refreshClaim = await claimRefreshForQuotaSnapshot({ mode: candidate.mode, index: candidate.index })
+      refreshClaim = await claimRefreshForQuotaSnapshot({ mode: candidate.mode, identityKey: candidate.identityKey })
       if (!refreshClaim) return
 
       const tokens = await refreshAccessToken(refreshClaim.refreshToken)
@@ -241,7 +237,7 @@ export async function refreshQuotaSnapshotsForAuthMenu(input: RefreshQuotaSnapsh
         await releaseFailedRefreshClaimForQuotaSnapshot({ claim: refreshClaim, now: Date.now() })
       }
       input.log?.debug("quota check refresh failed", {
-        index: candidate.index,
+        identityKey: candidate.identityKey,
         mode: candidate.mode,
         error: error instanceof Error ? error.message : String(error)
       })

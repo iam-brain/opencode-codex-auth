@@ -30,11 +30,13 @@ async function loadPluginWithMenu(input: {
     | { updatedAt: number; modelFamily: string; limits: Array<{ name: string; leftPct: number }> }
     | null
   initialSnapshots?: Record<string, unknown>
+  beforeSaveAuthStorageUpdate?: (state: Record<string, unknown>, callCount: number) => void
 }) {
   vi.resetModules()
 
   const runAuthMenuOnce = vi.fn(input.runAuthMenuOnceImpl ?? (async () => input.menuResult ?? "exit"))
   let saveAuthStorageDepth = 0
+  let saveAuthStorageCalls = 0
 
   const storageState =
     input.authFile ??
@@ -70,7 +72,9 @@ async function loadPluginWithMenu(input: {
       ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
     ) => {
       saveAuthStorageDepth += 1
+      saveAuthStorageCalls += 1
       try {
+        input.beforeSaveAuthStorageUpdate?.(storageState, saveAuthStorageCalls)
         const next = await update(storageState)
         return next ?? storageState
       } finally {
@@ -854,6 +858,121 @@ describe("codex-native auth menu wiring", () => {
       await browserMethod.authorize({})
       expect(refreshAccessToken).toHaveBeenCalled()
       expect(observedLockStates).toEqual([false])
+    } finally {
+      stdin.isTTY = prevIn
+      stdout.isTTY = prevOut
+    }
+  })
+
+  it("claims quota refresh by identity key when account order changes", async () => {
+    const { hooks, fetchQuotaSnapshotFromBackend } = await loadPluginWithMenu({
+      offerLegacyTransfer: false,
+      authFile: {
+        openai: {
+          type: "oauth",
+          accounts: [
+            {
+              identityKey: "acc_1|one@example.com|plus",
+              accountId: "acc_1",
+              email: "one@example.com",
+              plan: "plus",
+              enabled: true,
+              access: "at_1",
+              refresh: "rt_1",
+              expires: Date.now() + 60_000
+            },
+            {
+              identityKey: "acc_2|two@example.com|plus",
+              accountId: "acc_2",
+              email: "two@example.com",
+              plan: "plus",
+              enabled: true,
+              access: "at_2",
+              refresh: "rt_2",
+              expires: Date.now() - 1_000
+            }
+          ],
+          activeIdentityKey: "acc_2|two@example.com|plus"
+        }
+      },
+      runAuthMenuOnceImpl: async (args) => {
+        await args.handlers.onCheckQuotas()
+        return "exit"
+      },
+      beforeSaveAuthStorageUpdate: (state, callCount) => {
+        if (callCount !== 1) return
+        const openai = state.openai as { accounts?: Array<Record<string, unknown>> } | undefined
+        if (openai?.accounts) {
+          openai.accounts.reverse()
+        }
+      },
+      refreshAccessTokenImpl: async (refreshToken) => {
+        if (refreshToken === "rt_2") {
+          return {
+            refresh_token: "rt_2_next",
+            access_token: "at_2_next",
+            expires_in: 3600,
+            id_token: buildJwt({
+              "https://api.openai.com/auth": {
+                chatgpt_account_id: "acc_2",
+                chatgpt_plan_type: "plus"
+              },
+              "https://api.openai.com/profile": {
+                email: "two@example.com"
+              }
+            })
+          }
+        }
+        return {
+          refresh_token: refreshToken,
+          access_token: `at_${refreshToken}`,
+          expires_in: 3600,
+          id_token: buildJwt({
+            "https://api.openai.com/auth": {
+              chatgpt_account_id: "acc_1",
+              chatgpt_plan_type: "plus"
+            },
+            "https://api.openai.com/profile": {
+              email: "one@example.com"
+            }
+          })
+        }
+      },
+      quotaSnapshotImpl: async ({ accountId }) => {
+        if (accountId === "acc_2") {
+          return {
+            updatedAt: 900,
+            modelFamily: "gpt-5.3-codex",
+            limits: [{ name: "requests", leftPct: 12 }]
+          }
+        }
+        if (accountId === "acc_1") {
+          return {
+            updatedAt: 901,
+            modelFamily: "gpt-5.3-codex",
+            limits: [{ name: "requests", leftPct: 80 }]
+          }
+        }
+        return null
+      }
+    })
+
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const prevIn = stdin.isTTY
+    const prevOut = stdout.isTTY
+    stdin.isTTY = true
+    stdout.isTTY = true
+
+    try {
+      await browserMethod.authorize({})
+      const requestedAccountIds = new Set(
+        fetchQuotaSnapshotFromBackend.mock.calls.map((call) => (call[0] as { accountId?: string })?.accountId)
+      )
+      expect(requestedAccountIds).toEqual(new Set(["acc_1", "acc_2"]))
     } finally {
       stdin.isTTY = prevIn
       stdout.isTTY = prevOut

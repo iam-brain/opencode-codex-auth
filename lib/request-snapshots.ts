@@ -63,6 +63,18 @@ function sanitizeBodyValue(value: unknown): unknown {
   return out
 }
 
+function redactRawBody(raw: string): string {
+  return raw
+    .replace(
+      /([?&;\s]|^)(access_token|refresh_token|id_token|accessToken|refreshToken|idToken)=([^&;\s]+)/gi,
+      (_full, prefix: string, key: string) => `${prefix}${key}=${REDACTED}`
+    )
+    .replace(
+      /"(access_token|refresh_token|id_token|accessToken|refreshToken|idToken)"\s*:\s*"[^"]*"/gi,
+      (_full, key: string) => `"${key}":"${REDACTED}"`
+    )
+}
+
 async function serializeRequestBody(request: Request): Promise<unknown> {
   try {
     const raw = await request.clone().text()
@@ -73,7 +85,8 @@ async function serializeRequestBody(request: Request): Promise<unknown> {
       if (!(error instanceof SyntaxError)) {
         // treat as raw body on unexpected parse failures
       }
-      return raw.length > 8000 ? `${raw.slice(0, 8000)}... [truncated]` : raw
+      const redactedRaw = redactRawBody(raw)
+      return redactedRaw.length > 8000 ? `${redactedRaw.slice(0, 8000)}... [truncated]` : redactedRaw
     }
   } catch (error) {
     if (!(error instanceof Error && error.name === "AbortError")) {

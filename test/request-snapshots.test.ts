@@ -33,6 +33,32 @@ describe("request snapshots", () => {
     expect(payload.headers.authorization).toBe("Bearer [redacted]")
   })
 
+  it("redacts token-like values in raw non-JSON body fallback", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root, captureBodies: true })
+
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer super-secret-token",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: "access_token=abc123&refresh_token=def456&idToken=ghi789&prompt_cache_key=ses_snap_2"
+    })
+
+    await snapshots.captureRequest("outbound-attempt", request, { attempt: 2 })
+
+    const files = await fs.readdir(root)
+    const filePath = path.join(root, files.find((file) => file.includes("request-1-outbound-attempt"))!)
+    const payload = JSON.parse(await fs.readFile(filePath, "utf8")) as {
+      body?: unknown
+    }
+
+    expect(payload.body).toBe(
+      "access_token=[redacted]&refresh_token=[redacted]&idToken=[redacted]&prompt_cache_key=ses_snap_2"
+    )
+  })
+
   it("writes redacted request snapshots when enabled", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
     const snapshots = createRequestSnapshots({ enabled: true, dir: root, captureBodies: true })
