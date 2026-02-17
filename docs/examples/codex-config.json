@@ -13,7 +13,6 @@
     "developerMessagesToUser": true,
     "promptCacheKeyStrategy": "default",
     "headerSnapshots": false,
-    "headerSnapshotBodies": false,
     "headerTransformDebug": false,
     "pidOffset": false
   },

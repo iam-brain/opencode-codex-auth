@@ -56,9 +56,6 @@
         "headerSnapshots": {
           "type": "boolean"
         },
-        "headerSnapshotBodies": {
-          "type": "boolean"
-        },
         "headerTransformDebug": {
           "type": "boolean"
         },

@@ -17,7 +17,6 @@ import {
   getCollaborationProfileEnabled,
   getDebugEnabled,
   getHeaderTransformDebugEnabled,
-  getHeaderSnapshotBodiesEnabled,
   getHeaderSnapshotsEnabled,
   getOrchestratorSubagentsEnabled,
   getMode,
@@ -52,21 +51,9 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     scheduler = undefined
   }
 
-  await ensureDefaultConfigFile({ env: process.env }).catch((e) => {
-    console.error("[codex-auth] init: ensureDefaultConfigFile failed:", e instanceof Error ? e.message : String(e))
-  })
-  await installCreatePersonalityCommand({ force: true }).catch((e) => {
-    console.error(
-      "[codex-auth] init: installCreatePersonalityCommand failed:",
-      e instanceof Error ? e.message : String(e)
-    )
-  })
-  await installPersonalityBuilderSkill({ force: true }).catch((e) => {
-    console.error(
-      "[codex-auth] init: installPersonalityBuilderSkill failed:",
-      e instanceof Error ? e.message : String(e)
-    )
-  })
+  await ensureDefaultConfigFile({ env: process.env }).catch(() => {})
+  await installCreatePersonalityCommand({ force: true }).catch(() => {})
+  await installPersonalityBuilderSkill({ force: true }).catch(() => {})
 
   const cfg = resolveConfig({
     env: process.env,
@@ -76,9 +63,7 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
   const collaborationProfileEnabled = getCollaborationProfileEnabled(cfg)
   const log = createLogger({ debug: getDebugEnabled(cfg) })
 
-  await reconcileOrchestratorAgentVisibility({ visible: collaborationProfileEnabled }).catch((e) => {
-    log.warn("reconcileOrchestratorAgentVisibility failed", { error: e instanceof Error ? e.message : String(e) })
-  })
+  await reconcileOrchestratorAgentVisibility({ visible: collaborationProfileEnabled }).catch(() => {})
 
   if (getProactiveRefreshEnabled(cfg)) {
     const bufferMs = getProactiveRefreshBufferMs(cfg)
@@ -113,7 +98,6 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     remapDeveloperMessagesToUser: getRemapDeveloperMessagesToUserEnabled(cfg),
     codexCompactionOverride: getCodexCompactionOverrideEnabled(cfg),
     headerSnapshots: getHeaderSnapshotsEnabled(cfg),
-    headerSnapshotBodies: getHeaderSnapshotBodiesEnabled(cfg),
     headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
     collaborationProfileEnabled,
     orchestratorSubagentsEnabled: getOrchestratorSubagentsEnabled(cfg),
