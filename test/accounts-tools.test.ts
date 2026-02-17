@@ -70,6 +70,34 @@ describe("switchAccountByIndex", () => {
 
     expect(() => switchAccountByIndex(openai, 2)).not.toThrow()
   })
+
+  it("updates matching domain activeIdentityKey when switching", () => {
+    const openai = {
+      type: "oauth" as const,
+      activeIdentityKey: "a|u1@example.com|plus",
+      accounts: [
+        { identityKey: "a|u1@example.com|plus", accountId: "a", email: "u1@example.com", plan: "plus", enabled: true },
+        { identityKey: "b|u2@example.com|pro", accountId: "b", email: "u2@example.com", plan: "pro", enabled: true }
+      ],
+      native: {
+        accounts: [
+          { identityKey: "a|u1@example.com|plus", accountId: "a", email: "u1@example.com", plan: "plus", enabled: true }
+        ],
+        activeIdentityKey: "a|u1@example.com|plus"
+      },
+      codex: {
+        accounts: [
+          { identityKey: "b|u2@example.com|pro", accountId: "b", email: "u2@example.com", plan: "pro", enabled: true }
+        ],
+        activeIdentityKey: undefined
+      }
+    }
+
+    const next = switchAccountByIndex(openai, 2)
+    expect(next.activeIdentityKey).toBe("b|u2@example.com|pro")
+    expect(next.native?.activeIdentityKey).toBe("a|u1@example.com|plus")
+    expect(next.codex?.activeIdentityKey).toBe("b|u2@example.com|pro")
+  })
 })
 
 describe("toggleAccountEnabledByIndex", () => {
@@ -110,6 +138,35 @@ describe("toggleAccountEnabledByIndex", () => {
     const next = toggleAccountEnabledByIndex(openai, 2)
     expect(next.accounts[0]?.enabled).toBe(false)
     expect(next.accounts[1]?.enabled).toBe(false)
+  })
+
+  it("toggles matching domain account and reconciles domain active account", () => {
+    const openai = {
+      type: "oauth" as const,
+      activeIdentityKey: "b|u2@example.com|pro",
+      accounts: [
+        { identityKey: "a|u1@example.com|plus", accountId: "a", email: "u1@example.com", plan: "plus", enabled: true },
+        { identityKey: "b|u2@example.com|pro", accountId: "b", email: "u2@example.com", plan: "pro", enabled: true }
+      ],
+      codex: {
+        accounts: [
+          {
+            identityKey: "a|u1@example.com|plus",
+            accountId: "a",
+            email: "u1@example.com",
+            plan: "plus",
+            enabled: true
+          },
+          { identityKey: "b|u2@example.com|pro", accountId: "b", email: "u2@example.com", plan: "pro", enabled: true }
+        ],
+        activeIdentityKey: "b|u2@example.com|pro"
+      }
+    }
+
+    const next = toggleAccountEnabledByIndex(openai, 2)
+    expect(next.accounts[1]?.enabled).toBe(false)
+    expect(next.codex?.accounts[1]?.enabled).toBe(false)
+    expect(next.codex?.activeIdentityKey).toBe("a|u1@example.com|plus")
   })
 })
 
@@ -170,5 +227,35 @@ describe("removeAccountByIndex", () => {
     const next = removeAccountByIndex(openai, 2)
     expect(next.accounts).toHaveLength(1)
     expect(next.accounts[0]?.email).toBe("first@example.com")
+  })
+
+  it("removes matching domain account and reconciles domain active account", () => {
+    const openai = {
+      type: "oauth" as const,
+      activeIdentityKey: "b|u2@example.com|pro",
+      accounts: [
+        { identityKey: "a|u1@example.com|plus", accountId: "a", email: "u1@example.com", plan: "plus", enabled: true },
+        { identityKey: "b|u2@example.com|pro", accountId: "b", email: "u2@example.com", plan: "pro", enabled: true }
+      ],
+      native: {
+        accounts: [
+          {
+            identityKey: "a|u1@example.com|plus",
+            accountId: "a",
+            email: "u1@example.com",
+            plan: "plus",
+            enabled: true
+          },
+          { identityKey: "b|u2@example.com|pro", accountId: "b", email: "u2@example.com", plan: "pro", enabled: true }
+        ],
+        activeIdentityKey: "b|u2@example.com|pro"
+      }
+    }
+
+    const next = removeAccountByIndex(openai, 2)
+    expect(next.accounts).toHaveLength(1)
+    expect(next.native?.accounts).toHaveLength(1)
+    expect(next.native?.accounts[0]?.identityKey).toBe("a|u1@example.com|plus")
+    expect(next.native?.activeIdentityKey).toBe("a|u1@example.com|plus")
   })
 })

@@ -13,6 +13,46 @@ type ToolAccountInternalRow = ToolAccountRow & {
   accountIndex: number
 }
 
+function cloneDomain(domain: OpenAIMultiOauthAuth["native"]): OpenAIMultiOauthAuth["native"] {
+  if (!domain) return undefined
+  return {
+    ...domain,
+    accounts: [...domain.accounts]
+  }
+}
+
+function normalizeValue(value: string | undefined): string {
+  return value?.trim().toLowerCase() ?? ""
+}
+
+function normalizeAccountId(value: string | undefined): string {
+  return value?.trim() ?? ""
+}
+
+function matchesTargetAccount(candidate: AccountRecord, target: AccountRecord): boolean {
+  if (candidate.identityKey !== target.identityKey) return false
+  if (!target.accountId && !target.email && !target.plan) return true
+
+  return (
+    normalizeAccountId(candidate.accountId) === normalizeAccountId(target.accountId) &&
+    normalizeValue(candidate.email) === normalizeValue(target.email) &&
+    normalizeValue(candidate.plan) === normalizeValue(target.plan)
+  )
+}
+
+function reconcileActiveIdentityKeyForDomain(domain: OpenAIMultiOauthAuth["native"]): void {
+  if (!domain) return
+  if (
+    domain.activeIdentityKey &&
+    domain.accounts.some((account) => account.identityKey === domain.activeIdentityKey && account.enabled !== false)
+  ) {
+    return
+  }
+
+  const fallback = domain.accounts.find((account) => account.enabled !== false && account.identityKey)
+  domain.activeIdentityKey = fallback?.identityKey
+}
+
 function buildToolRows(openai: OpenAIMultiOauthAuth): ToolAccountInternalRow[] {
   return openai.accounts
     .flatMap((account, accountIndex) => {
@@ -63,7 +103,26 @@ export function listAccountsForTools(openai: OpenAIMultiOauthAuth): ToolAccountR
 export function switchAccountByIndex(openai: OpenAIMultiOauthAuth, index1: number): OpenAIMultiOauthAuth {
   const target = resolveToolAccount(openai, index1)
   if (target.enabled === false) throw new Error("Target account is disabled")
-  return { ...openai, activeIdentityKey: target.identityKey }
+
+  const nextNative = cloneDomain(openai.native)
+  const nextCodex = cloneDomain(openai.codex)
+  const domains = [nextNative, nextCodex]
+  for (const domain of domains) {
+    if (!domain) continue
+    const hasEnabledTarget = domain.accounts.some(
+      (account) => account.identityKey === target.identityKey && account.enabled !== false
+    )
+    if (hasEnabledTarget) {
+      domain.activeIdentityKey = target.identityKey
+    }
+  }
+
+  return {
+    ...openai,
+    activeIdentityKey: target.identityKey,
+    ...(nextNative ? { native: nextNative } : {}),
+    ...(nextCodex ? { codex: nextCodex } : {})
+  }
 }
 
 export function toggleAccountEnabledByIndex(openai: OpenAIMultiOauthAuth, index1: number): OpenAIMultiOauthAuth {
@@ -78,13 +137,35 @@ export function toggleAccountEnabledByIndex(openai: OpenAIMultiOauthAuth, index1
   if (idx < 0) throw new Error("Target account missing identityKey")
   const target = openai.accounts[idx]
   if (!target?.identityKey) throw new Error("Target account missing identityKey")
+  const toggledEnabled = target.enabled === false
 
   const nextAccounts = [...openai.accounts]
   nextAccounts[idx] = {
     ...target,
-    enabled: target.enabled === false
+    enabled: toggledEnabled
   }
-  return { ...openai, accounts: nextAccounts }
+
+  const nextNative = cloneDomain(openai.native)
+  const nextCodex = cloneDomain(openai.codex)
+  const domains = [nextNative, nextCodex]
+  for (const domain of domains) {
+    if (!domain) continue
+    const domainIndex = domain.accounts.findIndex((account) => matchesTargetAccount(account, target))
+    if (domainIndex >= 0) {
+      const domainTarget = domain.accounts[domainIndex]
+      if (domainTarget) {
+        domain.accounts[domainIndex] = { ...domainTarget, enabled: toggledEnabled }
+      }
+    }
+    reconcileActiveIdentityKeyForDomain(domain)
+  }
+
+  return {
+    ...openai,
+    accounts: nextAccounts,
+    ...(nextNative ? { native: nextNative } : {}),
+    ...(nextCodex ? { codex: nextCodex } : {})
+  }
 }
 
 export function removeAccountByIndex(openai: OpenAIMultiOauthAuth, index1: number): OpenAIMultiOauthAuth {
@@ -112,9 +193,23 @@ export function removeAccountByIndex(openai: OpenAIMultiOauthAuth, index1: numbe
     activeIdentityKey = fallback?.identityKey
   }
 
+  const nextNative = cloneDomain(openai.native)
+  const nextCodex = cloneDomain(openai.codex)
+  const domains = [nextNative, nextCodex]
+  for (const domain of domains) {
+    if (!domain || !removed?.identityKey) continue
+    const domainIndex = domain.accounts.findIndex((account) => matchesTargetAccount(account, removed))
+    if (domainIndex >= 0) {
+      domain.accounts = domain.accounts.filter((_, i) => i !== domainIndex)
+    }
+    reconcileActiveIdentityKeyForDomain(domain)
+  }
+
   return {
     ...openai,
     accounts,
-    ...(activeIdentityKey ? { activeIdentityKey } : { activeIdentityKey: undefined })
+    ...(activeIdentityKey ? { activeIdentityKey } : { activeIdentityKey: undefined }),
+    ...(nextNative ? { native: nextNative } : {}),
+    ...(nextCodex ? { codex: nextCodex } : {})
   }
 }

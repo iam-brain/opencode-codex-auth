@@ -200,15 +200,11 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 
   if (!response.ok) {
     let oauthCode: string | undefined
-    let oauthDescription: string | undefined
     try {
       const raw = await response.text()
       if (raw) {
         const payload = JSON.parse(raw) as Record<string, unknown>
         if (typeof payload.error === "string") oauthCode = payload.error
-        if (typeof payload.error_description === "string") {
-          oauthDescription = payload.error_description
-        }
       }
     } catch (error) {
       if (!(error instanceof SyntaxError)) {
@@ -217,9 +213,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
       // Best effort parse only.
     }
 
-    const detail = oauthCode
-      ? `${oauthCode}${oauthDescription ? `: ${oauthDescription}` : ""}`
-      : `status ${response.status}`
+    const detail = oauthCode ? `${oauthCode}` : `status ${response.status}`
     const error = new Error(`Token refresh failed (${detail})`) as OAuthTokenRefreshError
     error.status = response.status
     error.oauthCode = oauthCode
