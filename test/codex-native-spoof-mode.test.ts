@@ -965,13 +965,16 @@ describe("codex-native spoof + params hooks", () => {
   })
 
   it("allows collaboration injection in native mode when explicitly enabled", async () => {
-    const hooks = await CodexAuthPlugin({} as never, {
-      spoofMode: "native",
-      mode: "native",
-      collaborationProfileEnabled: true,
-      orchestratorSubagentsEnabled: true,
-      collaborationToolProfile: "codex"
-    } as never)
+    const hooks = await CodexAuthPlugin(
+      {} as never,
+      {
+        spoofMode: "native",
+        mode: "native",
+        collaborationProfileEnabled: true,
+        orchestratorSubagentsEnabled: true,
+        collaborationToolProfile: "codex"
+      } as never
+    )
     const chatParams = hooks["chat.params"]
     const chatHeaders = hooks["chat.headers"]
     expect(chatParams).toBeTypeOf("function")
@@ -1034,11 +1037,14 @@ describe("codex-native spoof + params hooks", () => {
   })
 
   it("injects plan-mode collaboration instructions when experimental collaboration profile is enabled", async () => {
-    const hooks = await CodexAuthPlugin({} as never, {
-      spoofMode: "codex",
-      mode: "codex",
-      collaborationProfileEnabled: true
-    } as never)
+    const hooks = await CodexAuthPlugin(
+      {} as never,
+      {
+        spoofMode: "codex",
+        mode: "codex",
+        collaborationProfileEnabled: true
+      } as never
+    )
     const chatParams = hooks["chat.params"]
     expect(chatParams).toBeTypeOf("function")
 
@@ -1070,12 +1076,15 @@ describe("codex-native spoof + params hooks", () => {
   })
 
   it("injects orchestrator collaboration instructions when experimental collaboration profile is enabled", async () => {
-    const hooks = await CodexAuthPlugin({} as never, {
-      spoofMode: "codex",
-      mode: "codex",
-      collaborationProfileEnabled: true,
-      orchestratorSubagentsEnabled: true
-    } as never)
+    const hooks = await CodexAuthPlugin(
+      {} as never,
+      {
+        spoofMode: "codex",
+        mode: "codex",
+        collaborationProfileEnabled: true,
+        orchestratorSubagentsEnabled: true
+      } as never
+    )
     const chatParams = hooks["chat.params"]
     expect(chatParams).toBeTypeOf("function")
 
@@ -1106,12 +1115,64 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.instructions).toContain("# Sub-agents")
   })
 
+  it("preserves orchestrator instructions instead of replacing with model base instructions", async () => {
+    const hooks = await CodexAuthPlugin(
+      {} as never,
+      {
+        spoofMode: "codex",
+        mode: "codex",
+        collaborationProfileEnabled: true,
+        orchestratorSubagentsEnabled: true
+      } as never
+    )
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_orchestrator_preserve",
+      agent: "orchestrator",
+      provider: {},
+      message: {},
+      model: {
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexInstructions: "Catalog instructions"
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {
+        instructions: [
+          "You are Codex, a coding agent based on GPT-5.",
+          "",
+          "# Sub-agents",
+          "If `spawn_agent` is unavailable or fails, ignore this section and proceed solo."
+        ].join("\n")
+      }
+    }
+
+    await chatParams?.(input, output)
+
+    expect(output.options.instructions).toContain("You are Codex, a coding agent based on GPT-5.")
+    expect(output.options.instructions).toContain("# Sub-agents")
+    expect(output.options.instructions).toContain("Tooling Compatibility (OpenCode)")
+    expect(output.options.instructions).not.toContain("Catalog instructions")
+  })
+
   it("sets collaboration-mode header for plan agent when experimental collaboration profile is enabled", async () => {
-    const hooks = await CodexAuthPlugin({} as never, {
-      spoofMode: "codex",
-      mode: "codex",
-      collaborationProfileEnabled: true
-    } as never)
+    const hooks = await CodexAuthPlugin(
+      {} as never,
+      {
+        spoofMode: "codex",
+        mode: "codex",
+        collaborationProfileEnabled: true
+      } as never
+    )
     const chatHeaders = hooks["chat.headers"]
     expect(chatHeaders).toBeTypeOf("function")
 
@@ -1129,12 +1190,15 @@ describe("codex-native spoof + params hooks", () => {
   })
 
   it("sets subagent + collaboration headers for codex review helper when orchestrator subagents are enabled", async () => {
-    const hooks = await CodexAuthPlugin({} as never, {
-      spoofMode: "codex",
-      mode: "codex",
-      collaborationProfileEnabled: true,
-      orchestratorSubagentsEnabled: true
-    } as never)
+    const hooks = await CodexAuthPlugin(
+      {} as never,
+      {
+        spoofMode: "codex",
+        mode: "codex",
+        collaborationProfileEnabled: true,
+        orchestratorSubagentsEnabled: true
+      } as never
+    )
     const chatHeaders = hooks["chat.headers"]
     expect(chatHeaders).toBeTypeOf("function")
 

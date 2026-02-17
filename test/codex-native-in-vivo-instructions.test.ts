@@ -51,6 +51,28 @@ describe("codex-native in-vivo instruction injection", () => {
     expect(result.outboundInstructions).toContain("close_agent -> stop reusing task_id")
   })
 
+  it("keeps orchestrator agent instructions instead of replacing them with model base instructions", async () => {
+    const result = await runCodexInVivoInstructionProbe({
+      hostInstructions: [
+        "You are Codex, a coding agent based on GPT-5.",
+        "",
+        "# Sub-agents",
+        "If `spawn_agent` is unavailable or fails, ignore this section and proceed solo."
+      ].join("\n"),
+      personalityKey: "vivo_persona",
+      personalityText: "Vivo Persona Voice",
+      agent: "orchestrator",
+      collaborationProfileEnabled: true,
+      orchestratorSubagentsEnabled: true,
+      collaborationToolProfile: "opencode"
+    })
+
+    expect(result.preflightInstructions).toContain("You are Codex, a coding agent based on GPT-5.")
+    expect(result.outboundInstructions).toContain("You are Codex, a coding agent based on GPT-5.")
+    expect(result.outboundInstructions).toContain("# Sub-agents")
+    expect(result.outboundInstructions).not.toContain("Base Vivo Persona Voice")
+  })
+
   it("injects plan mode semantics plus tool replacements for plan agent", async () => {
     const result = await runCodexInVivoInstructionProbe({
       hostInstructions: "OpenCode Host Instructions",
@@ -62,7 +84,10 @@ describe("codex-native in-vivo instruction injection", () => {
     })
 
     expect(result.outboundInstructions).toContain("# Plan Mode (Conversational)")
-    expect(result.outboundInstructions).toContain("must not perform mutating actions")
+    expect(result.outboundInstructions).toContain("You may explore and execute **non-mutating** actions")
+    expect(result.outboundInstructions).toContain(
+      "Before asking the user any question, perform at least one targeted non-mutating exploration pass"
+    )
     expect(result.outboundInstructions).toContain("spawn_agent -> task")
   })
 })

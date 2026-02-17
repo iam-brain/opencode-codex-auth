@@ -43,6 +43,8 @@ import { runOneProactiveRefreshTick } from "./lib/proactive-refresh"
 import { toolOutputForStatus } from "./lib/codex-status-tool"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage"
 import { switchToolMessage } from "./lib/tools-output"
+import { refreshCachedCodexPrompts } from "./lib/codex-prompts-cache"
+import { setCodexPlanModeInstructions } from "./lib/codex-native/collaboration"
 
 let scheduler: { stop: () => void } | undefined
 
@@ -67,6 +69,16 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
       // best-effort bootstrap
     }
   })
+
+  await refreshCachedCodexPrompts()
+    .then((prompts) => {
+      setCodexPlanModeInstructions(prompts.plan)
+    })
+    .catch((error) => {
+      if (error instanceof Error) {
+        // best-effort prompt cache bootstrap
+      }
+    })
 
   const cfg = resolveConfig({
     env: process.env,

@@ -25,7 +25,8 @@ import {
 import {
   CODEX_CODE_MODE_INSTRUCTIONS,
   CODEX_ORCHESTRATOR_INSTRUCTIONS,
-  CODEX_PLAN_MODE_INSTRUCTIONS,
+  getCodexPlanModeInstructions,
+  isOrchestratorInstructions,
   mergeInstructions,
   resolveCollaborationInstructions,
   resolveCollaborationProfile,
@@ -143,23 +144,26 @@ export async function handleChatParamsHook(input: {
       delete modelOptions.codexInstructions
     }
   }
+  const profile = resolveCollaborationProfile(input.hookInput.agent)
+  const preserveOrchestratorInstructions =
+    profile.isOrchestrator === true && isOrchestratorInstructions(asString(input.output.options.instructions))
+
   applyCodexRuntimeDefaultsToParams({
     modelOptions,
     modelToolCallCapable: input.hookInput.model.capabilities?.toolcall,
     thinkingSummariesOverride: modelThinkingSummariesOverride ?? globalBehavior?.thinkingSummaries,
     verbosityEnabledOverride: modelVerbosityEnabledOverride ?? globalVerbosityEnabled,
     verbosityOverride: modelVerbosityOverride ?? globalVerbosity,
-    preferCodexInstructions: input.spoofMode === "codex",
+    preferCodexInstructions: input.spoofMode === "codex" && !preserveOrchestratorInstructions,
     output: input.output
   })
 
   if (!input.collaborationProfileEnabled) return
 
-  const profile = resolveCollaborationProfile(input.hookInput.agent)
   if (!profile.enabled || !profile.kind) return
 
   const collaborationInstructions = resolveCollaborationInstructions(profile.kind, {
-    plan: CODEX_PLAN_MODE_INSTRUCTIONS,
+    plan: getCodexPlanModeInstructions(),
     code: CODEX_CODE_MODE_INSTRUCTIONS
   })
   let mergedInstructions = mergeInstructions(asString(input.output.options.instructions), collaborationInstructions)

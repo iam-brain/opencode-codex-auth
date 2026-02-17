@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  isOrchestratorInstructions,
   mergeInstructions,
   resolveCollaborationInstructions,
   resolveCollaborationProfile,
@@ -53,5 +54,19 @@ describe("codex collaboration profile", () => {
   it("resolves tooling profiles", () => {
     expect(resolveToolingInstructions("opencode")).toContain("Tooling Compatibility (OpenCode)")
     expect(resolveToolingInstructions("codex")).toContain("Tooling Compatibility (Codex-style)")
+  })
+
+  it("detects orchestrator-style upstream instructions", () => {
+    expect(
+      isOrchestratorInstructions(
+        [
+          "You are Codex, a coding agent based on GPT-5.",
+          "",
+          "# Sub-agents",
+          "If `spawn_agent` is unavailable or fails, ignore this section and proceed solo."
+        ].join("\n")
+      )
+    ).toBe(true)
+    expect(isOrchestratorInstructions("Catalog instructions\n\n# Plan Mode (Conversational)")).toBe(false)
   })
 })

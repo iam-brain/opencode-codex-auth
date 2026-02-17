@@ -2,6 +2,7 @@ import type { BehaviorSettings, PersonalityOption } from "../config"
 import type { CodexModelInfo } from "../model-catalog"
 import { resolveInstructionsForModel } from "../model-catalog"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer"
+import { isOrchestratorInstructions } from "./collaboration"
 
 type ChatParamsOutput = {
   temperature: number
@@ -894,6 +895,10 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
   if (!rendered) return { request: input.request, changed: false, reason: "rendered_empty_or_unsafe" }
 
   const currentInstructions = asString(payload.instructions)
+
+  if (isOrchestratorInstructions(currentInstructions)) {
+    return { request: input.request, changed: false, reason: "orchestrator_instructions_preserved" }
+  }
 
   if (currentInstructions === rendered) {
     return { request: input.request, changed: false, reason: "already_matches" }

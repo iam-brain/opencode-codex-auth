@@ -2,9 +2,16 @@ import path from "node:path"
 
 import { installCreatePersonalityCommand } from "./personality-command.js"
 import { installPersonalityBuilderSkill } from "./personality-skill.js"
-import { ensureDefaultConfigFile, getCollaborationProfileEnabled, getMode, loadConfigFile, resolveConfig } from "./config.js"
+import {
+  ensureDefaultConfigFile,
+  getCollaborationProfileEnabled,
+  getMode,
+  loadConfigFile,
+  resolveConfig
+} from "./config.js"
 import { reconcileOrchestratorAgentVisibility } from "./orchestrator-agent.js"
 import { DEFAULT_PLUGIN_SPECIFIER, defaultOpencodeConfigPath, ensurePluginInstalled } from "./opencode-install.js"
+import { refreshCachedCodexPrompts } from "./codex-prompts-cache.js"
 
 type InstallerIo = {
   out: (message: string) => void
@@ -109,6 +116,9 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
       skillResult.created ? "created" : skillResult.updated ? "updated" : "unchanged"
     }`
   )
+
+  const promptsResult = await refreshCachedCodexPrompts({ forceRefresh: true })
+  io.out(`Codex prompts cache synchronized: ${promptsResult.orchestrator && promptsResult.plan ? "yes" : "fallback"}`)
 
   const resolvedConfig = resolveConfig({
     env: process.env,

@@ -47,6 +47,7 @@ describe("installer cli", () => {
       expect(output).toContain("Codex config:")
       expect(output).toContain("/create-personality synchronized: created")
       expect(output).toContain("personality-builder skill synchronized: created")
+      expect(output).toContain("Codex prompts cache synchronized: yes")
       expect(output).toContain("Orchestrator agent visible in current mode (native, collaboration=off): no")
 
       const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
@@ -69,7 +70,9 @@ describe("installer cli", () => {
       expect(skillFile).toContain("name: personality-builder")
 
       await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md"))).rejects.toBeTruthy()
-      await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md.disabled"))).resolves.toBeUndefined()
+      await expect(
+        fs.access(path.join(root, "opencode", "agents", "orchestrator.md.disabled"))
+      ).resolves.toBeUndefined()
     } finally {
       if (previousXdg === undefined) {
         delete process.env.XDG_CONFIG_HOME
@@ -101,7 +104,10 @@ describe("installer cli", () => {
     try {
       const code = await runInstallerCli(["--config", configPath], capture.io)
       expect(code).toBe(0)
-      expect(capture.out.join("\n")).toContain("Orchestrator agent visible in current mode (codex, collaboration=on): yes")
+      expect(capture.out.join("\n")).toContain(
+        "Orchestrator agent visible in current mode (codex, collaboration=on): yes"
+      )
+      expect(capture.out.join("\n")).toContain("Codex prompts cache synchronized: yes")
       await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md"))).resolves.toBeUndefined()
       await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md.disabled"))).rejects.toBeTruthy()
     } finally {
