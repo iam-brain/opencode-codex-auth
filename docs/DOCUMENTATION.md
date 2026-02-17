@@ -7,7 +7,7 @@ This file describes how docs are organized and maintained.
 - Root entrypoints:
   - `README.md`
   - `docs/README.md`
-  - `docs/index.md` (thin alias to `docs/README.md`)
+  - `docs/index.md` (global docs index + fast agent read order)
 - User-facing guides:
   - `docs/getting-started.md`
   - `docs/configuration.md`
@@ -17,10 +17,18 @@ This file describes how docs are organized and maintained.
   - `docs/releasing.md`
   - `docs/examples/README.md`
 - Developer docs:
+  - `docs/development/README.md`
   - `docs/development/ARCHITECTURE.md`
   - `docs/development/CONFIG_FLOW.md`
   - `docs/development/CONFIG_FIELDS.md`
   - `docs/development/TESTING.md`
+  - `docs/development/UPSTREAM_SYNC.md`
+- Plans/docs-in-progress:
+  - `docs/plans/README.md`
+  - `docs/plans/parity-sync/`
+  - `docs/plans/development/`
+  - `docs/plans/completed/`
+  - `docs/plans/archive/`
 
 ## Documentation rules
 

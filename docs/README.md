@@ -2,6 +2,12 @@
 
 This directory contains user and developer documentation for `opencode-codex-auth`.
 
+## Quick index
+
+- `docs/index.md` - global docs index + agent fast-start order.
+- `docs/development/README.md` - internal architecture/config/testing index.
+- `docs/plans/README.md` - plan and progress index.
+
 ## Start here
 
 - `getting-started.md` for install/login/first-run.
@@ -26,6 +32,7 @@ This directory contains user and developer documentation for `opencode-codex-aut
 
 ## Developer guides
 
+- `development/README.md`
 - `development/ARCHITECTURE.md`
 - `development/CONFIG_FLOW.md`
 - `development/CONFIG_FIELDS.md`
