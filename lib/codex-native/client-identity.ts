@@ -22,6 +22,10 @@ let cachedTerminalUserAgentToken: string | undefined
 let cachedCodexClientVersion: string | undefined
 let codexClientVersionRefreshPromise: Promise<string> | undefined
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 function opencodeUserAgent(): string {
   const version = resolvePluginVersion()
   return `opencode/${version} (${os.platform()} ${os.release()}; ${os.arch()})`
@@ -72,7 +76,10 @@ function tmuxDisplayMessage(format: string): string | undefined {
   try {
     const value = execFileSync("tmux", ["display-message", "-p", format], { encoding: "utf8" }).trim()
     return value || undefined
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      // tmux may be unavailable outside tmux sessions.
+    }
     return undefined
   }
 }
@@ -179,7 +186,10 @@ function resolvePluginVersion(): string {
       cachedPluginVersion = parsed.version.trim()
       return cachedPluginVersion
     }
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError) && !isFsErrorCode(error, "ENOENT")) {
+      // Use fallback version below.
+    }
     // Use fallback version below.
   }
 
@@ -210,7 +220,10 @@ function readCodexClientVersionCache(cacheFilePath: string): CodexClientVersionC
       version,
       fetchedAt: fetchedAt ?? 0
     }
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError) && !isFsErrorCode(error, "ENOENT")) {
+      // Ignore unreadable cache.
+    }
     return undefined
   }
 }
@@ -225,7 +238,10 @@ function writeCodexClientVersionCache(
     writeFileSync(tempFilePath, `${JSON.stringify(entry, null, 2)}\n`, { mode: 0o600 })
     renameSync(tempFilePath, cacheFilePath)
     chmodSync(cacheFilePath, 0o600)
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
+      // best-effort cache persistence
+    }
     // best-effort cache persistence
   }
 }
@@ -243,7 +259,10 @@ async function fetchLatestCodexReleaseTag(fetchImpl: typeof fetch = fetch): Prom
       const tagName = normalizeCodexClientVersion(payload.tag_name)
       if (tagName) return tagName
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      // fallback to HTML release page
+    }
     // fallback to HTML release page
   }
 
@@ -347,7 +366,10 @@ function resolveMacProductVersion(): string {
   try {
     const value = execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).trim()
     cachedMacProductVersion = value || os.release()
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      // fallback to kernel release
+    }
     cachedMacProductVersion = os.release()
   }
   return cachedMacProductVersion

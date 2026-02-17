@@ -131,7 +131,10 @@ export async function runPersonaToolCli(args: string[], io: CliIo = DEFAULT_IO):
   let sourceText = ""
   try {
     sourceText = await fs.readFile(inputPath, "utf8")
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      // report read failure to caller
+    }
     io.err(`Unable to read input file: ${inputPath}`)
     return 1
   }

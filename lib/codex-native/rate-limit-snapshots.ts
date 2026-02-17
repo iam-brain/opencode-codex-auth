@@ -22,5 +22,9 @@ export function persistRateLimitSnapshotFromResponse(response: Response, identit
   void saveSnapshots(defaultSnapshotsPath(), (current) => ({
     ...current,
     [identityKey]: snapshot
-  })).catch(() => {})
+  })).catch((error) => {
+    if (error instanceof Error) {
+      // best-effort snapshot persistence
+    }
+  })
 }

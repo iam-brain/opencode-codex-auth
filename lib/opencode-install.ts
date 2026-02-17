@@ -2,6 +2,8 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
+import { quarantineFile } from "./quarantine"
+
 export const DEFAULT_PLUGIN_SPECIFIER = "@iam-brain/opencode-codex-auth@latest"
 
 export function defaultOpencodeConfigPath(env: Record<string, string | undefined> = process.env): string {
@@ -40,6 +42,19 @@ function normalizePluginList(raw: unknown): string[] {
   return []
 }
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
+async function quarantineMalformedConfig(configPath: string): Promise<void> {
+  const quarantineDir = path.join(path.dirname(configPath), "quarantine")
+  await quarantineFile({
+    sourcePath: configPath,
+    quarantineDir,
+    now: Date.now
+  })
+}
+
 export async function ensurePluginInstalled(
   input: EnsurePluginInstalledInput = {}
 ): Promise<EnsurePluginInstalledResult> {
@@ -51,10 +66,23 @@ export async function ensurePluginInstalled(
   let current: OpencodeConfigShape = {}
   try {
     const raw = await fs.readFile(configPath, "utf8")
-    current = JSON.parse(raw) as OpencodeConfigShape
-  } catch {
-    created = true
-    current = {}
+    try {
+      current = JSON.parse(raw) as OpencodeConfigShape
+    } catch (error) {
+      await quarantineMalformedConfig(configPath)
+      created = true
+      current = {}
+      if (!(error instanceof SyntaxError)) {
+        throw error
+      }
+    }
+  } catch (error) {
+    if (isFsErrorCode(error, "ENOENT")) {
+      created = true
+      current = {}
+    } else {
+      throw error
+    }
   }
 
   const plugins = normalizePluginList(current.plugin)

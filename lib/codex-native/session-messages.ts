@@ -25,7 +25,10 @@ export async function readSessionMessageRows(
   try {
     const response = await sessionApi.messages({ sessionID, limit: 100 })
     return isRecord(response) && Array.isArray(response.data) ? response.data : []
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      // best-effort session inspection
+    }
     return []
   }
 }

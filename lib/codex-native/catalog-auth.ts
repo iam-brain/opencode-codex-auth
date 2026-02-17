@@ -34,7 +34,10 @@ export async function selectCatalogAuthCandidate(
       accessToken: selected.access,
       accountId: selected.accountId
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      // best-effort catalog auth selection
+    }
     return {}
   }
 }

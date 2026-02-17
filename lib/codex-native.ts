@@ -191,7 +191,11 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       : collaborationProfileEnabled
   const collaborationToolProfile: CollaborationToolProfile =
     opts.collaborationToolProfile === "codex" ? "codex" : "opencode"
-  void refreshCodexClientVersionFromGitHub(opts.log).catch(() => {})
+  void refreshCodexClientVersionFromGitHub(opts.log).catch((error) => {
+    if (error instanceof Error) {
+      // best-effort background refresh
+    }
+  })
   const resolveCatalogHeaders = (): {
     originator: string
     userAgent: string
@@ -262,7 +266,10 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           try {
             const stored = await loadAuthStorage()
             hasOAuth = stored.openai?.type === "oauth"
-          } catch {
+          } catch (error) {
+            if (error instanceof Error) {
+              // treat storage read issues as missing oauth
+            }
             hasOAuth = false
           }
         }

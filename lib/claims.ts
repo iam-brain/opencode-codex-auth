@@ -20,7 +20,10 @@ export function parseJwtClaims(token: string): IdTokenClaims | undefined {
     if (proto !== Object.prototype && proto !== null) return undefined
 
     return parsed as IdTokenClaims
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      // invalid JWT payload content
+    }
     return undefined
   }
 }

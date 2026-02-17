@@ -1,6 +1,10 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 export const CONFIG_DIR_GITIGNORE_ENTRIES = [
   ".gitignore",
   "codex-accounts.json",
@@ -18,7 +22,7 @@ export async function ensureConfigDirGitignore(configDir: string): Promise<void>
     try {
       content = await fs.readFile(gitignorePath, "utf8")
     } catch (error: unknown) {
-      if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+      if (!isFsErrorCode(error, "ENOENT")) {
         return
       }
     }
@@ -39,7 +43,10 @@ export async function ensureConfigDirGitignore(configDir: string): Promise<void>
 
     const suffix = content.endsWith("\n") ? "" : "\n"
     await fs.appendFile(gitignorePath, `${suffix}${missingEntries.join("\n")}\n`, "utf8")
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      // best-effort hygiene only
+    }
     // best-effort hygiene only
   }
 }

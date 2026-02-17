@@ -68,7 +68,10 @@ export async function installCreatePersonalityCommand(
 
   try {
     existingContent = await fs.readFile(filePath, "utf8")
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      // continue to write new file
+    }
     // continue to write new file
   }
 

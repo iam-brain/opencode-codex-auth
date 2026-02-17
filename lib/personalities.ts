@@ -4,6 +4,10 @@ import path from "node:path"
 
 const PERSONALITY_DIRS = ["personalities", "Personalities"] as const
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 export function isSafePersonalityKey(value: string): boolean {
   return !value.includes("/") && !value.includes("\\") && !value.includes("..")
 }
@@ -22,7 +26,10 @@ function resolvePersonalityFile(directory: string, personality: string): string 
     const matched = entries.find((entry) => entry.toLowerCase() === target)
     if (!matched) return undefined
     return path.join(directory, matched)
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      // treat unreadable personality directories as missing
+    }
     return undefined
   }
 }
@@ -32,7 +39,10 @@ function readPersonality(filePath: string): string | null {
     const raw = fs.readFileSync(filePath, "utf8")
     const trimmed = raw.trim()
     return trimmed.length > 0 ? trimmed : null
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      // treat unreadable personality files as missing
+    }
     return null
   }
 }

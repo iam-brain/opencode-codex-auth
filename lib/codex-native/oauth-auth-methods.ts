@@ -177,7 +177,10 @@ export function createBrowserOAuthAuthorize(deps: BrowserAuthorizeDeps) {
           const tokens = await callbackPromise
           await deps.persistOAuthTokens(tokens)
           return toOAuthSuccess(tokens)
-        } catch {
+        } catch (error) {
+          if (error instanceof Error) {
+            // callback failures map to a generic failed result
+          }
           authFailed = true
           return { type: "failed" }
         } finally {

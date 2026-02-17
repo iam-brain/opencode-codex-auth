@@ -34,6 +34,10 @@ export type PruneSessionAffinityOptions = {
 
 const DEFAULT_FILE: SessionAffinityFile = { version: 1 }
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -146,7 +150,10 @@ export function createSessionExistsFn(env: Record<string, string | undefined> = 
     try {
       await fs.access(filePath)
       return true
-    } catch {
+    } catch (error) {
+      if (!isFsErrorCode(error, "ENOENT")) {
+        // Treat filesystem access errors as a missing session.
+      }
       return false
     }
   }
@@ -184,13 +191,22 @@ export async function pruneSessionAffinitySnapshot(
 }
 
 async function readUnlocked(filePath: string): Promise<SessionAffinityFile> {
+  let raw: string
   try {
-    const raw = await fs.readFile(filePath, "utf8")
+    raw = await fs.readFile(filePath, "utf8")
+  } catch (error: unknown) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      // Fall back to default snapshot when read fails.
+    }
+    return { ...DEFAULT_FILE }
+  }
+
+  try {
     const parsed = JSON.parse(raw) as unknown
     return sanitizeFile(parsed)
-  } catch (error: unknown) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      return { ...DEFAULT_FILE }
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      // Fall back to default snapshot for malformed/unexpected content.
     }
     return { ...DEFAULT_FILE }
   }
@@ -206,7 +222,10 @@ async function writeUnlocked(filePath: string, file: SessionAffinityFile): Promi
   await fs.rename(tmpPath, filePath)
   try {
     await fs.chmod(filePath, 0o600)
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "EPERM") && !isFsErrorCode(error, "EACCES")) {
+      // best-effort permissions
+    }
     // best-effort permissions
   }
 }

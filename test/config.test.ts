@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
   DEFAULT_CODEX_CONFIG,
@@ -630,6 +630,21 @@ describe("config file loading", () => {
 
     const loaded = loadConfigFile({ filePath })
     expect(loaded).toEqual({})
+  })
+
+  it("warns when codex-config.json cannot be parsed", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(filePath, "{ invalid json", "utf8")
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const loaded = loadConfigFile({ filePath })
+      expect(loaded).toEqual({})
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to read codex-config"))
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })
 

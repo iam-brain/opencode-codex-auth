@@ -1,6 +1,10 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 export async function quarantineFile(input: {
   sourcePath: string
   quarantineDir: string
@@ -16,7 +20,10 @@ export async function quarantineFile(input: {
   // rename preferred; fallback to copy+unlink
   try {
     await fs.rename(input.sourcePath, dest)
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "EXDEV")) {
+      // fallback to copy+unlink for cross-device and similar rename failures
+    }
     await fs.copyFile(input.sourcePath, dest)
     await fs.unlink(input.sourcePath)
   }
@@ -24,7 +31,10 @@ export async function quarantineFile(input: {
   // best-effort permissions
   try {
     await fs.chmod(dest, 0o600)
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
+      // ignore
+    }
     // ignore
   }
 
@@ -37,9 +47,18 @@ export async function quarantineFile(input: {
     const excess = files.length - keep
     for (let i = 0; i < excess; i++) {
       const fp = path.join(input.quarantineDir, files[i]!)
-      await fs.unlink(fp).catch(() => {})
+      try {
+        await fs.unlink(fp)
+      } catch (error) {
+        if (!isFsErrorCode(error, "ENOENT")) {
+          // best-effort retention pruning
+        }
+      }
     }
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      // ignore readdir errors
+    }
     // ignore readdir errors
   }
 

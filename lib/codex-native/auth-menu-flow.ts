@@ -91,7 +91,10 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
                   account.lastUsed = now
                   hydrateAccountIdentityFromAccessClaims(account)
                   if (!hadIdentity && buildIdentityKey(account)) hydrated += 1
-                } catch {
+                } catch (error) {
+                  if (error instanceof Error) {
+                    // best effort per-account hydration
+                  }
                   // best effort per-account hydration
                 }
               }
@@ -170,7 +173,10 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
               }
               return authFile
             })
-          } catch {
+          } catch (error) {
+            if (error instanceof Error) {
+              // keep UI response simple; surface generic failure text below
+            }
             refreshed = false
           }
           process.stdout.write(

@@ -800,7 +800,9 @@ export function loadConfigFile(
         return {}
       }
       return parseConfigFileObject(parsed)
-    } catch {
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      console.warn(`[opencode-codex-auth] Failed to read codex-config at ${filePath}; ignoring file. ${detail}`)
       return {}
     }
   }
@@ -899,8 +901,7 @@ export function resolveConfig(input: {
   const orchestratorSubagentsEnabled =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS) ?? file.orchestratorSubagentsEnabled
   const collaborationToolProfile =
-    parseCollaborationToolProfile(env.OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE) ??
-    file.collaborationToolProfile
+    parseCollaborationToolProfile(env.OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE) ?? file.collaborationToolProfile
 
   return {
     ...file,

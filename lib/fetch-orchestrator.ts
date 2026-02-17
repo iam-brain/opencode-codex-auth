@@ -39,7 +39,10 @@ export type FetchOrchestratorState = {
   toastShownAt: Map<string, number>
 }
 
-export type FetchAttemptReasonCode = "initial_attempt" | "retry_same_account_after_429" | "retry_switched_account_after_429"
+export type FetchAttemptReasonCode =
+  | "initial_attempt"
+  | "retry_same_account_after_429"
+  | "retry_switched_account_after_429"
 
 export function createFetchOrchestratorState(): FetchOrchestratorState {
   return {
@@ -191,7 +194,10 @@ export class FetchOrchestrator {
     }
     try {
       await this.deps.showToast(message, variant, this.deps.quietMode === true)
-    } catch {
+    } catch (error) {
+      if (error instanceof Error) {
+        // Toast failures should never block request execution.
+      }
       // Toast failures should never block request execution.
     }
   }
@@ -223,7 +229,10 @@ export class FetchOrchestrator {
             now: sessionNow,
             event: sessionEvent ?? "seen"
           })
-        } catch {
+        } catch (error) {
+          if (error instanceof Error) {
+            // Session persistence hooks should never block request execution.
+          }
           // Session persistence hooks should never block request execution.
         }
       }
@@ -292,7 +301,10 @@ export class FetchOrchestrator {
           if (maybeRequest instanceof Request) {
             request = maybeRequest
           }
-        } catch {
+        } catch (error) {
+          if (error instanceof Error) {
+            // Snapshot/debug hooks should never block request execution.
+          }
           // Snapshot/debug hooks should never block request execution.
         }
       }
@@ -308,7 +320,10 @@ export class FetchOrchestrator {
             auth,
             sessionKey
           })
-        } catch {
+        } catch (error) {
+          if (error instanceof Error) {
+            // Snapshot/debug hooks should never block request execution.
+          }
           // Snapshot/debug hooks should never block request execution.
         }
       }

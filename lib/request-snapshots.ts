@@ -19,10 +19,17 @@ const REDACTED_BODY_KEYS = new Set([
 ])
 const LIVE_HEADERS_LOG_FILE = "live-headers.jsonl"
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 async function enforceOwnerOnlyPermissions(filePath: string): Promise<void> {
   try {
     await fs.chmod(filePath, 0o600)
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "EPERM") && !isFsErrorCode(error, "EACCES")) {
+      // best-effort permissions
+    }
     // best-effort permissions
   }
 }
@@ -62,10 +69,16 @@ async function serializeRequestBody(request: Request): Promise<unknown> {
     if (!raw) return undefined
     try {
       return sanitizeBodyValue(JSON.parse(raw))
-    } catch {
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) {
+        // treat as raw body on unexpected parse failures
+      }
       return raw.length > 8000 ? `${raw.slice(0, 8000)}... [truncated]` : raw
     }
-  } catch {
+  } catch (error) {
+    if (!(error instanceof Error && error.name === "AbortError")) {
+      // best-effort request body extraction
+    }
     return undefined
   }
 }
@@ -134,8 +147,21 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
 
       withMtime.sort((left, right) => left.mtimeMs - right.mtimeMs)
       const remove = withMtime.slice(0, withMtime.length - maxSnapshotFiles)
-      await Promise.all(remove.map(({ filePath }) => fs.unlink(filePath).catch(() => {})))
-    } catch {
+      await Promise.all(
+        remove.map(async ({ filePath }) => {
+          try {
+            await fs.unlink(filePath)
+          } catch (error) {
+            if (!isFsErrorCode(error, "ENOENT")) {
+              // best-effort prune
+            }
+          }
+        })
+      )
+    } catch (error) {
+      if (!isFsErrorCode(error, "ENOENT")) {
+        // best-effort cleanup
+      }
       // best-effort cleanup
     }
   }
@@ -163,11 +189,20 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
       try {
         const stat = await fs.stat(filePath)
         if (stat.size >= maxLiveHeadersBytes) {
-          await fs.unlink(rotatedPath).catch(() => {})
+          try {
+            await fs.unlink(rotatedPath)
+          } catch (error) {
+            if (!isFsErrorCode(error, "ENOENT")) {
+              // ignore non-fatal rotate cleanup errors
+            }
+          }
           await fs.rename(filePath, rotatedPath)
           await enforceOwnerOnlyPermissions(rotatedPath)
         }
-      } catch {
+      } catch (error) {
+        if (!isFsErrorCode(error, "ENOENT")) {
+          // ignore when file does not exist or cannot be stat'ed
+        }
         // ignore when file does not exist or cannot be stat'ed
       }
       await fs.appendFile(filePath, `${JSON.stringify(payload)}\n`, { mode: 0o600 })

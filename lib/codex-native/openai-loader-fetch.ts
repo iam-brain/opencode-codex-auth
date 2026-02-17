@@ -154,14 +154,25 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           if (shouldAwaitCatalog) {
             try {
               await input.syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId })
-            } catch {
+            } catch (error) {
+              if (error instanceof Error) {
+                // best-effort catalog load; request can still proceed
+              }
               // best-effort catalog load; request can still proceed
             }
           } else {
-            void input.syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId }).catch(() => {})
+            void input.syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId }).catch((error) => {
+              if (error instanceof Error) {
+                // best-effort background catalog refresh
+              }
+            })
           }
         } else {
-          void input.syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId }).catch(() => {})
+          void input.syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId }).catch((error) => {
+            if (error instanceof Error) {
+              // best-effort background catalog refresh
+            }
+          })
         }
 
         selectedIdentityKey = auth.identityKey

@@ -10,7 +10,10 @@ function safeJson(meta?: Record<string, unknown>) {
   try {
     // Avoid accidentally stringifying tokens: keep meta shallow & caller-controlled.
     return " " + JSON.stringify(meta)
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      // fall back to message without structured metadata
+    }
     return ""
   }
 }

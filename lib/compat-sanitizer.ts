@@ -57,7 +57,10 @@ function extractOutputText(item: Record<string, unknown>): string {
         if (text && text !== "null" && text !== "{}" && text !== "[]") {
           return text
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof Error) {
+          // Keep searching.
+        }
         // Keep searching.
       }
     }

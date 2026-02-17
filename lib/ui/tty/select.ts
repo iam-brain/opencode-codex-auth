@@ -183,7 +183,10 @@ export async function select<T>(items: MenuItem<T>[], options: SelectOptions): P
         }
         input.pause()
         output.write(ANSI.show)
-      } catch {
+      } catch (error) {
+        if (error instanceof Error) {
+          // best effort cleanup
+        }
         // best effort cleanup
       }
 
@@ -253,7 +256,10 @@ export async function select<T>(items: MenuItem<T>[], options: SelectOptions): P
       output.write(ANSI.hide)
       render()
       input.on("data", onKey)
-    } catch {
+    } catch (error) {
+      if (error instanceof Error) {
+        // fall back to null selection when terminal setup fails
+      }
       cleanup()
       resolve(null)
     }

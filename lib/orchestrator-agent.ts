@@ -65,7 +65,10 @@ export function defaultOpencodeAgentsDir(env: Record<string, string | undefined>
 async function readIfExists(filePath: string): Promise<string | undefined> {
   try {
     return await fs.readFile(filePath, "utf8")
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      // treat unreadable file as missing
+    }
     return undefined
   }
 }

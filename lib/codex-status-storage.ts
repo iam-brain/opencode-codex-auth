@@ -7,6 +7,10 @@ import type { CodexRateLimitSnapshot } from "./types"
 
 export type SnapshotMap = Record<string, CodexRateLimitSnapshot>
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 async function readJson(filePath: string): Promise<SnapshotMap> {
   let raw: string
   try {
@@ -20,7 +24,10 @@ async function readJson(filePath: string): Promise<SnapshotMap> {
 
   try {
     return JSON.parse(raw) as SnapshotMap
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      // treat malformed snapshot content as empty
+    }
     return {}
   }
 }
@@ -33,7 +40,10 @@ async function writeAtomic(filePath: string, data: SnapshotMap) {
   await fs.rename(tmpPath, filePath)
   try {
     await fs.chmod(filePath, 0o600)
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
+      // best-effort permissions
+    }
     // best-effort permissions
   }
 }

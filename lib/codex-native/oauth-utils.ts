@@ -210,7 +210,10 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
           oauthDescription = payload.error_description
         }
       }
-    } catch {
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) {
+        // Best effort parse only.
+      }
       // Best effort parse only.
     }
 

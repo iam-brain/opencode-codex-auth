@@ -29,6 +29,10 @@ export type CreatePersonalityResult = {
 
 const PERSONALITIES_DIR = "personalities"
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 const CORE_POLICY_LINES = [
   "You are Codex, a coding agent in a terminal-first workflow.",
   "You prioritize correctness, safety, and clear communication.",
@@ -130,7 +134,10 @@ export async function createPersonalityFile(input: CreatePersonalityInput): Prom
       return { key, filePath, scope, created: false }
     }
     created = false
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      throw error
+    }
     created = true
   }
 

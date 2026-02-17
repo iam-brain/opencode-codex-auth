@@ -136,7 +136,10 @@ export async function installPersonalityBuilderSkill(
     let existingContent: string | undefined
     try {
       existingContent = await fs.readFile(filePath, "utf8")
-    } catch {
+    } catch (error) {
+      if (error instanceof Error) {
+        // Missing or unreadable file is treated as absent.
+      }
       existingContent = undefined
     }
 

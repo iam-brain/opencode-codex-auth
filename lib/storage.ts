@@ -55,6 +55,10 @@ type LegacyCodexAccountsRecord = {
 const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
 const OPENAI_AUTH_MODES: OpenAIAuthMode[] = ["native", "codex"]
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 function normalizeAccountAuthTypes(input: unknown): AccountAuthType[] {
   const source = Array.isArray(input) ? input : ["native"]
   const out: AccountAuthType[] = []
@@ -397,12 +401,19 @@ async function readAuthUnlocked(
     return sanitizeAuthFile(migrateAuthFile(parsed as AuthFile))
   } catch (error: unknown) {
     if (opts?.quarantineDir && opts.now) {
-      await quarantineFile({
-        sourcePath: filePath,
-        quarantineDir: opts.quarantineDir,
-        now: opts.now,
-        keep: opts.keep
-      }).catch(() => {})
+      try {
+        await quarantineFile({
+          sourcePath: filePath,
+          quarantineDir: opts.quarantineDir,
+          now: opts.now,
+          keep: opts.keep
+        })
+      } catch (error) {
+        if (!isFsErrorCode(error, "ENOENT")) {
+          // Best effort quarantine only.
+        }
+        // Best effort quarantine only.
+      }
       return {}
     }
     throw error
@@ -413,7 +424,10 @@ export async function shouldOfferLegacyTransfer(filePath: string = defaultAuthPa
   try {
     await fs.access(filePath)
     return false
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      throw error
+    }
     // codex-accounts.json missing; check legacy/native sources
   }
 
@@ -425,7 +439,10 @@ export async function shouldOfferLegacyTransfer(filePath: string = defaultAuthPa
       if (hasUsableOpenAIOAuth(legacyAuth)) {
         return true
       }
-    } catch {
+    } catch (error) {
+      if (!isFsErrorCode(error, "ENOENT")) {
+        // ignore unreadable/bad legacy sources and continue checking others
+      }
       // check next source
     }
   }
@@ -511,7 +528,10 @@ export async function importLegacyInstallData(filePath: string = defaultAuthPath
       if (legacyPath === filePath) continue
       try {
         await fs.access(legacyPath)
-      } catch {
+      } catch (error) {
+        if (!isFsErrorCode(error, "ENOENT")) {
+          // Missing legacy source is expected; continue.
+        }
         continue
       }
 
@@ -597,7 +617,10 @@ async function writeAuthUnlocked(filePath: string, auth: AuthFile): Promise<void
   await fs.rename(tmpPath, filePath)
   try {
     await fs.chmod(filePath, 0o600)
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "EPERM") && !isFsErrorCode(error, "EACCES")) {
+      // best-effort permissions
+    }
     // best-effort permissions
   }
 }

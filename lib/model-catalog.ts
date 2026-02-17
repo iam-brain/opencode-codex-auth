@@ -125,6 +125,14 @@ const TEXT_VERBOSITY = new Set(["low", "medium", "high"])
 const inMemoryCatalog = new Map<string, CodexModelsCache>()
 const inFlightCatalogFetches = new Map<string, Promise<CodexModelInfo[] | undefined>>()
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError"
+}
+
 function normalizeAccountId(accountId?: string): string | undefined {
   const next = accountId?.trim()
   return next ? next : undefined
@@ -213,7 +221,10 @@ async function readGitHubModelsCacheMeta(cacheDir: string): Promise<GitHubModels
     const etag = typeof parsed.etag === "string" ? parsed.etag.trim() : undefined
     if (!tag || !url) return undefined
     return { etag, tag, url, lastChecked }
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      // Ignore malformed/unreadable metadata and continue with defaults.
+    }
     return undefined
   }
 }
@@ -223,8 +234,17 @@ async function writeGitHubModelsCacheMeta(cacheDir: string, meta: GitHubModelsCa
     const file = path.join(cacheDir, OPENCODE_MODELS_META_FILE)
     await fs.mkdir(path.dirname(file), { recursive: true })
     await fs.writeFile(file, `${JSON.stringify(meta, null, 2)}\n`, { mode: 0o600 })
-    await fs.chmod(file, 0o600).catch(() => {})
-  } catch {
+    try {
+      await fs.chmod(file, 0o600)
+    } catch (error) {
+      if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
+        // Best effort metadata persistence.
+      }
+    }
+  } catch (error) {
+    if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
+      // Best effort metadata persistence.
+    }
     // Best effort metadata persistence.
   }
 }
@@ -284,7 +304,13 @@ async function refreshSharedGitHubModelsCache(input: {
     await fs.writeFile(file, `${JSON.stringify({ fetchedAt: input.now, source: "github", models }, null, 2)}\n`, {
       mode: 0o600
     })
-    await fs.chmod(file, 0o600).catch(() => {})
+    try {
+      await fs.chmod(file, 0o600)
+    } catch (error) {
+      if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
+        // Best effort cache file permissions.
+      }
+    }
 
     await writeGitHubModelsCacheMeta(input.cacheDir, {
       etag,
@@ -292,7 +318,10 @@ async function refreshSharedGitHubModelsCache(input: {
       lastChecked: input.now,
       url
     })
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) {
+      return
+    }
     // Best effort refresh; continue without blocking catalog load.
   }
 }
@@ -427,7 +456,10 @@ async function readCatalogFromDisk(cacheDir: string, accountId?: string): Promis
         fetchedAt: parsed.fetchedAt,
         models
       }
-    } catch {
+    } catch (error) {
+      if (!isFsErrorCode(error, "ENOENT")) {
+        // Ignore malformed/unreadable cache and continue with fallback paths.
+      }
       return undefined
     }
   })
@@ -457,13 +489,19 @@ async function readCatalogFromOpencodeCache(cacheDir: string): Promise<CodexMode
             models
           }
         }
-      } catch {
+      } catch (error) {
+        if (!isFsErrorCode(error, "ENOENT")) {
+          // Best effort parse; skip malformed cache files.
+        }
         // Best effort parse; skip malformed cache files.
       }
     }
 
     return best
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      // Best effort fallback discovery.
+    }
     return undefined
   }
 }
@@ -493,7 +531,10 @@ async function readCatalogFromCodexCliCache(): Promise<CodexModelsCache | undefi
       fetchedAt: parseFetchedAtFromUnknown(parsed.fetched_at ?? parsed.fetchedAt),
       models
     }
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      // Ignore malformed/unreadable codex-cli cache.
+    }
     return undefined
   }
 }
@@ -511,9 +552,18 @@ async function writeCatalogToDisk(
     for (const file of files) {
       await fs.mkdir(path.dirname(file), { recursive: true })
       await fs.writeFile(file, content, { mode: 0o600 })
-      await fs.chmod(file, 0o600).catch(() => {})
+      try {
+        await fs.chmod(file, 0o600)
+      } catch (error) {
+        if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
+          // Best effort cache file permissions.
+        }
+      }
     }
-  }).catch(() => {
+  }).catch((error) => {
+    if (error instanceof Error) {
+      // Best effort cache persistence.
+    }
     // Best effort cache persistence.
   })
 }
@@ -524,7 +574,10 @@ function emitEvent(input: GetCodexModelCatalogInput, event: Omit<CodexModelCatal
       ...event,
       scope: normalizeAccountId(input.accountId) ? "account" : "shared"
     })
-  } catch {
+  } catch (error) {
+    if (error instanceof Error) {
+      // Keep catalog path side-effect free even if observer callback throws.
+    }
     // Keep catalog path side-effect free.
   }
 }

@@ -410,7 +410,10 @@ export async function sanitizeOutboundRequestIfNeeded(
     const raw = await request.clone().text()
     if (!raw) return { request, changed: false }
     payload = JSON.parse(raw)
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      // fall through with unchanged request on non-JSON payload parsing issues
+    }
     return { request, changed: false }
   }
 
@@ -446,7 +449,10 @@ export async function applyPromptCacheKeyOverrideToRequest(input: {
     const raw = await input.request.clone().text()
     if (!raw) return { request: input.request, changed: false, reason: "empty_body" }
     payload = JSON.parse(raw)
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      // request body could not be parsed as JSON
+    }
     return { request: input.request, changed: false, reason: "invalid_json" }
   }
 
@@ -551,7 +557,10 @@ export async function remapDeveloperMessagesToUserOnRequest(input: { request: Re
       }
     }
     payload = JSON.parse(raw)
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      // request body could not be parsed as JSON
+    }
     return {
       request: input.request,
       changed: false,
@@ -699,7 +708,10 @@ export async function stripReasoningReplayFromRequest(input: { request: Request;
       }
     }
     payload = JSON.parse(raw)
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      // request body could not be parsed as JSON
+    }
     return {
       request: input.request,
       changed: false,
@@ -850,7 +862,10 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
     const raw = await input.request.clone().text()
     if (!raw) return { request: input.request, changed: false, reason: "empty_body" }
     payload = JSON.parse(raw)
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      // request body could not be parsed as JSON
+    }
     return { request: input.request, changed: false, reason: "invalid_json" }
   }
 

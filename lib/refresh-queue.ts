@@ -64,7 +64,10 @@ export function createRefreshScheduler(input: {
         if (!runner) continue
         try {
           await runner.refresh()
-        } catch {
+        } catch (error) {
+          if (error instanceof Error) {
+            // best-effort background work
+          }
           // best-effort background work
         }
       }
@@ -77,7 +80,11 @@ export function createRefreshScheduler(input: {
     start() {
       if (timer) return
       timer = setInterval(() => {
-        tick().catch(() => {})
+        tick().catch((error) => {
+          if (error instanceof Error) {
+            // best-effort background scheduler
+          }
+        })
       }, intervalMs)
     },
     stop() {

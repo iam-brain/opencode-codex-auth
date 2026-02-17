@@ -32,6 +32,10 @@ type PendingOAuth<TPkce, TTokens> = {
 
 const DEFAULT_DEBUG_LOG_MAX_BYTES = 1_000_000
 
+function isFsErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code
+}
+
 function resolveDebugLogMaxBytes(): number {
   const raw = process.env.CODEX_AUTH_DEBUG_MAX_BYTES
   if (!raw) return DEFAULT_DEBUG_LOG_MAX_BYTES
@@ -47,11 +51,17 @@ function rotateDebugLogIfNeeded(debugLogFile: string, maxBytes: number): void {
     const rotatedPath = `${debugLogFile}.1`
     try {
       unlinkSync(rotatedPath)
-    } catch {
+    } catch (error) {
+      if (!isFsErrorCode(error, "ENOENT")) {
+        // ignore missing previous rotation file
+      }
       // ignore missing previous rotation file
     }
     renameSync(debugLogFile, rotatedPath)
-  } catch {
+  } catch (error) {
+    if (!isFsErrorCode(error, "ENOENT")) {
+      // ignore when file does not exist or cannot be inspected
+    }
     // ignore when file does not exist or cannot be inspected
   }
 }
@@ -90,7 +100,10 @@ export function createOAuthServerController<TPkce, TTokens>(
     const line = JSON.stringify(payload)
     try {
       console.error(`[codex-auth-debug] ${line}`)
-    } catch {
+    } catch (error) {
+      if (error instanceof Error) {
+        // best effort stderr logging
+      }
       // best effort stderr logging
     }
     try {
@@ -98,7 +111,10 @@ export function createOAuthServerController<TPkce, TTokens>(
       rotateDebugLogIfNeeded(debugLogFile, debugLogMaxBytes)
       appendFileSync(debugLogFile, `${line}\n`, { encoding: "utf8", mode: 0o600 })
       chmodSync(debugLogFile, 0o600)
-    } catch {
+    } catch (error) {
+      if (error instanceof Error) {
+        // best effort file logging
+      }
       // best effort file logging
     }
   }
@@ -268,7 +284,10 @@ export function createOAuthServerController<TPkce, TTokens>(
       oauthServer = undefined
       try {
         server?.close()
-      } catch {
+      } catch (error) {
+        if (error instanceof Error) {
+          // best-effort cleanup
+        }
         // best-effort cleanup
       }
       throw error
