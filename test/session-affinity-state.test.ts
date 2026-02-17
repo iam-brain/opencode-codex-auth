@@ -32,7 +32,7 @@ describe("session-affinity runtime state", () => {
       missingGraceMs: 60_000
     })
 
-    expect(defaultSessionAffinityPath).toHaveBeenCalledWith(undefined, env)
+    expect(defaultSessionAffinityPath).toHaveBeenCalledWith(env)
     runtime.persistSessionAffinityState()
     await Promise.resolve()
     await Promise.resolve()

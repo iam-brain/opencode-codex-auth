@@ -3,6 +3,7 @@ import fsPromises from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import type { RotationStrategy } from "./types"
+import { isRecord } from "./util"
 
 export type PersonalityOption = string
 export type CodexSpoofMode = "native" | "codex"
@@ -203,10 +204,6 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
   }
 }
 `
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
 
 function describeValueType(value: unknown): string {
   if (Array.isArray(value)) return "array"

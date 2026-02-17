@@ -5,6 +5,7 @@ import { defaultSessionAffinityPath, opencodeSessionFilePath } from "./paths"
 import type { OpenAIAuthMode } from "./types"
 import { withLockedFile } from "./cache-lock"
 import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io"
+import { isRecord } from "./util"
 
 export const MAX_SESSION_AFFINITY_ENTRIES = 200
 
@@ -33,10 +34,6 @@ export type PruneSessionAffinityOptions = {
 }
 
 const DEFAULT_FILE: SessionAffinityFile = { version: 1 }
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
 
 function clampEntries<T>(entries: Array<[string, T]>, maxEntries: number): Array<[string, T]> {
   if (entries.length <= maxEntries) return entries

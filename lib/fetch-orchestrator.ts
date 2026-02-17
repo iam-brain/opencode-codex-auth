@@ -367,6 +367,7 @@ export class FetchOrchestrator {
       )
     }
 
+    // Safe: the loop always runs at least once (maxAttempts >= 1), so lastResponse is assigned.
     return lastResponse!
   }
 }

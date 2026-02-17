@@ -10,6 +10,7 @@ import {
   opencodeProviderAuthPath,
   legacyOpenAICodexAccountsPathFor
 } from "./paths"
+import { isRecord as isObject } from "./util"
 import { ensureConfigDirGitignore } from "./config-dir-gitignore"
 import { withLockedFile } from "./cache-lock"
 import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io"
@@ -21,10 +22,6 @@ import type {
   OpenAIOAuthDomain,
   OpenAIMultiOauthAuth
 } from "./types"
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
 
 type LegacyOpenAIOauth = {
   type: "oauth"

@@ -51,9 +51,6 @@ export function defaultSnapshotsPath(): string {
   return path.join(defaultOpencodeCachePath(), CODEX_SNAPSHOTS_FILE)
 }
 
-export function defaultSessionAffinityPath(
-  _authPath: string = defaultAuthPath(),
-  env: Record<string, string | undefined> = process.env
-): string {
+export function defaultSessionAffinityPath(env: Record<string, string | undefined> = process.env): string {
   return path.join(defaultOpencodeCachePath(env), CODEX_SESSION_AFFINITY_FILE)
 }

@@ -1,10 +1,8 @@
+import { isRecord } from "./util"
+
 type CompatSanitizeResult = {
   payload: Record<string, unknown>
   changed: boolean
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 function sanitizeItemReferences(value: unknown): { value: unknown; changed: boolean } {

@@ -2,6 +2,7 @@ import type { BehaviorSettings, PersonalityOption } from "../config"
 import type { CodexModelInfo } from "../model-catalog"
 import { resolveInstructionsForModel } from "../model-catalog"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer"
+import { isRecord } from "../util"
 import { isOrchestratorInstructions } from "./collaboration"
 
 type ChatParamsOutput = {
@@ -18,10 +19,6 @@ type ModelRuntimeDefaults = {
   reasoningSummaryFormat?: string
   defaultVerbosity?: "low" | "medium" | "high"
   supportsVerbosity?: boolean
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 function asString(value: unknown): string | undefined {

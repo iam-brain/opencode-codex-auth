@@ -56,17 +56,17 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
 
   await ensureDefaultConfigFile({ env: process.env }).catch((error) => {
     if (error instanceof Error) {
-      // best-effort bootstrap
+      console.warn(`[opencode-codex-auth] bootstrap: ensureDefaultConfigFile failed: ${error.message}`)
     }
   })
   await installCreatePersonalityCommand({ force: true }).catch((error) => {
     if (error instanceof Error) {
-      // best-effort bootstrap
+      console.warn(`[opencode-codex-auth] bootstrap: installCreatePersonalityCommand failed: ${error.message}`)
     }
   })
   await installPersonalityBuilderSkill({ force: true }).catch((error) => {
     if (error instanceof Error) {
-      // best-effort bootstrap
+      console.warn(`[opencode-codex-auth] bootstrap: installPersonalityBuilderSkill failed: ${error.message}`)
     }
   })
 
@@ -76,7 +76,7 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     })
     .catch((error) => {
       if (error instanceof Error) {
-        // best-effort prompt cache bootstrap
+        console.warn(`[opencode-codex-auth] bootstrap: refreshCachedCodexPrompts failed: ${error.message}`)
       }
     })
 
@@ -90,7 +90,7 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
 
   await reconcileOrchestratorAgentVisibility({ visible: collaborationProfileEnabled }).catch((error) => {
     if (error instanceof Error) {
-      // best-effort bootstrap
+      console.warn(`[opencode-codex-auth] bootstrap: reconcileOrchestratorAgentVisibility failed: ${error.message}`)
     }
   })
 
