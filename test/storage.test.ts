@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { defaultAuthPath, defaultSessionAffinityPath, defaultSnapshotsPath } from "../lib/paths"
+import { CODEX_ACCOUNTS_FILE, defaultAuthPath, defaultSessionAffinityPath, defaultSnapshotsPath } from "../lib/paths"
 import { importLegacyInstallData, loadAuthStorage, saveAuthStorage, shouldOfferLegacyTransfer } from "../lib/storage"
 
 function fixturePath(name: string): string {
@@ -40,9 +40,41 @@ describe("auth storage", () => {
     const auth = await loadAuthStorage(filePath)
 
     expect(auth).toEqual({})
-    const parent = await stat(path.dirname(filePath))
-    expect(parent).toBeDefined()
-    expect(parent.mode & 0o077).toBe(0)
+    await expect(stat(path.dirname(filePath))).resolves.toBeDefined()
+  })
+
+  it("creates config-dir .gitignore entries for codex account storage", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const filePath = path.join(dir, CODEX_ACCOUNTS_FILE)
+
+    await saveAuthStorage(filePath, () => ({ openai: { type: "oauth", accounts: [] } }))
+
+    const gitignorePath = path.join(dir, ".gitignore")
+    const content = await readFile(gitignorePath, "utf8")
+    expect(content).toContain(".gitignore")
+    expect(content).toContain("codex-accounts.json")
+    expect(content).toContain("codex-accounts.json.*.tmp")
+    expect(content).toContain("cache/codex-session-affinity.json")
+    expect(content).toContain("cache/codex-snapshots.json")
+    expect(content).toContain("logs/codex-plugin/")
+  })
+
+  it("does not duplicate config-dir .gitignore entries", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const filePath = path.join(dir, CODEX_ACCOUNTS_FILE)
+    const gitignorePath = path.join(dir, ".gitignore")
+
+    await writeFile(gitignorePath, "custom-entry\ncodex-accounts.json\n", "utf8")
+
+    await saveAuthStorage(filePath, () => ({ openai: { type: "oauth", accounts: [] } }))
+
+    const lines = (await readFile(gitignorePath, "utf8"))
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    expect(lines.filter((line) => line === "codex-accounts.json")).toHaveLength(1)
+    expect(lines).toContain("custom-entry")
   })
 
   it("migrates single-account openai oauth to multi-account schema", async () => {
@@ -445,12 +477,12 @@ describe("auth storage", () => {
         type: "oauth"
         accounts: Array<{ identityKey: string }>
         activeIdentityKey?: string
-        strategy?: string
+        strategy?: "sticky" | "hybrid" | "round_robin"
       }
     }
 
     await saveAuthStorage(filePath, (auth) => {
-      auth.openai = expected.openai as typeof auth.openai
+      auth.openai = expected.openai
       return auth
     })
 
@@ -467,10 +499,7 @@ describe("auth storage", () => {
     const mode = (await stat(filePath)).mode & 0o777
     expect(mode).toBe(0o600)
 
-    // After atomic write, no .tmp* leftover files should remain
-    const siblings = await readdir(path.dirname(filePath))
-    const tmpFiles = siblings.filter((f) => f.startsWith(path.basename(filePath) + ".tmp"))
-    expect(tmpFiles).toHaveLength(0)
+    await expect(stat(`${filePath}.tmp`)).rejects.toBeDefined()
   })
 
   it("saveAuthStorage migrates before applying update", async () => {

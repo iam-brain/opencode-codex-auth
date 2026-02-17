@@ -41,7 +41,6 @@ export type PluginConfig = {
   remapDeveloperMessagesToUser?: boolean
   codexCompactionOverride?: boolean
   headerSnapshots?: boolean
-  headerSnapshotBodies?: boolean
   headerTransformDebug?: boolean
   promptCacheKeyStrategy?: PromptCacheKeyStrategy
   collaborationProfileEnabled?: boolean
@@ -67,7 +66,6 @@ export const DEFAULT_CODEX_CONFIG = {
     developerMessagesToUser: true,
     promptCacheKeyStrategy: "default",
     headerSnapshots: false,
-    headerSnapshotBodies: false,
     headerTransformDebug: false,
     pidOffset: false
   },
@@ -132,16 +130,10 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // default: "default"
     "promptCacheKeyStrategy": "default",
 
-    // Write redacted request/response snapshots to plugin logs.
-    // Request bodies are excluded unless headerSnapshotBodies is enabled.
+    // Write request header snapshots to plugin logs.
     // options: true | false
     // default: false
     "headerSnapshots": false,
-
-    // Include sanitized request bodies in snapshot files.
-    // options: true | false
-    // default: false
-    "headerSnapshotBodies": false,
 
     // Capture inbound/outbound header transforms for message requests.
     // options: true | false
@@ -207,6 +199,183 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function describeValueType(value: unknown): string {
+  if (Array.isArray(value)) return "array"
+  if (value === null) return "null"
+  return typeof value
+}
+
+function pushValidationIssue(
+  issues: string[],
+  input: {
+    path: string
+    expected: string
+    actual: unknown
+  }
+): void {
+  issues.push(`${input.path}: expected ${input.expected}, got ${describeValueType(input.actual)}`)
+}
+
+function validateModelBehaviorShape(value: unknown, pathPrefix: string, issues: string[]): void {
+  if (!isRecord(value)) {
+    pushValidationIssue(issues, { path: pathPrefix, expected: "object", actual: value })
+    return
+  }
+
+  if ("personality" in value && typeof value.personality !== "string") {
+    pushValidationIssue(issues, { path: `${pathPrefix}.personality`, expected: "string", actual: value.personality })
+  }
+  if ("thinkingSummaries" in value && typeof value.thinkingSummaries !== "boolean") {
+    pushValidationIssue(issues, {
+      path: `${pathPrefix}.thinkingSummaries`,
+      expected: "boolean",
+      actual: value.thinkingSummaries
+    })
+  }
+  if ("verbosityEnabled" in value && typeof value.verbosityEnabled !== "boolean") {
+    pushValidationIssue(issues, {
+      path: `${pathPrefix}.verbosityEnabled`,
+      expected: "boolean",
+      actual: value.verbosityEnabled
+    })
+  }
+  if ("verbosity" in value) {
+    const verbosity = value.verbosity
+    const normalized = typeof verbosity === "string" ? verbosity.trim().toLowerCase() : ""
+    if (!(normalized === "default" || normalized === "low" || normalized === "medium" || normalized === "high")) {
+      pushValidationIssue(issues, {
+        path: `${pathPrefix}.verbosity`,
+        expected: '"default" | "low" | "medium" | "high"',
+        actual: verbosity
+      })
+    }
+  }
+}
+
+export type ConfigValidationResult = {
+  valid: boolean
+  issues: string[]
+}
+
+export function validateConfigFileObject(raw: unknown): ConfigValidationResult {
+  const issues: string[] = []
+  if (!isRecord(raw)) {
+    pushValidationIssue(issues, { path: "$", expected: "object", actual: raw })
+    return { valid: false, issues }
+  }
+
+  if ("$schema" in raw && typeof raw.$schema !== "string") {
+    pushValidationIssue(issues, { path: "$schema", expected: "string", actual: raw.$schema })
+  }
+  if ("debug" in raw && typeof raw.debug !== "boolean") {
+    pushValidationIssue(issues, { path: "debug", expected: "boolean", actual: raw.debug })
+  }
+  if ("quiet" in raw && typeof raw.quiet !== "boolean") {
+    pushValidationIssue(issues, { path: "quiet", expected: "boolean", actual: raw.quiet })
+  }
+
+  if ("refreshAhead" in raw) {
+    if (!isRecord(raw.refreshAhead)) {
+      pushValidationIssue(issues, { path: "refreshAhead", expected: "object", actual: raw.refreshAhead })
+    } else {
+      if ("enabled" in raw.refreshAhead && typeof raw.refreshAhead.enabled !== "boolean") {
+        pushValidationIssue(issues, {
+          path: "refreshAhead.enabled",
+          expected: "boolean",
+          actual: raw.refreshAhead.enabled
+        })
+      }
+      if (
+        "bufferMs" in raw.refreshAhead &&
+        (typeof raw.refreshAhead.bufferMs !== "number" || !Number.isFinite(raw.refreshAhead.bufferMs))
+      ) {
+        pushValidationIssue(issues, {
+          path: "refreshAhead.bufferMs",
+          expected: "number",
+          actual: raw.refreshAhead.bufferMs
+        })
+      }
+    }
+  }
+
+  if ("runtime" in raw) {
+    if (!isRecord(raw.runtime)) {
+      pushValidationIssue(issues, { path: "runtime", expected: "object", actual: raw.runtime })
+    } else {
+      const runtime = raw.runtime
+      const enumChecks: Array<{ field: string; allowed: string[] }> = [
+        { field: "mode", allowed: ["native", "codex"] },
+        { field: "rotationStrategy", allowed: ["sticky", "hybrid", "round_robin"] },
+        { field: "promptCacheKeyStrategy", allowed: ["default", "project"] },
+        { field: "collaborationToolProfile", allowed: ["opencode", "codex"] }
+      ]
+      for (const check of enumChecks) {
+        const value = runtime[check.field]
+        if (value === undefined) continue
+        const normalized = typeof value === "string" ? value.trim().toLowerCase() : ""
+        if (!check.allowed.includes(normalized)) {
+          pushValidationIssue(issues, {
+            path: `runtime.${check.field}`,
+            expected: check.allowed.map((item) => `"${item}"`).join(" | "),
+            actual: value
+          })
+        }
+      }
+
+      const boolFields = [
+        "sanitizeInputs",
+        "developerMessagesToUser",
+        "codexCompactionOverride",
+        "headerSnapshots",
+        "headerTransformDebug",
+        "pidOffset",
+        "collaborationProfile",
+        "orchestratorSubagents"
+      ]
+      for (const field of boolFields) {
+        if (field in runtime && typeof runtime[field] !== "boolean") {
+          pushValidationIssue(issues, {
+            path: `runtime.${field}`,
+            expected: "boolean",
+            actual: runtime[field]
+          })
+        }
+      }
+    }
+  }
+
+  if ("global" in raw) {
+    validateModelBehaviorShape(raw.global, "global", issues)
+  }
+
+  if ("perModel" in raw) {
+    if (!isRecord(raw.perModel)) {
+      pushValidationIssue(issues, { path: "perModel", expected: "object", actual: raw.perModel })
+    } else {
+      for (const [modelName, modelValue] of Object.entries(raw.perModel)) {
+        validateModelBehaviorShape(modelValue, `perModel.${modelName}`, issues)
+        if (!isRecord(modelValue)) continue
+        if (!("variants" in modelValue)) continue
+
+        const variants = modelValue.variants
+        if (!isRecord(variants)) {
+          pushValidationIssue(issues, {
+            path: `perModel.${modelName}.variants`,
+            expected: "object",
+            actual: variants
+          })
+          continue
+        }
+        for (const [variantName, variantValue] of Object.entries(variants)) {
+          validateModelBehaviorShape(variantValue, `perModel.${modelName}.variants.${variantName}`, issues)
+        }
+      }
+    }
+  }
+
+  return { valid: issues.length === 0, issues }
 }
 
 function parseEnvBoolean(value: string | undefined): boolean | undefined {
@@ -285,9 +454,6 @@ function stripJsonComments(raw: string): string {
 
     out += ch
   }
-
-  // Strip trailing commas before ] and } (common in hand-edited JSONC)
-  out = out.replace(/,\s*([\]}])/g, "$1")
 
   return out
 }
@@ -534,10 +700,6 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
       : undefined
   const headerSnapshots =
     isRecord(raw.runtime) && typeof raw.runtime.headerSnapshots === "boolean" ? raw.runtime.headerSnapshots : undefined
-  const headerSnapshotBodies =
-    isRecord(raw.runtime) && typeof raw.runtime.headerSnapshotBodies === "boolean"
-      ? raw.runtime.headerSnapshotBodies
-      : undefined
   const headerTransformDebug =
     isRecord(raw.runtime) && typeof raw.runtime.headerTransformDebug === "boolean"
       ? raw.runtime.headerTransformDebug
@@ -571,7 +733,6 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     remapDeveloperMessagesToUser,
     codexCompactionOverride,
     headerSnapshots,
-    headerSnapshotBodies,
     headerTransformDebug,
     collaborationProfileEnabled,
     orchestratorSubagentsEnabled,
@@ -593,8 +754,6 @@ export type EnsureDefaultConfigFileResult = {
   created: boolean
 }
 
-const PRIVATE_DIR_MODE = 0o700
-
 export async function ensureDefaultConfigFile(
   input: {
     env?: Record<string, string | undefined>
@@ -610,9 +769,7 @@ export async function ensureDefaultConfigFile(
     return { filePath, created: false }
   }
 
-  const parentDir = path.dirname(filePath)
-  await fsPromises.mkdir(parentDir, { recursive: true, mode: PRIVATE_DIR_MODE })
-  await fsPromises.chmod(parentDir, PRIVATE_DIR_MODE).catch(() => {})
+  await fsPromises.mkdir(path.dirname(filePath), { recursive: true })
   const content = DEFAULT_CODEX_CONFIG_TEMPLATE
   await fsPromises.writeFile(filePath, content, { encoding: "utf8", mode: 0o600 })
   return { filePath, created: true }
@@ -635,6 +792,13 @@ export function loadConfigFile(
     try {
       const raw = fs.readFileSync(filePath, "utf8")
       const parsed = parseConfigJsonWithComments(raw)
+      const validation = validateConfigFileObject(parsed)
+      if (!validation.valid) {
+        console.warn(
+          `[opencode-codex-auth] Invalid codex-config at ${filePath}; ignoring file. ${validation.issues.join("; ")}`
+        )
+        return {}
+      }
       return parseConfigFileObject(parsed)
     } catch {
       return {}
@@ -728,8 +892,6 @@ export function resolveConfig(input: {
   const codexCompactionOverride =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE) ?? file.codexCompactionOverride
   const headerSnapshots = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS) ?? file.headerSnapshots
-  const headerSnapshotBodies =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES) ?? file.headerSnapshotBodies
   const headerTransformDebug =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG) ?? file.headerTransformDebug
   const collaborationProfileEnabled =
@@ -737,7 +899,8 @@ export function resolveConfig(input: {
   const orchestratorSubagentsEnabled =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS) ?? file.orchestratorSubagentsEnabled
   const collaborationToolProfile =
-    parseCollaborationToolProfile(env.OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE) ?? file.collaborationToolProfile
+    parseCollaborationToolProfile(env.OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE) ??
+    file.collaborationToolProfile
 
   return {
     ...file,
@@ -755,7 +918,6 @@ export function resolveConfig(input: {
     remapDeveloperMessagesToUser,
     codexCompactionOverride,
     headerSnapshots,
-    headerSnapshotBodies,
     headerTransformDebug,
     collaborationProfileEnabled,
     orchestratorSubagentsEnabled,
@@ -824,10 +986,6 @@ export function getCodexCompactionOverrideEnabled(cfg: PluginConfig): boolean {
 
 export function getHeaderSnapshotsEnabled(cfg: PluginConfig): boolean {
   return cfg.headerSnapshots === true
-}
-
-export function getHeaderSnapshotBodiesEnabled(cfg: PluginConfig): boolean {
-  return cfg.headerSnapshotBodies === true
 }
 
 export function getHeaderTransformDebugEnabled(cfg: PluginConfig): boolean {

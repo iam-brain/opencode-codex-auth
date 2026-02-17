@@ -4,6 +4,8 @@
 
 - `~/.config/opencode/codex-accounts.json`
   - plugin-owned OpenAI account rotation/auth state
+- `~/.config/opencode/.gitignore`
+  - best-effort safety entries for plugin credential/cache/log artifacts
 - `~/.local/share/opencode/auth.json`
   - OpenCode provider auth marker/state
 - `~/.config/opencode/cache/codex-session-affinity.json`

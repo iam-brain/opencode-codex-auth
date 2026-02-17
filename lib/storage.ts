@@ -12,6 +12,7 @@ import {
   opencodeProviderAuthPath,
   legacyOpenAICodexAccountsPathFor
 } from "./paths"
+import { ensureConfigDirGitignore } from "./config-dir-gitignore"
 import type {
   AccountAuthType,
   AccountRecord,
@@ -53,16 +54,6 @@ type LegacyCodexAccountsRecord = {
 
 const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
 const OPENAI_AUTH_MODES: OpenAIAuthMode[] = ["native", "codex"]
-const PRIVATE_DIR_MODE = 0o700
-
-async function ensurePrivateDir(dirPath: string): Promise<void> {
-  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
-  try {
-    await fs.chmod(dirPath, PRIVATE_DIR_MODE)
-  } catch {
-    // best-effort permissions
-  }
-}
 
 function normalizeAccountAuthTypes(input: unknown): AccountAuthType[] {
   const source = Array.isArray(input) ? input : ["native"]
@@ -600,7 +591,7 @@ export function listOpenAIOAuthDomains(auth: AuthFile): Array<{ mode: OpenAIAuth
 }
 
 async function writeAuthUnlocked(filePath: string, auth: AuthFile): Promise<void> {
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now().toString(36)}`
+  const tmpPath = `${filePath}.tmp`
   const serialized = `${JSON.stringify(auth, null, 2)}\n`
   await fs.writeFile(tmpPath, serialized, { mode: 0o600 })
   await fs.rename(tmpPath, filePath)
@@ -612,10 +603,13 @@ async function writeAuthUnlocked(filePath: string, auth: AuthFile): Promise<void
 }
 
 async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
-  await ensurePrivateDir(path.dirname(filePath))
+  const dirPath = path.dirname(filePath)
+  await fs.mkdir(dirPath, { recursive: true })
+  if (path.basename(filePath) === CODEX_ACCOUNTS_FILE) {
+    await ensureConfigDirGitignore(dirPath)
+  }
   const release = await lockfile.lock(filePath, {
     realpath: false,
-    stale: 10_000,
     retries: {
       retries: 20,
       minTimeout: 10,
@@ -643,14 +637,10 @@ export async function saveAuthStorage(
 ): Promise<AuthFile> {
   return withFileLock(filePath, async () => {
     const current = await readAuthUnlocked(filePath)
-    const before = JSON.stringify(current)
     const result = await update(current)
     const nextBase = result === undefined ? current : result
     const next = sanitizeAuthFile(migrateAuthFile(nextBase))
-    const after = JSON.stringify(next)
-    if (after !== before) {
-      await writeAuthUnlocked(filePath, next)
-    }
+    await writeAuthUnlocked(filePath, next)
     return next
   })
 }

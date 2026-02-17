@@ -24,6 +24,8 @@ The plugin loads config in this order:
 
 `codex-config.json` supports JSON comments (`//` and `/* ... */`) for readability.
 
+Known-field type validation is applied on load. If a known field has an invalid type/value, the plugin ignores that config file and logs an actionable warning.
+
 ## Default generated config
 
 ```json
@@ -42,7 +44,6 @@ The plugin loads config in this order:
     "developerMessagesToUser": true,
     "promptCacheKeyStrategy": "default",
     "headerSnapshots": false,
-    "headerSnapshotBodies": false,
     "headerTransformDebug": false,
     "pidOffset": false
   },
@@ -90,9 +91,7 @@ The plugin loads config in this order:
   - Mode defaults: `true` in `codex`, `false` in `native`.
   - Explicit boolean value overrides mode default.
 - `runtime.headerSnapshots: boolean`
-  - Writes redacted request/response snapshots to debug logs (headers + metadata).
-- `runtime.headerSnapshotBodies: boolean`
-  - Enables sanitized request body capture in snapshots (`false` default).
+  - Writes before/after request header snapshots to debug logs.
 - `runtime.headerTransformDebug: boolean`
   - Adds explicit `before-header-transform` and `after-header-transform` request snapshots for message fetches.
 - `runtime.pidOffset: boolean`
@@ -225,7 +224,6 @@ Advanced path:
 - `OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`: `1|0|true|false`.
-- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`: `1|0|true|false`.
 
 ### Debug/OAuth controls
