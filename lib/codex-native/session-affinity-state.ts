@@ -1,4 +1,5 @@
 import { createFetchOrchestratorState, type FetchOrchestratorState } from "../fetch-orchestrator"
+import type { Logger } from "../logger"
 import { defaultSessionAffinityPath } from "../paths"
 import { createStickySessionState, type StickySessionState } from "../rotation"
 import {
@@ -22,6 +23,7 @@ export async function createSessionAffinityRuntimeState(input: {
   authMode: OpenAIAuthMode
   env: NodeJS.ProcessEnv
   missingGraceMs: number
+  log?: Logger
 }): Promise<SessionAffinityRuntimeState> {
   const sessionAffinityPath = defaultSessionAffinityPath(undefined, input.env)
   const loadedSessionAffinity = await loadSessionAffinity(sessionAffinityPath).catch(() => ({
@@ -42,6 +44,7 @@ export async function createSessionAffinityRuntimeState(input: {
   hybridSessionState.bySessionKey = initialSessionAffinity.hybridBySessionKey
 
   let sessionAffinityPersistQueue = Promise.resolve()
+  let persistenceErrorLogged = false
   const persistSessionAffinityState = (): void => {
     sessionAffinityPersistQueue = sessionAffinityPersistQueue
       .then(async () => {
@@ -65,9 +68,15 @@ export async function createSessionAffinityRuntimeState(input: {
             }),
           sessionAffinityPath
         )
+        persistenceErrorLogged = false
       })
-      .catch(() => {
-        // best-effort persistence
+      .catch((error) => {
+        if (!persistenceErrorLogged) {
+          persistenceErrorLogged = true
+          input.log?.debug("session affinity persistence failed", {
+            error: error instanceof Error ? error.message : String(error)
+          })
+        }
       })
   }
 

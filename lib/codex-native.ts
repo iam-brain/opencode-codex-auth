@@ -215,6 +215,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   }
   const requestSnapshots = createRequestSnapshots({
     enabled: opts.headerSnapshots === true || opts.headerTransformDebug === true,
+    captureBodies: opts.headerSnapshots === true,
     log: opts.log
   })
   let lastCatalogModels: CodexModelInfo[] | undefined
@@ -279,7 +280,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           await createSessionAffinityRuntimeState({
             authMode,
             env: process.env,
-            missingGraceMs: SESSION_AFFINITY_MISSING_GRACE_MS
+            missingGraceMs: SESSION_AFFINITY_MISSING_GRACE_MS,
+            log: opts.log
           })
 
         const syncCatalogFromAuth = await initializeCatalogSync({

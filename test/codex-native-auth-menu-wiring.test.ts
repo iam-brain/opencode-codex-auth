@@ -8,7 +8,8 @@ async function loadPluginWithMenu(input: {
   authFile?: Record<string, unknown>
   refreshAccessTokenImpl?: (
     refreshToken: string,
-    isSaveAuthStorageInProgress: () => boolean
+    isSaveAuthStorageInProgress: () => boolean,
+    storageState: Record<string, unknown>
   ) => Promise<{ refresh_token: string; access_token: string; expires_in?: number; id_token?: string }>
   runAuthMenuOnceImpl?: (args: {
     allowTransfer?: boolean
@@ -176,7 +177,7 @@ async function loadPluginWithMenu(input: {
 
   const refreshAccessToken = vi.fn(async (refreshToken: string) => {
     if (input.refreshAccessTokenImpl) {
-      return await input.refreshAccessTokenImpl(refreshToken, () => saveAuthStorageDepth > 0)
+      return await input.refreshAccessTokenImpl(refreshToken, () => saveAuthStorageDepth > 0, storageState)
     }
     return {
       refresh_token: refreshToken,
@@ -347,6 +348,106 @@ describe("codex-native auth menu wiring", () => {
       expect(saveAuthStorage).toHaveBeenCalled()
       const openai = (storageState as { openai?: { accounts?: Array<{ identityKey?: string }> } }).openai
       expect(openai?.accounts?.[0]?.identityKey).toBe("acc_hydrated|hydrateduser@example.com|pro")
+    } finally {
+      stdin.isTTY = prevIn
+      stdout.isTTY = prevOut
+    }
+  })
+
+  it("persists transfer refresh by identity key when account order changes", async () => {
+    const transferRefresh = vi.fn(async (refreshToken: string) => {
+      if (refreshToken === "rt_two") {
+        return {
+          refresh_token: "rt_two_next",
+          access_token: "at_two_next",
+          expires_in: 3600,
+          id_token: buildJwt({
+            "https://api.openai.com/auth": {
+              chatgpt_account_id: "acc_two",
+              chatgpt_plan_type: "plus"
+            },
+            "https://api.openai.com/profile": {
+              email: "two@example.com"
+            }
+          })
+        }
+      }
+
+      return {
+        refresh_token: refreshToken,
+        access_token: `access_${refreshToken}`,
+        expires_in: 3600,
+        id_token: buildJwt({
+          "https://api.openai.com/auth": {
+            chatgpt_account_id: "acc_one",
+            chatgpt_plan_type: "plus"
+          },
+          "https://api.openai.com/profile": {
+            email: "one@example.com"
+          }
+        })
+      }
+    })
+
+    const { hooks, storageState } = await loadPluginWithMenu({
+      offerLegacyTransfer: true,
+      authFile: {
+        openai: {
+          type: "oauth",
+          accounts: [
+            {
+              identityKey: "acc_one|one@example.com|plus",
+              accountId: "acc_one",
+              email: "one@example.com",
+              plan: "plus",
+              enabled: true,
+              refresh: "rt_one",
+              access: "at_one",
+              expires: Date.now() + 60_000
+            },
+            {
+              enabled: true,
+              refresh: "rt_two",
+              access: "at_two",
+              expires: Date.now() - 1_000
+            }
+          ],
+          activeIdentityKey: "acc_two|two@example.com|plus"
+        }
+      },
+      runAuthMenuOnceImpl: async (args) => {
+        await args.handlers.onTransfer()
+        return "exit"
+      },
+      refreshAccessTokenImpl: async (refreshToken, _isLocked, _authState) => {
+        const openai = _authState.openai as { accounts?: Array<Record<string, unknown>> } | undefined
+        if (openai?.accounts) {
+          openai.accounts.reverse()
+        }
+        return await transferRefresh(refreshToken)
+      }
+    })
+
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const prevIn = stdin.isTTY
+    const prevOut = stdout.isTTY
+    stdin.isTTY = true
+    stdout.isTTY = true
+
+    try {
+      await browserMethod.authorize({})
+      const openai = (storageState as { openai?: { accounts?: Array<Record<string, unknown>> } }).openai
+      const accounts = openai?.accounts ?? []
+      const first = accounts.find((account) => account.refresh === "rt_one")
+      const second = accounts.find((account) => account.refresh === "rt_two_next")
+
+      expect(first?.access).toBe("at_one")
+      expect(second?.access).toBe("at_two_next")
+      expect(transferRefresh).toHaveBeenCalledWith("rt_two")
     } finally {
       stdin.isTTY = prevIn
       stdout.isTTY = prevOut

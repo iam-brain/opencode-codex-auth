@@ -89,6 +89,7 @@ type SnapshotWriterInput = {
   log?: Logger
   maxSnapshotFiles?: number
   maxLiveHeadersBytes?: number
+  captureBodies?: boolean
 }
 
 type SnapshotMeta = Record<string, unknown> | undefined
@@ -121,6 +122,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
     typeof input.maxLiveHeadersBytes === "number" && Number.isFinite(input.maxLiveHeadersBytes)
       ? Math.max(1, Math.floor(input.maxLiveHeadersBytes))
       : 1_000_000
+  const captureBodies = input.captureBodies === true
   const runId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}-${randomUUID().slice(0, 8)}`
   let requestCounter = 0
   let responseCounter = 0
@@ -219,7 +221,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
     captureRequest: async (stage, request, meta) => {
       const requestId = ++requestCounter
       const timestamp = new Date().toISOString()
-      const body = await serializeRequestBody(request)
+      const body = captureBodies ? await serializeRequestBody(request) : undefined
       const headers = sanitizeHeaders(request.headers)
       const payload = {
         timestamp,

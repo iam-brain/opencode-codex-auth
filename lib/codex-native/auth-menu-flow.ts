@@ -66,7 +66,7 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
           let refreshed = 0
           const refreshClaims: Array<{
             mode: OpenAIAuthMode
-            index: number
+            identityKey?: string
             refreshToken: string
             leaseUntil: number
           }> = []
@@ -93,9 +93,10 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
                 }
                 const leaseUntil = now + AUTH_MENU_REFRESH_LEASE_MS
                 account.refreshLeaseUntil = leaseUntil
+                if (account.expires && account.expires > now) continue
                 refreshClaims.push({
                   mode,
-                  index,
+                  identityKey: account.identityKey,
                   refreshToken: account.refresh,
                   leaseUntil
                 })
@@ -110,7 +111,12 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
               await saveAuthStorage(undefined, (authFile) => {
                 const domain = getOpenAIOAuthDomain(authFile, claim.mode)
                 if (!domain) return authFile
-                const account = domain.accounts[claim.index]
+                const account = domain.accounts.find(
+                  (entry) =>
+                    entry.refreshLeaseUntil === claim.leaseUntil &&
+                    entry.refresh === claim.refreshToken &&
+                    (!claim.identityKey || entry.identityKey === claim.identityKey)
+                )
                 if (!account) return authFile
 
                 const now = Date.now()
@@ -144,7 +150,12 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
               await saveAuthStorage(undefined, (authFile) => {
                 const domain = getOpenAIOAuthDomain(authFile, claim.mode)
                 if (!domain) return authFile
-                const account = domain.accounts[claim.index]
+                const account = domain.accounts.find(
+                  (entry) =>
+                    entry.refreshLeaseUntil === claim.leaseUntil &&
+                    entry.refresh === claim.refreshToken &&
+                    (!claim.identityKey || entry.identityKey === claim.identityKey)
+                )
                 if (!account) return authFile
                 if (account.refreshLeaseUntil === claim.leaseUntil) {
                   delete account.refreshLeaseUntil

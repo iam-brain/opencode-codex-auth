@@ -145,12 +145,28 @@ export type RefreshQuotaSnapshotsInput = {
   cooldownByIdentity: Map<string, number>
 }
 
+type RefreshCandidate = {
+  mode: OpenAIAuthMode
+  index: number
+  identityKey: string
+  mirror: {
+    refresh?: string
+    access?: string
+    expires?: number
+    accountId?: string
+    email?: string
+    plan?: string
+    identityKey?: string
+  }
+}
+
 export async function refreshQuotaSnapshotsForAuthMenu(input: RefreshQuotaSnapshotsInput): Promise<void> {
   const auth = await loadAuthStorage()
   const snapshotPath = defaultSnapshotsPath()
   const existingSnapshots: Record<string, { updatedAt?: number }> = await loadSnapshots(snapshotPath).catch(() => ({}))
   const snapshotUpdates: Record<string, CodexRateLimitSnapshot> = {}
   const fetchRequests: Array<{ identityKey: string; accessToken: string; accountId?: string }> = []
+  const refreshCandidates: RefreshCandidate[] = []
   const userAgent = resolveRequestUserAgent(input.spoofMode, resolveCodexOriginator(input.spoofMode))
 
   for (const { mode, domain } of listOpenAIOAuthDomains(auth)) {
@@ -179,47 +195,58 @@ export async function refreshQuotaSnapshotsForAuthMenu(input: RefreshQuotaSnapsh
       const expired = typeof account.expires === "number" && Number.isFinite(account.expires) && account.expires <= now
 
       if ((!accessToken || expired) && account.refresh) {
-        let refreshClaim: RefreshClaim | undefined
-        try {
-          refreshClaim = await claimRefreshForQuotaSnapshot({ mode, index })
-          if (refreshClaim) {
-            const tokens = await refreshAccessToken(refreshClaim.refreshToken)
-            const persisted = await persistRefreshedTokensForQuotaSnapshot({
-              claim: refreshClaim,
-              tokens,
-              mirror: account
-            })
-            accessToken = persisted
-          }
-        } catch (error) {
-          if (identityKey) {
-            input.cooldownByIdentity.set(identityKey, Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS)
-          }
-          if (refreshClaim) {
-            await releaseFailedRefreshClaimForQuotaSnapshot({ claim: refreshClaim, now: Date.now() })
-          }
-          input.log?.debug("quota check refresh failed", {
-            index,
+        if (identityKey) {
+          refreshCandidates.push({
             mode,
-            error: error instanceof Error ? error.message : String(error)
+            index,
+            identityKey,
+            mirror: account
           })
         }
+        continue
       }
 
-      if (!accessToken) continue
-
-      if (!account.identityKey) {
-        hydrateAccountIdentityFromAccessClaims(account)
+      if (accessToken && account.identityKey) {
+        fetchRequests.push({
+          identityKey: account.identityKey,
+          accessToken,
+          accountId: account.accountId
+        })
       }
-      if (!account.identityKey) continue
-
-      fetchRequests.push({
-        identityKey: account.identityKey,
-        accessToken,
-        accountId: account.accountId
-      })
     }
   }
+
+  await runWithConcurrency(refreshCandidates, AUTH_MENU_QUOTA_FETCH_CONCURRENCY, async (candidate) => {
+    let refreshClaim: RefreshClaim | undefined
+    try {
+      refreshClaim = await claimRefreshForQuotaSnapshot({ mode: candidate.mode, index: candidate.index })
+      if (!refreshClaim) return
+
+      const tokens = await refreshAccessToken(refreshClaim.refreshToken)
+      const persisted = await persistRefreshedTokensForQuotaSnapshot({
+        claim: refreshClaim,
+        tokens,
+        mirror: candidate.mirror
+      })
+      if (!persisted || !candidate.mirror.identityKey) return
+
+      fetchRequests.push({
+        identityKey: candidate.mirror.identityKey,
+        accessToken: persisted,
+        accountId: candidate.mirror.accountId
+      })
+    } catch (error) {
+      input.cooldownByIdentity.set(candidate.identityKey, Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS)
+      if (refreshClaim) {
+        await releaseFailedRefreshClaimForQuotaSnapshot({ claim: refreshClaim, now: Date.now() })
+      }
+      input.log?.debug("quota check refresh failed", {
+        index: candidate.index,
+        mode: candidate.mode,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  })
 
   await runWithConcurrency(fetchRequests, AUTH_MENU_QUOTA_FETCH_CONCURRENCY, async (request) => {
     const snapshot = await fetchQuotaSnapshotFromBackend({

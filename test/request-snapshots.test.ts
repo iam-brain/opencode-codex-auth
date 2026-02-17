@@ -7,9 +7,35 @@ import { describe, expect, it } from "vitest"
 import { createRequestSnapshots } from "../lib/request-snapshots"
 
 describe("request snapshots", () => {
+  it("does not persist request body when captureBodies is false", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root, captureBodies: false })
+
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer super-secret-token",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "private" })
+    })
+
+    await snapshots.captureRequest("outbound-attempt", request, { attempt: 1 })
+
+    const files = await fs.readdir(root)
+    const filePath = path.join(root, files.find((file) => file.includes("request-1-outbound-attempt"))!)
+    const payload = JSON.parse(await fs.readFile(filePath, "utf8")) as {
+      body?: unknown
+      headers: Record<string, string>
+    }
+
+    expect(payload.body).toBeUndefined()
+    expect(payload.headers.authorization).toBe("Bearer [redacted]")
+  })
+
   it("writes redacted request snapshots when enabled", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
-    const snapshots = createRequestSnapshots({ enabled: true, dir: root })
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root, captureBodies: true })
 
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
