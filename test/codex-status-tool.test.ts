@@ -134,4 +134,24 @@ describe("codex-status tool", () => {
     expect(lines[plusIndex + 1]).toContain("80% left")
     expect(lines[teamIndex + 1]).toContain("20% left")
   })
+
+  it("renders accounts even when identity metadata is missing", async () => {
+    await saveAuthStorage(authPath, (auth) => {
+      auth.openai = {
+        type: "oauth",
+        accounts: [
+          {
+            email: "missing@example.com",
+            plan: "plus",
+            enabled: true,
+            refresh: "rt_missing"
+          }
+        ]
+      }
+    })
+
+    const output = await toolOutputForStatus(authPath, snapshotsPath)
+    expect(output).toContain("missing@example.com (plus) [identity-missing]")
+    expect(output).toContain("Unknown, missing identity metadata")
+  })
 })

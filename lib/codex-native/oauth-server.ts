@@ -248,8 +248,21 @@ export function createOAuthServerController<TPkce, TTokens>(
         }
 
         if (url.pathname === "/cancel") {
+          const state = url.searchParams.get("state")
+          if (!pendingOAuth || !state || state !== pendingOAuth.state) {
+            emitDebug("callback_cancel_rejected", {
+              hasPendingOAuth: Boolean(pendingOAuth),
+              hasState: Boolean(state),
+              stateMatches: Boolean(state) && state === pendingOAuth?.state
+            })
+            res.statusCode = 400
+            setResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
+            res.end("Invalid cancel state")
+            return
+          }
+
           emitDebug("callback_cancel")
-          pendingOAuth?.reject(new Error("Login cancelled"))
+          pendingOAuth.reject(new Error("Login cancelled"))
           pendingOAuth = undefined
           res.statusCode = 200
           setResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })

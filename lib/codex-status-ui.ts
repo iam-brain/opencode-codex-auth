@@ -70,7 +70,8 @@ function formatAccountLabel(input: {
 }): string {
   const label = input.account.email ?? input.account.identityKey ?? "account"
   const plan = input.account.plan ? ` (${input.account.plan})` : ""
-  if (!input.withBadges) return `${label}${plan}`
+  const missingIdentityBadge = input.account.identityKey ? "" : " [identity-missing]"
+  if (!input.withBadges) return `${label}${plan}${missingIdentityBadge}`
 
   const badges: string[] = []
   if (input.account.enabled === false) {
@@ -81,6 +82,10 @@ function formatAccountLabel(input: {
 
   if (input.account.identityKey && input.activeIdentityKey === input.account.identityKey) {
     badges.push(colorize("[last active]", ANSI.cyan, input.useColor))
+  }
+
+  if (!input.account.identityKey) {
+    badges.push(colorize("[identity-missing]", ANSI.yellow, input.useColor))
   }
 
   const suffix = badges.length > 0 ? ` ${badges.join(" ")}` : ""
@@ -105,6 +110,11 @@ function renderQuotaLine(input: {
 
 function fallbackResetLabel(expired: boolean): string {
   return expired ? "Unknown, account expired" : "Unknown, no snapshot yet"
+}
+
+function fallbackResetLabelForAccount(input: { expired: boolean; identityMissing: boolean }): string {
+  if (input.identityMissing) return "Unknown, missing identity metadata"
+  return fallbackResetLabel(input.expired)
 }
 
 function formatCredits(snap: CodexRateLimitSnapshot | undefined): string {
@@ -150,13 +160,10 @@ export function renderDashboard(
     return lines
   }
 
-  const renderableAccounts = input.accounts.filter((acc) => Boolean(acc.identityKey))
+  const renderableAccounts = input.accounts
   for (let i = 0; i < renderableAccounts.length; i += 1) {
     const acc = renderableAccounts[i]
-    const key = acc.identityKey
-    if (!key) continue
-
-    const snap = input.snapshots[key]
+    const snap = acc.identityKey ? input.snapshots[acc.identityKey] : undefined
     const accountLabel = formatAccountLabel({
       account: acc,
       activeIdentityKey: input.activeIdentityKey,
@@ -180,7 +187,7 @@ export function renderDashboard(
         leftPct: rows.fiveHour?.leftPct ?? 0,
         resetText: rows.fiveHour
           ? (formatResetTimestamp(rows.fiveHour.resetsAt) ?? "Unknown")
-          : fallbackResetLabel(expired),
+          : fallbackResetLabelForAccount({ expired, identityMissing: !acc.identityKey }),
         useColor
       })
     )
@@ -191,7 +198,7 @@ export function renderDashboard(
         leftPct: rows.weekly?.leftPct ?? 0,
         resetText: rows.weekly
           ? (formatResetTimestamp(rows.weekly.resetsAt) ?? "Unknown")
-          : fallbackResetLabel(expired),
+          : fallbackResetLabelForAccount({ expired, identityMissing: !acc.identityKey }),
         useColor
       })
     )

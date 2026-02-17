@@ -215,4 +215,83 @@ describe("acquire auth lock behavior", () => {
     expect(auth.access).toBe("at_2")
     expect(saveAuthStorage).toHaveBeenCalled()
   })
+
+  it("fails with missing identity metadata without applying cooldown", async () => {
+    vi.resetModules()
+
+    let authState: Record<string, unknown> = {
+      openai: {
+        type: "oauth",
+        native: {
+          accounts: [
+            {
+              email: "user@example.com",
+              plan: "plus",
+              enabled: true,
+              refresh: "rt_1",
+              expires: 0
+            }
+          ]
+        }
+      }
+    }
+
+    const saveAuthStorage = vi.fn(
+      async (
+        _path: string | undefined,
+        update: (
+          auth: Record<string, unknown>
+        ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
+      ) => {
+        const current = structuredClone(authState)
+        const next = await update(current)
+        authState = structuredClone((next ?? current) as Record<string, unknown>)
+        return authState
+      }
+    )
+
+    const ensureOpenAIOAuthDomain = vi.fn((auth: Record<string, unknown>, mode: "native" | "codex") => {
+      const openai = auth.openai as { type?: string; native?: { accounts: unknown[] }; codex?: { accounts: unknown[] } }
+      if (!openai || openai.type !== "oauth") {
+        throw new Error("OpenAI OAuth not configured")
+      }
+      const existing = mode === "native" ? openai.native : openai.codex
+      if (existing) return existing
+      const created = { accounts: [] as unknown[] }
+      if (mode === "native") openai.native = created
+      else openai.codex = created
+      return created
+    })
+
+    vi.doMock("../lib/storage", () => ({
+      saveAuthStorage,
+      ensureOpenAIOAuthDomain
+    }))
+
+    const fetchSpy = vi.fn()
+    vi.stubGlobal("fetch", fetchSpy)
+
+    const { acquireOpenAIAuth, createAcquireOpenAIAuthInputDefaults } = await import("../lib/codex-native/acquire-auth")
+    const defaults = createAcquireOpenAIAuthInputDefaults()
+
+    await expect(
+      acquireOpenAIAuth({
+        authMode: "native",
+        context: { sessionKey: null },
+        isSubagentRequest: false,
+        stickySessionState: defaults.stickySessionState,
+        hybridSessionState: defaults.hybridSessionState,
+        seenSessionKeys: new Map<string, number>(),
+        persistSessionAffinityState: () => {},
+        pidOffsetEnabled: false
+      })
+    ).rejects.toMatchObject({ type: "missing_account_identity" })
+
+    const domain = ((authState.openai as { native?: { accounts?: Array<Record<string, unknown>> } })?.native ?? {
+      accounts: []
+    }) as { accounts: Array<Record<string, unknown>> }
+    const account = domain.accounts[0]
+    expect(account?.cooldownUntil).toBeUndefined()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
 })

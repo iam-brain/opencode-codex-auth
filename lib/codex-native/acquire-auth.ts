@@ -57,6 +57,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
   let sawInvalidGrant = false
   let sawRefreshFailure = false
   let sawMissingRefresh = false
+  let sawMissingIdentity = false
   let totalAccounts = 0
   let rotationLogged = false
   let lastSelectionTrace: AccountSelectionTrace | undefined
@@ -224,8 +225,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
         }
 
         if (!selected.identityKey) {
-          sawRefreshFailure = true
-          selected.cooldownUntil = now + AUTH_REFRESH_FAILURE_COOLDOWN_MS
+          sawMissingIdentity = true
           return
         }
 
@@ -393,6 +393,16 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
             message: "Selected OpenAI account is missing a refresh token. Run `opencode auth login` to reauthenticate.",
             status: 401,
             type: "missing_refresh_token",
+            param: "accounts"
+          })
+        }
+
+        if (sawMissingIdentity) {
+          throw new PluginFatalError({
+            message:
+              "Selected OpenAI account is missing identity metadata. Run `opencode auth login` to reauthenticate.",
+            status: 401,
+            type: "missing_account_identity",
             param: "accounts"
           })
         }
