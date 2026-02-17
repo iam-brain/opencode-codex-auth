@@ -44,7 +44,7 @@ describe("CodexStatus headers", () => {
     })
 
     expect(snap.limits[0]?.leftPct).toBe(75)
-    expect(snap.limits[0]?.resetsAt).toBe(1700 * 1000)
+    expect(snap.limits[0]?.resetsAt).toBe(now + 1700 * 1000)
   })
 
   it("parses reset time values in milliseconds", () => {
@@ -85,6 +85,21 @@ describe("CodexStatus headers", () => {
 
     expect(seconds.limits[0]?.resetsAt).toBe(2500)
     expect(millis.limits[0]?.resetsAt).toBe(2500)
+  })
+
+  it("keeps epoch-second reset values as absolute time", () => {
+    const s = new CodexStatus()
+    const snap = s.parseFromHeaders({
+      now: 1000,
+      modelFamily: "gpt-5.2",
+      headers: {
+        "x-ratelimit-remaining-requests": "75",
+        "x-ratelimit-limit-requests": "100",
+        "x-ratelimit-reset-requests": "1700000000"
+      }
+    })
+
+    expect(snap.limits[0]?.resetsAt).toBe(1700000000 * 1000)
   })
 
   it("handles missing headers gracefully", () => {

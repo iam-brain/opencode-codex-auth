@@ -16,6 +16,7 @@ function parseResetMs(raw: string | undefined, now: number): number | undefined 
     const parsed = Number.parseInt(trimmed, 10)
     if (!Number.isFinite(parsed)) return undefined
     if (parsed >= 1_000_000_000_000) return parsed
+    if (parsed <= 86_400) return now + parsed * 1000
     return parsed * 1000
   }
 
