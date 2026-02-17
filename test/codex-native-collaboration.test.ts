@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  ensureOpenCodeToolingCompatibility,
+  hasCodexToolNameMarkers,
+  hasOpenCodeToolingCompatibility,
   isOrchestratorInstructions,
   mergeInstructions,
   resolveCollaborationInstructions,
@@ -56,6 +59,36 @@ describe("codex collaboration profile", () => {
     expect(resolveToolingInstructions("codex")).toContain("Tooling Compatibility (Codex-style)")
   })
 
+  it("detects codex tool names and injects OpenCode compatibility guidance", () => {
+    const codexInstructions = "Use spawn_agent and send_input to coordinate workers."
+    expect(hasCodexToolNameMarkers(codexInstructions)).toBe(true)
+    expect(ensureOpenCodeToolingCompatibility(codexInstructions)).toContain("Tooling Compatibility (OpenCode)")
+
+    const waitOnly = "Wait for worker completion, then continue."
+    expect(hasCodexToolNameMarkers(waitOnly)).toBe(false)
+    expect(ensureOpenCodeToolingCompatibility(waitOnly)).toBe(waitOnly)
+
+    const codexWaitPattern = "Coordinate with wait/send_input-style flow between workers."
+    expect(hasCodexToolNameMarkers(codexWaitPattern)).toBe(true)
+    const waitOnlyCompat = ensureOpenCodeToolingCompatibility(codexWaitPattern)
+    expect(waitOnlyCompat).toContain("Tooling Compatibility (OpenCode)")
+    expect(hasOpenCodeToolingCompatibility(waitOnlyCompat)).toBe(true)
+
+    const writeStdin = "If needed, call write_stdin to continue the worker session."
+    expect(hasCodexToolNameMarkers(writeStdin)).toBe(true)
+    expect(ensureOpenCodeToolingCompatibility(writeStdin)).toContain("write_stdin -> task with existing task_id")
+
+    const plainInstructions = "Use available tools in this runtime."
+    expect(hasCodexToolNameMarkers(plainInstructions)).toBe(false)
+    expect(ensureOpenCodeToolingCompatibility(plainInstructions)).toBe(plainInstructions)
+
+    const alreadyCompatible = `${codexInstructions}\n\n# Tooling Compatibility (OpenCode)`
+    expect(ensureOpenCodeToolingCompatibility(alreadyCompatible)).toBe(alreadyCompatible)
+
+    const alreadyCompatibleCaseVariant = `${codexInstructions}\n\n## tooling compatibility (opencode)`
+    expect(ensureOpenCodeToolingCompatibility(alreadyCompatibleCaseVariant)).toBe(alreadyCompatibleCaseVariant)
+  })
+
   it("detects orchestrator-style upstream instructions", () => {
     expect(
       isOrchestratorInstructions(
@@ -90,12 +123,7 @@ describe("codex collaboration profile", () => {
     ).toBe(true)
     expect(
       isOrchestratorInstructions(
-        [
-          "Any lead-in",
-          "# Sub-agents",
-          "Coordinate them via wait / send_input.",
-          "General guidance only."
-        ].join("\n")
+        ["Any lead-in", "# Sub-agents", "Coordinate them via wait / send_input.", "General guidance only."].join("\n")
       )
     ).toBe(true)
     expect(

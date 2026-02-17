@@ -3,7 +3,7 @@ import type { CodexModelInfo } from "../model-catalog"
 import { resolveInstructionsForModel } from "../model-catalog"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer"
 import { isRecord } from "../util"
-import { isOrchestratorInstructions } from "./collaboration"
+import { ensureOpenCodeToolingCompatibility, isOrchestratorInstructions } from "./collaboration"
 
 type ChatParamsOutput = {
   temperature: number
@@ -896,6 +896,12 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
 
   const preserveOrchestratorInstructions = input.preserveOrchestratorInstructions !== false
   if (preserveOrchestratorInstructions && isOrchestratorInstructions(currentInstructions)) {
+    const compatible = ensureOpenCodeToolingCompatibility(currentInstructions)
+    if (compatible && compatible.trim() !== (currentInstructions?.trim() ?? "")) {
+      payload.instructions = compatible
+      const updatedRequest = rebuildRequestWithJsonBody(input.request, payload)
+      return { request: updatedRequest, changed: true, reason: "tooling_compatibility_added" }
+    }
     return { request: input.request, changed: false, reason: "orchestrator_instructions_preserved" }
   }
 
@@ -908,7 +914,8 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
   }
 
   const collaborationTail = currentInstructions ? extractCollaborationInstructionTail(currentInstructions) : undefined
-  const nextInstructions = collaborationTail ? `${rendered}\n\n${collaborationTail}` : rendered
+  const nextInstructionsBase = collaborationTail ? `${rendered}\n\n${collaborationTail}` : rendered
+  const nextInstructions = ensureOpenCodeToolingCompatibility(nextInstructionsBase) ?? nextInstructionsBase
 
   if (currentInstructions === nextInstructions) {
     return { request: input.request, changed: false, reason: "already_matches" }

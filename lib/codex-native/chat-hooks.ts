@@ -25,6 +25,7 @@ import {
 import {
   CODEX_CODE_MODE_INSTRUCTIONS,
   CODEX_ORCHESTRATOR_INSTRUCTIONS,
+  ensureOpenCodeToolingCompatibility,
   getCodexPlanModeInstructions,
   isOrchestratorInstructions,
   mergeInstructions,
@@ -157,6 +158,8 @@ export async function handleChatParamsHook(input: {
     preferCodexInstructions: input.spoofMode === "codex" && !preserveOrchestratorInstructions,
     output: input.output
   })
+
+  input.output.options.instructions = ensureOpenCodeToolingCompatibility(asString(input.output.options.instructions))
 
   if (!input.collaborationProfileEnabled) return
 

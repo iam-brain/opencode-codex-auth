@@ -265,8 +265,11 @@ describe("catalog instruction override orchestrator preservation gating", () => 
       fallbackPersonality: undefined,
       preserveOrchestratorInstructions: true
     })
-    expect(preserved.changed).toBe(false)
-    expect(preserved.reason).toBe("orchestrator_instructions_preserved")
+    expect(preserved.changed).toBe(true)
+    expect(preserved.reason).toBe("tooling_compatibility_added")
+    const preservedBody = JSON.parse(await preserved.request.text()) as { instructions?: string }
+    expect(preservedBody.instructions).toContain("You are Codex, a coding agent based on GPT-5.")
+    expect(preservedBody.instructions).toContain("Tooling Compatibility (OpenCode)")
 
     const replaced = await applyCatalogInstructionOverrideToRequest({
       request,
@@ -304,8 +307,11 @@ describe("catalog instruction override orchestrator preservation gating", () => 
       behaviorSettings: undefined,
       fallbackPersonality: undefined
     })
-    expect(preserved.changed).toBe(false)
-    expect(preserved.reason).toBe("orchestrator_instructions_preserved")
+    expect(preserved.changed).toBe(true)
+    expect(preserved.reason).toBe("tooling_compatibility_added")
+    const preservedBody = JSON.parse(await preserved.request.text()) as { instructions?: string }
+    expect(preservedBody.instructions).toContain("You are Codex, a coding agent based on GPT-5.")
+    expect(preservedBody.instructions).toContain("Tooling Compatibility (OpenCode)")
   })
 
   it("preserves marker-based orchestrator instructions without spawn_agent token", async () => {
@@ -331,8 +337,11 @@ describe("catalog instruction override orchestrator preservation gating", () => 
       fallbackPersonality: undefined
     })
 
-    expect(preserved.changed).toBe(false)
-    expect(preserved.reason).toBe("orchestrator_instructions_preserved")
+    expect(preserved.changed).toBe(true)
+    expect(preserved.reason).toBe("tooling_compatibility_added")
+    const preservedBody = JSON.parse(await preserved.request.text()) as { instructions?: string }
+    expect(preservedBody.instructions).toContain("Coordinate them via wait / send_input.")
+    expect(preservedBody.instructions).toContain("Tooling Compatibility (OpenCode)")
   })
 
   it("does not preserve generic wait/send_input prose under sub-agents header", async () => {
@@ -362,5 +371,64 @@ describe("catalog instruction override orchestrator preservation gating", () => 
     expect(result.reason).toBe("updated")
     const body = JSON.parse(await result.request.text()) as { instructions?: string }
     expect(body.instructions).toContain("Base Default voice")
+  })
+
+  it("does not report compatibility-added when compatibility block already exists with spacing differences", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: [
+          "You are Codex, a coding agent based on GPT-5.",
+          "",
+          "# Sub-agents",
+          "If `spawn_agent` is unavailable or fails, ignore this section and proceed solo.",
+          "",
+          "# Tooling Compatibility (OpenCode)",
+          ""
+        ].join("\n")
+      })
+    })
+
+    const result = await applyCatalogInstructionOverrideToRequest({
+      request,
+      enabled: true,
+      catalogModels,
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined,
+      preserveOrchestratorInstructions: true
+    })
+
+    expect(result.changed).toBe(false)
+    expect(result.reason).toBe("orchestrator_instructions_preserved")
+  })
+
+  it("keeps preserved orchestrator instructions unchanged when no codex tool markers exist", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: [
+          "You are Codex, a coding agent based on GPT-5.",
+          "",
+          "# Sub-agents",
+          "Discuss tradeoffs and summarize worker output before final answer."
+        ].join("\n")
+      })
+    })
+
+    const result = await applyCatalogInstructionOverrideToRequest({
+      request,
+      enabled: true,
+      catalogModels,
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined,
+      preserveOrchestratorInstructions: true
+    })
+
+    expect(result.changed).toBe(false)
+    expect(result.reason).toBe("orchestrator_instructions_preserved")
   })
 })

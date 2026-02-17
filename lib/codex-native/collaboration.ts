@@ -162,6 +162,7 @@ Translate Codex-style tool intent to OpenCode-native tools:
 - exec_command -> bash
 - read/search/list -> read, grep, glob
 - apply_patch/edit_file -> apply_patch
+- write_stdin -> task with existing task_id (or bash fallback)
 - spawn_agent -> task (launch a subagent)
 - send_input -> task with existing task_id (continue the same subagent)
 - wait -> do not return final output until spawned task(s) complete; poll/resume via task tool as needed
@@ -172,6 +173,14 @@ Always use the available OpenCode tool names and schemas in this runtime.`
 const CODEX_STYLE_TOOLING_INSTRUCTIONS = `# Tooling Compatibility (Codex-style)
 
 Prefer Codex-style workflow semantics and naming when reasoning about steps. If an exact Codex tool is unavailable, fall back to the nearest OpenCode equivalent and continue.`
+
+const OPENCODE_TOOLING_HEADER = "# Tooling Compatibility (OpenCode)"
+const OPENCODE_TOOLING_HEADER_REGEX = /^\s{0,3}#{1,6}\s*tooling\s+compatibility\s*\(\s*opencode\s*\)\s*$/im
+
+const CODEX_TOOL_NAME_REGEX =
+  /\b(exec_command|read_file|search_files|list_dir|write_stdin|spawn_agent|send_input|close_agent|edit_file|apply_patch)\b/i
+
+const CODEX_WAIT_MARKER_REGEX = /\bwait\s*\/\s*send_input(?:-style)?\b|\bwait\s*\(/i
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -270,6 +279,25 @@ export function resolveCollaborationInstructions(
 
 export function resolveToolingInstructions(profile: CollaborationToolProfile): string {
   return profile === "codex" ? CODEX_STYLE_TOOLING_INSTRUCTIONS : OPENCODE_TOOLING_TRANSLATION_INSTRUCTIONS
+}
+
+export function hasCodexToolNameMarkers(instructions: string | undefined): boolean {
+  if (!instructions) return false
+  return CODEX_TOOL_NAME_REGEX.test(instructions) || CODEX_WAIT_MARKER_REGEX.test(instructions)
+}
+
+export function hasOpenCodeToolingCompatibility(instructions: string | undefined): boolean {
+  if (!instructions) return false
+  if (instructions.includes(OPENCODE_TOOLING_HEADER)) return true
+  return OPENCODE_TOOLING_HEADER_REGEX.test(instructions)
+}
+
+export function ensureOpenCodeToolingCompatibility(instructions: string | undefined): string | undefined {
+  const normalized = instructions?.trim()
+  if (!normalized) return instructions
+  if (hasOpenCodeToolingCompatibility(normalized)) return instructions
+  if (!hasCodexToolNameMarkers(normalized)) return instructions
+  return mergeInstructions(normalized, resolveToolingInstructions("opencode"))
 }
 
 export function mergeInstructions(base: string | undefined, extra: string): string {
