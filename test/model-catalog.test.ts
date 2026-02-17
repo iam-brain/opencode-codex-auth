@@ -385,50 +385,6 @@ describe("model catalog", () => {
     }
   })
 
-  it("ignores Codex CLI cache when file is group/world writable", async () => {
-    if (process.platform === "win32") return
-
-    const cacheDir = await makeCacheDir()
-    const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-home-"))
-    const codexDir = path.join(fakeHome, ".codex")
-    await fs.mkdir(codexDir, { recursive: true })
-    const cacheFile = path.join(codexDir, "models_cache.json")
-    await fs.writeFile(
-      cacheFile,
-      JSON.stringify(
-        {
-          fetched_at: "2026-02-12T17:36:20.966526Z",
-          models: [
-            {
-              slug: "gpt-5.2-codex",
-              base_instructions: "CLI fallback instructions"
-            }
-          ]
-        },
-        null,
-        2
-      ),
-      "utf8"
-    )
-    await fs.chmod(cacheFile, 0o666)
-
-    const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(fakeHome)
-    const events: CodexModelCatalogEvent[] = []
-    try {
-      const models = await getCodexModelCatalog({
-        cacheDir,
-        now: () => 4000,
-        onEvent: (event) => events.push(event)
-      })
-
-      expect(models).toBeUndefined()
-      expect(events.some((event) => event.reason === "codex_cli_cache_fallback")).toBe(false)
-      expect(events.some((event) => event.reason === "missing_access_token")).toBe(true)
-    } finally {
-      homedirSpy.mockRestore()
-    }
-  })
-
   it("renders personality in model instructions template", async () => {
     const root = await makeCacheDir()
     const prevCwd = process.cwd()

@@ -4,7 +4,6 @@ import os from "node:os"
 import path from "node:path"
 import lockfile from "proper-lockfile"
 import { resolveCustomPersonalityDescription } from "./personalities"
-import { defaultOpencodeCachePath } from "./paths"
 
 export type PersonalityOption = string
 
@@ -94,12 +93,11 @@ export type ApplyCodexCatalogInput = {
 
 const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
 const CODEX_GITHUB_MODELS_URL_PREFIX = "https://raw.githubusercontent.com/openai/codex"
-const DEFAULT_CACHE_DIR = defaultOpencodeCachePath()
+const DEFAULT_CACHE_DIR = path.join(os.homedir(), ".config", "opencode", "cache")
 const OPENCODE_MODELS_CACHE_PREFIX = "codex-models-cache"
 const CODEX_AUTH_MODELS_CACHE_PREFIX = "codex-auth-models-"
 const OPENCODE_MODELS_META_FILE = "codex-models-cache-meta.json"
 const DEFAULT_CLIENT_VERSION = "0.97.0"
-const MAX_CATALOG_CACHE_ENTRIES = 50
 const CACHE_TTL_MS = 15 * 60 * 1000
 const FETCH_TIMEOUT_MS = 5000
 const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
@@ -120,32 +118,12 @@ const LOCK_OPTIONS = {
   },
   realpath: false
 }
-const PRIVATE_DIR_MODE = 0o700
-
-async function ensurePrivateDir(dirPath: string): Promise<void> {
-  await fs.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE })
-  try {
-    await fs.chmod(dirPath, PRIVATE_DIR_MODE)
-  } catch {
-    // best-effort permissions
-  }
-}
 
 const REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"])
 const TEXT_VERBOSITY = new Set(["low", "medium", "high"])
 
 const inMemoryCatalog = new Map<string, CodexModelsCache>()
 const inFlightCatalogFetches = new Map<string, Promise<CodexModelInfo[] | undefined>>()
-
-function setInMemoryCatalog(key: string, cache: CodexModelsCache): void {
-  inMemoryCatalog.set(key, cache)
-  if (inMemoryCatalog.size > MAX_CATALOG_CACHE_ENTRIES) {
-    const oldest = inMemoryCatalog.keys().next().value as string | undefined
-    if (oldest && oldest !== key) {
-      inMemoryCatalog.delete(oldest)
-    }
-  }
-}
 
 function normalizeAccountId(accountId?: string): string | undefined {
   const next = accountId?.trim()
@@ -240,17 +218,11 @@ async function readGitHubModelsCacheMeta(cacheDir: string): Promise<GitHubModels
   }
 }
 
-async function writeFileAtomic(filePath: string, content: string, mode: number): Promise<void> {
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now().toString(36)}`
-  await fs.writeFile(tmpPath, content, { mode })
-  await fs.rename(tmpPath, filePath)
-}
-
 async function writeGitHubModelsCacheMeta(cacheDir: string, meta: GitHubModelsCacheMeta): Promise<void> {
   try {
     const file = path.join(cacheDir, OPENCODE_MODELS_META_FILE)
-    await ensurePrivateDir(path.dirname(file))
-    await writeFileAtomic(file, `${JSON.stringify(meta, null, 2)}\n`, 0o600)
+    await fs.mkdir(path.dirname(file), { recursive: true })
+    await fs.writeFile(file, `${JSON.stringify(meta, null, 2)}\n`, { mode: 0o600 })
     await fs.chmod(file, 0o600).catch(() => {})
   } catch {
     // Best effort metadata persistence.
@@ -263,70 +235,66 @@ async function refreshSharedGitHubModelsCache(input: {
   now: number
   fetchImpl: typeof fetch
 }): Promise<void> {
-  await withCacheLock(input.cacheDir, async () => {
-    const targetVersion = normalizeSemver(input.targetClientVersion)
-    if (!targetVersion) return
+  const targetVersion = normalizeSemver(input.targetClientVersion)
+  if (!targetVersion) return
 
-    const existingMeta = await readGitHubModelsCacheMeta(input.cacheDir)
-    const existingVersion = parseSemver(semverFromTag(existingMeta?.tag))
-    const target = parseSemver(targetVersion)
-    if (!target) return
-    if (existingVersion && compareSemver(existingVersion, target) >= 0) return
+  const existingMeta = await readGitHubModelsCacheMeta(input.cacheDir)
+  const existingVersion = parseSemver(semverFromTag(existingMeta?.tag))
+  const target = parseSemver(targetVersion)
+  if (!target) return
+  if (existingVersion && compareSemver(existingVersion, target) >= 0) return
 
-    const tag = githubModelsTag(targetVersion)
-    const url = githubModelsUrl(targetVersion)
-    const requestHeaders: Record<string, string> = {}
-    if (existingMeta?.url === url && existingMeta.etag) {
-      requestHeaders["if-none-match"] = existingMeta.etag
-    }
+  const tag = githubModelsTag(targetVersion)
+  const url = githubModelsUrl(targetVersion)
+  const requestHeaders: Record<string, string> = {}
+  if (existingMeta?.url === url && existingMeta.etag) {
+    requestHeaders["if-none-match"] = existingMeta.etag
+  }
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+    let response: Response
     try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-      let response: Response
-      try {
-        response = await input.fetchImpl(url, {
-          method: "GET",
-          ...(Object.keys(requestHeaders).length > 0 ? { headers: requestHeaders } : {}),
-          signal: controller.signal
-        })
-      } finally {
-        clearTimeout(timeout)
-      }
-      if (response.status === 304 && existingMeta) {
-        await writeGitHubModelsCacheMeta(input.cacheDir, {
-          etag: existingMeta.etag,
-          tag,
-          lastChecked: input.now,
-          url
-        })
-        return
-      }
-      if (!response.ok) return
-
-      const payload = (await response.json()) as unknown
-      const models = parseCatalogResponse(payload)
-      if (models.length === 0) return
-      const etag = response.headers.get("etag")?.trim() || (existingMeta?.url === url ? existingMeta.etag : undefined)
-
-      const file = opencodeSharedCachePath(input.cacheDir)
-      await ensurePrivateDir(path.dirname(file))
-      await writeFileAtomic(
-        file,
-        `${JSON.stringify({ fetchedAt: input.now, source: "github", models }, null, 2)}\n`,
-        0o600
-      )
-      await fs.chmod(file, 0o600).catch(() => {})
-
+      response = await input.fetchImpl(url, {
+        method: "GET",
+        ...(Object.keys(requestHeaders).length > 0 ? { headers: requestHeaders } : {}),
+        signal: controller.signal
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
+    if (response.status === 304 && existingMeta) {
       await writeGitHubModelsCacheMeta(input.cacheDir, {
-        etag,
+        etag: existingMeta.etag,
         tag,
         lastChecked: input.now,
         url
       })
-    } catch {
-      // Best effort refresh; continue without blocking catalog load.
+      return
     }
-  })
+    if (!response.ok) return
+
+    const payload = (await response.json()) as unknown
+    const models = parseCatalogResponse(payload)
+    if (models.length === 0) return
+    const etag = response.headers.get("etag")?.trim() || (existingMeta?.url === url ? existingMeta.etag : undefined)
+
+    const file = opencodeSharedCachePath(input.cacheDir)
+    await fs.mkdir(path.dirname(file), { recursive: true })
+    await fs.writeFile(file, `${JSON.stringify({ fetchedAt: input.now, source: "github", models }, null, 2)}\n`, {
+      mode: 0o600
+    })
+    await fs.chmod(file, 0o600).catch(() => {})
+
+    await writeGitHubModelsCacheMeta(input.cacheDir, {
+      etag,
+      tag,
+      lastChecked: input.now,
+      url
+    })
+  } catch {
+    // Best effort refresh; continue without blocking catalog load.
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -437,7 +405,7 @@ function isFresh(cache: CodexModelsCache, now: number): boolean {
 }
 
 async function withCacheLock<T>(cacheDir: string, fn: () => Promise<T>): Promise<T> {
-  await ensurePrivateDir(cacheDir)
+  await fs.mkdir(cacheDir, { recursive: true })
   const release = await lockfile.lock(cacheDir, LOCK_OPTIONS)
   try {
     return await fn()
@@ -513,23 +481,9 @@ function parseFetchedAtFromUnknown(value: unknown): number {
   return 0
 }
 
-async function isTrustedCodexCliCacheFile(filePath: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(filePath)
-    if (!stat.isFile()) return false
-    if (process.platform === "win32") return true
-    if ((stat.mode & 0o022) !== 0) return false
-    if (typeof process.getuid === "function" && stat.uid !== process.getuid()) return false
-    return true
-  } catch {
-    return false
-  }
-}
-
 async function readCatalogFromCodexCliCache(): Promise<CodexModelsCache | undefined> {
   try {
     const file = path.join(os.homedir(), ".codex", "models_cache.json")
-    if (!(await isTrustedCodexCliCacheFile(file))) return undefined
     const raw = await fs.readFile(file, "utf8")
     const parsed = JSON.parse(raw) as unknown
     if (!isRecord(parsed)) return undefined
@@ -555,8 +509,8 @@ async function writeCatalogToDisk(
     const content = `${JSON.stringify(cache, null, 2)}\n`
     const files = compatFile ? [primaryFile, compatFile] : [primaryFile]
     for (const file of files) {
-      await ensurePrivateDir(path.dirname(file))
-      await writeFileAtomic(file, content, 0o600)
+      await fs.mkdir(path.dirname(file), { recursive: true })
+      await fs.writeFile(file, content, { mode: 0o600 })
       await fs.chmod(file, 0o600).catch(() => {})
     }
   }).catch(() => {
@@ -624,7 +578,7 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   const codexCliCacheFallback = await readCatalogFromCodexCliCache()
   const hasFreshDisk = !!disk && isFresh(disk, now)
   if (hasFreshDisk && !input.forceRefresh) {
-    setInMemoryCatalog(key, disk)
+    inMemoryCatalog.set(key, disk)
     emitEvent(input, { type: "disk_cache_hit" })
     return disk.models
   }
@@ -632,17 +586,17 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   if (!input.accessToken) {
     if (disk) {
       emitEvent(input, { type: "stale_cache_used", reason: "missing_access_token" })
-      setInMemoryCatalog(key, disk)
+      inMemoryCatalog.set(key, disk)
       return disk.models
     }
     if (opencodeCacheFallback) {
       emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
-      setInMemoryCatalog(key, opencodeCacheFallback)
+      inMemoryCatalog.set(key, opencodeCacheFallback)
       return opencodeCacheFallback.models
     }
     if (codexCliCacheFallback) {
       emitEvent(input, { type: "stale_cache_used", reason: "codex_cli_cache_fallback" })
-      setInMemoryCatalog(key, codexCliCacheFallback)
+      inMemoryCatalog.set(key, codexCliCacheFallback)
       return codexCliCacheFallback.models
     }
     emitEvent(input, { type: "catalog_unavailable", reason: "missing_access_token" })
@@ -700,24 +654,24 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
         fetchedAt: now,
         models
       }
-      setInMemoryCatalog(key, nextCache)
+      inMemoryCatalog.set(key, nextCache)
       await writeCatalogToDisk(cacheDir, accountId, nextCache)
       emitEvent(input, { type: "network_fetch_success" })
       return nextCache.models
     } catch (error) {
       emitEvent(input, { type: "network_fetch_failed", reason: deriveReason(error) })
       if (disk) {
-        setInMemoryCatalog(key, disk)
+        inMemoryCatalog.set(key, disk)
         emitEvent(input, { type: "stale_cache_used", reason: "network_fetch_failed" })
         return disk.models
       }
       if (opencodeCacheFallback) {
-        setInMemoryCatalog(key, opencodeCacheFallback)
+        inMemoryCatalog.set(key, opencodeCacheFallback)
         emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
         return opencodeCacheFallback.models
       }
       if (codexCliCacheFallback) {
-        setInMemoryCatalog(key, codexCliCacheFallback)
+        inMemoryCatalog.set(key, codexCliCacheFallback)
         emitEvent(input, { type: "stale_cache_used", reason: "codex_cli_cache_fallback" })
         return codexCliCacheFallback.models
       }
