@@ -13,6 +13,7 @@ import {
   getCodexCompactionOverrideEnabled,
   getBehaviorSettings,
   getDebugEnabled,
+  getHeaderSnapshotBodiesEnabled,
   getHeaderTransformDebugEnabled,
   getHeaderSnapshotsEnabled,
   getMode,
@@ -188,6 +189,11 @@ describe("config loading", () => {
   it("enables header transform debug from env flags", () => {
     const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG: "1" } })
     expect(getHeaderTransformDebugEnabled(cfg)).toBe(true)
+  })
+
+  it("enables header snapshot body capture from env flags", () => {
+    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES: "1" } })
+    expect(getHeaderSnapshotBodiesEnabled(cfg)).toBe(true)
   })
 
   it("parses collaboration profile gate from env", () => {
@@ -402,6 +408,7 @@ describe("config file loading", () => {
           developerMessagesToUser: true,
           codexCompactionOverride: true,
           headerSnapshots: true,
+          headerSnapshotBodies: true,
           headerTransformDebug: true,
           pidOffset: true,
           collaborationProfile: true,
@@ -441,6 +448,7 @@ describe("config file loading", () => {
     expect(loaded.remapDeveloperMessagesToUser).toBe(true)
     expect(loaded.codexCompactionOverride).toBe(true)
     expect(loaded.headerSnapshots).toBe(true)
+    expect(loaded.headerSnapshotBodies).toBe(true)
     expect(loaded.headerTransformDebug).toBe(true)
     expect(loaded.pidOffsetEnabled).toBe(true)
     expect(loaded.collaborationProfileEnabled).toBe(true)

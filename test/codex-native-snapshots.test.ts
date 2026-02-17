@@ -483,7 +483,8 @@ describe("codex-native snapshots", () => {
 
     expect(createRequestSnapshots).toHaveBeenCalledWith(
       expect.objectContaining({
-        enabled: true
+        enabled: true,
+        captureBodies: false
       })
     )
     const beforeTransformCall = captureRequest.mock.calls.find((call) => call[0] === "before-header-transform")

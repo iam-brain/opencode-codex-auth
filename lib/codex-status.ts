@@ -7,7 +7,7 @@ function num(v?: string): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
-function parseResetMs(raw: string | undefined): number | undefined {
+function parseResetMs(raw: string | undefined, now: number): number | undefined {
   if (!raw) return undefined
   const trimmed = raw.trim()
   if (!trimmed) return undefined
@@ -21,12 +21,12 @@ function parseResetMs(raw: string | undefined): number | undefined {
 
   if (/^\d+(?:\.\d+)?s$/i.test(trimmed)) {
     const parsed = Number.parseFloat(trimmed.slice(0, -1))
-    return Number.isFinite(parsed) ? Math.round(parsed * 1000) : undefined
+    return Number.isFinite(parsed) ? now + Math.round(parsed * 1000) : undefined
   }
 
   if (/^\d+(?:\.\d+)?ms$/i.test(trimmed)) {
     const parsed = Number.parseFloat(trimmed.slice(0, -2))
-    return Number.isFinite(parsed) ? Math.round(parsed) : undefined
+    return Number.isFinite(parsed) ? now + Math.round(parsed) : undefined
   }
 
   return undefined
@@ -50,7 +50,7 @@ export class CodexStatus {
   parseFromHeaders(input: { now: number; modelFamily: string; headers: HeaderMap }): CodexRateLimitSnapshot {
     const remaining = num(input.headers["x-ratelimit-remaining-requests"])
     const limit = num(input.headers["x-ratelimit-limit-requests"])
-    const resetAt = parseResetMs(input.headers["x-ratelimit-reset-requests"])
+    const resetAt = parseResetMs(input.headers["x-ratelimit-reset-requests"], input.now)
 
     const limits: CodexLimit[] = []
     if (remaining !== undefined && limit !== undefined && limit > 0) {

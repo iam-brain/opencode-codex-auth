@@ -83,8 +83,8 @@ describe("CodexStatus headers", () => {
       }
     })
 
-    expect(seconds.limits[0]?.resetsAt).toBe(1500)
-    expect(millis.limits[0]?.resetsAt).toBe(1500)
+    expect(seconds.limits[0]?.resetsAt).toBe(2500)
+    expect(millis.limits[0]?.resetsAt).toBe(2500)
   })
 
   it("handles missing headers gracefully", () => {

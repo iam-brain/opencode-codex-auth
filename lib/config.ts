@@ -41,6 +41,7 @@ export type PluginConfig = {
   remapDeveloperMessagesToUser?: boolean
   codexCompactionOverride?: boolean
   headerSnapshots?: boolean
+  headerSnapshotBodies?: boolean
   headerTransformDebug?: boolean
   promptCacheKeyStrategy?: PromptCacheKeyStrategy
   collaborationProfileEnabled?: boolean
@@ -66,6 +67,7 @@ export const DEFAULT_CODEX_CONFIG = {
     developerMessagesToUser: true,
     promptCacheKeyStrategy: "default",
     headerSnapshots: false,
+    headerSnapshotBodies: false,
     headerTransformDebug: false,
     pidOffset: false
   },
@@ -134,6 +136,11 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // options: true | false
     // default: false
     "headerSnapshots": false,
+
+    // Capture request bodies in snapshot files.
+    // options: true | false
+    // default: false
+    "headerSnapshotBodies": false,
 
     // Capture inbound/outbound header transforms for message requests.
     // options: true | false
@@ -329,6 +336,7 @@ export function validateConfigFileObject(raw: unknown): ConfigValidationResult {
         "developerMessagesToUser",
         "codexCompactionOverride",
         "headerSnapshots",
+        "headerSnapshotBodies",
         "headerTransformDebug",
         "pidOffset",
         "collaborationProfile",
@@ -700,6 +708,10 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
       : undefined
   const headerSnapshots =
     isRecord(raw.runtime) && typeof raw.runtime.headerSnapshots === "boolean" ? raw.runtime.headerSnapshots : undefined
+  const headerSnapshotBodies =
+    isRecord(raw.runtime) && typeof raw.runtime.headerSnapshotBodies === "boolean"
+      ? raw.runtime.headerSnapshotBodies
+      : undefined
   const headerTransformDebug =
     isRecord(raw.runtime) && typeof raw.runtime.headerTransformDebug === "boolean"
       ? raw.runtime.headerTransformDebug
@@ -733,6 +745,7 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     remapDeveloperMessagesToUser,
     codexCompactionOverride,
     headerSnapshots,
+    headerSnapshotBodies,
     headerTransformDebug,
     collaborationProfileEnabled,
     orchestratorSubagentsEnabled,
@@ -894,6 +907,8 @@ export function resolveConfig(input: {
   const codexCompactionOverride =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE) ?? file.codexCompactionOverride
   const headerSnapshots = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS) ?? file.headerSnapshots
+  const headerSnapshotBodies =
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES) ?? file.headerSnapshotBodies
   const headerTransformDebug =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG) ?? file.headerTransformDebug
   const collaborationProfileEnabled =
@@ -919,6 +934,7 @@ export function resolveConfig(input: {
     remapDeveloperMessagesToUser,
     codexCompactionOverride,
     headerSnapshots,
+    headerSnapshotBodies,
     headerTransformDebug,
     collaborationProfileEnabled,
     orchestratorSubagentsEnabled,
@@ -991,6 +1007,10 @@ export function getHeaderSnapshotsEnabled(cfg: PluginConfig): boolean {
 
 export function getHeaderTransformDebugEnabled(cfg: PluginConfig): boolean {
   return cfg.headerTransformDebug === true
+}
+
+export function getHeaderSnapshotBodiesEnabled(cfg: PluginConfig): boolean {
+  return cfg.headerSnapshotBodies === true
 }
 
 export function getCollaborationProfileEnabled(cfg: PluginConfig): boolean {
