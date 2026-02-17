@@ -4,13 +4,46 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- Removed experimental `collab` runtime mode and related template wiring from mainline plugin behavior.
-- Simplified installer surface to a single idempotent `install` flow.
-- Updated docs, schema, and workflow configuration for current supported modes (`native`, `codex`).
 - Added experimental Codex collaboration profile gates (`runtime.collaborationProfile`, `runtime.orchestratorSubagents`) for plan/orchestrator parity.
 - Collaboration features now auto-enable by default in `runtime.mode="codex"` and can be explicitly enabled/disabled in any mode.
 - Added `runtime.collaborationToolProfile` (`opencode` | `codex`) to choose OpenCode tool translation guidance vs codex-style tool semantics in injected collaboration instructions.
 - Added managed `orchestrator` agent template sync under `~/.config/opencode/agents`, with visibility auto-gated by runtime mode.
+- Synced pinned upstream Codex orchestrator + plan templates into a local prompt cache (ETag/304-aware, TTL refreshed) and used the cached plan prompt to populate plan-mode collaboration instructions.
+- Added configurable `runtime.promptCacheKeyStrategy` (`default` | `project`) for session-based or project-path-based prompt cache keying.
+- Added quota threshold warnings at `25%`, `20%`, `10%`, `5%`, `2.5%`, `0%` and automatic cooldown/switch when `5h` or `weekly` quota is exhausted.
+- Added account selection tracing and per-attempt failover reason codes for snapshot/debug observability.
+- Added config file validation with actionable warnings on invalid types/values.
+- Added upstream drift watch (`npm run check:upstream`) and native OAuth parity tests.
+- Refactored cache layout + IO primitives into shared helpers (lock-guarded, atomic writes; best-effort persistence on failure).
+- Hardened OAuth cancel handler: `/cancel` now requires a matching `state` value.
+- Hardened local storage, snapshot logging, and trust boundaries across multiple security passes.
+- Improved handling for accounts missing identity metadata: request-time auth acquisition can surface `missing_account_identity`, and status UI renders an explicit `identity-missing` badge and reset fallbacks.
+- Replaced silent catches with explicit error handling throughout codebase.
+- Reduced read contention and catalog fallback IO in storage paths.
+
+## 0.3.2 - 2026-02-13
+
+- Refactored `codex-native` into focused sub-modules: auth helpers, OAuth method flows, chat hooks, transform pipeline, state/catalog helpers, loader fetch pipeline.
+- Replaced `customSettings` with `behaviorSettings` config system (`global` + `perModel` + `variants`).
+- Added secret scanning CI workflow.
+- Fixed audit findings: preserved request metadata, reduced auth lock contention.
+- Aligned cache metadata refresh and instruction ordering.
+- Hardened verify and runtime safeguards.
+
+## 0.3.1 - 2026-02-12
+
+- Removed experimental `collab` runtime mode; simplified to `native` and `codex`.
+- Simplified installer surface to a single idempotent `install` flow.
+- Updated docs, schema, and workflow configuration for current supported modes.
+- Fixed compaction: codex checkpoint handoff only in `codex` mode, with mode-derived defaults and explicit toggle.
+- Fixed codex instruction recovery from fallback caches.
+- Defaulted AGENTS developer-role remap in `codex` mode.
+
+## 0.3.0 - 2026-02-12
+
+- Rewrote documentation for production-ready usage (getting-started, configuration, multi-account, compaction, privacy, troubleshooting, releasing).
+- Added JSON schema files for config and accounts validation.
+- Added documentation examples directory.
 
 ## 0.2.3 - 2026-02-11
 

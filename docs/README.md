@@ -6,7 +6,8 @@ This directory contains user and developer documentation for `opencode-codex-aut
 
 - `docs/index.md` - global docs index + agent fast-start order.
 - `docs/development/README.md` - internal architecture/config/testing index.
-- `docs/plans/README.md` - plan and progress index.
+- `docs/plans/` - local plan/progress workspace (if present).
+- `docs/DOCUMENTATION.md` - docs structure and maintenance notes.
 
 ## Start here
 
@@ -22,6 +23,7 @@ This directory contains user and developer documentation for `opencode-codex-aut
 - `troubleshooting.md`
 - `privacy.md`
 - `releasing.md`
+- `persona-tool.md`
 - `examples/README.md`
 
 ## Schemas

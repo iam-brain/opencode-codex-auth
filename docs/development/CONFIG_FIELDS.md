@@ -24,8 +24,12 @@ Top-level:
 - `runtime.promptCacheKeyStrategy: "default" | "project"`
 - `runtime.codexCompactionOverride: boolean`
 - `runtime.headerSnapshots: boolean`
+- `runtime.headerSnapshotBodies: boolean`
 - `runtime.headerTransformDebug: boolean`
 - `runtime.pidOffset: boolean`
+- `runtime.collaborationProfile: boolean`
+- `runtime.orchestratorSubagents: boolean`
+- `runtime.collaborationToolProfile: "opencode" | "codex"`
 - `global.personality: string`
 - `global.thinkingSummaries: boolean`
 - `global.verbosityEnabled: boolean`
@@ -61,6 +65,9 @@ Default generated values:
 - `runtime.headerSnapshots: false`
 - `runtime.headerTransformDebug: false`
 - `runtime.pidOffset: false`
+- `runtime.collaborationProfile`: mode-derived when unset (`true` in `codex`, `false` in `native`)
+- `runtime.orchestratorSubagents`: inherits `runtime.collaborationProfile` effective value when unset
+- `runtime.collaborationToolProfile: "opencode"`
 - `global.personality: "pragmatic"`
 - `global.verbosityEnabled: true`
 - `global.verbosity: "default"`
@@ -94,6 +101,7 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER`
 - `OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE`
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`
+- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES`
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`
 - `OPENCODE_OPENAI_MULTI_QUIET`
 - `OPENCODE_OPENAI_MULTI_PID_OFFSET`
@@ -105,6 +113,9 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_VERBOSITY`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`
+- `OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE`
+- `OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS`
+- `OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE`
 
 Resolved by auth/runtime code (`lib/codex-native.ts` + helper modules under `lib/codex-native/`):
 

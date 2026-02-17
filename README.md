@@ -5,7 +5,7 @@
 
 OpenCode plugin for OpenAI ChatGPT OAuth with multi-account management, Codex-compatible request modes, and dynamic model behavior controls.
 
-Quick links: `docs/getting-started.md` · `docs/configuration.md` · `docs/multi-account.md` · `docs/troubleshooting.md`
+Quick links: `docs/getting-started.md` · `docs/configuration.md` · `docs/multi-account.md` · `docs/troubleshooting.md` · `docs/persona-tool.md`
 
 ## Why this plugin
 
@@ -44,7 +44,7 @@ This plugin is intended for personal development use with your own ChatGPT accou
 
 By default, `npx -y @iam-brain/opencode-codex-auth` runs the installer.
 
-The installer does two things:
+The installer does four things:
 
 1. Ensures `@iam-brain/opencode-codex-auth@latest` is present in `~/.config/opencode/opencode.json`.
 2. Creates `~/.config/opencode/codex-config.json` with defaults when missing.
@@ -112,6 +112,7 @@ Legacy sources can be imported explicitly from the auth menu:
 - Compaction: `docs/compaction.md`
 - Multi-account: `docs/multi-account.md`
 - Troubleshooting: `docs/troubleshooting.md`
+- Persona tool: `docs/persona-tool.md`
 - Development docs: `docs/development/`
 - Upstream baseline/sync: `docs/development/UPSTREAM_SYNC.md`
 

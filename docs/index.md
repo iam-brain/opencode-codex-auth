@@ -22,6 +22,7 @@ Use this page as the fast entrypoint for humans and agents.
 - `docs/troubleshooting.md`
 - `docs/privacy.md`
 - `docs/releasing.md`
+- `docs/persona-tool.md`
 
 ## Developer Guides
 
@@ -31,6 +32,7 @@ Use this page as the fast entrypoint for humans and agents.
 - `docs/development/CONFIG_FLOW.md`
 - `docs/development/TESTING.md`
 - `docs/development/UPSTREAM_SYNC.md`
+- `docs/DOCUMENTATION.md`
 
 ## Examples
 
@@ -40,5 +42,4 @@ Use this page as the fast entrypoint for humans and agents.
 
 ## Planning and Research
 
-- `docs/plans/README.md`
-- `docs/research/` (if present in local workspace)
+- `docs/plans/` (if present in local workspace)

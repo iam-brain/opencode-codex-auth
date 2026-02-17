@@ -70,6 +70,16 @@ Fix:
 - reauthenticate affected accounts via `opencode auth login`
 - disable repeatedly failing accounts temporarily
 
+### Status shows `identity-missing`
+
+Meaning:
+
+- an account record is present but does not include identity metadata (`identityKey`), so some features (like quota snapshots keyed by identity) cannot attach.
+
+Fix:
+
+- reauthenticate via `opencode auth login` to refresh identity fields
+
 ### Delete-all appears to repopulate
 
 Expected behavior:

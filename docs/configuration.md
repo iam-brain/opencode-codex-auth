@@ -92,6 +92,8 @@ Known-field type validation is applied on load. If a known field has an invalid 
   - Explicit boolean value overrides mode default.
 - `runtime.headerSnapshots: boolean`
   - Writes before/after request header snapshots to debug logs.
+- `runtime.headerSnapshotBodies: boolean`
+  - When `runtime.headerSnapshots=true`, includes redacted request/response bodies in snapshots.
 - `runtime.headerTransformDebug: boolean`
   - Adds explicit `before-header-transform` and `after-header-transform` request snapshots for message fetches.
 - `runtime.pidOffset: boolean`
@@ -224,7 +226,11 @@ Advanced path:
 - `OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE`: `opencode|codex`.
 
 ### Debug/OAuth controls
 
@@ -250,3 +256,19 @@ Legacy behavior keys are no longer parsed from `codex-config.json`.
 - `customSettings` and all nested `customSettings.*`
 
 Use canonical `global` and `perModel` keys only.
+
+## Managed prompts and orchestrator agent
+
+The plugin synchronizes a pinned upstream Codex orchestrator prompt and plan-mode prompt into a local cache under `~/.config/opencode/cache/`:
+
+- `codex-prompts-cache.json`
+- `codex-prompts-cache-meta.json` (stores URLs, `lastChecked`, and ETags)
+
+Fetch behavior:
+
+- TTL-based refresh (best-effort; normal requests continue if refresh fails)
+- ETag-based revalidation (`If-None-Match` + `304 Not Modified`)
+
+The plan prompt from this cache is used to populate plan-mode collaboration instructions.
+
+When `runtime.collaborationProfile` is enabled, the installer and plugin startup also manage the visibility of an `orchestrator.md` agent template under `~/.config/opencode/agents/`.

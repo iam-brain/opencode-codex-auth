@@ -47,12 +47,12 @@ Configured in `runtime.rotationStrategy`:
 ### sticky
 
 - Reuses active account while healthy.
-- With PID/session offset enabled, assigns new `session_id` values across healthy accounts.
+- With PID/session offset enabled, each new session is assigned a different healthy account via cursor rotation; once assigned, the session stays on that account.
 
 ### hybrid
 
 - Reuses active account when valid.
-- Otherwise picks least-recently-used healthy account.
+- Otherwise selects the least-recently-used (LRU) healthy account based on `lastUsed` timestamps.
 - With PID/session offset enabled, session assignments are sticky and health-aware.
 
 ### round_robin

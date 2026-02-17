@@ -19,6 +19,11 @@ npm run verify
 npx vitest run test/storage.test.ts
 npx vitest run test/config.test.ts
 npx vitest run test/installer-cli.test.ts
+npx vitest run test/codex-prompts-cache.test.ts
+npx vitest run test/remote-cache-fetch.test.ts
+npx vitest run test/cache-io.test.ts
+npx vitest run test/codex-native-oauth-callback-flow.test.ts
+npx vitest run test/acquire-auth-locking.test.ts
 ```
 
 ## Test design expectations
@@ -47,3 +52,17 @@ Before production release, validate in a live OpenCode session:
 4. enable/disable/delete flows
 5. one real request with OpenAI model
 6. no malformed tool-call output
+
+## Optional in-vivo probes
+
+Some probes intentionally read real OpenCode auth state from the default auth path and will make live network calls.
+
+Enable in-vivo tests by setting:
+
+- `CODEX_IN_VIVO=1`
+
+Example:
+
+```bash
+CODEX_IN_VIVO=1 npx vitest run test/codex-quota-in-vivo.test.ts
+```

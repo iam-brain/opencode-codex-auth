@@ -6,7 +6,9 @@ Config resolution has two stages.
 
 `ensureDefaultConfigFile({ env: process.env })`
 
-- creates `~/.config/opencode/codex-config.json` when missing
+- creates default config path when missing:
+  - `$XDG_CONFIG_HOME/opencode/codex-config.json` when `XDG_CONFIG_HOME` is set
+  - otherwise `~/.config/opencode/codex-config.json`
 - seeds canonical defaults for runtime + behavior sections
 
 ## Stage 1: file load
@@ -14,7 +16,7 @@ Config resolution has two stages.
 `loadConfigFile({ env: process.env })`
 
 - reads from `OPENCODE_OPENAI_MULTI_CONFIG_PATH` if present
-- otherwise reads `~/.config/opencode/codex-config.json`
+- otherwise reads default config path (`$XDG_CONFIG_HOME/opencode/codex-config.json` or `~/.config/opencode/codex-config.json`)
 - parses canonical fields into `PluginConfig` partial
 
 ## Stage 2: runtime resolve

@@ -28,6 +28,11 @@ Re-run installer (idempotent):
 npx -y @iam-brain/opencode-codex-auth install
 ```
 
+Installer flags:
+
+- `--config <path>`: use a custom `codex-config.json` path.
+- `--plugin <path>`: use a custom `opencode.json` path.
+
 ## 2) Keep OpenCode config minimal
 
 `opencode.json` should contain plugin enablement only.
