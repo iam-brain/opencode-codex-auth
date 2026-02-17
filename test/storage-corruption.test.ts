@@ -7,6 +7,22 @@ import path from "node:path"
 import { loadAuthStorage } from "../lib/storage"
 
 describe("storage corruption", () => {
+  it("quarantines corrupt auth.json with default runtime options", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-corrupt-default-"))
+    const p = path.join(dir, "auth.json")
+    await fs.writeFile(p, "{ bad json", { mode: 0o600 })
+
+    const data = await loadAuthStorage(p)
+
+    expect(data).toEqual({})
+
+    const qDir = path.join(dir, "quarantine")
+    const files = await fs.readdir(qDir)
+    expect(files.length).toBe(1)
+    expect(files[0]).toMatch(/^auth\.json\.\d+\.quarantine\.json$/)
+    await expect(fs.stat(p)).rejects.toThrow()
+  })
+
   it("quarantines corrupt auth.json and returns empty storage", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-corrupt-"))
     const p = path.join(dir, "auth.json")

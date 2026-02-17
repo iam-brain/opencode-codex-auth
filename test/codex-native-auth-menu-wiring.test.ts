@@ -6,12 +6,17 @@ async function loadPluginWithMenu(input: {
   offerLegacyTransfer: boolean
   menuResult?: "add" | "continue" | "exit"
   authFile?: Record<string, unknown>
+  refreshAccessTokenImpl?: (
+    refreshToken: string,
+    isSaveAuthStorageInProgress: () => boolean
+  ) => Promise<{ refresh_token: string; access_token: string; expires_in?: number; id_token?: string }>
   runAuthMenuOnceImpl?: (args: {
     allowTransfer?: boolean
     accounts: Array<{ identityKey?: string; authTypes?: Array<"native" | "codex"> }>
     handlers: {
       onTransfer: () => Promise<void>
       onCheckQuotas: () => Promise<void>
+      onRefreshAccount: (account: { identityKey?: string; authTypes?: Array<"native" | "codex"> }) => Promise<void>
       onDeleteAll: (scope: "native" | "codex" | "both") => Promise<void>
       onDeleteAccount: (account: { identityKey?: string }, scope: "native" | "codex" | "both") => Promise<void>
     }
@@ -28,6 +33,7 @@ async function loadPluginWithMenu(input: {
   vi.resetModules()
 
   const runAuthMenuOnce = vi.fn(input.runAuthMenuOnceImpl ?? (async () => input.menuResult ?? "exit"))
+  let saveAuthStorageDepth = 0
 
   const storageState =
     input.authFile ??
@@ -62,8 +68,13 @@ async function loadPluginWithMenu(input: {
         auth: Record<string, unknown>
       ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void
     ) => {
-      const next = await update(storageState)
-      return next ?? storageState
+      saveAuthStorageDepth += 1
+      try {
+        const next = await update(storageState)
+        return next ?? storageState
+      } finally {
+        saveAuthStorageDepth -= 1
+      }
     }
   )
 
@@ -163,6 +174,36 @@ async function loadPluginWithMenu(input: {
     fetchQuotaSnapshotFromBackend
   }))
 
+  const refreshAccessToken = vi.fn(async (refreshToken: string) => {
+    if (input.refreshAccessTokenImpl) {
+      return await input.refreshAccessTokenImpl(refreshToken, () => saveAuthStorageDepth > 0)
+    }
+    return {
+      refresh_token: refreshToken,
+      access_token: `access_${refreshToken}`,
+      expires_in: 3600,
+      id_token: buildJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "acc_1",
+          chatgpt_plan_type: "plus"
+        },
+        "https://api.openai.com/profile": {
+          email: "one@example.com"
+        }
+      })
+    }
+  })
+
+  vi.doMock("../lib/codex-native/oauth-utils", async () => {
+    const actual = await vi.importActual<typeof import("../lib/codex-native/oauth-utils")>(
+      "../lib/codex-native/oauth-utils"
+    )
+    return {
+      ...actual,
+      refreshAccessToken
+    }
+  })
+
   const { CodexAuthPlugin } = await import("../lib/codex-native")
   const hooks = await CodexAuthPlugin({} as never)
   return {
@@ -173,6 +214,7 @@ async function loadPluginWithMenu(input: {
     saveSnapshots,
     toolOutputForStatus,
     fetchQuotaSnapshotFromBackend,
+    refreshAccessToken,
     snapshotStore
   }
 }
@@ -224,7 +266,7 @@ describe("codex-native auth menu wiring", () => {
       expect(flow.instructions).toBe("Login cancelled.")
       expect(flow.method).toBe("auto")
       expect(flow.url).toBe("")
-      const result = await flow.callback()
+      const result = await flow.callback("")
       expect(result.type).toBe("failed")
     } finally {
       stdin.isTTY = prevIn
@@ -573,6 +615,144 @@ describe("codex-native auth menu wiring", () => {
       ).openai
       expect(openai?.native?.accounts?.map((account) => account.identityKey)).toEqual(["acc_1|one@example.com|plus"])
       expect(openai?.codex?.accounts ?? []).toHaveLength(0)
+    } finally {
+      stdin.isTTY = prevIn
+      stdout.isTTY = prevOut
+    }
+  })
+
+  it("refreshes account tokens outside saveAuthStorage lock", async () => {
+    const observedLockStates: boolean[] = []
+    const { hooks, refreshAccessToken } = await loadPluginWithMenu({
+      offerLegacyTransfer: false,
+      authFile: {
+        openai: {
+          type: "oauth",
+          accounts: [
+            {
+              identityKey: "acc_1|one@example.com|plus",
+              accountId: "acc_1",
+              email: "one@example.com",
+              plan: "plus",
+              authTypes: ["native", "codex"],
+              enabled: true,
+              refresh: "rt_1",
+              access: "at_1",
+              expires: Date.now() - 1_000
+            }
+          ],
+          activeIdentityKey: "acc_1|one@example.com|plus"
+        }
+      },
+      runAuthMenuOnceImpl: async (args) => {
+        const account = args.accounts[0]
+        if (!account) throw new Error("Missing menu account")
+        await args.handlers.onRefreshAccount(account)
+        return "exit"
+      },
+      refreshAccessTokenImpl: async (refreshToken, isSaveAuthStorageInProgress) => {
+        observedLockStates.push(isSaveAuthStorageInProgress())
+        return {
+          refresh_token: refreshToken,
+          access_token: "at_fresh",
+          expires_in: 3600,
+          id_token: buildJwt({
+            "https://api.openai.com/auth": {
+              chatgpt_account_id: "acc_1",
+              chatgpt_plan_type: "plus"
+            },
+            "https://api.openai.com/profile": {
+              email: "one@example.com"
+            }
+          })
+        }
+      }
+    })
+
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const prevIn = stdin.isTTY
+    const prevOut = stdout.isTTY
+    stdin.isTTY = true
+    stdout.isTTY = true
+
+    try {
+      await browserMethod.authorize({})
+      expect(refreshAccessToken).toHaveBeenCalled()
+      expect(observedLockStates).toEqual([false])
+    } finally {
+      stdin.isTTY = prevIn
+      stdout.isTTY = prevOut
+    }
+  })
+
+  it("refreshes quota snapshots without holding saveAuthStorage lock during token refresh", async () => {
+    const observedLockStates: boolean[] = []
+    const { hooks, refreshAccessToken } = await loadPluginWithMenu({
+      offerLegacyTransfer: false,
+      authFile: {
+        openai: {
+          type: "oauth",
+          accounts: [
+            {
+              identityKey: "acc_1|one@example.com|plus",
+              accountId: "acc_1",
+              email: "one@example.com",
+              plan: "plus",
+              enabled: true,
+              access: "at_1",
+              refresh: "rt_1",
+              expires: Date.now() - 1_000
+            }
+          ],
+          activeIdentityKey: "acc_1|one@example.com|plus"
+        }
+      },
+      runAuthMenuOnceImpl: async (args) => {
+        await args.handlers.onCheckQuotas()
+        return "exit"
+      },
+      refreshAccessTokenImpl: async (refreshToken, isSaveAuthStorageInProgress) => {
+        observedLockStates.push(isSaveAuthStorageInProgress())
+        return {
+          refresh_token: refreshToken,
+          access_token: "at_fresh",
+          expires_in: 3600,
+          id_token: buildJwt({
+            "https://api.openai.com/auth": {
+              chatgpt_account_id: "acc_1",
+              chatgpt_plan_type: "plus"
+            },
+            "https://api.openai.com/profile": {
+              email: "one@example.com"
+            }
+          })
+        }
+      },
+      quotaSnapshot: {
+        updatedAt: 400,
+        modelFamily: "gpt-5.3-codex",
+        limits: [{ name: "requests", leftPct: 88 }]
+      }
+    })
+
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const prevIn = stdin.isTTY
+    const prevOut = stdout.isTTY
+    stdin.isTTY = true
+    stdout.isTTY = true
+
+    try {
+      await browserMethod.authorize({})
+      expect(refreshAccessToken).toHaveBeenCalled()
+      expect(observedLockStates).toEqual([false])
     } finally {
       stdin.isTTY = prevIn
       stdout.isTTY = prevOut

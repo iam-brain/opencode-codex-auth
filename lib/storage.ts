@@ -52,6 +52,8 @@ type LegacyCodexAccountsRecord = {
   cooldownUntil?: unknown
 }
 
+type AuthLoadOptions = { quarantineDir?: string; now?: () => number; keep?: number }
+
 const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
 const OPENAI_AUTH_MODES: OpenAIAuthMode[] = ["native", "codex"]
 
@@ -647,11 +649,13 @@ async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<
   }
 }
 
-export async function loadAuthStorage(
-  filePath: string = defaultAuthPath(),
-  opts?: { quarantineDir: string; now: () => number; keep?: number }
-): Promise<AuthFile> {
-  return withFileLock(filePath, async () => readAuthUnlocked(filePath, opts))
+export async function loadAuthStorage(filePath: string = defaultAuthPath(), opts?: AuthLoadOptions): Promise<AuthFile> {
+  const normalizedOpts = {
+    quarantineDir: opts?.quarantineDir ?? path.join(path.dirname(filePath), "quarantine"),
+    now: opts?.now ?? Date.now,
+    keep: opts?.keep
+  }
+  return withFileLock(filePath, async () => readAuthUnlocked(filePath, normalizedOpts))
 }
 
 export async function saveAuthStorage(

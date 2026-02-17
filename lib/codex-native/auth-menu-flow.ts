@@ -27,6 +27,8 @@ type RunInteractiveAuthMenuInput = {
   refreshQuotaSnapshotsForAuthMenu: () => Promise<void>
 }
 
+const AUTH_MENU_REFRESH_LEASE_MS = 30_000
+
 export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput): Promise<"add" | "exit"> {
   while (true) {
     const auth = await loadAuthStorage()
@@ -62,12 +64,21 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
           const transfer = await importLegacyInstallData()
           let hydrated = 0
           let refreshed = 0
-          await saveAuthStorage(undefined, async (authFile) => {
+          const refreshClaims: Array<{
+            mode: OpenAIAuthMode
+            index: number
+            refreshToken: string
+            leaseUntil: number
+          }> = []
+
+          await saveAuthStorage(undefined, (authFile) => {
             for (const mode of ["native", "codex"] as const) {
               const domain = getOpenAIOAuthDomain(authFile, mode)
               if (!domain) continue
 
-              for (const account of domain.accounts) {
+              for (let index = 0; index < domain.accounts.length; index += 1) {
+                const account = domain.accounts[index]
+                if (!account) continue
                 const hadIdentity = Boolean(buildIdentityKey(account))
                 hydrateAccountIdentityFromAccessClaims(account)
                 const hasIdentityAfterClaims = Boolean(buildIdentityKey(account))
@@ -76,31 +87,79 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
                 if (hasIdentityAfterClaims || account.enabled === false || !account.refresh) {
                   continue
                 }
-
-                try {
-                  const tokens = await refreshAccessToken(account.refresh)
-                  refreshed += 1
-                  const now = Date.now()
-                  const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
-                  account.refresh = tokens.refresh_token
-                  account.access = tokens.access_token
-                  account.expires = now + (tokens.expires_in ?? 3600) * 1000
-                  account.accountId = extractAccountId(tokens) || account.accountId
-                  account.email = extractEmailFromClaims(claims) || account.email
-                  account.plan = extractPlanFromClaims(claims) || account.plan
-                  account.lastUsed = now
-                  hydrateAccountIdentityFromAccessClaims(account)
-                  if (!hadIdentity && buildIdentityKey(account)) hydrated += 1
-                } catch (error) {
-                  if (error instanceof Error) {
-                    // best effort per-account hydration
-                  }
-                  // best effort per-account hydration
+                const now = Date.now()
+                if (typeof account.refreshLeaseUntil === "number" && account.refreshLeaseUntil > now) {
+                  continue
                 }
+                const leaseUntil = now + AUTH_MENU_REFRESH_LEASE_MS
+                account.refreshLeaseUntil = leaseUntil
+                refreshClaims.push({
+                  mode,
+                  index,
+                  refreshToken: account.refresh,
+                  leaseUntil
+                })
               }
             }
             return authFile
           })
+
+          for (const claim of refreshClaims) {
+            try {
+              const tokens = await refreshAccessToken(claim.refreshToken)
+              await saveAuthStorage(undefined, (authFile) => {
+                const domain = getOpenAIOAuthDomain(authFile, claim.mode)
+                if (!domain) return authFile
+                const account = domain.accounts[claim.index]
+                if (!account) return authFile
+
+                const now = Date.now()
+                if (
+                  account.enabled === false ||
+                  typeof account.refreshLeaseUntil !== "number" ||
+                  account.refreshLeaseUntil !== claim.leaseUntil ||
+                  account.refreshLeaseUntil <= now
+                ) {
+                  delete account.refreshLeaseUntil
+                  return authFile
+                }
+
+                const hadIdentity = Boolean(buildIdentityKey(account))
+                const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
+                account.refresh = tokens.refresh_token
+                account.access = tokens.access_token
+                account.expires = now + (tokens.expires_in ?? 3600) * 1000
+                account.accountId = extractAccountId(tokens) || account.accountId
+                account.email = extractEmailFromClaims(claims) || account.email
+                account.plan = extractPlanFromClaims(claims) || account.plan
+                account.lastUsed = now
+                hydrateAccountIdentityFromAccessClaims(account)
+                if (!hadIdentity && buildIdentityKey(account)) hydrated += 1
+                refreshed += 1
+                delete account.refreshLeaseUntil
+                delete account.cooldownUntil
+                return authFile
+              })
+            } catch (error) {
+              await saveAuthStorage(undefined, (authFile) => {
+                const domain = getOpenAIOAuthDomain(authFile, claim.mode)
+                if (!domain) return authFile
+                const account = domain.accounts[claim.index]
+                if (!account) return authFile
+                if (account.refreshLeaseUntil === claim.leaseUntil) {
+                  delete account.refreshLeaseUntil
+                  if (account.enabled !== false) {
+                    account.cooldownUntil = Date.now() + AUTH_MENU_REFRESH_LEASE_MS
+                  }
+                }
+                return authFile
+              })
+              if (error instanceof Error) {
+                // best effort per-account hydration
+              }
+            }
+          }
+
           process.stdout.write(
             `\nTransfer complete: imported ${transfer.imported} account(s). Hydrated ${hydrated} account(s)` +
               `${refreshed > 0 ? `, refreshed ${refreshed} token(s)` : ""}.\n\n`
@@ -142,21 +201,65 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
         },
         onRefreshAccount: async (account) => {
           let refreshed = false
-          try {
-            await saveAuthStorage(undefined, async (authFile) => {
-              const preferred = [
-                input.authMode,
-                ...((account.authTypes ?? []).filter((mode) => mode !== input.authMode) as OpenAIAuthMode[])
-              ]
-              for (const mode of preferred) {
-                const domain = getOpenAIOAuthDomain(authFile, mode)
-                if (!domain) continue
-                const idx = findDomainAccountIndex(domain, account)
-                if (idx < 0) continue
-                const target = domain.accounts[idx]
-                if (!target || target.enabled === false || !target.refresh) continue
-                const tokens = await refreshAccessToken(target.refresh)
+          const preferred = [
+            input.authMode,
+            ...((account.authTypes ?? []).filter((mode) => mode !== input.authMode) as OpenAIAuthMode[])
+          ]
+
+          for (const mode of preferred) {
+            let claim:
+              | {
+                  mode: OpenAIAuthMode
+                  identityKey: string
+                  refreshToken: string
+                  leaseUntil: number
+                }
+              | undefined
+
+            await saveAuthStorage(undefined, (authFile) => {
+              const domain = getOpenAIOAuthDomain(authFile, mode)
+              if (!domain) return authFile
+              const idx = findDomainAccountIndex(domain, account)
+              if (idx < 0) return authFile
+              const target = domain.accounts[idx]
+              if (!target || target.enabled === false || !target.refresh || !target.identityKey) return authFile
+
+              const now = Date.now()
+              if (typeof target.refreshLeaseUntil === "number" && target.refreshLeaseUntil > now) return authFile
+
+              const leaseUntil = now + AUTH_MENU_REFRESH_LEASE_MS
+              target.refreshLeaseUntil = leaseUntil
+              claim = {
+                mode,
+                identityKey: target.identityKey,
+                refreshToken: target.refresh,
+                leaseUntil
+              }
+              return authFile
+            })
+
+            if (!claim) continue
+            const claimed = claim
+
+            try {
+              const tokens = await refreshAccessToken(claimed.refreshToken)
+              await saveAuthStorage(undefined, (authFile) => {
+                const domain = getOpenAIOAuthDomain(authFile, claimed.mode)
+                if (!domain) return authFile
+                const target = domain.accounts.find((entry) => entry.identityKey === claimed.identityKey)
+                if (!target) return authFile
+
                 const now = Date.now()
+                if (
+                  target.enabled === false ||
+                  typeof target.refreshLeaseUntil !== "number" ||
+                  target.refreshLeaseUntil !== claimed.leaseUntil ||
+                  target.refreshLeaseUntil <= now
+                ) {
+                  delete target.refreshLeaseUntil
+                  return authFile
+                }
+
                 const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
                 target.refresh = tokens.refresh_token
                 target.access = tokens.access_token
@@ -168,16 +271,31 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
                 ensureAccountAuthTypes(target)
                 ensureIdentityKey(target)
                 if (target.identityKey) domain.activeIdentityKey = target.identityKey
+                delete target.refreshLeaseUntil
+                delete target.cooldownUntil
                 refreshed = true
-                break
+                return authFile
+              })
+            } catch (error) {
+              await saveAuthStorage(undefined, (authFile) => {
+                const domain = getOpenAIOAuthDomain(authFile, claimed.mode)
+                if (!domain) return authFile
+                const target = domain.accounts.find((entry) => entry.identityKey === claimed.identityKey)
+                if (!target) return authFile
+                if (target.refreshLeaseUntil === claimed.leaseUntil) {
+                  delete target.refreshLeaseUntil
+                  if (target.enabled !== false) {
+                    target.cooldownUntil = Date.now() + AUTH_MENU_REFRESH_LEASE_MS
+                  }
+                }
+                return authFile
+              })
+              if (error instanceof Error) {
+                // keep UI response simple; surface generic failure text below
               }
-              return authFile
-            })
-          } catch (error) {
-            if (error instanceof Error) {
-              // keep UI response simple; surface generic failure text below
             }
-            refreshed = false
+
+            if (refreshed) break
           }
           process.stdout.write(
             refreshed

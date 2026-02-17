@@ -4,6 +4,7 @@ import { fetchQuotaSnapshotFromBackend } from "../codex-quota-fetch"
 import type { CodexSpoofMode } from "../config"
 import type { Logger } from "../logger"
 import { defaultSnapshotsPath } from "../paths"
+import type { OpenAIAuthMode } from "../types"
 import type { CodexRateLimitSnapshot } from "../types"
 import { resolveRequestUserAgent } from "./client-identity"
 import { resolveCodexOriginator } from "./originator"
@@ -13,7 +14,130 @@ import { ensureOpenAIOAuthDomain, listOpenAIOAuthDomains, loadAuthStorage, saveA
 
 const AUTH_MENU_QUOTA_SNAPSHOT_TTL_MS = 60_000
 const AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS = 30_000
-const AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS = 5000
+const AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS = 2500
+const AUTH_MENU_QUOTA_REFRESH_LEASE_MS = 30_000
+const AUTH_MENU_QUOTA_FETCH_CONCURRENCY = 4
+
+type RefreshClaim = {
+  mode: OpenAIAuthMode
+  index: number
+  identityKey: string
+  refreshToken: string
+  leaseUntil: number
+}
+
+async function claimRefreshForQuotaSnapshot(input: {
+  mode: OpenAIAuthMode
+  index: number
+}): Promise<RefreshClaim | undefined> {
+  let claim: RefreshClaim | undefined
+  await saveAuthStorage(undefined, (authFile) => {
+    const domain = ensureOpenAIOAuthDomain(authFile, input.mode)
+    const target = domain.accounts[input.index]
+    if (!target || target.enabled === false || !target.refresh || !target.identityKey) return authFile
+    const now = Date.now()
+    if (typeof target.refreshLeaseUntil === "number" && target.refreshLeaseUntil > now) return authFile
+    const leaseUntil = now + AUTH_MENU_QUOTA_REFRESH_LEASE_MS
+    target.refreshLeaseUntil = leaseUntil
+    claim = {
+      mode: input.mode,
+      index: input.index,
+      identityKey: target.identityKey,
+      refreshToken: target.refresh,
+      leaseUntil
+    }
+    return authFile
+  })
+  return claim
+}
+
+async function persistRefreshedTokensForQuotaSnapshot(input: {
+  claim: RefreshClaim
+  tokens: Awaited<ReturnType<typeof refreshAccessToken>>
+  mirror: {
+    refresh?: string
+    access?: string
+    expires?: number
+    accountId?: string
+    email?: string
+    plan?: string
+    identityKey?: string
+  }
+}): Promise<string | undefined> {
+  let nextAccessToken: string | undefined
+  await saveAuthStorage(undefined, (authFile) => {
+    const domain = ensureOpenAIOAuthDomain(authFile, input.claim.mode)
+    const target = domain.accounts.find((account) => account.identityKey === input.claim.identityKey)
+    if (!target || target.enabled === false) return authFile
+
+    const now = Date.now()
+    if (
+      typeof target.refreshLeaseUntil !== "number" ||
+      target.refreshLeaseUntil <= now ||
+      target.refreshLeaseUntil !== input.claim.leaseUntil
+    ) {
+      delete target.refreshLeaseUntil
+      return authFile
+    }
+
+    const claims = parseJwtClaims(input.tokens.id_token ?? input.tokens.access_token)
+    target.refresh = input.tokens.refresh_token
+    target.access = input.tokens.access_token
+    target.expires = now + (input.tokens.expires_in ?? 3600) * 1000
+    target.accountId = extractAccountId(input.tokens) || target.accountId
+    target.email = extractEmailFromClaims(claims) || target.email
+    target.plan = extractPlanFromClaims(claims) || target.plan
+    target.lastUsed = now
+    hydrateAccountIdentityFromAccessClaims(target)
+    delete target.refreshLeaseUntil
+    delete target.cooldownUntil
+
+    input.mirror.refresh = target.refresh
+    input.mirror.access = target.access
+    input.mirror.expires = target.expires
+    input.mirror.accountId = target.accountId
+    input.mirror.email = target.email
+    input.mirror.plan = target.plan
+    input.mirror.identityKey = target.identityKey
+    nextAccessToken = target.access
+    return authFile
+  })
+  return nextAccessToken
+}
+
+async function releaseFailedRefreshClaimForQuotaSnapshot(input: { claim: RefreshClaim; now: number }): Promise<void> {
+  await saveAuthStorage(undefined, (authFile) => {
+    const domain = ensureOpenAIOAuthDomain(authFile, input.claim.mode)
+    const target = domain.accounts.find((account) => account.identityKey === input.claim.identityKey)
+    if (!target) return authFile
+    if (target.refreshLeaseUntil !== input.claim.leaseUntil) return authFile
+    delete target.refreshLeaseUntil
+    if (target.enabled !== false) {
+      target.cooldownUntil = input.now + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS
+    }
+    return authFile
+  })
+}
+
+async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
+  if (items.length === 0) return
+  const concurrency = Math.max(1, Math.min(limit, items.length))
+  let index = 0
+
+  const runner = async () => {
+    while (true) {
+      const currentIndex = index
+      index += 1
+      if (currentIndex >= items.length) return
+      const item = items[currentIndex]
+      if (item !== undefined) {
+        await worker(item)
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => runner()))
+}
 
 export type RefreshQuotaSnapshotsInput = {
   spoofMode: CodexSpoofMode
@@ -26,6 +150,8 @@ export async function refreshQuotaSnapshotsForAuthMenu(input: RefreshQuotaSnapsh
   const snapshotPath = defaultSnapshotsPath()
   const existingSnapshots: Record<string, { updatedAt?: number }> = await loadSnapshots(snapshotPath).catch(() => ({}))
   const snapshotUpdates: Record<string, CodexRateLimitSnapshot> = {}
+  const fetchRequests: Array<{ identityKey: string; accessToken: string; accountId?: string }> = []
+  const userAgent = resolveRequestUserAgent(input.spoofMode, resolveCodexOriginator(input.spoofMode))
 
   for (const { mode, domain } of listOpenAIOAuthDomains(auth)) {
     for (let index = 0; index < domain.accounts.length; index += 1) {
@@ -53,39 +179,24 @@ export async function refreshQuotaSnapshotsForAuthMenu(input: RefreshQuotaSnapsh
       const expired = typeof account.expires === "number" && Number.isFinite(account.expires) && account.expires <= now
 
       if ((!accessToken || expired) && account.refresh) {
+        let refreshClaim: RefreshClaim | undefined
         try {
-          await saveAuthStorage(undefined, async (authFile) => {
-            const current = ensureOpenAIOAuthDomain(authFile, mode)
-            const target = current.accounts[index]
-            if (!target || target.enabled === false || !target.refresh) return authFile
-
-            const tokens = await refreshAccessToken(target.refresh)
-            const refreshedAt = Date.now()
-            const claims = parseJwtClaims(tokens.id_token ?? tokens.access_token)
-
-            target.refresh = tokens.refresh_token
-            target.access = tokens.access_token
-            target.expires = refreshedAt + (tokens.expires_in ?? 3600) * 1000
-            target.accountId = extractAccountId(tokens) || target.accountId
-            target.email = extractEmailFromClaims(claims) || target.email
-            target.plan = extractPlanFromClaims(claims) || target.plan
-            target.lastUsed = refreshedAt
-            hydrateAccountIdentityFromAccessClaims(target)
-
-            account.refresh = target.refresh
-            account.access = target.access
-            account.expires = target.expires
-            account.accountId = target.accountId
-            account.email = target.email
-            account.plan = target.plan
-            account.identityKey = target.identityKey
-            accessToken = target.access
-
-            return authFile
-          })
+          refreshClaim = await claimRefreshForQuotaSnapshot({ mode, index })
+          if (refreshClaim) {
+            const tokens = await refreshAccessToken(refreshClaim.refreshToken)
+            const persisted = await persistRefreshedTokensForQuotaSnapshot({
+              claim: refreshClaim,
+              tokens,
+              mirror: account
+            })
+            accessToken = persisted
+          }
         } catch (error) {
           if (identityKey) {
             input.cooldownByIdentity.set(identityKey, Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS)
+          }
+          if (refreshClaim) {
+            await releaseFailedRefreshClaimForQuotaSnapshot({ claim: refreshClaim, now: Date.now() })
           }
           input.log?.debug("quota check refresh failed", {
             index,
@@ -102,25 +213,31 @@ export async function refreshQuotaSnapshotsForAuthMenu(input: RefreshQuotaSnapsh
       }
       if (!account.identityKey) continue
 
-      const snapshot = await fetchQuotaSnapshotFromBackend({
+      fetchRequests.push({
+        identityKey: account.identityKey,
         accessToken,
-        accountId: account.accountId,
-        now: Date.now(),
-        modelFamily: "gpt-5.3-codex",
-        userAgent: resolveRequestUserAgent(input.spoofMode, resolveCodexOriginator(input.spoofMode)),
-        log: input.log,
-        timeoutMs: AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS
+        accountId: account.accountId
       })
-      if (!snapshot) {
-        input.cooldownByIdentity.set(account.identityKey, Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS)
-        continue
-      }
-
-      input.cooldownByIdentity.delete(account.identityKey)
-
-      snapshotUpdates[account.identityKey] = snapshot
     }
   }
+
+  await runWithConcurrency(fetchRequests, AUTH_MENU_QUOTA_FETCH_CONCURRENCY, async (request) => {
+    const snapshot = await fetchQuotaSnapshotFromBackend({
+      accessToken: request.accessToken,
+      accountId: request.accountId,
+      now: Date.now(),
+      modelFamily: "gpt-5.3-codex",
+      userAgent,
+      log: input.log,
+      timeoutMs: AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS
+    })
+    if (!snapshot) {
+      input.cooldownByIdentity.set(request.identityKey, Date.now() + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS)
+      return
+    }
+    input.cooldownByIdentity.delete(request.identityKey)
+    snapshotUpdates[request.identityKey] = snapshot
+  })
 
   if (Object.keys(snapshotUpdates).length === 0) return
 
