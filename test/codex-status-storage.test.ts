@@ -101,4 +101,23 @@ describe("codex-status storage", () => {
     // Cleanup
     await fs.rm(dir, { recursive: true, force: true })
   })
+
+  it("skips writing when snapshot content is unchanged", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-status-noop-"))
+    const p = path.join(dir, "snapshots.json")
+
+    await saveSnapshots(p, () => ({
+      "acc|u@e.com|plus": { updatedAt: 1, modelFamily: "gpt-5.2", limits: [{ name: "requests", leftPct: 50 }] }
+    }))
+
+    const firstMtime = (await fs.stat(p)).mtimeMs
+    await new Promise((r) => setTimeout(r, 15))
+
+    await saveSnapshots(p, (cur) => ({ ...cur }))
+
+    const secondMtime = (await fs.stat(p)).mtimeMs
+    expect(secondMtime).toBe(firstMtime)
+
+    await fs.rm(dir, { recursive: true, force: true })
+  })
 })

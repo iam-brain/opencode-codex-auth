@@ -21,9 +21,8 @@ import { persistRateLimitSnapshotFromResponse } from "./rate-limit-snapshots"
 import { assertAllowedOutboundUrl, rewriteUrl } from "./request-routing"
 import { applyRequestTransformPipeline } from "./request-transform-pipeline"
 import {
-  applyPromptCacheKeyOverrideToRequest,
-  sanitizeOutboundRequestIfNeeded,
-  stripReasoningReplayFromRequest
+  type OutboundRequestPayloadTransformResult,
+  transformOutboundRequestPayload,
 } from "./request-transform"
 import type { SessionAffinityRuntimeState } from "./session-affinity-state"
 
@@ -60,9 +59,30 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
   const internalCollaborationAgentHeader = input.internalCollaborationAgentHeader ?? "x-opencode-collaboration-agent-kind"
   const quotaTrackerByIdentity = new Map<string, QuotaThresholdTrackerState>()
   const quotaRefreshAtByIdentity = new Map<string, number>()
+  const QUOTA_STATE_MAX_ENTRIES = 512
   const QUOTA_REFRESH_TTL_MS = 60_000
+  const QUOTA_REFRESH_FAILURE_RETRY_MS = 10_000
   const QUOTA_FETCH_TIMEOUT_MS = 3000
   const QUOTA_EXHAUSTED_FALLBACK_COOLDOWN_MS = 5 * 60 * 1000
+
+  const pruneQuotaState = (now: number): void => {
+    if (quotaRefreshAtByIdentity.size <= QUOTA_STATE_MAX_ENTRIES) return
+
+    for (const [identityKey, nextRefreshAt] of quotaRefreshAtByIdentity) {
+      if (nextRefreshAt < now - QUOTA_REFRESH_TTL_MS) {
+        quotaRefreshAtByIdentity.delete(identityKey)
+        quotaTrackerByIdentity.delete(identityKey)
+      }
+      if (quotaRefreshAtByIdentity.size <= QUOTA_STATE_MAX_ENTRIES) return
+    }
+
+    while (quotaRefreshAtByIdentity.size > QUOTA_STATE_MAX_ENTRIES) {
+      const oldest = quotaRefreshAtByIdentity.keys().next().value as string | undefined
+      if (!oldest) break
+      quotaRefreshAtByIdentity.delete(oldest)
+      quotaTrackerByIdentity.delete(oldest)
+    }
+  }
 
   return async (requestInput: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const baseRequest = new Request(requestInput, init)
@@ -102,36 +122,51 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       catalogModels: input.getCatalogModels(),
       behaviorSettings: input.behaviorSettings,
       fallbackPersonality: input.personality,
-      preserveOrchestratorInstructions: collaborationAgentKind === "orchestrator"
+      preserveOrchestratorInstructions: collaborationAgentKind === "orchestrator",
+      replaceCodexToolCalls: input.spoofMode === "codex"
     })
     outbound = transformed.request
     const isSubagentRequest = transformed.isSubagentRequest
+
+    let selectedIdentityKey: string | undefined
+    let selectedAuthForQuota: { access: string; accountId?: string; identityKey?: string } | undefined
+
+    const promptCacheKeyStrategy = input.promptCacheKeyStrategy ?? "default"
+    const promptCacheKeyOverride =
+      promptCacheKeyStrategy === "project"
+        ? buildProjectPromptCacheKey({
+            projectPath: input.projectPath ?? process.cwd(),
+            spoofMode: input.spoofMode
+          })
+        : undefined
+
+    const initialPayloadTransform: OutboundRequestPayloadTransformResult = await transformOutboundRequestPayload({
+      request: outbound,
+      stripReasoningReplayEnabled: true,
+      remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
+      compatInputSanitizerEnabled: input.compatInputSanitizerEnabled,
+      promptCacheKeyOverrideEnabled: promptCacheKeyStrategy === "project",
+      promptCacheKeyOverride
+    })
+    outbound = initialPayloadTransform.request
 
     if (input.headerTransformDebug) {
       await input.requestSnapshots.captureRequest("after-header-transform", outbound, {
         spoofMode: input.spoofMode,
         instructionsOverridden: transformed.instructionOverride.changed,
         instructionOverrideReason: transformed.instructionOverride.reason,
-        developerMessagesRemapped: transformed.developerRoleRemap.changed,
-        developerMessageRemapReason: transformed.developerRoleRemap.reason,
-        developerMessageRemapCount: transformed.developerRoleRemap.remappedCount,
-        developerMessagePreservedCount: transformed.developerRoleRemap.preservedCount,
+        developerMessagesRemapped: initialPayloadTransform.developerRoleRemap.changed,
+        developerMessageRemapReason: initialPayloadTransform.developerRoleRemap.reason,
+        developerMessageRemapCount: initialPayloadTransform.developerRoleRemap.remappedCount,
+        developerMessagePreservedCount: initialPayloadTransform.developerRoleRemap.preservedCount,
         ...(isSubagentRequest ? { subagent: transformed.subagentHeader } : {})
       })
     }
 
-    let selectedIdentityKey: string | undefined
-    let selectedAuthForQuota: { access: string; accountId?: string; identityKey?: string } | undefined
-
-    const replaySanitized = await stripReasoningReplayFromRequest({
-      request: outbound,
-      enabled: true
-    })
-    outbound = replaySanitized.request
-    if (replaySanitized.changed) {
+    if (initialPayloadTransform.replay.changed) {
       input.log?.debug("reasoning replay stripped", {
-        removedPartCount: replaySanitized.removedPartCount,
-        removedFieldCount: replaySanitized.removedFieldCount
+        removedPartCount: initialPayloadTransform.replay.removedPartCount,
+        removedFieldCount: initialPayloadTransform.replay.removedFieldCount
       })
     }
 
@@ -207,34 +242,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       },
       showToast: input.showToast,
       onAttemptRequest: async ({ attempt, maxAttempts, attemptReasonCode, request, auth, sessionKey }) => {
-        const transformed = await applyRequestTransformPipeline({
-          request,
-          spoofMode: input.spoofMode,
-          remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
-          catalogModels: input.getCatalogModels(),
-          behaviorSettings: input.behaviorSettings,
-          fallbackPersonality: input.personality,
-          preserveOrchestratorInstructions: collaborationAgentKind === "orchestrator"
-        })
-
-        const promptCacheKeyStrategy = input.promptCacheKeyStrategy ?? "default"
-        const promptCacheKeyOverride =
-          promptCacheKeyStrategy === "project"
-            ? await applyPromptCacheKeyOverrideToRequest({
-                request: transformed.request,
-                enabled: true,
-                promptCacheKey: buildProjectPromptCacheKey({
-                  projectPath: input.projectPath ?? process.cwd(),
-                  spoofMode: input.spoofMode
-                })
-              })
-            : {
-                request: transformed.request,
-                changed: false,
-                reason: "default_strategy"
-              }
-
-        await input.requestSnapshots.captureRequest("outbound-attempt", promptCacheKeyOverride.request, {
+        await input.requestSnapshots.captureRequest("outbound-attempt", request, {
           attempt: attempt + 1,
           maxAttempts,
           attemptReasonCode,
@@ -243,12 +251,15 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           accountLabel: auth.accountLabel,
           instructionsOverridden: transformed.instructionOverride.changed,
           instructionOverrideReason: transformed.instructionOverride.reason,
-          developerMessagesRemapped: transformed.developerRoleRemap.changed,
-          developerMessageRemapReason: transformed.developerRoleRemap.reason,
-          developerMessageRemapCount: transformed.developerRoleRemap.remappedCount,
-          developerMessagePreservedCount: transformed.developerRoleRemap.preservedCount,
-          promptCacheKeyOverridden: promptCacheKeyOverride.changed,
-          promptCacheKeyOverrideReason: promptCacheKeyOverride.reason,
+          developerMessagesRemapped: initialPayloadTransform.developerRoleRemap.changed,
+          developerMessageRemapReason: initialPayloadTransform.developerRoleRemap.reason,
+          developerMessageRemapCount: initialPayloadTransform.developerRoleRemap.remappedCount,
+          developerMessagePreservedCount: initialPayloadTransform.developerRoleRemap.preservedCount,
+          promptCacheKeyOverridden: initialPayloadTransform.promptCacheKey.changed,
+          promptCacheKeyOverrideReason:
+            promptCacheKeyStrategy === "project"
+              ? initialPayloadTransform.promptCacheKey.reason
+              : "default_strategy",
           ...(input.headerTransformDebug === true && auth.selectionTrace
             ? {
                 selectionStrategy: auth.selectionTrace.strategy,
@@ -276,7 +287,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
             : null)
         })
 
-        return promptCacheKeyOverride.request
+        return request
       },
       onAttemptResponse: async ({ attempt, maxAttempts, attemptReasonCode, response, auth, sessionKey }) => {
         await input.requestSnapshots.captureResponse("outbound-response", response, {
@@ -290,18 +301,17 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       }
     })
 
-    const sanitizedOutbound = await sanitizeOutboundRequestIfNeeded(outbound, input.compatInputSanitizerEnabled)
-    if (sanitizedOutbound.changed) {
+    if (initialPayloadTransform.compatSanitizer.changed) {
       input.log?.debug("compat input sanitizer applied", { mode: input.spoofMode })
     }
 
-    await input.requestSnapshots.captureRequest("after-sanitize", sanitizedOutbound.request, {
+    await input.requestSnapshots.captureRequest("after-sanitize", initialPayloadTransform.request, {
       spoofMode: input.spoofMode,
-      sanitized: sanitizedOutbound.changed
+      sanitized: initialPayloadTransform.compatSanitizer.changed
     })
 
     try {
-      assertAllowedOutboundUrl(new URL(sanitizedOutbound.request.url))
+      assertAllowedOutboundUrl(new URL(initialPayloadTransform.request.url))
     } catch (error) {
       if (isPluginFatalError(error)) {
         return toSyntheticErrorResponse(error)
@@ -318,7 +328,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
 
     let response: Response
     try {
-      response = await orchestrator.execute(sanitizedOutbound.request)
+      response = await orchestrator.execute(initialPayloadTransform.request)
     } catch (error) {
       if (isPluginFatalError(error)) {
         input.log?.debug("fatal auth/error response", {
@@ -345,29 +355,34 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
 
     const identityForQuota = selectedAuthForQuota?.identityKey
     if (identityForQuota && selectedAuthForQuota?.access) {
-      try {
-        const now = Date.now()
-        const nextRefreshAt = quotaRefreshAtByIdentity.get(identityForQuota)
-        if (nextRefreshAt === undefined || now >= nextRefreshAt) {
-          quotaRefreshAtByIdentity.set(identityForQuota, now + QUOTA_REFRESH_TTL_MS)
-          const quotaSnapshot = await fetchQuotaSnapshotFromBackend({
-            accessToken: selectedAuthForQuota.access,
-            accountId: selectedAuthForQuota.accountId,
-            now,
-            modelFamily: "gpt-5.3-codex",
-            userAgent: resolveRequestUserAgent(input.spoofMode, resolveCodexOriginator(input.spoofMode)),
-            log: input.log,
-            timeoutMs: QUOTA_FETCH_TIMEOUT_MS
-          })
+      const now = Date.now()
+      pruneQuotaState(now)
+      const nextRefreshAt = quotaRefreshAtByIdentity.get(identityForQuota)
+      if (nextRefreshAt === undefined || now >= nextRefreshAt) {
+        quotaRefreshAtByIdentity.set(identityForQuota, now + QUOTA_REFRESH_TTL_MS)
+        void (async () => {
+          try {
+            const quotaSnapshot = await fetchQuotaSnapshotFromBackend({
+              accessToken: selectedAuthForQuota!.access,
+              accountId: selectedAuthForQuota!.accountId,
+              now,
+              modelFamily: "gpt-5.3-codex",
+              userAgent: resolveRequestUserAgent(input.spoofMode, resolveCodexOriginator(input.spoofMode)),
+              log: input.log,
+              timeoutMs: QUOTA_FETCH_TIMEOUT_MS
+            })
 
-          if (quotaSnapshot) {
+            if (!quotaSnapshot) {
+              quotaRefreshAtByIdentity.set(identityForQuota, Date.now() + QUOTA_REFRESH_FAILURE_RETRY_MS)
+              return
+            }
+
             await saveSnapshots(defaultSnapshotsPath(), (current) => ({
               ...current,
               [identityForQuota]: quotaSnapshot
             }))
 
-            const previousTracker =
-              quotaTrackerByIdentity.get(identityForQuota) ?? DEFAULT_QUOTA_THRESHOLD_TRACKER_STATE
+            const previousTracker = quotaTrackerByIdentity.get(identityForQuota) ?? DEFAULT_QUOTA_THRESHOLD_TRACKER_STATE
             const evaluated = evaluateQuotaThresholds({
               snapshot: quotaSnapshot,
               previousState: previousTracker
@@ -379,13 +394,16 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
             }
 
             if (evaluated.exhaustedCrossings.length > 0) {
+              const nowForCooldown = Date.now()
               const cooldownCandidates = evaluated.exhaustedCrossings
                 .map((crossing) => crossing.resetsAt)
-                .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > now)
+                .filter(
+                  (value): value is number => typeof value === "number" && Number.isFinite(value) && value > nowForCooldown
+                )
               const cooldownUntil =
                 cooldownCandidates.length > 0
                   ? Math.max(...cooldownCandidates)
-                  : now + QUOTA_EXHAUSTED_FALLBACK_COOLDOWN_MS
+                  : nowForCooldown + QUOTA_EXHAUSTED_FALLBACK_COOLDOWN_MS
               await input.setCooldown(identityForQuota, cooldownUntil)
 
               if (evaluated.exhaustedCrossings.length === 1) {
@@ -396,13 +414,14 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
                 await input.showToast("Switching account due to 5h and weekly quota limits", "warning", input.quietMode)
               }
             }
+          } catch (error) {
+            quotaRefreshAtByIdentity.set(identityForQuota, Date.now() + QUOTA_REFRESH_FAILURE_RETRY_MS)
+            input.log?.debug("quota refresh during request failed", {
+              identityKey: identityForQuota,
+              error: error instanceof Error ? error.message : String(error)
+            })
           }
-        }
-      } catch (error) {
-        input.log?.debug("quota refresh during request failed", {
-          identityKey: identityForQuota,
-          error: error instanceof Error ? error.message : String(error)
-        })
+        })()
       }
     }
 

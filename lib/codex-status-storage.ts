@@ -27,6 +27,9 @@ export async function saveSnapshots(
   return withLockedFile(filePath, async () => {
     const cur = await loadSnapshots(filePath)
     const next = await update(cur)
+    if (JSON.stringify(next) === JSON.stringify(cur)) {
+      return next
+    }
     await writeAtomic(filePath, next)
     return next
   })

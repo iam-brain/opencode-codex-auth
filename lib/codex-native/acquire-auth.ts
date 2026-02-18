@@ -11,6 +11,7 @@ import { extractAccountId, refreshAccessToken, type OAuthTokenRefreshError } fro
 
 const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
 const AUTH_REFRESH_LEASE_MS = 30_000
+const LAST_USED_WRITE_INTERVAL_MS = 5_000
 
 function isOAuthTokenRefreshError(value: unknown): value is OAuthTokenRefreshError {
   return value instanceof Error && ("status" in value || "oauthCode" in value)
@@ -210,7 +211,10 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
         plan = selected.plan
 
         if (selected.access && selected.expires && selected.expires > now) {
-          selected.lastUsed = now
+          const previousLastUsed = typeof selected.lastUsed === "number" ? selected.lastUsed : undefined
+          if (previousLastUsed === undefined || now - previousLastUsed >= LAST_USED_WRITE_INTERVAL_MS) {
+            selected.lastUsed = now
+          }
           access = selected.access
           accountId = selected.accountId
           identityKey = selected.identityKey
@@ -283,7 +287,10 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
           if (claims?.email) selected.email = normalizeEmail(claims.email)
           if (claims?.plan) selected.plan = normalizePlan(claims.plan)
           ensureIdentityKey(selected)
-          selected.lastUsed = now
+          const previousLastUsed = typeof selected.lastUsed === "number" ? selected.lastUsed : undefined
+          if (previousLastUsed === undefined || now - previousLastUsed >= LAST_USED_WRITE_INTERVAL_MS) {
+            selected.lastUsed = now
+          }
           delete selected.refreshLeaseUntil
           delete selected.cooldownUntil
           if (selected.identityKey) domain.activeIdentityKey = selected.identityKey
