@@ -184,7 +184,7 @@ describe("auth storage", () => {
       expect(openai.accounts[1].identityKey).toBe("acc_2|two@example.com|pro")
       expect(openai.accounts[1].enabled).toBe(false)
       expect(openai.accounts[1].cooldownUntil).toBe(9999)
-      expect(openai.activeIdentityKey).toBe("acc_2|two@example.com|pro")
+      expect(openai.activeIdentityKey).toBe("acc_1|one@example.com|plus")
     } finally {
       if (prevHome === undefined) {
         delete process.env.HOME

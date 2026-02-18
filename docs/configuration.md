@@ -4,7 +4,9 @@ This plugin uses one runtime config file:
 
 - `~/.config/opencode/codex-config.json`
 
-If it does not exist, the plugin creates it with defaults on startup.
+If the default config path does not exist, the plugin creates it with defaults on startup.
+
+If `OPENCODE_OPENAI_MULTI_CONFIG_PATH` is set, that explicit file path is loaded for runtime behavior. You are responsible for creating/managing that file.
 
 ## JSON schemas
 
@@ -94,7 +96,9 @@ Known-field type validation is applied on load. If a known field has an invalid 
 - `runtime.headerSnapshots: boolean`
   - Writes before/after request header snapshots to debug logs.
 - `runtime.headerSnapshotBodies: boolean`
-  - When `runtime.headerSnapshots=true`, includes redacted request/response bodies in snapshots.
+  - When `runtime.headerSnapshots=true`, includes redacted request bodies in snapshots.
+  - Response snapshots include status + headers only (no response body capture).
+  - Caution: request body snapshots can still contain prompt/tool payload content even when token fields are redacted.
 - `runtime.headerTransformDebug: boolean`
   - Adds explicit `before-header-transform` and `after-header-transform` request snapshots for message fetches.
 - `runtime.pidOffset: boolean`
@@ -107,12 +111,6 @@ Known-field type validation is applied on load. If a known field has an invalid 
   - Experimental: enables Codex-style subagent header hints for helper agents under collaboration profile mode.
   - If omitted, inherits `runtime.collaborationProfile` effective value.
   - Explicit `true`/`false` works in any mode.
-- `runtime.collaborationToolProfile: "opencode" | "codex"`
-  - Controls tool-language guidance in injected collaboration instructions.
-  - `opencode` (default): translates Codex semantics to OpenCode tool names.
-  - `codex`: prefers Codex tool semantics and falls back to OpenCode equivalents.
-  - Independent safety shim: when existing instructions reference Codex tool names (for example `spawn_agent`, `send_input`, `exec_command`), OpenCode compatibility guidance is appended if missing, even outside collaboration-profile injection.
-
 ### Model behavior
 
 - `global.personality: string`

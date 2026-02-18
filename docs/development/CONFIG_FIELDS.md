@@ -25,6 +25,8 @@ Top-level:
 - `runtime.codexCompactionOverride: boolean`
 - `runtime.headerSnapshots: boolean`
 - `runtime.headerSnapshotBodies: boolean`
+  - Includes request body snapshots only (no response body capture).
+  - Sensitive headers/tokens and selected metadata/query keys are redacted, but prompt/tool payload content may still be present.
 - `runtime.headerTransformDebug: boolean`
 - `runtime.pidOffset: boolean`
 - `runtime.collaborationProfile: boolean`
@@ -136,9 +138,10 @@ Path and UI variables used by helpers:
 - `mode` defaults to:
   - explicit env mode when set
   - explicit file `runtime.mode` when set
-  - otherwise inferred from spoof mode (`codex` => `codex`, else `native`)
+  - otherwise inferred from spoof compatibility input (`codex` => `codex`, else `native`)
 - `spoofMode` defaults to:
-  - env spoof mode when set
+  - derived from explicit runtime mode when `mode` is set by env/file
+  - otherwise env spoof mode when set
   - otherwise derived from mode (`native` => `native`, else `codex`)
 - proactive refresh buffer defaults to `60000` when unset.
 

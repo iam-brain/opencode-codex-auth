@@ -3,7 +3,7 @@
 ## Quick checks
 
 1. Confirm plugin is installed in `~/.config/opencode/opencode.json`.
-2. Confirm config exists at `~/.config/opencode/codex-config.json`.
+2. Confirm config exists at the resolved path (`OPENCODE_OPENAI_MULTI_CONFIG_PATH` when set, otherwise `$XDG_CONFIG_HOME/opencode/codex-config.json` or `~/.config/opencode/codex-config.json`).
 3. Confirm auth files exist:
    - `~/.local/share/opencode/auth.json`
    - `~/.config/opencode/codex-accounts.json`
@@ -119,5 +119,7 @@ Optional OAuth debug log rotation:
 - `CODEX_AUTH_DEBUG_MAX_BYTES`
 
 Sensitive auth headers/tokens are redacted in snapshot logs.
+Sensitive account/session metadata keys and URL query values are redacted as well.
+If request body capture is enabled, prompt/tool payload content may still be present.
 
 For complete config/env reference, see `docs/configuration.md`.

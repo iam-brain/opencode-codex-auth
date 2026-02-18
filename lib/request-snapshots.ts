@@ -8,7 +8,14 @@ import { enforceOwnerOnlyPermissions, isFsErrorCode } from "./cache-io"
 
 const DEFAULT_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
 const REDACTED = "[redacted]"
-const REDACTED_HEADERS = new Set(["authorization", "cookie", "set-cookie", "proxy-authorization"])
+const REDACTED_HEADERS = new Set([
+  "authorization",
+  "cookie",
+  "set-cookie",
+  "proxy-authorization",
+  "chatgpt-account-id",
+  "session_id"
+])
 const REDACTED_BODY_KEYS = new Set([
   "access_token",
   "refresh_token",
@@ -93,10 +100,53 @@ type SnapshotWriterInput = {
 
 type SnapshotMeta = Record<string, unknown> | undefined
 
+const REDACTED_META_KEYS = new Set([
+  "identitykey",
+  "accountlabel",
+  "sessionkey",
+  "selectionselectedidentitykey",
+  "selectionactiveidentitykey",
+  "selectionsessionkey",
+  "selectionattemptkey"
+])
+
+const REDACTED_QUERY_KEYS = new Set([
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "accesstoken",
+  "refreshtoken",
+  "idtoken",
+  "session_id",
+  "chatgpt-account-id"
+])
+
 function getPromptCacheKey(body: unknown): string | undefined {
   if (!body || typeof body !== "object" || Array.isArray(body)) return undefined
   const candidate = (body as Record<string, unknown>).prompt_cache_key
   return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined
+}
+
+function sanitizeSnapshotMeta(meta: SnapshotMeta): Record<string, unknown> {
+  if (!meta) return {}
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(meta)) {
+    out[key] = REDACTED_META_KEYS.has(key.toLowerCase()) ? REDACTED : value
+  }
+  return out
+}
+
+function sanitizeUrl(value: string): string {
+  try {
+    const url = new URL(value)
+    for (const [key] of url.searchParams.entries()) {
+      if (!REDACTED_QUERY_KEYS.has(key.toLowerCase())) continue
+      url.searchParams.set(key, REDACTED)
+    }
+    return url.toString()
+  } catch (_error) {
+    return value
+  }
 }
 
 export type RequestSnapshots = {
@@ -128,6 +178,11 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
 
   const ensureDir = async (): Promise<void> => {
     await fs.mkdir(dir, { recursive: true })
+    await fs.chmod(dir, 0o700).catch((error) => {
+      if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
+        throw error
+      }
+    })
   }
 
   const pruneSnapshotFiles = async (): Promise<void> => {
@@ -222,16 +277,18 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
       const timestamp = new Date().toISOString()
       const body = captureBodies ? await serializeRequestBody(request) : undefined
       const headers = sanitizeHeaders(request.headers)
+      const sanitizedMeta = sanitizeSnapshotMeta(meta)
+      const sanitizedUrl = sanitizeUrl(request.url)
       const payload = {
         timestamp,
         runId,
         requestId,
         stage,
         method: request.method,
-        url: request.url,
+        url: sanitizedUrl,
         headers,
         body,
-        ...(meta ?? {})
+        ...sanitizedMeta
       }
       await writeJson(`request-${requestId}-${stage}.json`, {
         ...payload
@@ -242,15 +299,16 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
         requestId,
         stage,
         method: request.method,
-        url: request.url,
+        url: sanitizedUrl,
         headers,
         prompt_cache_key: getPromptCacheKey(body),
-        ...(meta ?? {})
+        ...sanitizedMeta
       })
     },
     captureResponse: async (stage, response, meta) => {
       const responseId = ++responseCounter
       const timestamp = new Date().toISOString()
+      const sanitizedMeta = sanitizeSnapshotMeta(meta)
       await writeJson(`response-${responseId}-${stage}.json`, {
         timestamp,
         runId,
@@ -259,7 +317,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
         status: response.status,
         statusText: response.statusText,
         headers: sanitizeHeaders(response.headers),
-        ...(meta ?? {})
+        ...sanitizedMeta
       })
     }
   }

@@ -828,17 +828,9 @@ export function resolveConfig(input: {
   const envVerbosity = normalizeVerbosityOption(env.OPENCODE_OPENAI_MULTI_VERBOSITY)
   const spoofModeFromEnv = parseSpoofMode(env.OPENCODE_OPENAI_MULTI_SPOOF_MODE)
   const modeFromEnv = parseRuntimeMode(env.OPENCODE_OPENAI_MULTI_MODE)
-  const modeFromSpoofEnv =
-    modeFromEnv === undefined && spoofModeFromEnv !== undefined
-      ? spoofModeFromEnv === "codex"
-        ? "codex"
-        : "native"
-      : undefined
-  const mode =
-    modeFromEnv ??
-    modeFromSpoofEnv ??
-    file.mode ??
-    (spoofModeFromEnv === "codex" || file.spoofMode === "codex" ? "codex" : "native")
+  const modeFromSpoofEnv = spoofModeFromEnv === "codex" ? "codex" : spoofModeFromEnv === "native" ? "native" : undefined
+  const modeFromFileSpoof = file.spoofMode === "codex" ? "codex" : file.spoofMode === "native" ? "native" : undefined
+  const mode = modeFromEnv ?? file.mode ?? modeFromSpoofEnv ?? modeFromFileSpoof ?? "native"
 
   const behaviorSettings = cloneBehaviorSettings(fileBehavior) ?? {}
   const globalBehavior: ModelBehaviorOverride = {
@@ -873,9 +865,11 @@ export function resolveConfig(input: {
   const personality = envPersonality ?? resolvedBehaviorSettings?.global?.personality
 
   // Runtime mode is canonical; spoofMode remains a compatibility input only.
-  // If runtime mode is explicitly set via env, ignore spoof env for consistency.
+  // Spoof compatibility inputs are only authoritative when runtime mode is otherwise unset.
+  // If runtime mode is explicit (env or file), derive spoof mode from runtime mode for consistency.
+  const runtimeModeExplicit = modeFromEnv !== undefined || file.mode !== undefined
   const spoofMode =
-    modeFromEnv !== undefined
+    runtimeModeExplicit
       ? mode === "native"
         ? "native"
         : "codex"

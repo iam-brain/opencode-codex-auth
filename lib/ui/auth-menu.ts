@@ -1,6 +1,7 @@
 import { ANSI, shouldUseColor } from "./tty/ansi"
 import { confirm } from "./tty/confirm"
 import { select, type MenuItem } from "./tty/select"
+import { normalizeAccountAuthTypes as normalizeSharedAccountAuthTypes } from "../account-auth-types"
 
 export type AccountStatus = "active" | "rate-limited" | "expired" | "unknown"
 export type AccountAuthType = "native" | "codex"
@@ -38,22 +39,8 @@ export type AccountAction =
   | { type: "toggle" }
   | { type: "cancel" }
 
-const AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
-
 function normalizeAccountAuthTypes(input: readonly AccountAuthType[] | undefined): AccountAuthType[] {
-  const seen = new Set<AccountAuthType>()
-  const out: AccountAuthType[] = []
-
-  for (const type of input ?? ["native"]) {
-    if (type !== "native" && type !== "codex") continue
-    if (seen.has(type)) continue
-    seen.add(type)
-    out.push(type)
-  }
-
-  if (out.length === 0) return ["native"]
-  out.sort((a, b) => AUTH_TYPE_ORDER.indexOf(a) - AUTH_TYPE_ORDER.indexOf(b))
-  return out
+  return normalizeSharedAccountAuthTypes(input) as AccountAuthType[]
 }
 
 function displayAuthType(type: AccountAuthType): string {
@@ -84,8 +71,8 @@ function authTypesFromAccounts(accounts: AccountInfo[]): AccountAuthType[] {
     }
   }
   const out = Array.from(seen)
-  out.sort((a, b) => AUTH_TYPE_ORDER.indexOf(a) - AUTH_TYPE_ORDER.indexOf(b))
-  return out.length > 0 ? out : ["native"]
+  const ordered = normalizeAccountAuthTypes(out)
+  return ordered.length > 0 ? ordered : ["native"]
 }
 
 export function formatRelativeTime(timestamp: number | undefined, now = Date.now()): string {

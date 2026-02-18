@@ -305,6 +305,91 @@ describe("model catalog", () => {
     expect(staleEvents.some((event) => event.type === "stale_cache_used")).toBe(true)
   })
 
+  it("treats whitespace access token as unavailable and uses stale fallback", async () => {
+    const cacheDir = await makeCacheDir()
+    const fallbackFile = path.join(cacheDir, "codex-models-cache-test.json")
+    await fs.writeFile(
+      fallbackFile,
+      JSON.stringify(
+        {
+          fetchedAt: 1234,
+          models: [{ slug: "gpt-5.2-codex" }]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    )
+
+    const fetchImpl = vi.fn(async () => {
+      return new Response(JSON.stringify({ models: [{ slug: "gpt-5.4-codex" }] }), { status: 200 })
+    })
+    const events: CodexModelCatalogEvent[] = []
+
+    const models = await getCodexModelCatalog({
+      accessToken: "   ",
+      cacheDir,
+      fetchImpl,
+      onEvent: (event) => events.push(event)
+    })
+
+    expect(models?.map((model) => model.slug)).toEqual(["gpt-5.2-codex"])
+    expect(fetchImpl).toHaveBeenCalledTimes(0)
+    expect(events.some((event) => event.type === "stale_cache_used" && event.reason === "opencode_cache_fallback")).toBe(
+      true
+    )
+  })
+
+  it("refreshes from network after no-token fallback once access token becomes available", async () => {
+    const cacheDir = await makeCacheDir()
+    const fallbackFile = path.join(cacheDir, "codex-models-cache-test.json")
+    await fs.writeFile(
+      fallbackFile,
+      JSON.stringify(
+        {
+          fetchedAt: 100,
+          models: [{ slug: "gpt-5.2-codex" }]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    )
+
+    const noTokenEvents: CodexModelCatalogEvent[] = []
+    const fromFallback = await getCodexModelCatalog({
+      cacheDir,
+      accountId: "acc_123",
+      now: () => 1_000,
+      onEvent: (event) => noTokenEvents.push(event)
+    })
+    expect(fromFallback?.map((model) => model.slug)).toEqual(["gpt-5.2-codex"])
+    expect(noTokenEvents.some((event) => event.type === "stale_cache_used")).toBe(true)
+
+    const tokenEvents: CodexModelCatalogEvent[] = []
+    const fetchImpl = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          models: [{ slug: "gpt-5.4-codex" }]
+        }),
+        { status: 200 }
+      )
+    })
+
+    const refreshed = await getCodexModelCatalog({
+      cacheDir,
+      accountId: "acc_123",
+      accessToken: "at",
+      fetchImpl,
+      now: () => 1_001,
+      onEvent: (event) => tokenEvents.push(event)
+    })
+
+    expect(refreshed?.map((model) => model.slug)).toEqual(["gpt-5.4-codex"])
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(tokenEvents.some((event) => event.type === "network_fetch_success")).toBe(true)
+  })
+
   it("falls back to OpenCode codex-models cache when network fetch fails", async () => {
     const cacheDir = await makeCacheDir()
     const fallbackFile = path.join(cacheDir, "codex-models-cache-test.json")

@@ -23,12 +23,8 @@ This file describes how docs are organized and maintained.
   - `docs/development/CONFIG_FIELDS.md`
   - `docs/development/TESTING.md`
   - `docs/development/UPSTREAM_SYNC.md`
-- Plans/docs-in-progress:
-  - `docs/plans/README.md`
-  - `docs/plans/parity-sync/`
-  - `docs/plans/development/`
-  - `docs/plans/completed/`
-  - `docs/plans/archive/`
+- Plans/docs-in-progress (when present locally):
+  - `docs/plans/`
 
 ## Documentation rules
 

@@ -54,6 +54,7 @@ type CodexModelsResponse = {
 type CodexModelsCache = {
   fetchedAt: number
   models: CodexModelInfo[]
+  staleFallback?: boolean
 }
 
 export type CodexModelRuntimeDefaults = {
@@ -485,6 +486,26 @@ function deriveReason(value: unknown): string {
   return "error"
 }
 
+function emitStaleCacheFallback(input: GetCodexModelCatalogInput, fallback: {
+  disk?: CodexModelsCache
+  opencode?: CodexModelsCache
+  codexCli?: CodexModelsCache
+}): CodexModelInfo[] | undefined {
+  if (fallback.disk) {
+    emitEvent(input, { type: "stale_cache_used", reason: "network_fetch_failed" })
+    return fallback.disk.models
+  }
+  if (fallback.opencode) {
+    emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
+    return fallback.opencode.models
+  }
+  if (fallback.codexCli) {
+    emitEvent(input, { type: "stale_cache_used", reason: "codex_cli_cache_fallback" })
+    return fallback.codexCli.models
+  }
+  return undefined
+}
+
 function normalizeClientVersion(value: string | undefined, fallback?: string): string {
   const trimmed = value?.trim()
   if (trimmed) return trimmed
@@ -502,9 +523,9 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   const cacheDir = resolveCodexCacheDir(input.cacheDir)
   const key = cacheKey(cacheDir, input.accountId)
   const fetchImpl = input.fetchImpl ?? fetch
+  const accessToken = input.accessToken?.trim()
   const targetClientVersion = normalizeSemver(input.clientVersion) ?? normalizeSemver(input.versionHeader)
-  const defaultGithubModelsRefresh =
-    Boolean(input.accessToken) && input.fetchImpl === undefined && targetClientVersion !== undefined
+  const defaultGithubModelsRefresh = Boolean(accessToken) && input.fetchImpl === undefined && targetClientVersion !== undefined
   const shouldRefreshGithubModelsCache = input.refreshGithubModelsCache ?? defaultGithubModelsRefresh
 
   if (shouldRefreshGithubModelsCache) {
@@ -517,7 +538,8 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   }
 
   const memory = inMemoryCatalog.get(key)
-  if (memory && !input.forceRefresh && isFresh(memory, now)) {
+  const allowMemoryHit = !memory?.staleFallback || !accessToken
+  if (memory && !input.forceRefresh && isFresh(memory, now) && allowMemoryHit) {
     emitEvent(input, { type: "memory_cache_hit" })
     return memory.models
   }
@@ -539,29 +561,31 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
     codexCliCacheFallback = await readCatalogFromCodexCliCache()
   }
 
-  if (!input.accessToken) {
+  if (!accessToken) {
     await ensureFallbackCaches()
     if (disk) {
       emitEvent(input, { type: "stale_cache_used", reason: "missing_access_token" })
       inMemoryCatalog.set(key, disk)
       return disk.models
     }
-    if (opencodeCacheFallback) {
-      emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
-      inMemoryCatalog.set(key, opencodeCacheFallback)
-      return opencodeCacheFallback.models
-    }
-    if (codexCliCacheFallback) {
-      emitEvent(input, { type: "stale_cache_used", reason: "codex_cli_cache_fallback" })
-      inMemoryCatalog.set(key, codexCliCacheFallback)
-      return codexCliCacheFallback.models
+    const stale = emitStaleCacheFallback(input, {
+      opencode: opencodeCacheFallback,
+      codexCli: codexCliCacheFallback
+    })
+    if (stale) {
+      inMemoryCatalog.set(key, {
+        fetchedAt: now,
+        models: stale,
+        staleFallback: true
+      })
+      return stale
     }
     emitEvent(input, { type: "catalog_unavailable", reason: "missing_access_token" })
     return undefined
   }
 
   const headers: Record<string, string> = {
-    authorization: `Bearer ${input.accessToken}`,
+    authorization: `Bearer ${accessToken}`,
     originator: input.originator?.trim() || "opencode"
   }
   const clientVersion = normalizeClientVersion(input.clientVersion, input.versionHeader)
@@ -618,20 +642,18 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
     } catch (error) {
       emitEvent(input, { type: "network_fetch_failed", reason: deriveReason(error) })
       await ensureFallbackCaches()
-      if (disk) {
-        inMemoryCatalog.set(key, disk)
-        emitEvent(input, { type: "stale_cache_used", reason: "network_fetch_failed" })
-        return disk.models
-      }
-      if (opencodeCacheFallback) {
-        inMemoryCatalog.set(key, opencodeCacheFallback)
-        emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
-        return opencodeCacheFallback.models
-      }
-      if (codexCliCacheFallback) {
-        inMemoryCatalog.set(key, codexCliCacheFallback)
-        emitEvent(input, { type: "stale_cache_used", reason: "codex_cli_cache_fallback" })
-        return codexCliCacheFallback.models
+      const stale = emitStaleCacheFallback(input, {
+        disk,
+        opencode: opencodeCacheFallback,
+        codexCli: codexCliCacheFallback
+      })
+      if (stale) {
+        inMemoryCatalog.set(key, {
+          fetchedAt: now,
+          models: stale,
+          staleFallback: true
+        })
+        return stale
       }
       emitEvent(input, { type: "catalog_unavailable", reason: "network_fetch_failed" })
       return undefined

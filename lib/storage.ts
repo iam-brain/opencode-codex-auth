@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
+import { normalizeAccountAuthTypes } from "./account-auth-types"
 import { ensureIdentityKey, normalizeEmail, normalizePlan, synchronizeIdentityKey } from "./identity"
 import { extractAccountIdFromClaims, extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "./claims"
 import { quarantineFile } from "./quarantine"
@@ -15,7 +16,6 @@ import { ensureConfigDirGitignore } from "./config-dir-gitignore"
 import { withLockedFile } from "./cache-lock"
 import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io"
 import type {
-  AccountAuthType,
   AccountRecord,
   AuthFile,
   OpenAIAuthMode,
@@ -51,25 +51,7 @@ type LegacyCodexAccountsRecord = {
 
 type AuthLoadOptions = { quarantineDir?: string; now?: () => number; keep?: number; lockReads?: boolean }
 
-const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
 const OPENAI_AUTH_MODES: OpenAIAuthMode[] = ["native", "codex"]
-
-function normalizeAccountAuthTypes(input: unknown): AccountAuthType[] {
-  const source = Array.isArray(input) ? input : ["native"]
-  const out: AccountAuthType[] = []
-  const seen = new Set<AccountAuthType>()
-
-  for (const rawType of source) {
-    const type = rawType === "codex" ? "codex" : rawType === "native" ? "native" : undefined
-    if (!type || seen.has(type)) continue
-    seen.add(type)
-    out.push(type)
-  }
-
-  if (out.length === 0) out.push("native")
-  out.sort((a, b) => ACCOUNT_AUTH_TYPE_ORDER.indexOf(a) - ACCOUNT_AUTH_TYPE_ORDER.indexOf(b))
-  return out
-}
 
 function ensureAccountAuthTypes(account: AccountRecord): void {
   account.authTypes = normalizeAccountAuthTypes(account.authTypes)
@@ -162,12 +144,15 @@ function mergeDomainAccounts(native?: OpenAIOAuthDomain, codex?: OpenAIOAuthDoma
   const mergedAccounts = [...mergedByIdentity.values(), ...fallbackAccounts]
   for (const account of mergedAccounts) normalizeAccountRecord(account)
 
-  const mergedActiveIdentityKey =
-    native?.activeIdentityKey && mergedByIdentity.has(native.activeIdentityKey)
-      ? native.activeIdentityKey
-      : codex?.activeIdentityKey && mergedByIdentity.has(codex.activeIdentityKey)
-        ? codex.activeIdentityKey
-        : mergedAccounts.find((account) => account.enabled !== false && account.identityKey)?.identityKey
+  const hasEnabledIdentity = (identityKey: string | undefined): identityKey is string =>
+    typeof identityKey === "string" &&
+    mergedAccounts.some((account) => account.identityKey === identityKey && account.enabled !== false)
+
+  const mergedActiveIdentityKey = hasEnabledIdentity(native?.activeIdentityKey)
+    ? native?.activeIdentityKey
+    : hasEnabledIdentity(codex?.activeIdentityKey)
+      ? codex?.activeIdentityKey
+      : mergedAccounts.find((account) => account.enabled !== false && account.identityKey)?.identityKey
 
   return {
     strategy: native?.strategy ?? codex?.strategy,
@@ -639,7 +624,10 @@ export async function saveAuthStorage(
   update: (auth: AuthFile) => void | AuthFile | Promise<void | AuthFile>
 ): Promise<AuthFile> {
   return withFileLock(filePath, async () => {
-    const current = await readAuthUnlocked(filePath)
+    const current = await readAuthUnlocked(filePath, {
+      quarantineDir: path.join(path.dirname(filePath), "quarantine"),
+      now: Date.now
+    })
     const before = JSON.stringify(current)
     const result = await update(current)
     const nextBase = result === undefined ? current : result

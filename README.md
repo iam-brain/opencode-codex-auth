@@ -55,6 +55,8 @@ At plugin startup, managed templates are synchronized to the latest version:
 
 - `/create-personality` command template
 - `personality-builder` skill bundle
+- pinned Codex prompts cache (`codex-prompts-cache*.json`) is refreshed best-effort
+- orchestrator agent visibility is reconciled based on effective collaboration profile
 
 Re-run installer (idempotent):
 
@@ -94,8 +96,8 @@ Create guided custom personalities with:
 
 ## Account storage
 
-- Provider auth marker: `~/.local/share/opencode/auth.json`
-- Plugin multi-account store: `~/.config/opencode/codex-accounts.json`
+- Primary runtime store: `~/.config/opencode/codex-accounts.json`
+- OpenCode provider auth marker (import source only): `~/.local/share/opencode/auth.json`
 - Session affinity cache: `~/.config/opencode/cache/codex-session-affinity.json`
 - Quota snapshot cache: `~/.config/opencode/cache/codex-snapshots.json`
 
