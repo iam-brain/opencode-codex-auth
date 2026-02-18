@@ -14,7 +14,6 @@ type InVivoProbeInput = {
   agent?: string
   collaborationProfileEnabled?: boolean
   orchestratorSubagentsEnabled?: boolean
-  collaborationToolProfile?: "opencode" | "codex"
   stripModelOptionsBeforeParams?: boolean
   modelInstructionsFallback?: string
   omitModelIdentityBeforeParams?: boolean
@@ -165,8 +164,7 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
       spoofMode: "codex",
       behaviorSettings: { global: { personality: input.personalityKey } },
       collaborationProfileEnabled: input.collaborationProfileEnabled,
-      orchestratorSubagentsEnabled: input.orchestratorSubagentsEnabled,
-      collaborationToolProfile: input.collaborationToolProfile
+      orchestratorSubagentsEnabled: input.orchestratorSubagentsEnabled
     })
 
     const provider = {

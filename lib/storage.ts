@@ -640,9 +640,13 @@ export async function saveAuthStorage(
 ): Promise<AuthFile> {
   return withFileLock(filePath, async () => {
     const current = await readAuthUnlocked(filePath)
+    const before = JSON.stringify(current)
     const result = await update(current)
     const nextBase = result === undefined ? current : result
     const next = sanitizeAuthFile(migrateAuthFile(nextBase))
+    if (JSON.stringify(next) === before) {
+      return next
+    }
     await writeAuthUnlocked(filePath, next)
     return next
   })

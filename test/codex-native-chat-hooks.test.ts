@@ -46,8 +46,7 @@ describe("codex-native chat hooks instruction source order", () => {
       ],
       spoofMode: "codex",
       collaborationProfileEnabled: false,
-      orchestratorSubagentsEnabled: false,
-      collaborationToolProfile: "opencode"
+      orchestratorSubagentsEnabled: false
     })
 
     expect(output.options.instructions).toBe("Cached template instructions")

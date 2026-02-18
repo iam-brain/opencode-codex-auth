@@ -10,7 +10,6 @@ export type CodexSpoofMode = "native" | "codex"
 export type PluginRuntimeMode = "native" | "codex"
 export type VerbosityOption = "default" | "low" | "medium" | "high"
 export type PromptCacheKeyStrategy = "default" | "project"
-export type CollaborationToolProfile = "opencode" | "codex"
 
 export type ModelBehaviorOverride = {
   personality?: PersonalityOption
@@ -47,7 +46,6 @@ export type PluginConfig = {
   promptCacheKeyStrategy?: PromptCacheKeyStrategy
   collaborationProfileEnabled?: boolean
   orchestratorSubagentsEnabled?: boolean
-  collaborationToolProfile?: CollaborationToolProfile
   behaviorSettings?: BehaviorSettings
 }
 
@@ -155,8 +153,7 @@ const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
 
     // Experimental collaboration controls (optional):
     // "collaborationProfile": true,
-    // "orchestratorSubagents": true,
-    // "collaborationToolProfile": "opencode" // "opencode" | "codex"
+    // "orchestratorSubagents": true
   },
 
   "global": {
@@ -312,8 +309,7 @@ export function validateConfigFileObject(raw: unknown): ConfigValidationResult {
       const enumChecks: Array<{ field: string; allowed: string[] }> = [
         { field: "mode", allowed: ["native", "codex"] },
         { field: "rotationStrategy", allowed: ["sticky", "hybrid", "round_robin"] },
-        { field: "promptCacheKeyStrategy", allowed: ["default", "project"] },
-        { field: "collaborationToolProfile", allowed: ["opencode", "codex"] }
+        { field: "promptCacheKeyStrategy", allowed: ["default", "project"] }
       ]
       for (const check of enumChecks) {
         const value = runtime[check.field]
@@ -506,15 +502,6 @@ function parsePromptCacheKeyStrategy(value: unknown): PromptCacheKeyStrategy | u
   if (typeof value !== "string") return undefined
   const normalized = value.trim().toLowerCase()
   if (normalized === "default" || normalized === "project") return normalized
-  return undefined
-}
-
-function parseCollaborationToolProfile(value: unknown): CollaborationToolProfile | undefined {
-  if (typeof value !== "string") return undefined
-  const normalized = value.trim().toLowerCase()
-  if (normalized === "opencode" || normalized === "codex") {
-    return normalized
-  }
   return undefined
 }
 
@@ -723,9 +710,6 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     isRecord(raw.runtime) && typeof raw.runtime.orchestratorSubagents === "boolean"
       ? raw.runtime.orchestratorSubagents
       : undefined
-  const collaborationToolProfile = parseCollaborationToolProfile(
-    isRecord(raw.runtime) ? raw.runtime.collaborationToolProfile : undefined
-  )
 
   return {
     debug,
@@ -746,7 +730,6 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     headerTransformDebug,
     collaborationProfileEnabled,
     orchestratorSubagentsEnabled,
-    collaborationToolProfile,
     behaviorSettings
   }
 }
@@ -912,8 +895,6 @@ export function resolveConfig(input: {
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE) ?? file.collaborationProfileEnabled
   const orchestratorSubagentsEnabled =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS) ?? file.orchestratorSubagentsEnabled
-  const collaborationToolProfile =
-    parseCollaborationToolProfile(env.OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE) ?? file.collaborationToolProfile
 
   return {
     ...file,
@@ -935,7 +916,6 @@ export function resolveConfig(input: {
     headerTransformDebug,
     collaborationProfileEnabled,
     orchestratorSubagentsEnabled,
-    collaborationToolProfile,
     behaviorSettings: resolvedBehaviorSettings
   }
 }
@@ -1020,10 +1000,6 @@ export function getOrchestratorSubagentsEnabled(cfg: PluginConfig): boolean {
   if (cfg.orchestratorSubagentsEnabled === true) return true
   if (cfg.orchestratorSubagentsEnabled === false) return false
   return getCollaborationProfileEnabled(cfg)
-}
-
-export function getCollaborationToolProfile(cfg: PluginConfig): CollaborationToolProfile {
-  return cfg.collaborationToolProfile === "codex" ? "codex" : "opencode"
 }
 
 export function getBehaviorSettings(cfg: PluginConfig): BehaviorSettings | undefined {

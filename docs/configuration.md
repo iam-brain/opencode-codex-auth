@@ -106,10 +106,6 @@ Known-field type validation is applied on load. If a known field has an invalid 
   - Experimental: enables Codex-style subagent header hints for helper agents under collaboration profile mode.
   - If omitted, inherits `runtime.collaborationProfile` effective value.
   - Explicit `true`/`false` works in any mode.
-- `runtime.collaborationToolProfile: "opencode" | "codex"`
-  - Controls tool-language guidance in injected collaboration instructions.
-  - `opencode` (default): translates Codex semantics to OpenCode tool names.
-  - `codex`: prefers Codex tool semantics and falls back to OpenCode equivalents.
 
 ### Model behavior
 
@@ -230,7 +226,6 @@ Advanced path:
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS`: `1|0|true|false`.
-- `OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE`: `opencode|codex`.
 
 ### Debug/OAuth controls
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { runCodexInVivoInstructionProbe } from "./helpers/codex-in-vivo"
 
-describe("codex-native in-vivo instruction injection", () => {
+describe("codex-native in-vivo instruction replacement", () => {
   it("replaces host instructions and sends personality-rendered instructions in codex mode", async () => {
     const result = await runCodexInVivoInstructionProbe({
       hostInstructions: "OpenCode Host Instructions",
@@ -33,22 +33,17 @@ describe("codex-native in-vivo instruction injection", () => {
     expect(result.outboundInstructions).not.toBe("OpenCode Host Instructions")
   })
 
-  it("injects codex-to-opencode tool call replacements for orchestrator prompts", async () => {
+  it("keeps catalog instructions for orchestrator requests in runtime transforms", async () => {
     const result = await runCodexInVivoInstructionProbe({
       hostInstructions: "OpenCode Host Instructions",
       personalityKey: "vivo_persona",
       personalityText: "Vivo Persona Voice",
       agent: "orchestrator",
       collaborationProfileEnabled: true,
-      orchestratorSubagentsEnabled: true,
-      collaborationToolProfile: "opencode"
+      orchestratorSubagentsEnabled: true
     })
 
-    expect(result.outboundInstructions).toContain("# Sub-agents")
-    expect(result.outboundInstructions).toContain("spawn_agent -> task")
-    expect(result.outboundInstructions).toContain("send_input -> task with existing task_id")
-    expect(result.outboundInstructions).toContain("wait -> do not return final output")
-    expect(result.outboundInstructions).toContain("close_agent -> stop reusing task_id")
+    expect(result.outboundInstructions).toContain("Base Vivo Persona Voice")
   })
 
   it("keeps orchestrator agent instructions instead of replacing them with model base instructions", async () => {
@@ -63,8 +58,7 @@ describe("codex-native in-vivo instruction injection", () => {
       personalityText: "Vivo Persona Voice",
       agent: "orchestrator",
       collaborationProfileEnabled: true,
-      orchestratorSubagentsEnabled: true,
-      collaborationToolProfile: "opencode"
+      orchestratorSubagentsEnabled: true
     })
 
     expect(result.preflightInstructions).toContain("You are Codex, a coding agent based on GPT-5.")
@@ -73,14 +67,13 @@ describe("codex-native in-vivo instruction injection", () => {
     expect(result.outboundInstructions).not.toContain("Base Vivo Persona Voice")
   })
 
-  it("injects plan mode semantics plus tool replacements for plan agent", async () => {
+  it("uses plan mode instructions from codex source with tool replacements", async () => {
     const result = await runCodexInVivoInstructionProbe({
       hostInstructions: "OpenCode Host Instructions",
       personalityKey: "vivo_persona",
       personalityText: "Vivo Persona Voice",
       agent: "plan",
-      collaborationProfileEnabled: true,
-      collaborationToolProfile: "opencode"
+      collaborationProfileEnabled: true
     })
 
     expect(result.outboundInstructions).toContain("# Plan Mode (Conversational)")
@@ -88,6 +81,19 @@ describe("codex-native in-vivo instruction injection", () => {
     expect(result.outboundInstructions).toContain(
       "Before asking the user any question, perform at least one targeted non-mutating exploration pass"
     )
-    expect(result.outboundInstructions).toContain("spawn_agent -> task")
+    expect(result.outboundInstructions).toContain("request_user_input")
+  })
+
+  it("replaces build agent instructions in codex mode", async () => {
+    const result = await runCodexInVivoInstructionProbe({
+      hostInstructions: "OpenCode Host Instructions",
+      personalityKey: "vivo_persona",
+      personalityText: "Vivo Persona Voice",
+      agent: "build",
+      collaborationProfileEnabled: true
+    })
+
+    expect(result.outboundInstructions).toContain("Base Vivo Persona Voice")
+    expect(result.outboundInstructions).not.toContain("spawn_agent")
   })
 })

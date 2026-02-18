@@ -11,7 +11,6 @@ import type {
   PluginRuntimeMode,
   PromptCacheKeyStrategy
 } from "./config"
-import type { CollaborationToolProfile } from "./codex-native/collaboration"
 import { formatToastMessage } from "./toast"
 import type { CodexModelInfo } from "./model-catalog"
 import { createRequestSnapshots } from "./request-snapshots"
@@ -169,7 +168,6 @@ export type CodexAuthPluginOptions = {
   headerTransformDebug?: boolean
   collaborationProfileEnabled?: boolean
   orchestratorSubagentsEnabled?: boolean
-  collaborationToolProfile?: CollaborationToolProfile
 }
 
 export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginOptions = {}): Promise<Hooks> {
@@ -191,8 +189,6 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     typeof opts.orchestratorSubagentsEnabled === "boolean"
       ? opts.orchestratorSubagentsEnabled
       : collaborationProfileEnabled
-  const collaborationToolProfile: CollaborationToolProfile =
-    opts.collaborationToolProfile === "codex" ? "codex" : "opencode"
   void refreshCodexClientVersionFromGitHub(opts.log).catch((error) => {
     if (error instanceof Error) {
       // best-effort background refresh
@@ -379,8 +375,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         fallbackPersonality: opts.personality,
         spoofMode,
         collaborationProfileEnabled,
-        orchestratorSubagentsEnabled,
-        collaborationToolProfile
+        orchestratorSubagentsEnabled
       })
     },
     "chat.headers": async (hookInput, output) => {

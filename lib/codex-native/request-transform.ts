@@ -3,7 +3,7 @@ import type { CodexModelInfo } from "../model-catalog"
 import { resolveInstructionsForModel } from "../model-catalog"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer"
 import { isRecord } from "../util"
-import { ensureOpenCodeToolingCompatibility, isOrchestratorInstructions } from "./collaboration"
+import { isOrchestratorInstructions, replaceCodexToolCallsForOpenCode } from "./collaboration"
 
 type ChatParamsOutput = {
   temperature: number
@@ -421,6 +421,378 @@ export async function sanitizeOutboundRequestIfNeeded(
 
   const sanitizedRequest = rebuildRequestWithJsonBody(request, sanitized.payload)
   return { request: sanitizedRequest, changed: true }
+}
+
+type TransformReason =
+  | "disabled"
+  | "non_post"
+  | "empty_body"
+  | "invalid_json"
+  | "non_object_body"
+  | "missing_input_array"
+  | "no_reasoning_replay"
+  | "no_developer_messages"
+  | "permissions_only"
+  | "missing_key"
+  | "already_matches"
+  | "set"
+  | "replaced"
+  | "updated"
+
+type ReplayTransformResult = {
+  changed: boolean
+  reason: TransformReason
+  removedPartCount: number
+  removedFieldCount: number
+}
+
+type DeveloperRoleRemapTransformResult = {
+  changed: boolean
+  reason: TransformReason
+  remappedCount: number
+  preservedCount: number
+}
+
+type PromptCacheKeyTransformResult = {
+  changed: boolean
+  reason: TransformReason
+}
+
+type CompatSanitizerTransformResult = {
+  changed: boolean
+  reason: TransformReason
+}
+
+type OutboundRequestPayloadTransformInput = {
+  request: Request
+  stripReasoningReplayEnabled: boolean
+  remapDeveloperMessagesToUserEnabled: boolean
+  compatInputSanitizerEnabled: boolean
+  promptCacheKeyOverrideEnabled: boolean
+  promptCacheKeyOverride?: string
+}
+
+export type OutboundRequestPayloadTransformResult = {
+  request: Request
+  changed: boolean
+  replay: ReplayTransformResult
+  developerRoleRemap: DeveloperRoleRemapTransformResult
+  promptCacheKey: PromptCacheKeyTransformResult
+  compatSanitizer: CompatSanitizerTransformResult
+}
+
+function stripReasoningReplayFromPayload(payload: Record<string, unknown>): ReplayTransformResult {
+  if (!Array.isArray(payload.input)) {
+    return {
+      changed: false,
+      reason: "missing_input_array",
+      removedPartCount: 0,
+      removedFieldCount: 0
+    }
+  }
+
+  let changed = false
+  let removedPartCount = 0
+  let removedFieldCount = 0
+  const nextInput: unknown[] = []
+
+  for (const item of payload.input) {
+    if (isReasoningReplayPart(item)) {
+      changed = true
+      removedPartCount += 1
+      continue
+    }
+
+    if (!isRecord(item)) {
+      nextInput.push(item)
+      continue
+    }
+
+    const nextItem: Record<string, unknown> = { ...item }
+    const role = asString(nextItem.role)?.toLowerCase()
+    if (role === "assistant" && Array.isArray(nextItem.content)) {
+      const contentOut: unknown[] = []
+      for (const entry of nextItem.content) {
+        if (isReasoningReplayPart(entry)) {
+          changed = true
+          removedPartCount += 1
+          continue
+        }
+        const strippedEntry = stripReasoningReplayFields(entry)
+        if (strippedEntry.removed > 0) {
+          changed = true
+          removedFieldCount += strippedEntry.removed
+        }
+        contentOut.push(strippedEntry.value)
+      }
+      nextItem.content = contentOut
+    }
+
+    const strippedItem = stripReasoningReplayFields(nextItem)
+    if (strippedItem.removed > 0) {
+      changed = true
+      removedFieldCount += strippedItem.removed
+    }
+    nextInput.push(strippedItem.value)
+  }
+
+  if (!changed) {
+    return {
+      changed: false,
+      reason: "no_reasoning_replay",
+      removedPartCount,
+      removedFieldCount
+    }
+  }
+
+  payload.input = nextInput
+  return {
+    changed: true,
+    reason: "updated",
+    removedPartCount,
+    removedFieldCount
+  }
+}
+
+function remapDeveloperMessagesToUserOnPayload(payload: Record<string, unknown>): DeveloperRoleRemapTransformResult {
+  if (!Array.isArray(payload.input)) {
+    return {
+      changed: false,
+      reason: "missing_input_array",
+      remappedCount: 0,
+      preservedCount: 0
+    }
+  }
+
+  let nextInput: unknown[] | undefined
+  let remappedCount = 0
+  let preservedCount = 0
+  let developerCount = 0
+  for (let index = 0; index < payload.input.length; index += 1) {
+    const item = payload.input[index]
+    if (!isRecord(item)) continue
+    if (item.role !== "developer") continue
+    developerCount += 1
+    if (shouldPreserveDeveloperRole(item)) {
+      preservedCount += 1
+      continue
+    }
+    if (!nextInput) nextInput = payload.input.slice()
+    nextInput[index] = {
+      ...item,
+      role: "user"
+    }
+    remappedCount += 1
+  }
+
+  if (!nextInput) {
+    return {
+      changed: false,
+      reason: developerCount === 0 ? "no_developer_messages" : "permissions_only",
+      remappedCount,
+      preservedCount
+    }
+  }
+
+  payload.input = nextInput
+  return {
+    changed: true,
+    reason: "updated",
+    remappedCount,
+    preservedCount
+  }
+}
+
+function applyPromptCacheKeyOverrideToPayload(
+  payload: Record<string, unknown>,
+  promptCacheKey: string | undefined
+): PromptCacheKeyTransformResult {
+  if (!promptCacheKey) {
+    return { changed: false, reason: "missing_key" }
+  }
+
+  const current = asString(payload.prompt_cache_key)
+  if (current === promptCacheKey) {
+    return { changed: false, reason: "already_matches" }
+  }
+
+  payload.prompt_cache_key = promptCacheKey
+  return {
+    changed: true,
+    reason: current ? "replaced" : "set"
+  }
+}
+
+export async function transformOutboundRequestPayload(
+  input: OutboundRequestPayloadTransformInput
+): Promise<OutboundRequestPayloadTransformResult> {
+  const disabledReplay: ReplayTransformResult = {
+    changed: false,
+    reason: "disabled",
+    removedPartCount: 0,
+    removedFieldCount: 0
+  }
+  const disabledRoleRemap: DeveloperRoleRemapTransformResult = {
+    changed: false,
+    reason: "disabled",
+    remappedCount: 0,
+    preservedCount: 0
+  }
+  const disabledPromptCacheKey: PromptCacheKeyTransformResult = {
+    changed: false,
+    reason: "disabled"
+  }
+  const disabledCompatSanitizer: CompatSanitizerTransformResult = {
+    changed: false,
+    reason: "disabled"
+  }
+
+  const method = input.request.method.toUpperCase()
+  if (method !== "POST") {
+    return {
+      request: input.request,
+      changed: false,
+      replay: input.stripReasoningReplayEnabled
+        ? { ...disabledReplay, reason: "non_post" }
+        : disabledReplay,
+      developerRoleRemap: input.remapDeveloperMessagesToUserEnabled
+        ? { ...disabledRoleRemap, reason: "non_post" }
+        : disabledRoleRemap,
+      promptCacheKey: input.promptCacheKeyOverrideEnabled
+        ? { ...disabledPromptCacheKey, reason: "non_post" }
+        : disabledPromptCacheKey,
+      compatSanitizer: input.compatInputSanitizerEnabled
+        ? { ...disabledCompatSanitizer, reason: "non_post" }
+        : disabledCompatSanitizer
+    }
+  }
+
+  let raw: string
+  try {
+    raw = await input.request.clone().text()
+  } catch {
+    return {
+      request: input.request,
+      changed: false,
+      replay: input.stripReasoningReplayEnabled
+        ? { ...disabledReplay, reason: "invalid_json" }
+        : disabledReplay,
+      developerRoleRemap: input.remapDeveloperMessagesToUserEnabled
+        ? { ...disabledRoleRemap, reason: "invalid_json" }
+        : disabledRoleRemap,
+      promptCacheKey: input.promptCacheKeyOverrideEnabled
+        ? { ...disabledPromptCacheKey, reason: "invalid_json" }
+        : disabledPromptCacheKey,
+      compatSanitizer: input.compatInputSanitizerEnabled
+        ? { ...disabledCompatSanitizer, reason: "invalid_json" }
+        : disabledCompatSanitizer
+    }
+  }
+
+  if (!raw) {
+    return {
+      request: input.request,
+      changed: false,
+      replay: input.stripReasoningReplayEnabled ? { ...disabledReplay, reason: "empty_body" } : disabledReplay,
+      developerRoleRemap: input.remapDeveloperMessagesToUserEnabled
+        ? { ...disabledRoleRemap, reason: "empty_body" }
+        : disabledRoleRemap,
+      promptCacheKey: input.promptCacheKeyOverrideEnabled
+        ? { ...disabledPromptCacheKey, reason: "empty_body" }
+        : disabledPromptCacheKey,
+      compatSanitizer: input.compatInputSanitizerEnabled
+        ? { ...disabledCompatSanitizer, reason: "empty_body" }
+        : disabledCompatSanitizer
+    }
+  }
+
+  let payload: unknown
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    return {
+      request: input.request,
+      changed: false,
+      replay: input.stripReasoningReplayEnabled
+        ? { ...disabledReplay, reason: "invalid_json" }
+        : disabledReplay,
+      developerRoleRemap: input.remapDeveloperMessagesToUserEnabled
+        ? { ...disabledRoleRemap, reason: "invalid_json" }
+        : disabledRoleRemap,
+      promptCacheKey: input.promptCacheKeyOverrideEnabled
+        ? { ...disabledPromptCacheKey, reason: "invalid_json" }
+        : disabledPromptCacheKey,
+      compatSanitizer: input.compatInputSanitizerEnabled
+        ? { ...disabledCompatSanitizer, reason: "invalid_json" }
+        : disabledCompatSanitizer
+    }
+  }
+
+  if (!isRecord(payload)) {
+    return {
+      request: input.request,
+      changed: false,
+      replay: input.stripReasoningReplayEnabled
+        ? { ...disabledReplay, reason: "non_object_body" }
+        : disabledReplay,
+      developerRoleRemap: input.remapDeveloperMessagesToUserEnabled
+        ? { ...disabledRoleRemap, reason: "non_object_body" }
+        : disabledRoleRemap,
+      promptCacheKey: input.promptCacheKeyOverrideEnabled
+        ? { ...disabledPromptCacheKey, reason: "non_object_body" }
+        : disabledPromptCacheKey,
+      compatSanitizer: input.compatInputSanitizerEnabled
+        ? { ...disabledCompatSanitizer, reason: "non_object_body" }
+        : disabledCompatSanitizer
+    }
+  }
+
+  let changed = false
+  const replay = input.stripReasoningReplayEnabled
+    ? stripReasoningReplayFromPayload(payload)
+    : disabledReplay
+  changed = changed || replay.changed
+
+  const developerRoleRemap = input.remapDeveloperMessagesToUserEnabled
+    ? remapDeveloperMessagesToUserOnPayload(payload)
+    : disabledRoleRemap
+  changed = changed || developerRoleRemap.changed
+
+  const promptCacheKey = input.promptCacheKeyOverrideEnabled
+    ? applyPromptCacheKeyOverrideToPayload(payload, asString(input.promptCacheKeyOverride))
+    : disabledPromptCacheKey
+  changed = changed || promptCacheKey.changed
+
+  const compatSanitizedPayload = input.compatInputSanitizerEnabled ? sanitizeRequestPayloadForCompat(payload) : null
+  const compatSanitizer: CompatSanitizerTransformResult = input.compatInputSanitizerEnabled
+    ? {
+        changed: compatSanitizedPayload?.changed === true,
+        reason: compatSanitizedPayload?.changed === true ? "updated" : "already_matches"
+      }
+    : disabledCompatSanitizer
+
+  const finalPayload = compatSanitizedPayload?.payload ?? payload
+  changed = changed || compatSanitizer.changed
+
+  if (!changed) {
+    return {
+      request: input.request,
+      changed: false,
+      replay,
+      developerRoleRemap,
+      promptCacheKey,
+      compatSanitizer
+    }
+  }
+
+  return {
+    request: rebuildRequestWithJsonBody(input.request, finalPayload),
+    changed: true,
+    replay,
+    developerRoleRemap,
+    promptCacheKey,
+    compatSanitizer
+  }
 }
 
 export async function applyPromptCacheKeyOverrideToRequest(input: {
@@ -850,6 +1222,7 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
   behaviorSettings: BehaviorSettings | undefined
   fallbackPersonality: PersonalityOption | undefined
   preserveOrchestratorInstructions?: boolean
+  replaceCodexToolCalls?: boolean
 }): Promise<{ request: Request; changed: boolean; reason: string }> {
   if (!input.enabled) return { request: input.request, changed: false, reason: "disabled" }
 
@@ -891,31 +1264,27 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
 
   const rendered = resolveInstructionsForModel(catalogModel, effectivePersonality)
   if (!rendered) return { request: input.request, changed: false, reason: "rendered_empty_or_unsafe" }
+  const renderedForRequest =
+    input.replaceCodexToolCalls === true ? replaceCodexToolCallsForOpenCode(rendered) ?? rendered : rendered
 
   const currentInstructions = asString(payload.instructions)
 
   const preserveOrchestratorInstructions = input.preserveOrchestratorInstructions !== false
   if (preserveOrchestratorInstructions && isOrchestratorInstructions(currentInstructions)) {
-    const compatible = ensureOpenCodeToolingCompatibility(currentInstructions)
-    if (compatible && compatible.trim() !== (currentInstructions?.trim() ?? "")) {
-      payload.instructions = compatible
-      const updatedRequest = rebuildRequestWithJsonBody(input.request, payload)
-      return { request: updatedRequest, changed: true, reason: "tooling_compatibility_added" }
-    }
     return { request: input.request, changed: false, reason: "orchestrator_instructions_preserved" }
   }
 
-  if (currentInstructions === rendered) {
+  if (currentInstructions === renderedForRequest) {
     return { request: input.request, changed: false, reason: "already_matches" }
   }
 
-  if (currentInstructions && currentInstructions.includes(rendered)) {
+  if (currentInstructions && currentInstructions.includes(renderedForRequest)) {
     return { request: input.request, changed: false, reason: "already_contains_rendered" }
   }
 
   const collaborationTail = currentInstructions ? extractCollaborationInstructionTail(currentInstructions) : undefined
-  const nextInstructionsBase = collaborationTail ? `${rendered}\n\n${collaborationTail}` : rendered
-  const nextInstructions = ensureOpenCodeToolingCompatibility(nextInstructionsBase) ?? nextInstructionsBase
+  const nextInstructionsBase = collaborationTail ? `${renderedForRequest}\n\n${collaborationTail}` : renderedForRequest
+  const nextInstructions = nextInstructionsBase
 
   if (currentInstructions === nextInstructions) {
     return { request: input.request, changed: false, reason: "already_matches" }

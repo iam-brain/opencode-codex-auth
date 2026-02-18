@@ -45,7 +45,9 @@ describe("orchestrator agent installer", () => {
     )
     expect(firstContent).toContain("mode: primary")
     expect(firstContent).toContain("You are Codex, a coding agent based on GPT-5.")
-    expect(firstContent).toContain("If `spawn_agent` is unavailable or fails, ignore this section and proceed solo.")
+    expect(firstContent).toContain("If `task` is unavailable or fails, ignore this section and proceed solo.")
+    expect(firstContent).not.toContain("spawn_agent")
+    expect(firstContent).toContain("task")
 
     const cacheRaw = await fs.readFile(path.join(cacheDir, CODEX_PROMPTS_CACHE_FILE), "utf8")
     const cache = JSON.parse(cacheRaw) as {
@@ -54,7 +56,7 @@ describe("orchestrator agent installer", () => {
     expect(cache.prompts?.orchestrator).toContain("You are Codex, a coding agent based on GPT-5.")
 
     const metaRaw = await fs.readFile(path.join(cacheDir, CODEX_PROMPTS_CACHE_META_FILE), "utf8")
-    const meta = JSON.parse(metaRaw) as { urls?: { orchestrator?: string; plan?: string } }
+    const meta = JSON.parse(metaRaw) as { urls?: { orchestrator?: string; plan?: string; build?: string } }
     expect(meta.urls?.orchestrator).toContain("templates/agents/orchestrator.md")
     expect(meta.urls?.plan).toContain("templates/collaboration_mode/plan.md")
   })

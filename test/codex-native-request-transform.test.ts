@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest"
 
 import {
   applyCatalogInstructionOverrideToRequest,
+  applyPromptCacheKeyOverrideToRequest,
   remapDeveloperMessagesToUserOnRequest,
+  sanitizeOutboundRequestIfNeeded,
+  transformOutboundRequestPayload,
   stripReasoningReplayFromRequest
 } from "../lib/codex-native/request-transform"
 
@@ -265,14 +268,28 @@ describe("catalog instruction override orchestrator preservation gating", () => 
       fallbackPersonality: undefined,
       preserveOrchestratorInstructions: true
     })
-    expect(preserved.changed).toBe(true)
-    expect(preserved.reason).toBe("tooling_compatibility_added")
+    expect(preserved.changed).toBe(false)
+    expect(preserved.reason).toBe("orchestrator_instructions_preserved")
     const preservedBody = JSON.parse(await preserved.request.text()) as { instructions?: string }
     expect(preservedBody.instructions).toContain("You are Codex, a coding agent based on GPT-5.")
-    expect(preservedBody.instructions).toContain("Tooling Compatibility (OpenCode)")
+    expect(preservedBody.instructions).not.toContain("Tooling Compatibility (OpenCode)")
+
+    const replacementRequest = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: [
+          "You are Codex, a coding agent based on GPT-5.",
+          "",
+          "# Sub-agents",
+          "If `spawn_agent` is unavailable or fails, ignore this section and proceed solo."
+        ].join("\n")
+      })
+    })
 
     const replaced = await applyCatalogInstructionOverrideToRequest({
-      request,
+      request: replacementRequest,
       enabled: true,
       catalogModels,
       behaviorSettings: undefined,
@@ -307,11 +324,11 @@ describe("catalog instruction override orchestrator preservation gating", () => 
       behaviorSettings: undefined,
       fallbackPersonality: undefined
     })
-    expect(preserved.changed).toBe(true)
-    expect(preserved.reason).toBe("tooling_compatibility_added")
+    expect(preserved.changed).toBe(false)
+    expect(preserved.reason).toBe("orchestrator_instructions_preserved")
     const preservedBody = JSON.parse(await preserved.request.text()) as { instructions?: string }
     expect(preservedBody.instructions).toContain("You are Codex, a coding agent based on GPT-5.")
-    expect(preservedBody.instructions).toContain("Tooling Compatibility (OpenCode)")
+    expect(preservedBody.instructions).not.toContain("Tooling Compatibility (OpenCode)")
   })
 
   it("preserves marker-based orchestrator instructions without spawn_agent token", async () => {
@@ -337,11 +354,11 @@ describe("catalog instruction override orchestrator preservation gating", () => 
       fallbackPersonality: undefined
     })
 
-    expect(preserved.changed).toBe(true)
-    expect(preserved.reason).toBe("tooling_compatibility_added")
+    expect(preserved.changed).toBe(false)
+    expect(preserved.reason).toBe("orchestrator_instructions_preserved")
     const preservedBody = JSON.parse(await preserved.request.text()) as { instructions?: string }
     expect(preservedBody.instructions).toContain("Coordinate them via wait / send_input.")
-    expect(preservedBody.instructions).toContain("Tooling Compatibility (OpenCode)")
+    expect(preservedBody.instructions).not.toContain("Tooling Compatibility (OpenCode)")
   })
 
   it("does not preserve generic wait/send_input prose under sub-agents header", async () => {
@@ -373,7 +390,7 @@ describe("catalog instruction override orchestrator preservation gating", () => 
     expect(body.instructions).toContain("Base Default voice")
   })
 
-  it("does not report compatibility-added when compatibility block already exists with spacing differences", async () => {
+  it("preserves orchestrator instructions when compatibility block already exists with spacing differences", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -383,9 +400,9 @@ describe("catalog instruction override orchestrator preservation gating", () => 
           "You are Codex, a coding agent based on GPT-5.",
           "",
           "# Sub-agents",
-          "If `spawn_agent` is unavailable or fails, ignore this section and proceed solo.",
+          "If `task` is unavailable or fails, ignore this section and proceed solo.",
           "",
-          "# Tooling Compatibility (OpenCode)",
+          "# Notes",
           ""
         ].join("\n")
       })
@@ -430,5 +447,125 @@ describe("catalog instruction override orchestrator preservation gating", () => 
 
     expect(result.changed).toBe(false)
     expect(result.reason).toBe("orchestrator_instructions_preserved")
+  })
+
+  it("replaces codex tool-call names in rendered catalog instructions when enabled", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex"
+      })
+    })
+
+    const result = await applyCatalogInstructionOverrideToRequest({
+      request,
+      enabled: true,
+      catalogModels: [
+        {
+          slug: "gpt-5.3-codex",
+          model_messages: {
+            instructions_template: "Use spawn_agent and send_input with write_stdin; close_agent when done"
+          }
+        }
+      ],
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined,
+      replaceCodexToolCalls: true
+    })
+
+    expect(result.changed).toBe(true)
+    expect(result.reason).toBe("updated")
+    const body = JSON.parse(await result.request.text()) as { instructions?: string }
+    expect(body.instructions).toContain("task")
+    expect(body.instructions).toContain("skip_task_reuse")
+    expect(body.instructions).not.toContain("spawn_agent")
+    expect(body.instructions).not.toContain("send_input")
+    expect(body.instructions).not.toContain("write_stdin")
+  })
+})
+
+describe("request transform aggregation", () => {
+  it("applies replay stripping, remap, prompt key override, and compat sanitization in one parse", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "reasoning_summary", text: "remove me" }, { type: "output_text", text: "keep me" }]
+          },
+          {
+            type: "message",
+            role: "developer",
+            content: [{ type: "input_text", text: "rewrite role" }]
+          }
+        ]
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: true,
+      remapDeveloperMessagesToUserEnabled: true,
+      compatInputSanitizerEnabled: true,
+      promptCacheKeyOverrideEnabled: true,
+      promptCacheKeyOverride: "pk_project"
+    })
+
+    expect(transformed.changed).toBe(true)
+    expect(transformed.replay.reason).toBe("updated")
+    expect(transformed.replay.removedPartCount).toBe(1)
+    expect(transformed.developerRoleRemap.reason).toBe("updated")
+    expect(transformed.developerRoleRemap.remappedCount).toBe(1)
+    expect(transformed.promptCacheKey.reason).toBe("set")
+    expect(transformed.compatSanitizer.changed).toBe(false)
+
+    const body = JSON.parse(await transformed.request.text()) as {
+      input: Array<{ role?: string; content?: Array<{ type?: string; text?: string }> }>
+      prompt_cache_key?: string
+    }
+    expect(body.prompt_cache_key).toBe("pk_project")
+    expect(body.input).toHaveLength(2)
+    expect(body.input[0]?.content).toEqual([{ type: "output_text", text: "keep me" }])
+    expect(body.input[1]?.role).toBe("user")
+  })
+
+  it("matches legacy behavior when no changes are needed", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const legacyReplay = await stripReasoningReplayFromRequest({ request, enabled: true })
+    const legacyRemap = await remapDeveloperMessagesToUserOnRequest({ request: legacyReplay.request, enabled: true })
+    const legacyPrompt = await applyPromptCacheKeyOverrideToRequest({
+      request: legacyRemap.request,
+      enabled: true,
+      promptCacheKey: "pk_project"
+    })
+    const legacyCompat = await sanitizeOutboundRequestIfNeeded(legacyPrompt.request, true)
+
+    const aggregated = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: true,
+      remapDeveloperMessagesToUserEnabled: true,
+      compatInputSanitizerEnabled: true,
+      promptCacheKeyOverrideEnabled: true,
+      promptCacheKeyOverride: "pk_project"
+    })
+
+    expect(await aggregated.request.text()).toBe(await legacyCompat.request.text())
+    expect(aggregated.replay.reason).toBe("no_reasoning_replay")
+    expect(aggregated.developerRoleRemap.reason).toBe("no_developer_messages")
+    expect(aggregated.promptCacheKey.reason).toBe("set")
+    expect(aggregated.compatSanitizer.changed).toBe(false)
   })
 })

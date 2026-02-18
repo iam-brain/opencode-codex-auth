@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  ensureOpenCodeToolingCompatibility,
   hasCodexToolNameMarkers,
-  hasOpenCodeToolingCompatibility,
   isOrchestratorInstructions,
   mergeInstructions,
+  replaceCodexToolCallsForOpenCode,
   resolveCollaborationInstructions,
   resolveCollaborationProfile,
-  resolveSubagentHeaderValue,
-  resolveToolingInstructions
+  resolveSubagentHeaderValue
 } from "../lib/codex-native/collaboration"
 
 describe("codex collaboration profile", () => {
@@ -25,9 +23,9 @@ describe("codex collaboration profile", () => {
     expect(profile.kind).toBe("code")
   })
 
-  it("does not enable profile for unrelated build agent", () => {
+  it("does not map build agent to plan preset", () => {
     const profile = resolveCollaborationProfile("build")
-    expect(profile.enabled).toBe(false)
+    expect(profile.instructionPreset).toBeUndefined()
   })
 
   it("maps codex review helper to review subagent header", () => {
@@ -54,33 +52,22 @@ describe("codex collaboration profile", () => {
     expect(mergeInstructions(merged, "extra")).toBe("base\n\nextra")
   })
 
-  it("resolves tooling profiles", () => {
-    expect(resolveToolingInstructions("opencode")).toContain("Tooling Compatibility (OpenCode)")
-    expect(resolveToolingInstructions("codex")).toContain("Tooling Compatibility (Codex-style)")
-  })
-
-  it("detects codex tool names and injects OpenCode compatibility guidance", () => {
+  it("detects codex tool names and replaces with OpenCode tool names", () => {
     const codexInstructions = "Use spawn_agent and send_input to coordinate workers."
     expect(hasCodexToolNameMarkers(codexInstructions)).toBe(true)
-    expect(ensureOpenCodeToolingCompatibility(codexInstructions)).toContain("Tooling Compatibility (OpenCode)")
+    expect(replaceCodexToolCallsForOpenCode(codexInstructions)).toContain("task")
+    expect(replaceCodexToolCallsForOpenCode(codexInstructions)).not.toContain("spawn_agent")
 
-    const toolCompat = ensureOpenCodeToolingCompatibility(codexInstructions)
-    expect(toolCompat).toContain("Tooling Compatibility (OpenCode)")
-    expect(hasOpenCodeToolingCompatibility(toolCompat)).toBe(true)
+    const replaced = replaceCodexToolCallsForOpenCode(codexInstructions)
+    expect(replaced).toContain("task")
 
     const writeStdin = "If needed, call write_stdin to continue the worker session."
     expect(hasCodexToolNameMarkers(writeStdin)).toBe(true)
-    expect(ensureOpenCodeToolingCompatibility(writeStdin)).toContain("write_stdin -> task with existing task_id")
+    expect(replaceCodexToolCallsForOpenCode(writeStdin)).toContain("task")
 
     const plainInstructions = "Use available tools in this runtime."
     expect(hasCodexToolNameMarkers(plainInstructions)).toBe(false)
-    expect(ensureOpenCodeToolingCompatibility(plainInstructions)).toBe(plainInstructions)
-
-    const alreadyCompatible = `${codexInstructions}\n\n# Tooling Compatibility (OpenCode)`
-    expect(ensureOpenCodeToolingCompatibility(alreadyCompatible)).toBe(alreadyCompatible)
-
-    const alreadyCompatibleCaseVariant = `${codexInstructions}\n\n## tooling compatibility (opencode)`
-    expect(ensureOpenCodeToolingCompatibility(alreadyCompatibleCaseVariant)).toBe(alreadyCompatibleCaseVariant)
+    expect(replaceCodexToolCallsForOpenCode(plainInstructions)).toBe(plainInstructions)
   })
 
   it("detects orchestrator-style upstream instructions", () => {
