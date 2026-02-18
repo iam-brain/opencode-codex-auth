@@ -13,7 +13,6 @@ import {
   getCompatInputSanitizerEnabled,
   getCodexCompactionOverrideEnabled,
   getBehaviorSettings,
-  getCollaborationToolProfile,
   getCollaborationProfileEnabled,
   getDebugEnabled,
   getHeaderSnapshotBodiesEnabled,
@@ -135,7 +134,6 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
     collaborationProfileEnabled,
     orchestratorSubagentsEnabled: getOrchestratorSubagentsEnabled(cfg),
-    collaborationToolProfile: getCollaborationToolProfile(cfg),
     behaviorSettings: getBehaviorSettings(cfg)
   })
 

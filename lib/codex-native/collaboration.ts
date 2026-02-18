@@ -1,11 +1,11 @@
 export type CodexCollaborationModeKind = "plan" | "code"
-export type CollaborationToolProfile = "opencode" | "codex"
 
 export type CodexCollaborationProfile = {
   enabled: boolean
   kind?: CodexCollaborationModeKind
   normalizedAgentName?: string
   isOrchestrator?: boolean
+  instructionPreset?: "plan"
 }
 
 export type CollaborationInstructionsByKind = {
@@ -142,7 +142,8 @@ export function getCodexPlanModeInstructions(): string {
 
 export function setCodexPlanModeInstructions(next: string | undefined): void {
   const trimmed = next?.trim()
-  codexPlanModeInstructions = trimmed ? trimmed : CODEX_PLAN_MODE_INSTRUCTIONS_FALLBACK
+  const source = trimmed ? trimmed : CODEX_PLAN_MODE_INSTRUCTIONS_FALLBACK
+  codexPlanModeInstructions = replaceCodexToolCallsForOpenCode(source) ?? source
 }
 
 export const CODEX_CODE_MODE_INSTRUCTIONS = "you are now in code mode."
@@ -155,30 +156,20 @@ When subagents are available, delegate independent work in parallel, coordinate 
 
 When subagents are active, your primary role is coordination and synthesis; avoid doing worker implementation in parallel with active workers unless needed for unblock/fallback.`
 
-const OPENCODE_TOOLING_TRANSLATION_INSTRUCTIONS = `# Tooling Compatibility (OpenCode)
-
-Translate Codex-style tool intent to OpenCode-native tools:
-
-- exec_command -> bash
-- read/search/list -> read, grep, glob
-- apply_patch/edit_file -> apply_patch
-- write_stdin -> task with existing task_id (or bash fallback)
-- spawn_agent -> task (launch a subagent)
-- send_input -> task with existing task_id (continue the same subagent)
-- wait -> do not return final output until spawned task(s) complete; poll/resume via task tool as needed
-- close_agent -> stop reusing task_id (no dedicated close tool in OpenCode)
-
-Always use the available OpenCode tool names and schemas in this runtime.`
-
-const CODEX_STYLE_TOOLING_INSTRUCTIONS = `# Tooling Compatibility (Codex-style)
-
-Prefer Codex-style workflow semantics and naming when reasoning about steps. If an exact Codex tool is unavailable, fall back to the nearest OpenCode equivalent and continue.`
-
-const OPENCODE_TOOLING_HEADER = "# Tooling Compatibility (OpenCode)"
-const OPENCODE_TOOLING_HEADER_REGEX = /^\s{0,3}#{1,6}\s*tooling\s+compatibility\s*\(\s*opencode\s*\)\s*$/im
-
 const CODEX_TOOL_NAME_REGEX =
   /\b(exec_command|read_file|search_files|list_dir|write_stdin|spawn_agent|send_input|close_agent|edit_file|apply_patch)\b/i
+
+const TOOL_CALL_REPLACEMENTS: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /\bexec_command\b/gi, replacement: "bash" },
+  { pattern: /\bread_file\b/gi, replacement: "read" },
+  { pattern: /\bsearch_files\b/gi, replacement: "grep" },
+  { pattern: /\blist_dir\b/gi, replacement: "glob" },
+  { pattern: /\bwrite_stdin\b/gi, replacement: "task" },
+  { pattern: /\bspawn_agent\b/gi, replacement: "task" },
+  { pattern: /\bsend_input\b/gi, replacement: "task" },
+  { pattern: /\bclose_agent\b/gi, replacement: "skip_task_reuse" },
+  { pattern: /\bedit_file\b/gi, replacement: "apply_patch" }
+]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -237,7 +228,8 @@ export function resolveCollaborationProfile(agent: unknown): CodexCollaborationP
       enabled: true,
       normalizedAgentName,
       kind: "plan",
-      isOrchestrator: false
+      isOrchestrator: false,
+      instructionPreset: "plan"
     }
   }
 
@@ -275,27 +267,21 @@ export function resolveCollaborationInstructions(
   return instructions.code
 }
 
-export function resolveToolingInstructions(profile: CollaborationToolProfile): string {
-  return profile === "codex" ? CODEX_STYLE_TOOLING_INSTRUCTIONS : OPENCODE_TOOLING_TRANSLATION_INSTRUCTIONS
-}
-
 export function hasCodexToolNameMarkers(instructions: string | undefined): boolean {
   if (!instructions) return false
   return CODEX_TOOL_NAME_REGEX.test(instructions)
 }
 
-export function hasOpenCodeToolingCompatibility(instructions: string | undefined): boolean {
-  if (!instructions) return false
-  if (instructions.includes(OPENCODE_TOOLING_HEADER)) return true
-  return OPENCODE_TOOLING_HEADER_REGEX.test(instructions)
-}
-
-export function ensureOpenCodeToolingCompatibility(instructions: string | undefined): string | undefined {
+export function replaceCodexToolCallsForOpenCode(instructions: string | undefined): string | undefined {
   const normalized = instructions?.trim()
   if (!normalized) return instructions
-  if (hasOpenCodeToolingCompatibility(normalized)) return instructions
   if (!hasCodexToolNameMarkers(normalized)) return instructions
-  return mergeInstructions(normalized, resolveToolingInstructions("opencode"))
+
+  let out = normalized
+  for (const replacement of TOOL_CALL_REPLACEMENTS) {
+    out = out.replace(replacement.pattern, replacement.replacement)
+  }
+  return out
 }
 
 export function mergeInstructions(base: string | undefined, extra: string): string {

@@ -23,17 +23,13 @@ import {
   sessionUsesOpenAIProvider
 } from "./session-messages"
 import {
-  CODEX_CODE_MODE_INSTRUCTIONS,
-  CODEX_ORCHESTRATOR_INSTRUCTIONS,
-  ensureOpenCodeToolingCompatibility,
   getCodexPlanModeInstructions,
   isOrchestratorInstructions,
   mergeInstructions,
-  resolveCollaborationInstructions,
+  replaceCodexToolCallsForOpenCode,
+  resolveHookAgentName,
   resolveCollaborationProfile,
-  resolveSubagentHeaderValue,
-  resolveToolingInstructions,
-  type CollaborationToolProfile
+  resolveSubagentHeaderValue
 } from "./collaboration"
 
 function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | undefined {
@@ -83,7 +79,6 @@ export async function handleChatParamsHook(input: {
   spoofMode: CodexSpoofMode
   collaborationProfileEnabled: boolean
   orchestratorSubagentsEnabled: boolean
-  collaborationToolProfile: CollaborationToolProfile
 }): Promise<void> {
   if (input.hookInput.model.providerID !== "openai") return
   const modelOptions = isRecord(input.hookInput.model.options) ? input.hookInput.model.options : {}
@@ -159,25 +154,31 @@ export async function handleChatParamsHook(input: {
     output: input.output
   })
 
-  input.output.options.instructions = ensureOpenCodeToolingCompatibility(asString(input.output.options.instructions))
+  if (input.spoofMode !== "codex") return
+
+  const normalizedAgentName = resolveHookAgentName(input.hookInput.agent)?.trim().toLowerCase()
+  if (normalizedAgentName === "build") {
+    const current = asString(input.output.options.instructions)
+    const replaced = replaceCodexToolCallsForOpenCode(current)
+    if (replaced) {
+      input.output.options.instructions = replaced
+    }
+    return
+  }
 
   if (!input.collaborationProfileEnabled) return
 
   if (!profile.enabled || !profile.kind) return
 
-  const collaborationInstructions = resolveCollaborationInstructions(profile.kind, {
-    plan: getCodexPlanModeInstructions(),
-    code: CODEX_CODE_MODE_INSTRUCTIONS
-  })
-  let mergedInstructions = mergeInstructions(asString(input.output.options.instructions), collaborationInstructions)
-
-  if (profile.isOrchestrator && input.orchestratorSubagentsEnabled) {
-    mergedInstructions = mergeInstructions(mergedInstructions, CODEX_ORCHESTRATOR_INSTRUCTIONS)
+  if (profile.instructionPreset === "plan") {
+    const replacedPlan = replaceCodexToolCallsForOpenCode(getCodexPlanModeInstructions()) ?? getCodexPlanModeInstructions()
+    input.output.options.instructions = mergeInstructions(
+      asString(input.output.options.instructions),
+      replacedPlan
+    )
+    return
   }
 
-  mergedInstructions = mergeInstructions(mergedInstructions, resolveToolingInstructions(input.collaborationToolProfile))
-
-  input.output.options.instructions = mergedInstructions
 }
 
 export async function handleChatHeadersHook(input: {

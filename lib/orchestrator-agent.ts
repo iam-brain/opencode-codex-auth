@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 
 import { refreshCachedCodexPrompts } from "./codex-prompts-cache"
+import { replaceCodexToolCallsForOpenCode } from "./codex-native/collaboration"
 
 export const CODEX_ORCHESTRATOR_AGENT_FILE = "orchestrator.md"
 export const CODEX_ORCHESTRATOR_AGENT_FILE_DISABLED = `${CODEX_ORCHESTRATOR_AGENT_FILE}.disabled`
@@ -136,7 +137,8 @@ function stripLeadingFrontmatter(content: string): string {
 
 function composeTemplateFromPrompt(prompt: string): string {
   const normalizedPrompt = stripLeadingFrontmatter(prompt)
-  return `${ORCHESTRATOR_FRONTMATTER}\n${normalizedPrompt}\n`
+  const replacedPrompt = replaceCodexToolCallsForOpenCode(normalizedPrompt) ?? normalizedPrompt
+  return `${ORCHESTRATOR_FRONTMATTER}\n${replacedPrompt}\n`
 }
 
 async function resolveOrchestratorAgentTemplate(cacheDir?: string): Promise<string> {

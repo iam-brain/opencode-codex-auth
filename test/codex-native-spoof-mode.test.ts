@@ -768,10 +768,11 @@ describe("codex-native spoof + params hooks", () => {
     await chatParams?.(input, output)
     expect(output.options.instructions).toContain("Catalog instructions")
     expect(output.options.instructions).toContain("# Plan Mode (Conversational)")
-    expect(output.options.instructions).toContain("Tooling Compatibility (OpenCode)")
+    expect(output.options.instructions).toContain("request_user_input")
+    expect(output.options.instructions).not.toContain("Tooling Compatibility (OpenCode)")
   })
 
-  it("does not enable codex collaboration profile for native OpenCode agents", async () => {
+  it("replaces build agent instructions in codex mode without execute preset", async () => {
     const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex" })
     const chatParams = hooks["chat.params"]
     expect(chatParams).toBeTypeOf("function")
@@ -801,10 +802,49 @@ describe("codex-native spoof + params hooks", () => {
     }
 
     await chatParams?.(input, output)
-    expect(output.options.instructions).toBe("Catalog instructions")
-    expect(output.options.instructions).not.toContain("you are now in code mode.")
+    expect(output.options.instructions).toContain("Catalog instructions")
+    expect(output.options.instructions).not.toContain("# Collaboration Style: Execute")
     expect(output.options.instructions).not.toContain("# Plan Mode")
     expect(output.options.reasoningEffort).toBe("high")
+  })
+
+  it("keeps build-agent instruction replacement active in codex mode when collaboration profile is disabled", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      spoofMode: "codex",
+      collaborationProfileEnabled: false
+    })
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_build_no_collab",
+      agent: "build",
+      provider: {},
+      message: {},
+      model: {
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexInstructions: "Use spawn_agent and send_input with write_stdin",
+          codexRuntimeDefaults: {
+            defaultReasoningEffort: "high"
+          }
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {}
+    }
+
+    await chatParams?.(input, output)
+    expect(output.options.instructions).toContain("task")
+    expect(output.options.instructions).not.toContain("spawn_agent")
+    expect(output.options.instructions).not.toContain("send_input")
+    expect(output.options.instructions).not.toContain("write_stdin")
   })
 
   it("uses native headers by default (legacy-plugin style)", async () => {
@@ -964,15 +1004,14 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.headers["x-opencode-collaboration-mode-kind"]).toBeUndefined()
   })
 
-  it("allows collaboration injection in native mode when explicitly enabled", async () => {
+  it("allows collaboration headers in native mode without runtime instruction injection", async () => {
     const hooks = await CodexAuthPlugin(
       {} as never,
       {
         spoofMode: "native",
         mode: "native",
         collaborationProfileEnabled: true,
-        orchestratorSubagentsEnabled: true,
-        collaborationToolProfile: "codex"
+        orchestratorSubagentsEnabled: true
       } as never
     )
     const chatParams = hooks["chat.params"]
@@ -1003,8 +1042,8 @@ describe("codex-native spoof + params hooks", () => {
 
     await chatParams?.(paramsInput, paramsOutput)
     expect(paramsOutput.options.instructions).toContain("Catalog instructions")
-    expect(paramsOutput.options.instructions).toContain("# Sub-agents")
-    expect(paramsOutput.options.instructions).toContain("Tooling Compatibility (Codex-style)")
+    expect(paramsOutput.options.instructions).not.toContain("# Sub-agents")
+    expect(paramsOutput.options.instructions).not.toContain("# Collaboration Style: Execute")
 
     const headersInput = {
       sessionID: "ses_native_collab_headers",
@@ -1075,7 +1114,7 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.instructions).toContain("# Plan Mode (Conversational)")
   })
 
-  it("injects orchestrator collaboration instructions when experimental collaboration profile is enabled", async () => {
+  it("does not append orchestrator profile instructions at runtime", async () => {
     const hooks = await CodexAuthPlugin(
       {} as never,
       {
@@ -1112,7 +1151,7 @@ describe("codex-native spoof + params hooks", () => {
     await chatParams?.(input, output)
 
     expect(output.options.instructions).toContain("Catalog instructions")
-    expect(output.options.instructions).toContain("# Sub-agents")
+    expect(output.options.instructions).toContain("Catalog instructions")
   })
 
   it("preserves orchestrator instructions instead of replacing with model base instructions", async () => {
@@ -1160,7 +1199,8 @@ describe("codex-native spoof + params hooks", () => {
 
     expect(output.options.instructions).toContain("You are Codex, a coding agent based on GPT-5.")
     expect(output.options.instructions).toContain("# Sub-agents")
-    expect(output.options.instructions).toContain("Tooling Compatibility (OpenCode)")
+    expect(output.options.instructions).toContain("spawn_agent")
+    expect(output.options.instructions).not.toContain("Tooling Compatibility (OpenCode)")
     expect(output.options.instructions).not.toContain("Catalog instructions")
   })
 
