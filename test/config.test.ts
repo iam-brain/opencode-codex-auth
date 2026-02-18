@@ -9,7 +9,6 @@ import {
   ensureDefaultConfigFile,
   getCompatInputSanitizerEnabled,
   getCollaborationProfileEnabled,
-  getCollaborationToolProfile,
   getCodexCompactionOverrideEnabled,
   getBehaviorSettings,
   getDebugEnabled,
@@ -232,13 +231,6 @@ describe("config loading", () => {
     expect(getOrchestratorSubagentsEnabled(disabled)).toBe(false)
   })
 
-  it("parses collaboration tooling profile from env", () => {
-    const codex = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE: "codex" } })
-    const opencode = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE: "opencode" } })
-    expect(getCollaborationToolProfile(codex)).toBe("codex")
-    expect(getCollaborationToolProfile(opencode)).toBe("opencode")
-  })
-
   it("reads personality + behavior settings from file config", () => {
     const cfg = resolveConfig({
       env: {},
@@ -412,8 +404,7 @@ describe("config file loading", () => {
           headerTransformDebug: true,
           pidOffset: true,
           collaborationProfile: true,
-          orchestratorSubagents: true,
-          collaborationToolProfile: "codex"
+          orchestratorSubagents: true
         },
         global: {
           thinkingSummaries: true,
@@ -453,7 +444,6 @@ describe("config file loading", () => {
     expect(loaded.pidOffsetEnabled).toBe(true)
     expect(loaded.collaborationProfileEnabled).toBe(true)
     expect(loaded.orchestratorSubagentsEnabled).toBe(true)
-    expect(loaded.collaborationToolProfile).toBe("codex")
     expect(loaded.rotationStrategy).toBe("hybrid")
     expect(loaded.promptCacheKeyStrategy).toBe("project")
     expect(loaded.mode).toBe("codex")

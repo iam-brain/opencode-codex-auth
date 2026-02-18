@@ -70,10 +70,6 @@
         },
         "orchestratorSubagents": {
           "type": "boolean"
-        },
-        "collaborationToolProfile": {
-          "type": "string",
-          "enum": ["opencode", "codex"]
         }
       }
     },

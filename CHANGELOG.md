@@ -6,7 +6,6 @@ All notable changes to this project will be documented in this file.
 
 - Added experimental Codex collaboration profile gates (`runtime.collaborationProfile`, `runtime.orchestratorSubagents`) for plan/orchestrator parity.
 - Collaboration features now auto-enable by default in `runtime.mode="codex"` and can be explicitly enabled/disabled in any mode.
-- Added `runtime.collaborationToolProfile` (`opencode` | `codex`) to choose OpenCode tool translation guidance vs codex-style tool semantics in injected collaboration instructions.
 - Added managed `orchestrator` agent template sync under `~/.config/opencode/agents`, with visibility auto-gated by runtime mode.
 - Synced pinned upstream Codex orchestrator + plan templates into a local prompt cache (ETag/304-aware, TTL refreshed) and used the cached plan prompt to populate plan-mode collaboration instructions.
 - Added configurable `runtime.promptCacheKeyStrategy` (`default` | `project`) for session-based or project-path-based prompt cache keying.

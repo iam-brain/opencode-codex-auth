@@ -29,7 +29,6 @@ Top-level:
 - `runtime.pidOffset: boolean`
 - `runtime.collaborationProfile: boolean`
 - `runtime.orchestratorSubagents: boolean`
-- `runtime.collaborationToolProfile: "opencode" | "codex"`
 - `global.personality: string`
 - `global.thinkingSummaries: boolean`
 - `global.verbosityEnabled: boolean`
@@ -67,7 +66,6 @@ Default generated values:
 - `runtime.pidOffset: false`
 - `runtime.collaborationProfile`: mode-derived when unset (`true` in `codex`, `false` in `native`)
 - `runtime.orchestratorSubagents`: inherits `runtime.collaborationProfile` effective value when unset
-- `runtime.collaborationToolProfile: "opencode"`
 - `global.personality: "pragmatic"`
 - `global.verbosityEnabled: true`
 - `global.verbosity: "default"`
@@ -115,7 +113,6 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`
 - `OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE`
 - `OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS`
-- `OPENCODE_OPENAI_MULTI_COLLABORATION_TOOL_PROFILE`
 
 Resolved by auth/runtime code (`lib/codex-native.ts` + helper modules under `lib/codex-native/`):
 
