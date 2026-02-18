@@ -81,7 +81,8 @@ Known-field type validation is applied on load. If a known field has an invalid 
 - `runtime.sanitizeInputs: boolean`
   - Sanitizes outbound payloads for provider-compat edge cases.
 - `runtime.developerMessagesToUser: boolean`
-  - In `codex` mode, remaps non-permissions `developer` messages to `user` (`true` default).
+  - When effective spoof mode is `codex`, remaps non-permissions `developer` messages to `user` (`true` default).
+  - Preserves permissions/bootstrap developer blocks (for example `<permissions instructions>` content) even when remap is enabled.
   - Set to `false` to preserve all `developer` roles.
 - `runtime.promptCacheKeyStrategy: "default" | "project"`
   - `default`: preserve upstream `prompt_cache_key` behavior (session-based keying).
@@ -106,6 +107,11 @@ Known-field type validation is applied on load. If a known field has an invalid 
   - Experimental: enables Codex-style subagent header hints for helper agents under collaboration profile mode.
   - If omitted, inherits `runtime.collaborationProfile` effective value.
   - Explicit `true`/`false` works in any mode.
+- `runtime.collaborationToolProfile: "opencode" | "codex"`
+  - Controls tool-language guidance in injected collaboration instructions.
+  - `opencode` (default): translates Codex semantics to OpenCode tool names.
+  - `codex`: prefers Codex tool semantics and falls back to OpenCode equivalents.
+  - Independent safety shim: when existing instructions reference Codex tool names (for example `spawn_agent`, `send_input`, `exec_command`), OpenCode compatibility guidance is appended if missing, even outside collaboration-profile injection.
 
 ### Model behavior
 
