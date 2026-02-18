@@ -66,4 +66,30 @@ describe("quarantine", () => {
     expect(files.length).toBe(1)
     expect(files[0]).toContain("1003")
   })
+
+  it("retains newest entries by numeric timestamp when timestamp width differs", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-retention-numeric-"))
+    const quarantineDir = path.join(dir, "quarantine")
+    const src = path.join(dir, "auth.json")
+
+    await fs.writeFile(src, "corrupt old")
+    await quarantineFile({
+      sourcePath: src,
+      quarantineDir,
+      now: () => 9,
+      keep: 1
+    })
+
+    await fs.writeFile(src, "corrupt new")
+    await quarantineFile({
+      sourcePath: src,
+      quarantineDir,
+      now: () => 10,
+      keep: 1
+    })
+
+    const files = await fs.readdir(quarantineDir)
+    expect(files).toHaveLength(1)
+    expect(files[0]).toContain("10")
+  })
 })

@@ -208,7 +208,7 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
             }
             return authFile
           })
-          process.stdout.write("\nUpdated account status.\n\n")
+          process.stdout.write("\nAccount status updated.\n\n")
         },
         onRefreshAccount: async (account) => {
           let refreshed = false
@@ -311,7 +311,7 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
           process.stdout.write(
             refreshed
               ? "\nAccount refreshed successfully.\n\n"
-              : "\nAccount refresh failed. Run login to reauthenticate.\n\n"
+              : "\nAccount refresh failed. Run `opencode auth login` to reauthenticate.\n\n"
           )
         },
         onDeleteAccount: async (account, scope) => {

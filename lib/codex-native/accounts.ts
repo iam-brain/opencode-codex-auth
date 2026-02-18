@@ -1,35 +1,8 @@
 import { extractAccountIdFromClaims, extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "../claims"
+import { normalizeAccountAuthTypes } from "../account-auth-types"
 import { buildIdentityKey, normalizeEmail, normalizePlan, synchronizeIdentityKey } from "../identity"
 import type { AccountAuthType, AccountRecord, OpenAIAuthMode, OpenAIOAuthDomain } from "../types"
-import type { AccountInfo, DeleteScope } from "../ui/auth-menu"
-
-const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
-
-export function normalizeAccountAuthTypes(input: unknown): AccountAuthType[] {
-  const source = Array.isArray(input) ? input : ["native"]
-  const seen = new Set<AccountAuthType>()
-  const out: AccountAuthType[] = []
-
-  for (const rawType of source) {
-    const type = rawType === "codex" ? "codex" : rawType === "native" ? "native" : undefined
-    if (!type || seen.has(type)) continue
-    seen.add(type)
-    out.push(type)
-  }
-
-  if (out.length === 0) out.push("native")
-  out.sort((a, b) => ACCOUNT_AUTH_TYPE_ORDER.indexOf(a) - ACCOUNT_AUTH_TYPE_ORDER.indexOf(b))
-  return out
-}
-
-export function mergeAccountAuthTypes(existing: unknown, incoming: unknown): AccountAuthType[] {
-  const merged = [...normalizeAccountAuthTypes(existing), ...normalizeAccountAuthTypes(incoming)]
-  return normalizeAccountAuthTypes(merged)
-}
-
-export function removeAccountAuthType(existing: unknown, scope: Exclude<DeleteScope, "both">): AccountAuthType[] {
-  return normalizeAccountAuthTypes(existing).filter((type) => type !== scope)
-}
+import type { AccountInfo } from "../ui/auth-menu"
 
 export function upsertAccount(openai: OpenAIOAuthDomain, incoming: AccountRecord): AccountRecord {
   const normalizedEmail = normalizeEmail(incoming.email)

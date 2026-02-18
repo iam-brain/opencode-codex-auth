@@ -7,6 +7,7 @@ import {
   switchAccountByIndex,
   toggleAccountEnabledByIndex
 } from "./lib/accounts-tools"
+import { removedAccountMessage, switchedAccountMessage, toggledAccountMessage } from "./lib/auth-messages"
 import { CodexAuthPlugin, refreshAccessToken } from "./lib/codex-native"
 import {
   ensureDefaultConfigFile,
@@ -41,7 +42,6 @@ import { reconcileOrchestratorAgentVisibility } from "./lib/orchestrator-agent"
 import { runOneProactiveRefreshTick } from "./lib/proactive-refresh"
 import { toolOutputForStatus } from "./lib/codex-status-tool"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage"
-import { switchToolMessage } from "./lib/tools-output"
 import { refreshCachedCodexPrompts } from "./lib/codex-prompts-cache"
 import { setCodexPlanModeInstructions } from "./lib/codex-native/collaboration"
 
@@ -158,7 +158,7 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
           const row = listAccountsForTools(openai)[index - 1]
           const next = switchAccountByIndex(openai, index)
           authFile.openai = next
-          message = switchToolMessage({ email: row?.email, plan: row?.plan, index1: index })
+          message = switchedAccountMessage({ email: row?.email, plan: row?.plan, index1: index })
         })
 
         return message
@@ -172,13 +172,17 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
 
         await saveAuthStorage(undefined, (authFile) => {
           const openai = requireOpenAIMultiOauthAuth(authFile)
-          const row = listAccountsForTools(openai)[index - 1]
+          const rowsBefore = listAccountsForTools(openai)
+          const row = rowsBefore[index - 1]
           const next = toggleAccountEnabledByIndex(openai, index)
           authFile.openai = next
-          const label = row?.email ?? "account"
-          const plan = row?.plan ? ` (${row.plan})` : ""
-          const enabled = listAccountsForTools(next).find((r) => r.identityKey === row?.identityKey)?.enabled === true
-          message = `Toggled #${index}: ${label}${plan} -> ${enabled ? "enabled" : "disabled"}`
+          const enabled = listAccountsForTools(next)[index - 1]?.enabled === true
+          message = toggledAccountMessage({
+            index1: index,
+            email: row?.email,
+            plan: row?.plan,
+            enabled
+          })
         })
 
         return message
@@ -199,9 +203,11 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
           const row = listAccountsForTools(openai)[index - 1]
           const next = removeAccountByIndex(openai, index)
           authFile.openai = next
-          const label = row?.email ?? "account"
-          const plan = row?.plan ? ` (${row.plan})` : ""
-          message = `Removed #${index}: ${label}${plan}`
+          message = removedAccountMessage({
+            index1: index,
+            email: row?.email,
+            plan: row?.plan
+          })
         })
 
         return message

@@ -398,29 +398,17 @@ export async function sanitizeOutboundRequestIfNeeded(
   request: Request,
   enabled: boolean
 ): Promise<{ request: Request; changed: boolean }> {
-  if (!enabled) return { request, changed: false }
-
-  const method = request.method.toUpperCase()
-  if (method !== "POST") return { request, changed: false }
-
-  let payload: unknown
-  try {
-    const raw = await request.clone().text()
-    if (!raw) return { request, changed: false }
-    payload = JSON.parse(raw)
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) {
-      // fall through with unchanged request on non-JSON payload parsing issues
-    }
-    return { request, changed: false }
+  const transformed = await transformOutboundRequestPayload({
+    request,
+    stripReasoningReplayEnabled: false,
+    remapDeveloperMessagesToUserEnabled: false,
+    compatInputSanitizerEnabled: enabled,
+    promptCacheKeyOverrideEnabled: false
+  })
+  return {
+    request: transformed.request,
+    changed: transformed.compatSanitizer.changed
   }
-
-  if (!isRecord(payload)) return { request, changed: false }
-  const sanitized = sanitizeRequestPayloadForCompat(payload)
-  if (!sanitized.changed) return { request, changed: false }
-
-  const sanitizedRequest = rebuildRequestWithJsonBody(request, sanitized.payload)
-  return { request: sanitizedRequest, changed: true }
 }
 
 type TransformReason =
@@ -800,47 +788,18 @@ export async function applyPromptCacheKeyOverrideToRequest(input: {
   enabled: boolean
   promptCacheKey?: string
 }): Promise<{ request: Request; changed: boolean; reason: string }> {
-  if (!input.enabled) {
-    return { request: input.request, changed: false, reason: "disabled" }
-  }
-
-  const promptCacheKey = asString(input.promptCacheKey)
-  if (!promptCacheKey) {
-    return { request: input.request, changed: false, reason: "missing_key" }
-  }
-
-  const method = input.request.method.toUpperCase()
-  if (method !== "POST") {
-    return { request: input.request, changed: false, reason: "non_post" }
-  }
-
-  let payload: unknown
-  try {
-    const raw = await input.request.clone().text()
-    if (!raw) return { request: input.request, changed: false, reason: "empty_body" }
-    payload = JSON.parse(raw)
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) {
-      // request body could not be parsed as JSON
-    }
-    return { request: input.request, changed: false, reason: "invalid_json" }
-  }
-
-  if (!isRecord(payload)) {
-    return { request: input.request, changed: false, reason: "non_object_body" }
-  }
-
-  const current = asString(payload.prompt_cache_key)
-  if (current === promptCacheKey) {
-    return { request: input.request, changed: false, reason: "already_matches" }
-  }
-
-  payload.prompt_cache_key = promptCacheKey
-  const updatedRequest = rebuildRequestWithJsonBody(input.request, payload)
+  const transformed = await transformOutboundRequestPayload({
+    request: input.request,
+    stripReasoningReplayEnabled: false,
+    remapDeveloperMessagesToUserEnabled: false,
+    compatInputSanitizerEnabled: false,
+    promptCacheKeyOverrideEnabled: input.enabled,
+    promptCacheKeyOverride: input.promptCacheKey
+  })
   return {
-    request: updatedRequest,
-    changed: true,
-    reason: current ? "replaced" : "set"
+    request: transformed.request,
+    changed: transformed.promptCacheKey.changed,
+    reason: transformed.promptCacheKey.reason
   }
 }
 
@@ -893,111 +852,19 @@ export async function remapDeveloperMessagesToUserOnRequest(input: { request: Re
   remappedCount: number
   preservedCount: number
 }> {
-  if (!input.enabled) {
-    return {
-      request: input.request,
-      changed: false,
-      reason: "disabled",
-      remappedCount: 0,
-      preservedCount: 0
-    }
-  }
-
-  const method = input.request.method.toUpperCase()
-  if (method !== "POST") {
-    return {
-      request: input.request,
-      changed: false,
-      reason: "non_post",
-      remappedCount: 0,
-      preservedCount: 0
-    }
-  }
-
-  let payload: unknown
-  try {
-    const raw = await input.request.clone().text()
-    if (!raw) {
-      return {
-        request: input.request,
-        changed: false,
-        reason: "empty_body",
-        remappedCount: 0,
-        preservedCount: 0
-      }
-    }
-    payload = JSON.parse(raw)
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) {
-      // request body could not be parsed as JSON
-    }
-    return {
-      request: input.request,
-      changed: false,
-      reason: "invalid_json",
-      remappedCount: 0,
-      preservedCount: 0
-    }
-  }
-
-  if (!isRecord(payload)) {
-    return {
-      request: input.request,
-      changed: false,
-      reason: "non_object_body",
-      remappedCount: 0,
-      preservedCount: 0
-    }
-  }
-  if (!Array.isArray(payload.input)) {
-    return {
-      request: input.request,
-      changed: false,
-      reason: "missing_input_array",
-      remappedCount: 0,
-      preservedCount: 0
-    }
-  }
-
-  let nextInput: unknown[] | undefined
-  let remappedCount = 0
-  let preservedCount = 0
-  let developerCount = 0
-  for (let index = 0; index < payload.input.length; index += 1) {
-    const item = payload.input[index]
-    if (!isRecord(item)) continue
-    if (item.role !== "developer") continue
-    developerCount += 1
-    if (shouldPreserveDeveloperRole(item)) {
-      preservedCount += 1
-      continue
-    }
-    if (!nextInput) nextInput = payload.input.slice()
-    nextInput[index] = {
-      ...item,
-      role: "user"
-    }
-    remappedCount += 1
-  }
-
-  if (!nextInput) {
-    return {
-      request: input.request,
-      changed: false,
-      reason: developerCount === 0 ? "no_developer_messages" : "permissions_only",
-      remappedCount,
-      preservedCount
-    }
-  }
-
-  payload.input = nextInput
-  const updatedRequest = rebuildRequestWithJsonBody(input.request, payload)
+  const transformed = await transformOutboundRequestPayload({
+    request: input.request,
+    stripReasoningReplayEnabled: false,
+    remapDeveloperMessagesToUserEnabled: input.enabled,
+    compatInputSanitizerEnabled: false,
+    promptCacheKeyOverrideEnabled: false
+  })
   return {
-    request: updatedRequest,
-    changed: true,
-    reason: "updated",
-    remappedCount,
-    preservedCount
+    request: transformed.request,
+    changed: transformed.developerRoleRemap.changed,
+    reason: transformed.developerRoleRemap.reason,
+    remappedCount: transformed.developerRoleRemap.remappedCount,
+    preservedCount: transformed.developerRoleRemap.preservedCount
   }
 }
 
@@ -1044,135 +911,19 @@ export async function stripReasoningReplayFromRequest(input: { request: Request;
   removedPartCount: number
   removedFieldCount: number
 }> {
-  if (!input.enabled) {
-    return {
-      request: input.request,
-      changed: false,
-      reason: "disabled",
-      removedPartCount: 0,
-      removedFieldCount: 0
-    }
-  }
-
-  const method = input.request.method.toUpperCase()
-  if (method !== "POST") {
-    return {
-      request: input.request,
-      changed: false,
-      reason: "non_post",
-      removedPartCount: 0,
-      removedFieldCount: 0
-    }
-  }
-
-  let payload: unknown
-  try {
-    const raw = await input.request.clone().text()
-    if (!raw) {
-      return {
-        request: input.request,
-        changed: false,
-        reason: "empty_body",
-        removedPartCount: 0,
-        removedFieldCount: 0
-      }
-    }
-    payload = JSON.parse(raw)
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) {
-      // request body could not be parsed as JSON
-    }
-    return {
-      request: input.request,
-      changed: false,
-      reason: "invalid_json",
-      removedPartCount: 0,
-      removedFieldCount: 0
-    }
-  }
-
-  if (!isRecord(payload)) {
-    return {
-      request: input.request,
-      changed: false,
-      reason: "non_object_body",
-      removedPartCount: 0,
-      removedFieldCount: 0
-    }
-  }
-  if (!Array.isArray(payload.input)) {
-    return {
-      request: input.request,
-      changed: false,
-      reason: "missing_input_array",
-      removedPartCount: 0,
-      removedFieldCount: 0
-    }
-  }
-
-  let changed = false
-  let removedPartCount = 0
-  let removedFieldCount = 0
-  const nextInput: unknown[] = []
-
-  for (const item of payload.input) {
-    if (isReasoningReplayPart(item)) {
-      changed = true
-      removedPartCount += 1
-      continue
-    }
-
-    if (!isRecord(item)) {
-      nextInput.push(item)
-      continue
-    }
-
-    const nextItem: Record<string, unknown> = { ...item }
-    const role = asString(nextItem.role)?.toLowerCase()
-    if (role === "assistant" && Array.isArray(nextItem.content)) {
-      const contentOut: unknown[] = []
-      for (const entry of nextItem.content) {
-        if (isReasoningReplayPart(entry)) {
-          changed = true
-          removedPartCount += 1
-          continue
-        }
-        const strippedEntry = stripReasoningReplayFields(entry)
-        if (strippedEntry.removed > 0) {
-          changed = true
-          removedFieldCount += strippedEntry.removed
-        }
-        contentOut.push(strippedEntry.value)
-      }
-      nextItem.content = contentOut
-    }
-
-    const strippedItem = stripReasoningReplayFields(nextItem)
-    if (strippedItem.removed > 0) {
-      changed = true
-      removedFieldCount += strippedItem.removed
-    }
-    nextInput.push(strippedItem.value)
-  }
-
-  if (!changed) {
-    return {
-      request: input.request,
-      changed: false,
-      reason: "no_reasoning_replay",
-      removedPartCount,
-      removedFieldCount
-    }
-  }
-
-  payload.input = nextInput
-  const updatedRequest = rebuildRequestWithJsonBody(input.request, payload)
+  const transformed = await transformOutboundRequestPayload({
+    request: input.request,
+    stripReasoningReplayEnabled: input.enabled,
+    remapDeveloperMessagesToUserEnabled: false,
+    compatInputSanitizerEnabled: false,
+    promptCacheKeyOverrideEnabled: false
+  })
   return {
-    request: updatedRequest,
-    changed: true,
-    reason: "updated",
-    removedPartCount,
-    removedFieldCount
+    request: transformed.request,
+    changed: transformed.replay.changed,
+    reason: transformed.replay.reason,
+    removedPartCount: transformed.replay.removedPartCount,
+    removedFieldCount: transformed.replay.removedFieldCount
   }
 }
 

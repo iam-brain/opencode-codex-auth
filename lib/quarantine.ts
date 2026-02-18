@@ -14,6 +14,14 @@ export async function quarantineFile(input: {
   const base = path.basename(input.sourcePath)
   const dest = path.join(input.quarantineDir, `${base}.${input.now()}.quarantine.json`)
 
+  const extractTimestamp = (fileName: string): number => {
+    const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    const match = fileName.match(new RegExp(`^${escapedBase}\\.(\\d+)\\.quarantine\\.json$`))
+    if (!match?.[1]) return Number.NEGATIVE_INFINITY
+    const parsed = Number.parseInt(match[1], 10)
+    return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY
+  }
+
   // rename preferred; fallback to copy+unlink
   try {
     await fs.rename(input.sourcePath, dest)
@@ -39,7 +47,12 @@ export async function quarantineFile(input: {
   try {
     const allFiles = await fs.readdir(input.quarantineDir)
     const files = allFiles.filter((f) => f.startsWith(base + "."))
-    files.sort() // timestamp in name -> lexical works for Date.now() values
+    files.sort((left, right) => {
+      const leftTs = extractTimestamp(left)
+      const rightTs = extractTimestamp(right)
+      if (leftTs !== rightTs) return leftTs - rightTs
+      return left.localeCompare(right)
+    })
 
     const excess = files.length - keep
     for (let i = 0; i < excess; i++) {

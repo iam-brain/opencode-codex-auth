@@ -118,10 +118,19 @@ describe("config loading", () => {
     expect(getSpoofMode(cfg)).toBe("native")
   })
 
-  it("lets spoof env temporarily override file runtime mode", () => {
+  it("keeps file runtime mode authoritative over spoof env compatibility input", () => {
     const cfg = resolveConfig({
       env: { OPENCODE_OPENAI_MULTI_SPOOF_MODE: "codex" },
       file: { mode: "native" }
+    })
+    expect(getMode(cfg)).toBe("native")
+    expect(getSpoofMode(cfg)).toBe("native")
+  })
+
+  it("uses spoof env only when runtime mode is unset", () => {
+    const cfg = resolveConfig({
+      env: { OPENCODE_OPENAI_MULTI_SPOOF_MODE: "codex" },
+      file: {}
     })
     expect(getMode(cfg)).toBe("codex")
     expect(getSpoofMode(cfg)).toBe("codex")

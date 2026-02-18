@@ -94,7 +94,7 @@ describe("request snapshots", () => {
 
     expect(payload.attempt).toBe(1)
     expect(payload.headers.authorization).toBe("Bearer [redacted]")
-    expect(payload.headers["chatgpt-account-id"]).toBe("acc_123")
+    expect(payload.headers["chatgpt-account-id"]).toBe("[redacted]")
     expect(payload.body.prompt_cache_key).toBe("ses_snap_1")
     expect(payload.body.access_token).toBe("[redacted]")
     expect(payload.body.accessToken).toBe("[redacted]")
@@ -109,12 +109,115 @@ describe("request snapshots", () => {
 
     expect(liveHeaders).toHaveLength(1)
     expect(liveHeaders[0]?.headers.authorization).toBe("Bearer [redacted]")
+    expect(liveHeaders[0]?.headers["chatgpt-account-id"]).toBe("[redacted]")
     expect(liveHeaders[0]?.prompt_cache_key).toBe("ses_snap_1")
-
+  
     const requestMode = (await fs.stat(filePath)).mode & 0o777
     const liveHeadersMode = (await fs.stat(path.join(root, "live-headers.jsonl"))).mode & 0o777
     expect(requestMode).toBe(0o600)
     expect(liveHeadersMode).toBe(0o600)
+  })
+
+  it("redacts session and account identifier headers", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root, captureBodies: true })
+
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer super-secret-token",
+        "ChatGPT-Account-Id": "acc_sensitive",
+        session_id: "ses_sensitive",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex" })
+    })
+
+    await snapshots.captureRequest("outbound-attempt", request, { attempt: 1 })
+
+    const files = await fs.readdir(root)
+    const filePath = path.join(root, files.find((file) => file.includes("request-1-outbound-attempt"))!)
+    const payload = JSON.parse(await fs.readFile(filePath, "utf8")) as {
+      headers: Record<string, string>
+    }
+
+    expect(payload.headers.authorization).toBe("Bearer [redacted]")
+    expect(payload.headers["chatgpt-account-id"]).toBe("[redacted]")
+    expect(payload.headers.session_id).toBe("[redacted]")
+  })
+
+  it("redacts sensitive metadata fields and URL query values", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root, captureBodies: false })
+
+    const request = new Request(
+      "https://chatgpt.com/backend-api/codex/responses?session_id=ses_query&access_token=at_query&x=1",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer super-secret-token",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ model: "gpt-5.3-codex" })
+      }
+    )
+
+    await snapshots.captureRequest("outbound-attempt", request, {
+      identityKey: "acc_1|user@example.com|plus",
+      accountLabel: "user@example.com (plus)",
+      sessionKey: "ses_sensitive",
+      safeMeta: "ok"
+    })
+
+    const files = await fs.readdir(root)
+    const filePath = path.join(root, files.find((file) => file.includes("request-1-outbound-attempt"))!)
+    const payload = JSON.parse(await fs.readFile(filePath, "utf8")) as {
+      url: string
+      identityKey?: string
+      accountLabel?: string
+      sessionKey?: string
+      safeMeta?: string
+    }
+
+    expect(payload.url).toContain("session_id=%5Bredacted%5D")
+    expect(payload.url).toContain("access_token=%5Bredacted%5D")
+    expect(payload.identityKey).toBe("[redacted]")
+    expect(payload.accountLabel).toBe("[redacted]")
+    expect(payload.sessionKey).toBe("[redacted]")
+    expect(payload.safeMeta).toBe("ok")
+  })
+
+  it("redacts sensitive metadata fields on response snapshots", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root, captureBodies: false })
+
+    const response = new Response("ok", {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json"
+      }
+    })
+
+    await snapshots.captureResponse("outbound-response", response, {
+      identityKey: "acc_1|user@example.com|plus",
+      accountLabel: "user@example.com (plus)",
+      sessionKey: "ses_sensitive",
+      safeMeta: "ok"
+    })
+
+    const files = await fs.readdir(root)
+    const filePath = path.join(root, files.find((file) => file.includes("response-1-outbound-response"))!)
+    const payload = JSON.parse(await fs.readFile(filePath, "utf8")) as {
+      identityKey?: string
+      accountLabel?: string
+      sessionKey?: string
+      safeMeta?: string
+    }
+
+    expect(payload.identityKey).toBe("[redacted]")
+    expect(payload.accountLabel).toBe("[redacted]")
+    expect(payload.sessionKey).toBe("[redacted]")
+    expect(payload.safeMeta).toBe("ok")
   })
 
   it("skips writing files when disabled", async () => {
