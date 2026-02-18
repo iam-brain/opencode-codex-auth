@@ -30,8 +30,10 @@ npx -y @iam-brain/opencode-codex-auth install
 
 Installer flags:
 
-- `--config <path>`: use a custom `codex-config.json` path.
-- `--plugin <path>`: use a custom `opencode.json` path.
+- `--config <path>`: use a custom `opencode.json` path.
+- `--plugin <specifier>`: override plugin specifier written into `opencode.json`.
+
+`codex-config.json` is still created at the default resolved config location. To load config from a custom path at runtime, set `OPENCODE_OPENAI_MULTI_CONFIG_PATH`.
 
 ## 2) Keep OpenCode config minimal
 
@@ -122,6 +124,8 @@ Managed templates are synchronized at plugin startup:
 
 - `/create-personality` command is refreshed to the managed latest template
 - `personality-builder` skill bundle is refreshed to the managed latest template
+- pinned Codex prompts cache is refreshed best-effort (`codex-prompts-cache*.json`)
+- orchestrator agent visibility is reconciled based on effective collaboration profile
 
 ## Local development install
 

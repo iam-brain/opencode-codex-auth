@@ -7,7 +7,7 @@
 - `~/.config/opencode/.gitignore`
   - best-effort safety entries for plugin credential/cache/log artifacts
 - `~/.local/share/opencode/auth.json`
-  - OpenCode provider auth marker/state
+  - OpenCode provider auth marker/state (import source for explicit transfer workflows)
 - `~/.config/opencode/cache/codex-session-affinity.json`
   - sticky/hybrid session-to-account affinity state
 - `~/.config/opencode/cache/codex-snapshots.json`
@@ -22,8 +22,14 @@
   - account-scoped server model catalog mirror
 - `~/.config/opencode/cache/codex-auth-models-<hash>.json`
   - plugin-primary account-scoped model catalog cache
+- `~/.config/opencode/cache/codex-prompts-cache.json`
+  - pinned upstream orchestrator/plan prompt cache
+- `~/.config/opencode/cache/codex-prompts-cache-meta.json`
+  - pinned prompt cache metadata (`lastChecked`, URLs, ETags)
 - `~/.config/opencode/logs/codex-plugin/` (optional)
   - request/response snapshot logs when enabled
+- `~/.config/opencode/logs/codex-plugin/oauth-lifecycle.log` (optional)
+  - OAuth lifecycle debug log when `CODEX_AUTH_DEBUG` is enabled
 
 ## Related compatibility caches
 
@@ -41,6 +47,8 @@
 - Debug logging is opt-in.
 - Snapshot logging is opt-in.
 - Snapshot writer redacts sensitive auth headers/tokens before persistence.
+- Snapshot writer also redacts sensitive account/session metadata keys and sensitive URL query values.
+- If request body capture is enabled, prompt/tool payload content may still be written; use short-lived debugging windows only.
 - OAuth debug lifecycle logs rotate at a configurable size cap.
 
 ## Legacy import

@@ -4,9 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Refactored config precedence to keep explicit runtime mode authoritative and treat spoof mode as compatibility fallback.
+- Hardened merged auth state active-account selection to avoid disabled active identity carry-over.
+- Simplified request payload transform wrappers to route through one shared aggregate transform pipeline.
+- Consolidated account action messaging with shared builders and tightened auth-menu wording consistency.
+- Consolidated model-catalog stale-cache fallback emission flow and removed small dead helper modules.
 - Added experimental Codex collaboration profile gates (`runtime.collaborationProfile`, `runtime.orchestratorSubagents`) for plan/orchestrator parity.
 - Collaboration features now auto-enable by default in `runtime.mode="codex"` and can be explicitly enabled/disabled in any mode.
-- Added managed `orchestrator` agent template sync under `~/.config/opencode/agents`, with visibility auto-gated by runtime mode.
+- Added managed `orchestrator` agent template sync under `~/.config/opencode/agents`, with visibility gated by effective collaboration profile (mode-derived by default, explicitly overridable).
 - Synced pinned upstream Codex orchestrator + plan templates into a local prompt cache (ETag/304-aware, TTL refreshed) and used the cached plan prompt to populate plan-mode collaboration instructions.
 - Added configurable `runtime.promptCacheKeyStrategy` (`default` | `project`) for session-based or project-path-based prompt cache keying.
 - Added quota threshold warnings at `25%`, `20%`, `10%`, `5%`, `2.5%`, `0%` and automatic cooldown/switch when `5h` or `weekly` quota is exhausted.

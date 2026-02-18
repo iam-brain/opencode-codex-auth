@@ -86,8 +86,8 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
 
 ## Auth and account files
 
-- Provider marker: `~/.local/share/opencode/auth.json`
-- Plugin store: `~/.config/opencode/codex-accounts.json`
+- Primary plugin store (runtime-authoritative): `~/.config/opencode/codex-accounts.json`
+- OpenCode provider marker/import source: `~/.local/share/opencode/auth.json`
 
 ## Cache files (model/instruction path)
 
