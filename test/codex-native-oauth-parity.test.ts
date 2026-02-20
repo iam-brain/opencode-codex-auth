@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { __testOnly } from "../lib/codex-native"
 import { createHeadlessOAuthAuthorize } from "../lib/codex-native/oauth-auth-methods"
 import { OAUTH_CALLBACK_URI } from "../lib/codex-native/oauth-utils"
+import { fetchWithTimeout } from "../lib/codex-native/oauth-utils"
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -76,5 +77,15 @@ describe("codex-native oauth parity", () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined
     const headers = (init?.headers ?? {}) as Record<string, string>
     expect(headers["User-Agent"]).toMatch(/^opencode\/\d+\.\d+\.\d+$/)
+  })
+
+  it("forces oauth fetch calls to reject redirects", async () => {
+    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    await fetchWithTimeout("https://auth.openai.com/oauth/token", { method: "POST" }, 1000)
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined
+    expect(init?.redirect).toBe("error")
   })
 })

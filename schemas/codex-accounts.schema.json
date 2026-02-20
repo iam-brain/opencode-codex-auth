@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.iam-brain.dev/opencode-codex-auth/codex-accounts.schema.json",
   "title": "OpenCode Codex Auth Accounts",
-  "description": "Schema for ~/.config/opencode/codex-accounts.json",
+  "description": "Schema for <config-root>/codex-accounts.json",
   "type": "object",
   "additionalProperties": false,
   "properties": {

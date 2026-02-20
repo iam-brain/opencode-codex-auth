@@ -29,8 +29,7 @@ function shouldRewriteToCodexEndpoint(pathname: string): boolean {
 function isAllowedOpenAIOutboundHost(hostname: string): boolean {
   const normalized = hostname.trim().toLowerCase()
   if (!normalized) return false
-  if (OPENAI_OUTBOUND_HOST_ALLOWLIST.has(normalized)) return true
-  return normalized.endsWith(".openai.com") || normalized.endsWith(".chatgpt.com")
+  return OPENAI_OUTBOUND_HOST_ALLOWLIST.has(normalized)
 }
 
 export function assertAllowedOutboundUrl(url: URL): void {

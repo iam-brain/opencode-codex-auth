@@ -1,10 +1,10 @@
 import http from "node:http"
-import os from "node:os"
 import path from "node:path"
 import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs"
 
 import type { OpenAIAuthMode } from "../types"
 import { isFsErrorCode } from "../cache-io"
+import { defaultCodexPluginLogsPath } from "../paths"
 
 type OAuthServerStopReason = "success" | "error" | "other"
 
@@ -43,7 +43,10 @@ const REDACTED_DEBUG_META_KEY_FRAGMENTS = [
   "refresh_token",
   "access_token",
   "authorization_code",
-  "auth_code"
+  "auth_code",
+  "code_verifier",
+  "pkce",
+  "verifier"
 ]
 
 function shouldRedactDebugMetaKey(key: string): boolean {
@@ -55,14 +58,20 @@ function shouldRedactDebugMetaKey(key: string): boolean {
 function sanitizeDebugMeta(value: unknown): unknown {
   if (typeof value === "string") {
     return value
-      .replace(/\b(access_token|refresh_token|id_token|authorization_code|auth_code)=([^\s&]+)/gi, `$1=${REDACTED}`)
       .replace(
-        /"(access_token|refresh_token|id_token|authorization_code|auth_code)"\s*:\s*"[^"]*"/gi,
+        /\b(access_token|refresh_token|id_token|authorization_code|auth_code|code_verifier|pkce_verifier)=([^\s&]+)/gi,
+        `$1=${REDACTED}`
+      )
+      .replace(
+        /"(access_token|refresh_token|id_token|authorization_code|auth_code|code_verifier|pkce_verifier)"\s*:\s*"[^"]*"/gi,
         `"$1":"${REDACTED}"`
       )
-      .replace(/([?&])(code|state|access_token|refresh_token|id_token)=([^&]+)/gi, (_match, prefix, key) => {
-        return `${prefix}${key}=${REDACTED}`
-      })
+      .replace(
+        /([?&])(code|state|access_token|refresh_token|id_token|code_verifier|pkce_verifier)=([^&]+)/gi,
+        (_match, prefix, key) => {
+          return `${prefix}${key}=${REDACTED}`
+        }
+      )
   }
   if (Array.isArray(value)) return value.map((item) => sanitizeDebugMeta(item))
   if (!value || typeof value !== "object") return value
@@ -114,7 +123,7 @@ export function createOAuthServerController<TPkce, TTokens>(
   scheduleStop: (delayMs: number, reason: OAuthServerStopReason) => void
   waitForCallback: (pkce: TPkce, state: string, authMode: OpenAIAuthMode) => Promise<TTokens>
 } {
-  const debugLogDir = input.debugLogDir ?? path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
+  const debugLogDir = input.debugLogDir ?? defaultCodexPluginLogsPath()
   const debugLogFile = input.debugLogFile ?? path.join(debugLogDir, "oauth-lifecycle.log")
   const debugLogMaxBytes = resolveDebugLogMaxBytes()
 
@@ -129,11 +138,12 @@ export function createOAuthServerController<TPkce, TTokens>(
 
   function emitDebug(event: string, meta: Record<string, unknown> = {}): void {
     if (!isDebugEnabled()) return
+    const sanitizedMeta = (sanitizeDebugMeta(meta) as Record<string, unknown>) ?? {}
     const payload: Record<string, unknown> = {
       ts: new Date().toISOString(),
       pid: process.pid,
       event,
-      ...((sanitizeDebugMeta(meta) as Record<string, unknown>) ?? {})
+      meta: sanitizedMeta
     }
     const line = JSON.stringify(payload)
     try {
@@ -163,11 +173,15 @@ export function createOAuthServerController<TPkce, TTokens>(
     oauthServerCloseTimer = undefined
   }
 
-  function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
-    if (!remoteAddress) return false
-    const normalized = remoteAddress.split("%")[0]?.toLowerCase()
-    return normalized === "127.0.0.1" || normalized === "::1" || normalized === "::ffff:127.0.0.1"
-  }
+function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
+  if (!remoteAddress) return false
+  const normalized = remoteAddress.split("%")[0]?.toLowerCase()
+  if (!normalized) return false
+  if (normalized === "::1") return true
+  if (normalized.startsWith("127.")) return true
+  if (normalized.startsWith("::ffff:127.")) return true
+  return false
+}
 
   function setResponseHeaders(res: http.ServerResponse, options?: { contentType?: string; isHtml?: boolean }): void {
     res.setHeader("Cache-Control", "no-store")

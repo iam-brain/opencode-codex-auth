@@ -36,16 +36,15 @@
   - pinned upstream orchestrator/plan prompt cache
 - `<config-root>/cache/codex-prompts-cache-meta.json`
   - pinned prompt cache metadata (`lastChecked`, URLs, ETags)
-- `~/.config/opencode/logs/codex-plugin/` (optional)
+- `<config-root>/logs/codex-plugin/` (optional)
   - request/response snapshot logs when enabled
-  - note: snapshot logs currently use this path even when `XDG_CONFIG_HOME` is set
-- `~/.config/opencode/logs/codex-plugin/oauth-lifecycle.log` (optional)
+- `<config-root>/logs/codex-plugin/oauth-lifecycle.log` (optional)
   - OAuth lifecycle debug log when `CODEX_AUTH_DEBUG` is enabled
 
 ## External files read/imported (not plugin-owned)
 
-- `~/.local/share/opencode/auth.json`
-  - OpenCode provider auth marker/state (legacy transfer source)
+- `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
+  - OpenCode provider auth marker/state legacy transfer source
 
 Recommended additional local ignore patterns (not auto-managed by plugin):
 
@@ -57,7 +56,7 @@ Recommended additional local ignore patterns (not auto-managed by plugin):
 
 ## Related compatibility caches
 
-- Existing Codex instruction cache files under `~/.config/opencode/cache/` (for example `codex-instructions.md`, `codex-instructions-meta.json`, `gpt-5.1-instructions.md`) may coexist and are preserved.
+- Existing Codex instruction cache files under `<config-root>/cache/` (for example `codex-instructions.md`, `codex-instructions-meta.json`, `gpt-5.1-instructions.md`) may coexist and are preserved.
 - Metadata conventions are aligned (`etag`, `tag`, `lastChecked`, `url`) for GitHub-backed cache files.
 
 ## Sensitive data handling

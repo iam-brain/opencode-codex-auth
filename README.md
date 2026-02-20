@@ -97,14 +97,14 @@ Create guided custom personalities with:
 ## Account storage
 
 - Primary runtime store: resolved `<config-root>/codex-accounts.json` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`)
-- OpenCode provider auth marker (import source only): `~/.local/share/opencode/auth.json`
+- OpenCode provider auth marker (import source only): `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
 - Session affinity cache: resolved `<config-root>/cache/codex-session-affinity.json`
 - Quota snapshot cache: resolved `<config-root>/cache/codex-snapshots.json`
 
 Legacy sources can be imported explicitly from the auth menu:
 
 - resolved `<config-root>/openai-codex-accounts.json`
-- `~/.local/share/opencode/auth.json`
+- `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
 
 ## Documentation
 

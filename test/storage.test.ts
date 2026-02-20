@@ -430,6 +430,40 @@ describe("auth storage", () => {
     }
   })
 
+  it("checks provider auth marker path via XDG_DATA_HOME", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
+    const prevHome = process.env.HOME
+    const prevXdgData = process.env.XDG_DATA_HOME
+    process.env.HOME = root
+    process.env.XDG_DATA_HOME = path.join(root, "xdg-data")
+
+    try {
+      const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
+      const providerAuthPath = path.join(root, "xdg-data", "opencode", "auth.json")
+      await mkdir(path.dirname(providerAuthPath), { recursive: true })
+      await writeFile(
+        providerAuthPath,
+        JSON.stringify({
+          openai: { type: "oauth", refresh: "rt_native", access: "at_native", expires: Date.now() + 60_000 }
+        }),
+        "utf8"
+      )
+
+      await expect(shouldOfferLegacyTransfer(filePath)).resolves.toBe(true)
+    } finally {
+      if (prevHome === undefined) {
+        delete process.env.HOME
+      } else {
+        process.env.HOME = prevHome
+      }
+      if (prevXdgData === undefined) {
+        delete process.env.XDG_DATA_HOME
+      } else {
+        process.env.XDG_DATA_HOME = prevXdgData
+      }
+    }
+  })
+
   it("does not offer legacy transfer when codex-accounts.json already exists", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
     const filePath = path.join(dir, "codex-accounts.json")

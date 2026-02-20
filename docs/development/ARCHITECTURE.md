@@ -86,30 +86,30 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
 
 ## Auth and account files
 
-- Primary plugin store (runtime-authoritative): `~/.config/opencode/codex-accounts.json`
-- OpenCode provider marker/import source: `~/.local/share/opencode/auth.json`
+- Primary plugin store (runtime-authoritative): `<config-root>/codex-accounts.json`
+- OpenCode provider marker/import source: `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
 
 ## Cache files (model/instruction path)
 
-- `~/.config/opencode/cache/codex-client-version.json`
+- `<config-root>/cache/codex-client-version.json`
   - canonical cached target client version (`version`, `fetchedAt`)
-- `~/.config/opencode/cache/codex-models-cache-meta.json`
+- `<config-root>/cache/codex-models-cache-meta.json`
   - shared GitHub catalog metadata (`etag`, `tag`, `lastChecked`, `url`), aligned with instruction metadata files
-- `~/.config/opencode/cache/codex-models-cache.json`
+- `<config-root>/cache/codex-models-cache.json`
   - shared GitHub catalog snapshot used as stale fallback and refresh target
-- `~/.config/opencode/cache/codex-models-cache-<hash>.json`
+- `<config-root>/cache/codex-models-cache-<hash>.json`
   - account-scoped server catalog mirror
-- `~/.config/opencode/cache/codex-auth-models-<hash>.json`
+- `<config-root>/cache/codex-auth-models-<hash>.json`
   - plugin-primary account-scoped server catalog cache
 - Existing instruction caches (for example `codex-instructions.md` + `codex-instructions-meta.json`) remain separate artifacts under the same cache root.
 
 ## Cache files (pinned prompt sync)
 
-- `~/.config/opencode/cache/codex-prompts-cache.json`
+- `<config-root>/cache/codex-prompts-cache.json`
   - pinned upstream prompt text for:
     - Codex orchestrator agent template
     - Codex plan-mode collaboration prompt
-- `~/.config/opencode/cache/codex-prompts-cache-meta.json`
+- `<config-root>/cache/codex-prompts-cache-meta.json`
   - prompt-cache metadata (`lastChecked`, URLs, ETags)
 
 Fetch behavior is best-effort and uses ETag/304 revalidation plus a TTL to limit network traffic.

@@ -12,8 +12,12 @@ export function defaultAuthPath(): string {
   return path.join(defaultOpencodeConfigPath(), CODEX_ACCOUNTS_FILE)
 }
 
-export function opencodeProviderAuthPath(): string {
-  return path.join(os.homedir(), ".local", "share", "opencode", OPENCODE_AUTH_FILE)
+export function opencodeProviderAuthPath(env: Record<string, string | undefined> = process.env): string {
+  return path.join(defaultOpencodeDataPath(env), "opencode", OPENCODE_AUTH_FILE)
+}
+
+export function opencodeProviderAuthLegacyFallbackPath(env: Record<string, string | undefined> = process.env): string {
+  return opencodeProviderAuthPath({ ...env, XDG_DATA_HOME: undefined })
 }
 
 export function defaultOpencodeDataPath(env: Record<string, string | undefined> = process.env): string {
@@ -30,6 +34,14 @@ export function defaultOpencodeConfigPath(env: Record<string, string | undefined
 
 export function defaultOpencodeCachePath(env: Record<string, string | undefined> = process.env): string {
   return path.join(defaultOpencodeConfigPath(env), "cache")
+}
+
+export function defaultOpencodeLogsPath(env: Record<string, string | undefined> = process.env): string {
+  return path.join(defaultOpencodeConfigPath(env), "logs")
+}
+
+export function defaultCodexPluginLogsPath(env: Record<string, string | undefined> = process.env): string {
+  return path.join(defaultOpencodeLogsPath(env), "codex-plugin")
 }
 
 export function defaultOpencodeSessionStoragePath(env: Record<string, string | undefined> = process.env): string {

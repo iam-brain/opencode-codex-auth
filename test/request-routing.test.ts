@@ -8,18 +8,36 @@ describe("request routing", () => {
     expect(() => assertAllowedOutboundUrl(new URL("http://api.openai.com/v1/responses"))).toThrow(PluginFatalError)
   })
 
-  it("allows openai subdomains", () => {
-    expect(() => assertAllowedOutboundUrl(new URL("https://foo.openai.com/v1/models"))).not.toThrow()
+  it("blocks openai subdomains not in explicit allowlist", () => {
+    expect(() => assertAllowedOutboundUrl(new URL("https://foo.openai.com/v1/models"))).toThrow(PluginFatalError)
   })
 
-  it("allows chatgpt subdomains", () => {
-    expect(() => assertAllowedOutboundUrl(new URL("https://foo.chatgpt.com/backend-api/codex/responses"))).not.toThrow()
+  it("blocks chatgpt subdomains not in explicit allowlist", () => {
+    expect(() => assertAllowedOutboundUrl(new URL("https://foo.chatgpt.com/backend-api/codex/responses"))).toThrow(
+      PluginFatalError
+    )
   })
 
   it("blocks non-default https ports", () => {
     expect(() => assertAllowedOutboundUrl(new URL("https://api.openai.com:4443/v1/responses"))).toThrow(
       PluginFatalError
     )
+  })
+
+  it("allows api.openai.com outbound host", () => {
+    expect(() => assertAllowedOutboundUrl(new URL("https://api.openai.com/v1/models"))).not.toThrow()
+  })
+
+  it("allows auth.openai.com outbound host", () => {
+    expect(() => assertAllowedOutboundUrl(new URL("https://auth.openai.com/oauth/token"))).not.toThrow()
+  })
+
+  it("allows chat.openai.com outbound host", () => {
+    expect(() => assertAllowedOutboundUrl(new URL("https://chat.openai.com/backend-api/models"))).not.toThrow()
+  })
+
+  it("allows chatgpt.com outbound host", () => {
+    expect(() => assertAllowedOutboundUrl(new URL("https://chatgpt.com/backend-api/codex/responses"))).not.toThrow()
   })
 
   it("rewrites chat/completions path to codex endpoint", () => {

@@ -1,18 +1,30 @@
 import fs from "node:fs/promises"
-import os from "node:os"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 
 import type { Logger } from "./logger"
 import { enforceOwnerOnlyPermissions, isFsErrorCode } from "./cache-io"
-
-const DEFAULT_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs", "codex-plugin")
+import { defaultCodexPluginLogsPath } from "./paths"
 const REDACTED = "[redacted]"
 const REDACTED_HEADERS = new Set([
   "authorization",
   "cookie",
   "set-cookie",
   "proxy-authorization",
+  "forwarded",
+  "x-forwarded-for",
+  "x-forwarded-proto",
+  "x-forwarded-host",
+  "x-forwarded-port",
+  "x-api-key",
+  "api-key",
+  "x-openai-api-key",
+  "openai-api-key",
+  "x-anthropic-api-key",
+  "x-real-ip",
+  "true-client-ip",
+  "cf-connecting-ip",
+  "x-client-ip",
   "chatgpt-account-id",
   "session_id"
 ])
@@ -22,6 +34,19 @@ const REDACTED_BODY_KEYS = new Set([
   "id_token",
   "authorization",
   "prompt_cache_key",
+  "authorization_code",
+  "auth_code",
+  "code_verifier",
+  "pkce_verifier",
+  "verifier",
+  "state",
+  "code",
+  "api_key",
+  "apikey",
+  "client_secret",
+  "clientsecret",
+  "authorizationcode",
+  "codeverifier",
   "accesstoken",
   "refreshtoken",
   "idtoken"
@@ -30,7 +55,7 @@ const LIVE_HEADERS_LOG_FILE = "live-headers.jsonl"
 
 function sanitizeHeaderValue(name: string, value: string): string {
   const lower = name.toLowerCase()
-  if (!REDACTED_HEADERS.has(lower)) return value
+  if (!REDACTED_HEADERS.has(lower) && !lower.includes("api-key")) return value
   if (lower === "authorization") {
     const [scheme] = value.split(" ")
     return scheme ? `${scheme} ${REDACTED}` : REDACTED
@@ -60,13 +85,26 @@ function sanitizeBodyValue(value: unknown): unknown {
 function redactRawBody(raw: string): string {
   return raw
     .replace(
-      /([?&;\s]|^)(access_token|refresh_token|id_token|prompt_cache_key|accessToken|refreshToken|idToken)=([^&;\s]+)/gi,
+      /([?&;\s]|^)(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken)=([^&;\s]+)/gi,
       (_full, prefix: string, key: string) => `${prefix}${key}=${REDACTED}`
     )
     .replace(
-      /"(access_token|refresh_token|id_token|prompt_cache_key|accessToken|refreshToken|idToken)"\s*:\s*"[^"]*"/gi,
+      /"(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken)"\s*:\s*"[^"]*"/gi,
       (_full, key: string) => `"${key}":"${REDACTED}"`
     )
+}
+
+function sanitizeMetaString(value: string): string {
+  return value
+    .replace(
+      /([?&;\s]|^)(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken)=([^&;\s]+)/gi,
+      (_full, prefix: string, key: string) => `${prefix}${key}=${REDACTED}`
+    )
+    .replace(
+      /"(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken)"\s*:\s*"[^"]*"/gi,
+      (_full, key: string) => `"${key}":"${REDACTED}"`
+    )
+    .replace(/\b(authorization)\s*:\s*bearer\s+[^\s,;]+/gi, `$1: Bearer ${REDACTED}`)
 }
 
 async function serializeRequestBody(request: Request): Promise<unknown> {
@@ -111,16 +149,68 @@ const REDACTED_META_KEYS = new Set([
   "selectionattemptkey"
 ])
 
+const REDACTED_META_KEY_FRAGMENTS = [
+  "token",
+  "secret",
+  "password",
+  "authorization",
+  "cookie",
+  "session",
+  "identitykey",
+  "accountlabel"
+]
+
+function shouldRedactMetaKey(key: string): boolean {
+  const lower = key.trim().toLowerCase()
+  if (!lower) return false
+  if (REDACTED_META_KEYS.has(lower)) return true
+  return REDACTED_META_KEY_FRAGMENTS.some((fragment) => lower.includes(fragment))
+}
+
+function sanitizeMetaValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => sanitizeMetaValue(entry))
+  if (typeof value === "string") return sanitizeMetaString(value)
+  if (!value || typeof value !== "object") return value
+  const out: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = shouldRedactMetaKey(key) ? REDACTED : sanitizeMetaValue(entry)
+  }
+  return out
+}
+
 const REDACTED_QUERY_KEYS = new Set([
   "access_token",
   "refresh_token",
   "id_token",
+  "prompt_cache_key",
+  "authorization_code",
+  "auth_code",
+  "code_verifier",
+  "pkce_verifier",
+  "verifier",
+  "state",
+  "code",
+  "api_key",
+  "apikey",
+  "client_secret",
+  "clientsecret",
+  "authorizationcode",
+  "codeverifier",
   "accesstoken",
   "refreshtoken",
   "idtoken",
   "session_id",
-  "chatgpt-account-id"
+  "chatgpt-account-id",
+  "chatgpt_account_id"
 ])
+
+const REDACTED_QUERY_KEY_FRAGMENTS = ["token", "secret", "session", "verifier", "pkce", "authorization_code"]
+
+function shouldRedactQueryKey(key: string): boolean {
+  const lower = key.toLowerCase()
+  if (REDACTED_QUERY_KEYS.has(lower)) return true
+  return REDACTED_QUERY_KEY_FRAGMENTS.some((fragment) => lower.includes(fragment))
+}
 
 function getPromptCacheKey(body: unknown): string | undefined {
   if (!body || typeof body !== "object" || Array.isArray(body)) return undefined
@@ -133,11 +223,27 @@ function sanitizePromptCacheKey(value: string | undefined): string | undefined {
   return REDACTED
 }
 
+const RESERVED_SNAPSHOT_META_KEYS = new Set([
+  "timestamp",
+  "runid",
+  "requestid",
+  "responseid",
+  "stage",
+  "method",
+  "url",
+  "headers",
+  "body",
+  "status",
+  "statustext",
+  "prompt_cache_key"
+])
+
 function sanitizeSnapshotMeta(meta: SnapshotMeta): Record<string, unknown> {
   if (!meta) return {}
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(meta)) {
-    out[key] = REDACTED_META_KEYS.has(key.toLowerCase()) ? REDACTED : value
+    if (RESERVED_SNAPSHOT_META_KEYS.has(key.trim().toLowerCase())) continue
+    out[key] = shouldRedactMetaKey(key) ? REDACTED : sanitizeMetaValue(value)
   }
   return out
 }
@@ -146,7 +252,7 @@ function sanitizeUrl(value: string): string {
   try {
     const url = new URL(value)
     for (const [key] of url.searchParams.entries()) {
-      if (!REDACTED_QUERY_KEYS.has(key.toLowerCase())) continue
+      if (!shouldRedactQueryKey(key)) continue
       url.searchParams.set(key, REDACTED)
     }
     return url.toString()
@@ -168,7 +274,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
     }
   }
 
-  const dir = input.dir ?? DEFAULT_LOG_DIR
+  const dir = input.dir ?? defaultCodexPluginLogsPath()
   const maxSnapshotFiles =
     typeof input.maxSnapshotFiles === "number" && Number.isFinite(input.maxSnapshotFiles)
       ? Math.max(1, Math.floor(input.maxSnapshotFiles))
@@ -294,7 +400,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
         url: sanitizedUrl,
         headers,
         body,
-        ...sanitizedMeta
+        meta: sanitizedMeta
       }
       await writeJson(`request-${requestId}-${stage}.json`, {
         ...payload
@@ -308,7 +414,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
         url: sanitizedUrl,
         headers,
         prompt_cache_key: sanitizePromptCacheKey(getPromptCacheKey(body)),
-        ...sanitizedMeta
+        meta: sanitizedMeta
       })
     },
     captureResponse: async (stage, response, meta) => {
@@ -323,7 +429,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
         status: response.status,
         statusText: response.statusText,
         headers: sanitizeHeaders(response.headers),
-        ...sanitizedMeta
+        meta: sanitizedMeta
       })
     }
   }

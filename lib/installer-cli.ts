@@ -67,7 +67,7 @@ function helpText(): string {
     "  install         Install plugin entry in opencode.json plus personality command/skill scaffolding.",
     "",
     "Options:",
-    "  --config <path> Custom opencode.json path (defaults to ~/.config/opencode/opencode.json).",
+    "  --config <path> Custom opencode.json path (defaults to $XDG_CONFIG_HOME/opencode/opencode.json when set, otherwise ~/.config/opencode/opencode.json).",
     `  --plugin <spec> Plugin specifier for opencode.json (default: ${DEFAULT_PLUGIN_SPECIFIER}).`
   ].join("\n")
 }

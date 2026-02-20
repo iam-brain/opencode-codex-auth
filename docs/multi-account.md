@@ -12,7 +12,7 @@ Primary file:
 
 Provider marker file:
 
-- `~/.local/share/opencode/auth.json`
+- `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
 
 OpenAI auth is stored with domain-aware account sets:
 
@@ -146,6 +146,6 @@ Legacy import is explicit-only through auth menu transfer.
 Source files:
 
 - `~/.config/opencode/openai-codex-accounts.json`
-- `~/.local/share/opencode/auth.json`
+- `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
 
 If `codex-accounts.json` exists (including empty accounts), it remains authoritative.

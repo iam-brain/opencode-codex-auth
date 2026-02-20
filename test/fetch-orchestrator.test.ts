@@ -778,4 +778,119 @@ describe("FetchOrchestrator", () => {
       })
     )
   })
+
+  it("blocks redirects when no redirect URL validator is configured", async () => {
+    const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
+    const setCooldown = vi.fn(async () => {})
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://example.com/redirect" }
+        })
+      })
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      maxAttempts: 1
+    })
+
+    const response = await orch.execute("https://api.openai.com/v1/chat/completions")
+    expect(response.status).toBe(502)
+    const body = await response.json()
+    expect(body.error?.type).toBe("blocked_outbound_redirect")
+  })
+
+  it("validates and follows redirects for safe methods", async () => {
+    const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
+    const setCooldown = vi.fn(async () => {})
+    const validateRedirectUrl = vi.fn(() => {})
+
+    let calls = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls += 1
+        const request = new Request(input, init)
+        if (calls === 1) {
+          expect(request.redirect).toBe("manual")
+          return new Response(null, {
+            status: 302,
+            headers: { location: "https://chatgpt.com/backend-api/codex/responses" }
+          })
+        }
+        return new Response("OK", { status: 200 })
+      })
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      maxAttempts: 1,
+      validateRedirectUrl
+    })
+
+    const response = await orch.execute("https://api.openai.com/v1/chat/completions", { method: "GET" })
+    expect(response.status).toBe(200)
+    expect(validateRedirectUrl).toHaveBeenCalledWith(new URL("https://chatgpt.com/backend-api/codex/responses"))
+  })
+
+  it("blocks redirects for non-idempotent methods", async () => {
+    const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
+    const setCooldown = vi.fn(async () => {})
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(null, {
+          status: 307,
+          headers: { location: "https://chatgpt.com/backend-api/codex/responses" }
+        })
+      })
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      maxAttempts: 1,
+      validateRedirectUrl: () => {}
+    })
+
+    const response = await orch.execute("https://api.openai.com/v1/chat/completions", { method: "POST" })
+    expect(response.status).toBe(502)
+    const body = await response.json()
+    expect(body.error?.type).toBe("blocked_outbound_redirect")
+  })
+
+  it("returns redirect limit error when hop cap exceeded", async () => {
+    const acquireAuth = vi.fn(async () => ({ access: "a", identityKey: "i" }))
+    const setCooldown = vi.fn(async () => {})
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://chatgpt.com/backend-api/codex/responses" }
+        })
+      })
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      maxAttempts: 1,
+      validateRedirectUrl: () => {},
+      maxRedirects: 0
+    })
+
+    const response = await orch.execute("https://api.openai.com/v1/chat/completions", { method: "GET" })
+    expect(response.status).toBe(502)
+    const body = await response.json()
+    expect(body.error?.type).toBe("outbound_redirect_limit_exceeded")
+  })
 })

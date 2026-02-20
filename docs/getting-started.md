@@ -85,7 +85,7 @@ If `codex-accounts.json` is missing and legacy sources exist, the auth menu offe
 Import sources:
 
 - resolved `<config-root>/openai-codex-accounts.json`
-- `~/.local/share/opencode/auth.json`
+- `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
 
 ## 5) Verify with a real run
 

@@ -18,8 +18,7 @@ Most plugin-managed files follow resolved config roots (`$XDG_CONFIG_HOME/openco
 
 Known exceptions:
 
-- Snapshot and OAuth debug logs currently write to fixed paths under `~/.config/opencode/logs/codex-plugin/`.
-- OpenCode provider auth marker/legacy transfer source is OpenCode-owned at fixed path `~/.local/share/opencode/auth.json`.
+- OpenCode provider auth marker/legacy transfer source is OpenCode-owned at `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`.
 
 ## JSON schemas
 
@@ -116,6 +115,7 @@ Mode-derived runtime defaults when omitted:
   - Explicit boolean value overrides mode default.
 - `runtime.headerSnapshots: boolean`
   - Writes before/after request header snapshots to debug logs.
+  - Custom snapshot metadata is stored under a nested `meta` object to prevent collisions with reserved top-level fields.
 - `runtime.headerSnapshotBodies: boolean`
   - When `runtime.headerSnapshots=true`, includes redacted request bodies in snapshots.
   - Response snapshots include status + headers only (no response body capture).
@@ -265,6 +265,7 @@ Advanced path:
 - `CODEX_OAUTH_SERVER_SHUTDOWN_GRACE_MS`: success-page shutdown grace.
 - `CODEX_OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS`: error-page shutdown grace.
 - `CODEX_OAUTH_HTTP_TIMEOUT_MS`: timeout for OAuth HTTP calls (ms, min `1000`).
+- OAuth HTTP requests reject redirects by default for token/code exchange safety.
 - `CODEX_DEVICE_AUTH_TIMEOUT_MS`: max total device-auth polling time (ms, min `1000`).
 - `OPENCODE_NO_BROWSER=1`: disables browser auto-open.
 - `NO_COLOR=1`: disables ANSI color blocks in quota UI.

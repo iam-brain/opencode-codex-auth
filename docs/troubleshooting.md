@@ -6,7 +6,7 @@
 2. Confirm config exists at the resolved path (`OPENCODE_OPENAI_MULTI_CONFIG_PATH` when set, otherwise exactly one default path: `$XDG_CONFIG_HOME/opencode/codex-config.json` when `XDG_CONFIG_HOME` is set, else `~/.config/opencode/codex-config.json`).
 3. Confirm auth files exist:
    - required runtime store: resolved `<config-root>/codex-accounts.json`
-   - optional legacy transfer source: `~/.local/share/opencode/auth.json`
+   - optional legacy transfer source: `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
 4. Confirm cache files exist when relevant features were used (files are created on demand):
    - `<config-root>/cache/codex-client-version.json`
    - `<config-root>/cache/codex-models-cache-meta.json`
@@ -122,8 +122,13 @@ Optional request/response snapshots:
 
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true`
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG=true` (adds `before-header-transform` and `after-header-transform`)
-- output in `~/.config/opencode/logs/codex-plugin/`
-  - note: this log path currently does not follow `XDG_CONFIG_HOME`
+- output in `<config-root>/logs/codex-plugin/`
+- snapshot custom metadata is nested under `meta` in snapshot JSON payloads.
+
+Redirect safety errors:
+
+- `blocked_outbound_redirect`: request hit a redirect that failed policy validation.
+- `outbound_redirect_limit_exceeded`: request exceeded redirect hop cap.
 
 Optional OAuth timing controls:
 

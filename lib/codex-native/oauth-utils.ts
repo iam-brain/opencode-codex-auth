@@ -117,7 +117,7 @@ export async function fetchWithTimeout(
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), Math.max(1, Math.floor(timeoutMs)))
   try {
-    return await fetch(input, { ...init, signal: controller.signal })
+    return await fetch(input, { ...init, signal: controller.signal, redirect: "error" })
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`OAuth request timed out after ${timeoutMs}ms`)

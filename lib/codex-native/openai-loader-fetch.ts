@@ -252,6 +252,10 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           persistSessionAffinityState()
         }
       },
+      validateRedirectUrl: (url) => {
+        assertAllowedOutboundUrl(url)
+      },
+      maxRedirects: 3,
       showToast: input.showToast,
       onAttemptRequest: async ({ attempt, maxAttempts, attemptReasonCode, request, auth, sessionKey }) => {
         await input.requestSnapshots.captureRequest("outbound-attempt", request, {

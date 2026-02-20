@@ -8,6 +8,7 @@ import { quarantineFile } from "./quarantine"
 import {
   CODEX_ACCOUNTS_FILE,
   defaultAuthPath,
+  opencodeProviderAuthLegacyFallbackPath,
   opencodeProviderAuthPath,
   legacyOpenAICodexAccountsPathFor
 } from "./paths"
@@ -46,6 +47,13 @@ type LegacyCodexAccountsRecord = {
 type AuthLoadOptions = { quarantineDir?: string; now?: () => number; keep?: number; lockReads?: boolean }
 
 const OPENAI_AUTH_MODES: OpenAIAuthMode[] = ["native", "codex"]
+
+function listLegacyProviderAuthCandidates(env: Record<string, string | undefined> = process.env): string[] {
+  const primary = opencodeProviderAuthPath(env)
+  const legacyFallback = opencodeProviderAuthLegacyFallbackPath(env)
+  if (primary === legacyFallback) return [primary]
+  return [primary, legacyFallback]
+}
 
 function ensureAccountAuthTypes(account: AccountRecord): void {
   account.authTypes = normalizeAccountAuthTypes(account.authTypes)
@@ -421,7 +429,7 @@ export async function shouldOfferLegacyTransfer(filePath: string = defaultAuthPa
     // codex-accounts.json missing; check legacy/native sources
   }
 
-  const legacyCandidates = [legacyOpenAICodexAccountsPathFor(filePath), opencodeProviderAuthPath()]
+  const legacyCandidates = [legacyOpenAICodexAccountsPathFor(filePath), ...listLegacyProviderAuthCandidates(process.env)]
   for (const legacyPath of legacyCandidates) {
     try {
       await fs.access(legacyPath)
@@ -514,7 +522,7 @@ export async function importLegacyInstallData(filePath: string = defaultAuthPath
 
     let imported = 0
     let sourcesUsed = 0
-    const legacyCandidates = [legacyOpenAICodexAccountsPathFor(filePath), opencodeProviderAuthPath()]
+    const legacyCandidates = [legacyOpenAICodexAccountsPathFor(filePath), ...listLegacyProviderAuthCandidates(process.env)]
 
     for (const legacyPath of legacyCandidates) {
       if (legacyPath === filePath) continue

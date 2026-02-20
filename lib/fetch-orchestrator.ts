@@ -84,6 +84,8 @@ export type FetchOrchestratorDeps = {
     now: number
     event: "new" | "resume" | "switch" | "seen"
   }) => Promise<void> | void
+  validateRedirectUrl?: (url: URL) => void
+  maxRedirects?: number
 }
 
 const SESSION_KEY_TTL_MS = 6 * 60 * 60 * 1000
@@ -122,6 +124,57 @@ export class FetchOrchestrator {
 
   constructor(private deps: FetchOrchestratorDeps) {
     this.state = deps.state ?? createFetchOrchestratorState()
+  }
+
+  private async fetchWithRedirectPolicy(request: Request): Promise<Response> {
+    const maxRedirects = Math.max(0, Math.floor(this.deps.maxRedirects ?? 3))
+    let current = request
+
+    for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount++) {
+      const response = await fetch(new Request(current, { redirect: "manual" }))
+      if (response.status < 300 || response.status > 399) return response
+
+      const location = response.headers.get("location")
+      if (!location) return response
+
+      if (redirectCount >= maxRedirects) {
+        return createSyntheticErrorResponse(
+          "Outbound request redirect limit exceeded.",
+          502,
+          "outbound_redirect_limit_exceeded",
+          "request"
+        )
+      }
+
+      const nextUrl = new URL(location, current.url)
+      if (!this.deps.validateRedirectUrl) {
+        return createSyntheticErrorResponse(
+          "Blocked outbound redirect because redirect URL validation is not configured.",
+          502,
+          "blocked_outbound_redirect",
+          "request"
+        )
+      }
+      this.deps.validateRedirectUrl(nextUrl)
+
+      const method = current.method.toUpperCase()
+      if (method !== "GET" && method !== "HEAD") {
+        return createSyntheticErrorResponse(
+          "Blocked outbound redirect for non-idempotent request method.",
+          502,
+          "blocked_outbound_redirect",
+          "request"
+        )
+      }
+
+      current = new Request(nextUrl.toString(), {
+        method,
+        headers: current.headers,
+        redirect: "manual"
+      })
+    }
+
+    return createSyntheticErrorResponse("Outbound request redirect handling failed.", 502, "outbound_redirect_error", "request")
   }
 
   private touchSessionKey(sessionKey: string, now: number): boolean {
@@ -309,7 +362,7 @@ export class FetchOrchestrator {
         }
       }
 
-      const response = await fetch(request)
+      const response = await this.fetchWithRedirectPolicy(request)
       if (this.deps.onAttemptResponse) {
         try {
           await this.deps.onAttemptResponse({
