@@ -46,10 +46,11 @@ Top-level:
 
 Canonical user-edited file set:
 
-- `~/.config/opencode/opencode.json` (plugin registration)
-- `~/.config/opencode/codex-config.json` (runtime behavior)
-- `~/.config/opencode/codex-accounts.json` (advanced/manual recovery only)
-- `.opencode/personalities/*.md` or `~/.config/opencode/personalities/*.md` (custom personalities)
+- `<config-root>/opencode.json` (plugin registration)
+- `<config-root>/codex-config.json` (runtime behavior)
+- `<config-root>/codex-accounts.json` (advanced/manual recovery only)
+  - `<config-root>` resolves to `$XDG_CONFIG_HOME/opencode` when `XDG_CONFIG_HOME` is set, otherwise `~/.config/opencode`
+- `.opencode/personalities/*.md` or `<config-root>/personalities/*.md` (custom personalities)
 
 Default generated values:
 
@@ -64,6 +65,7 @@ Default generated values:
 - `runtime.promptCacheKeyStrategy: "default"`
 - `runtime.codexCompactionOverride`: mode-derived when unset (`true` in `codex`, `false` in `native`)
 - `runtime.headerSnapshots: false`
+- `runtime.headerSnapshotBodies: false`
 - `runtime.headerTransformDebug: false`
 - `runtime.pidOffset: false`
 - `runtime.collaborationProfile`: mode-derived when unset (`true` in `codex`, `false` in `native`)

@@ -32,6 +32,47 @@ type PendingOAuth<TPkce, TTokens> = {
 }
 
 const DEFAULT_DEBUG_LOG_MAX_BYTES = 1_000_000
+const REDACTED = "[redacted]"
+const REDACTED_DEBUG_META_KEY_FRAGMENTS = [
+  "token",
+  "secret",
+  "password",
+  "authorization",
+  "cookie",
+  "id_token",
+  "refresh_token",
+  "access_token",
+  "authorization_code",
+  "auth_code"
+]
+
+function shouldRedactDebugMetaKey(key: string): boolean {
+  const lower = key.trim().toLowerCase()
+  if (!lower) return false
+  return REDACTED_DEBUG_META_KEY_FRAGMENTS.some((fragment) => lower.includes(fragment))
+}
+
+function sanitizeDebugMeta(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value
+      .replace(/\b(access_token|refresh_token|id_token|authorization_code|auth_code)=([^\s&]+)/gi, `$1=${REDACTED}`)
+      .replace(
+        /"(access_token|refresh_token|id_token|authorization_code|auth_code)"\s*:\s*"[^"]*"/gi,
+        `"$1":"${REDACTED}"`
+      )
+      .replace(/([?&])(code|state|access_token|refresh_token|id_token)=([^&]+)/gi, (_match, prefix, key) => {
+        return `${prefix}${key}=${REDACTED}`
+      })
+  }
+  if (Array.isArray(value)) return value.map((item) => sanitizeDebugMeta(item))
+  if (!value || typeof value !== "object") return value
+
+  const out: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = shouldRedactDebugMetaKey(key) ? REDACTED : sanitizeDebugMeta(entry)
+  }
+  return out
+}
 
 function resolveDebugLogMaxBytes(): number {
   const raw = process.env.CODEX_AUTH_DEBUG_MAX_BYTES
@@ -92,7 +133,7 @@ export function createOAuthServerController<TPkce, TTokens>(
       ts: new Date().toISOString(),
       pid: process.pid,
       event,
-      ...meta
+      ...((sanitizeDebugMeta(meta) as Record<string, unknown>) ?? {})
     }
     const line = JSON.stringify(payload)
     try {
@@ -192,8 +233,10 @@ export function createOAuthServerController<TPkce, TTokens>(
           if (error) {
             const errorMsg = errorDescription || error
             emitDebug("callback_error", { reason: errorMsg })
-            pendingOAuth?.reject(new Error(errorMsg))
-            pendingOAuth = undefined
+            if (pendingOAuth && state === pendingOAuth.state) {
+              pendingOAuth.reject(new Error(errorMsg))
+              pendingOAuth = undefined
+            }
             sendHtml(200, input.buildOAuthErrorHtml(errorMsg))
             return
           }
@@ -201,8 +244,10 @@ export function createOAuthServerController<TPkce, TTokens>(
           if (!code) {
             const errorMsg = "Missing authorization code"
             emitDebug("callback_error", { reason: errorMsg })
-            pendingOAuth?.reject(new Error(errorMsg))
-            pendingOAuth = undefined
+            if (pendingOAuth && state === pendingOAuth.state) {
+              pendingOAuth.reject(new Error(errorMsg))
+              pendingOAuth = undefined
+            }
             sendHtml(400, input.buildOAuthErrorHtml(errorMsg))
             return
           }
@@ -210,8 +255,6 @@ export function createOAuthServerController<TPkce, TTokens>(
           if (!pendingOAuth || state !== pendingOAuth.state) {
             const errorMsg = "Invalid state - potential CSRF attack"
             emitDebug("callback_error", { reason: errorMsg })
-            pendingOAuth?.reject(new Error(errorMsg))
-            pendingOAuth = undefined
             sendHtml(400, input.buildOAuthErrorHtml(errorMsg))
             return
           }
@@ -236,7 +279,7 @@ export function createOAuthServerController<TPkce, TTokens>(
               current.reject(oauthError)
               emitDebug("token_exchange_error", { error: oauthError.message })
               if (res.writableEnded) return
-              sendHtml(500, input.buildOAuthErrorHtml(oauthError.message))
+              sendHtml(500, input.buildOAuthErrorHtml("OAuth token exchange failed"))
             })
           return
         }
@@ -276,7 +319,7 @@ export function createOAuthServerController<TPkce, TTokens>(
       } catch (error) {
         res.statusCode = 500
         setResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
-        res.end(`Server error: ${(error as Error).message}`)
+        res.end("Server error")
       }
     })
 
@@ -327,6 +370,9 @@ export function createOAuthServerController<TPkce, TTokens>(
   }
 
   function waitForCallback(pkce: TPkce, state: string, authMode: OpenAIAuthMode): Promise<TTokens> {
+    if (pendingOAuth) {
+      return Promise.reject(new Error("Authorization already in progress"))
+    }
     emitDebug("callback_wait_start", {
       authMode,
       stateTail: state.slice(-6)

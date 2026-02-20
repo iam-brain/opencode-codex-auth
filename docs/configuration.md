@@ -2,11 +2,24 @@
 
 This plugin uses one runtime config file:
 
-- `~/.config/opencode/codex-config.json`
+- resolved config path:
+  - `$XDG_CONFIG_HOME/opencode/codex-config.json` when `XDG_CONFIG_HOME` is set
+  - otherwise `~/.config/opencode/codex-config.json`
 
-If the default config path does not exist, the plugin creates it with defaults on startup.
+If the default config path does not exist, installer/bootstrap flows create it with defaults.
 
 If `OPENCODE_OPENAI_MULTI_CONFIG_PATH` is set, that explicit file path is loaded for runtime behavior. You are responsible for creating/managing that file.
+
+Note: plugin startup still ensures the default config file exists as a bootstrap convenience, even when runtime reads from an explicit `OPENCODE_OPENAI_MULTI_CONFIG_PATH`.
+
+## Path exceptions
+
+Most plugin-managed files follow resolved config roots (`$XDG_CONFIG_HOME/opencode/...` when set, otherwise `~/.config/opencode/...`).
+
+Known exceptions:
+
+- Snapshot and OAuth debug logs currently write to fixed paths under `~/.config/opencode/logs/codex-plugin/`.
+- OpenCode provider auth marker/legacy transfer source is OpenCode-owned at fixed path `~/.local/share/opencode/auth.json`.
 
 ## JSON schemas
 
@@ -21,8 +34,9 @@ Use these schemas for validation/autocomplete:
 The plugin loads config in this order:
 
 1. `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
-2. `$XDG_CONFIG_HOME/opencode/codex-config.json`
-3. `~/.config/opencode/codex-config.json`
+2. Resolved default config path:
+   - `$XDG_CONFIG_HOME/opencode/codex-config.json` when `XDG_CONFIG_HOME` is set
+   - otherwise `~/.config/opencode/codex-config.json`
 
 `codex-config.json` supports JSON comments (`//` and `/* ... */`) for readability.
 
@@ -46,6 +60,7 @@ Known-field type validation is applied on load. If a known field has an invalid 
     "developerMessagesToUser": true,
     "promptCacheKeyStrategy": "default",
     "headerSnapshots": false,
+    "headerSnapshotBodies": false,
     "headerTransformDebug": false,
     "pidOffset": false
   },
@@ -57,6 +72,12 @@ Known-field type validation is applied on load. If a known field has an invalid 
   "perModel": {}
 }
 ```
+
+Mode-derived runtime defaults when omitted:
+
+- `runtime.codexCompactionOverride`: `true` in `codex`, `false` in `native`
+- `runtime.collaborationProfile`: `true` in `codex`, `false` in `native`
+- `runtime.orchestratorSubagents`: inherits effective `runtime.collaborationProfile`
 
 ## Settings reference
 
@@ -111,6 +132,7 @@ Known-field type validation is applied on load. If a known field has an invalid 
   - Experimental: enables Codex-style subagent header hints for helper agents under collaboration profile mode.
   - If omitted, inherits `runtime.collaborationProfile` effective value.
   - Explicit `true`/`false` works in any mode.
+
 ### Model behavior
 
 - `global.personality: string`
@@ -157,7 +179,7 @@ Custom personalities:
 
 - Store files in:
   - project-local: `.opencode/personalities/<key>.md`
-  - global: `~/.config/opencode/personalities/<key>.md`
+  - global: `$XDG_CONFIG_HOME/opencode/personalities/<key>.md` when `XDG_CONFIG_HOME` is set, otherwise `~/.config/opencode/personalities/<key>.md`
 - Key format:
   - lowercase safe slug (no `/`, `\`, or `..`)
 - Pattern recommendation (same shape as native-friendly/pragmatic behavior):
@@ -177,7 +199,7 @@ And a tool:
 
 And a managed skill bundle:
 
-- `~/.config/opencode/skills/personality-builder/SKILL.md`
+- `$XDG_CONFIG_HOME/opencode/skills/personality-builder/SKILL.md` when `XDG_CONFIG_HOME` is set, otherwise `~/.config/opencode/skills/personality-builder/SKILL.md`
 
 Flow:
 
@@ -204,7 +226,7 @@ Advanced path:
 
 ### Config/mode overrides
 
-- `OPENCODE_OPENAI_MULTI_CONFIG_PATH`: absolute config file path.
+- `OPENCODE_OPENAI_MULTI_CONFIG_PATH`: explicit config file path (absolute path recommended).
 - `OPENCODE_OPENAI_MULTI_MODE`: `native|codex`.
 - `OPENCODE_OPENAI_MULTI_SPOOF_MODE`: advanced temporary identity override (`native|codex`).
   - If `OPENCODE_OPENAI_MULTI_MODE` is set, runtime mode takes precedence.
@@ -258,7 +280,7 @@ Use canonical `global` and `perModel` keys only.
 
 ## Managed prompts and orchestrator agent
 
-The plugin synchronizes a pinned upstream Codex orchestrator prompt and plan-mode prompt into a local cache under `~/.config/opencode/cache/`:
+The plugin synchronizes a pinned upstream Codex orchestrator prompt and plan-mode prompt into a local cache under the resolved config cache root (`$XDG_CONFIG_HOME/opencode/cache/` when `XDG_CONFIG_HOME` is set, otherwise `~/.config/opencode/cache/`):
 
 - `codex-prompts-cache.json`
 - `codex-prompts-cache-meta.json` (stores URLs, `lastChecked`, and ETags)
@@ -270,4 +292,4 @@ Fetch behavior:
 
 The plan prompt from this cache is used to populate plan-mode collaboration instructions.
 
-When `runtime.collaborationProfile` is enabled, the installer and plugin startup also manage the visibility of an `orchestrator.md` agent template under `~/.config/opencode/agents/`.
+When `runtime.collaborationProfile` is enabled, the installer and plugin startup also manage the visibility of an `orchestrator.md` agent template under the resolved config root (`$XDG_CONFIG_HOME/opencode/agents/` when `XDG_CONFIG_HOME` is set, otherwise `~/.config/opencode/agents/`).

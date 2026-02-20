@@ -43,4 +43,4 @@ This directory contains user and developer documentation for `opencode-codex-aut
 
 ## Local planning and research
 
-`docs/plans/` and `docs/research/` are local workflow directories and may be managed outside the main repository history.
+`docs/plans/` and `docs/research/` (if present) are local workflow directories and may be managed outside the main repository history.

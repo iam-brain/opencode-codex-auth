@@ -31,6 +31,17 @@ type SnapshotRecorder = {
   captureResponse: (stage: string, response: Response, metadata?: Record<string, unknown>) => Promise<void>
 }
 
+const STRIPPED_OUTBOUND_HEADER_NAMES = new Set(["cookie", "set-cookie", "proxy-authorization", "host", "forwarded"])
+
+function stripUnsafeForwardedHeaders(headers: Headers): void {
+  for (const name of [...headers.keys()]) {
+    const lower = name.trim().toLowerCase()
+    if (STRIPPED_OUTBOUND_HEADER_NAMES.has(lower) || lower.startsWith("x-forwarded-")) {
+      headers.delete(name)
+    }
+  }
+}
+
 export type CreateOpenAIFetchHandlerInput = {
   authMode: OpenAIAuthMode
   spoofMode: CodexSpoofMode
@@ -93,6 +104,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
     }
 
     let outbound = new Request(rewriteUrl(baseRequest), baseRequest)
+    stripUnsafeForwardedHeaders(outbound.headers)
     const collaborationAgentKind = outbound.headers.get(internalCollaborationAgentHeader)?.trim() || undefined
     const inboundOriginator = outbound.headers.get("originator")?.trim()
     const outboundOriginator =

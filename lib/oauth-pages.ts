@@ -159,7 +159,12 @@ export const CODEX_OAUTH_SUCCESS_HTML = `<!DOCTYPE html>
       (function () {
         const params = new URLSearchParams(window.location.search);
         const needsSetup = params.get('needs_setup') === 'true';
-        const platformUrl = params.get('platform_url') || 'https://platform.openai.com';
+        const platformUrl = (() => {
+          const allowed = new Set(['https://platform.openai.com', 'https://platform.api.openai.org']);
+          const candidate = params.get('platform_url') || 'https://platform.openai.com';
+          if (!allowed.has(candidate)) return 'https://platform.openai.com';
+          return candidate;
+        })();
         const orgId = params.get('org_id');
         const projectId = params.get('project_id');
         const planType = params.get('plan_type');

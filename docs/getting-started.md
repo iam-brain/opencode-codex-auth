@@ -12,20 +12,20 @@ This guide covers install, login, migration transfer, and first verification.
 Published install:
 
 ```bash
-npx -y @iam-brain/opencode-codex-auth
+npx -y @iam-brain/opencode-codex-auth@latest
 ```
 
 What this does:
 
-- Adds `@iam-brain/opencode-codex-auth@latest` to `~/.config/opencode/opencode.json`
-- Creates `~/.config/opencode/codex-config.json` if missing
-- Synchronizes `/create-personality` command at `~/.config/opencode/commands/create-personality.md`
-- Synchronizes `personality-builder` skill at `~/.config/opencode/skills/personality-builder/SKILL.md`
+- Adds `@iam-brain/opencode-codex-auth@latest` to resolved `<config-root>/opencode.json` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`)
+- Creates `codex-config.json` at resolved config root (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`) if missing
+- Synchronizes `/create-personality` command at `<config-root>/commands/create-personality.md`
+- Synchronizes `personality-builder` skill at `<config-root>/skills/personality-builder/SKILL.md`
 
 Re-run installer (idempotent):
 
 ```bash
-npx -y @iam-brain/opencode-codex-auth install
+npx -y @iam-brain/opencode-codex-auth@latest install
 ```
 
 Installer flags:
@@ -49,7 +49,7 @@ Example:
 
 Put all plugin behavior flags in:
 
-- `~/.config/opencode/codex-config.json`
+- resolved `<config-root>/codex-config.json` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`)
 
 Use `docs/examples/codex-config.json` as a baseline.
 Use schemas for autocomplete/validation:
@@ -84,7 +84,7 @@ If `codex-accounts.json` is missing and legacy sources exist, the auth menu offe
 
 Import sources:
 
-- `~/.config/opencode/openai-codex-accounts.json`
+- resolved `<config-root>/openai-codex-accounts.json`
 - `~/.local/share/opencode/auth.json`
 
 ## 5) Verify with a real run
@@ -106,7 +106,7 @@ Run:
 This guided flow writes a profile into:
 
 - `.opencode/personalities/<key>.md` (project scope), or
-- `~/.config/opencode/personalities/<key>.md` (global scope)
+- `<config-root>/personalities/<key>.md` (global scope)
 
 ## Mode + agent behavior
 

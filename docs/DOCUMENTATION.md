@@ -35,4 +35,4 @@ This file describes how docs are organized and maintained.
 
 ## Local-only workflow directories
 
-`docs/plans/` and `docs/research/` are local authoring areas and may be managed as separate git history from the plugin codebase.
+`docs/plans/` and `docs/research/` (if present) are local authoring areas and may be managed as separate git history from the plugin codebase.

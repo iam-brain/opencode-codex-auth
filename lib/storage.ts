@@ -15,13 +15,7 @@ import { isRecord as isObject } from "./util"
 import { ensureConfigDirGitignore } from "./config-dir-gitignore"
 import { withLockedFile } from "./cache-lock"
 import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io"
-import type {
-  AccountRecord,
-  AuthFile,
-  OpenAIAuthMode,
-  OpenAIOAuthDomain,
-  OpenAIMultiOauthAuth
-} from "./types"
+import type { AccountRecord, AuthFile, OpenAIAuthMode, OpenAIOAuthDomain, OpenAIMultiOauthAuth } from "./types"
 
 type LegacyOpenAIOauth = {
   type: "oauth"
@@ -234,11 +228,23 @@ function isLegacyOauthAuth(value: unknown): value is LegacyOpenAIOauth {
   return typeof value.refresh === "string" && typeof value.access === "string" && typeof value.expires === "number"
 }
 
-function sanitizeAuthFile(input: AuthFile): AuthFile {
-  if (input.openai) {
-    return { openai: input.openai }
+function sanitizeAuthFile(input: AuthFile, options?: { openAIOnly?: boolean }): AuthFile {
+  const openAIOnly = options?.openAIOnly !== false
+  if (openAIOnly) {
+    if (input.openai) {
+      return { openai: input.openai }
+    }
+    return {}
   }
-  return {}
+
+  if (input.openai) {
+    return { ...(input as Record<string, unknown>), openai: input.openai } as AuthFile
+  }
+  return { ...(input as Record<string, unknown>) } as AuthFile
+}
+
+function shouldEnforceOpenAIOnlyStorage(filePath: string): boolean {
+  return path.basename(filePath) === CODEX_ACCOUNTS_FILE
 }
 
 function hasUsableOpenAIOAuth(auth: AuthFile): boolean {
@@ -363,6 +369,7 @@ async function readAuthUnlocked(
   filePath: string,
   opts?: { quarantineDir: string; now: () => number; keep?: number }
 ): Promise<AuthFile> {
+  const openAIOnly = shouldEnforceOpenAIOnlyStorage(filePath)
   let raw: string
   try {
     raw = await fs.readFile(filePath, "utf8")
@@ -377,8 +384,8 @@ async function readAuthUnlocked(
     const parsed: unknown = JSON.parse(raw)
     if (!isObject(parsed)) return {}
     const legacyMigrated = migrateLegacyCodexAccounts(parsed)
-    if (legacyMigrated) return sanitizeAuthFile(legacyMigrated)
-    return sanitizeAuthFile(migrateAuthFile(parsed as AuthFile))
+    if (legacyMigrated) return sanitizeAuthFile(legacyMigrated, { openAIOnly })
+    return sanitizeAuthFile(migrateAuthFile(parsed as AuthFile), { openAIOnly })
   } catch (error: unknown) {
     if (opts?.quarantineDir && opts.now) {
       try {
@@ -388,6 +395,9 @@ async function readAuthUnlocked(
           now: opts.now,
           keep: opts.keep
         })
+        console.warn(
+          `[opencode-codex-auth] Corrupt auth storage at ${filePath} was quarantined to ${opts.quarantineDir}. Continuing with empty auth state.`
+        )
       } catch (error) {
         if (!isFsErrorCode(error, "ENOENT")) {
           // Best effort quarantine only.
@@ -496,7 +506,9 @@ export type LegacyTransferResult = {
 
 export async function importLegacyInstallData(filePath: string = defaultAuthPath()): Promise<LegacyTransferResult> {
   return withFileLock(filePath, async () => {
-    const current = sanitizeAuthFile(migrateAuthFile(await readAuthUnlocked(filePath)))
+    const current = sanitizeAuthFile(migrateAuthFile(await readAuthUnlocked(filePath)), {
+      openAIOnly: shouldEnforceOpenAIOnlyStorage(filePath)
+    })
     const nextOpenAI = ensureMultiOauthState(current)
     current.openai = nextOpenAI
 
@@ -631,7 +643,9 @@ export async function saveAuthStorage(
     const before = JSON.stringify(current)
     const result = await update(current)
     const nextBase = result === undefined ? current : result
-    const next = sanitizeAuthFile(migrateAuthFile(nextBase))
+    const next = sanitizeAuthFile(migrateAuthFile(nextBase), {
+      openAIOnly: shouldEnforceOpenAIOnlyStorage(filePath)
+    })
     if (JSON.stringify(next) === before) {
       return next
     }

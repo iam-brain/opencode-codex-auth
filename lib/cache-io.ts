@@ -58,8 +58,29 @@ export async function writeJsonFile(filePath: string, value: unknown): Promise<v
 export async function writeJsonFileAtomic(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   const tempPath = `${filePath}.tmp.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
-  await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
-  await fs.rename(tempPath, filePath)
+  try {
+    await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+    const tempHandle = await fs.open(tempPath, "r")
+    try {
+      await tempHandle.sync()
+    } finally {
+      await tempHandle.close()
+    }
+    await fs.rename(tempPath, filePath)
+    const dirHandle = await fs.open(path.dirname(filePath), "r")
+    try {
+      await dirHandle.sync()
+    } finally {
+      await dirHandle.close()
+    }
+  } catch (error) {
+    await fs.unlink(tempPath).catch((unlinkError) => {
+      if (!isFsErrorCode(unlinkError, "ENOENT")) {
+        // best-effort temp cleanup only
+      }
+    })
+    throw error
+  }
   await enforceOwnerOnlyPermissions(filePath)
 }
 

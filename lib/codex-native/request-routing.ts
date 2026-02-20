@@ -9,11 +9,21 @@ export function rewriteUrl(requestInput: string | URL | Request): URL {
       ? requestInput
       : new URL(typeof requestInput === "string" ? requestInput : requestInput.url)
 
-  if (parsed.pathname.includes("/v1/responses") || parsed.pathname.includes("/chat/completions")) {
+  if (isAllowedOpenAIOutboundHost(parsed.hostname) && shouldRewriteToCodexEndpoint(parsed.pathname)) {
     return new URL(CODEX_API_ENDPOINT)
   }
 
   return parsed
+}
+
+function shouldRewriteToCodexEndpoint(pathname: string): boolean {
+  return (
+    pathname === "/v1/responses" ||
+    pathname === "/v1/responses/" ||
+    pathname === "/v1/chat/completions" ||
+    pathname === "/chat/completions" ||
+    pathname === "/chat/completions/"
+  )
 }
 
 function isAllowedOpenAIOutboundHost(hostname: string): boolean {
@@ -32,6 +42,18 @@ export function assertAllowedOutboundUrl(url: URL): void {
         "This plugin only proxies HTTPS requests to OpenAI/ChatGPT backends.",
       status: 400,
       type: "disallowed_outbound_protocol",
+      param: "request"
+    })
+  }
+
+  const port = url.port.trim()
+  if (port && port !== "443") {
+    throw new PluginFatalError({
+      message:
+        `Blocked outbound request to \"${url.hostname}:${port}\". ` +
+        "This plugin only proxies OpenAI/ChatGPT backend traffic over the default HTTPS port.",
+      status: 400,
+      type: "disallowed_outbound_port",
       param: "request"
     })
   }

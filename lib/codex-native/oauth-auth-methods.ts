@@ -91,7 +91,11 @@ export function createBrowserOAuthAuthorize(deps: BrowserAuthorizeDeps) {
       )
       const callbackPromise = deps.waitForOAuthCallback(pkce, state, deps.authMode)
       deps.openAuthUrl(authUrl)
-      process.stdout.write(`\nGo to: ${authUrl}\n`)
+      const redactedAuthUrl = new URL(authUrl)
+      if (redactedAuthUrl.searchParams.has("state")) {
+        redactedAuthUrl.searchParams.set("state", "[redacted]")
+      }
+      process.stdout.write(`\nGo to: ${redactedAuthUrl.toString()}\n`)
       process.stdout.write("Complete authorization in your browser. This window will close automatically.\n")
 
       let authFailed = false

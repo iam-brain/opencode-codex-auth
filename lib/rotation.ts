@@ -111,7 +111,10 @@ function computeRotationHealthCounts(accounts: AccountRecord[], now: number): Ro
 
 function emitRotationDebug(
   input: SelectAccountInput,
-  event: Omit<RotationDebugEvent, "totalCount" | "disabledCount" | "cooldownCount" | "refreshLeaseCount" | "eligibleCount"> & {
+  event: Omit<
+    RotationDebugEvent,
+    "totalCount" | "disabledCount" | "cooldownCount" | "refreshLeaseCount" | "eligibleCount"
+  > & {
     eligibleCount?: number
   }
 ): void {
@@ -173,6 +176,7 @@ function assignSessionAccount(
   input: SelectAccountInput,
   selected: AccountRecord | undefined,
   strategy: "sticky" | "hybrid",
+  eligibleCount: number,
   extra?: Record<string, unknown>
 ): void {
   const state = input.stickySessionState
@@ -193,7 +197,7 @@ function assignSessionAccount(
     selectedIdentityKey: selected.identityKey,
     activeIdentityKey: input.activeIdentityKey,
     sessionKey,
-    eligibleCount: input.accounts.length,
+    eligibleCount,
     ...(extra ? { extra } : {})
   })
 }
@@ -209,7 +213,7 @@ function resolveStickySessionAccount(input: SelectAccountInput, eligible: Accoun
   state.cursor = (state.cursor + 1) % eligible.length
   const selected = eligible[index]
   if (!selected) return undefined
-  assignSessionAccount(input, selected, "sticky", { sessionCursor: state.cursor })
+  assignSessionAccount(input, selected, "sticky", eligible.length, { sessionCursor: state.cursor })
   return selected
 }
 
@@ -231,7 +235,7 @@ function resolveHybridSessionAccount(input: SelectAccountInput, eligible: Accoun
   state.cursor = (state.cursor + 1) % ordered.length
   const selected = ordered[index]
   if (!selected) return undefined
-  assignSessionAccount(input, selected, "hybrid", { sessionCursor: state.cursor })
+  assignSessionAccount(input, selected, "hybrid", eligible.length, { sessionCursor: state.cursor })
   return selected
 }
 
@@ -260,7 +264,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
     if (stickySessionAccount) return stickySessionAccount
     if (activeIndex >= 0) {
       const selected = eligible[activeIndex]
-      assignSessionAccount(input, selected, "sticky")
+      assignSessionAccount(input, selected, "sticky", eligible.length)
       emitRotationDebug(input, {
         strategy,
         decision: "sticky-active",
@@ -272,7 +276,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
     }
     if (input.stickyPidOffset !== true) {
       const selected = eligible[0]
-      assignSessionAccount(input, selected, "sticky")
+      assignSessionAccount(input, selected, "sticky", eligible.length)
       emitRotationDebug(input, {
         strategy,
         decision: "sticky-fallback-first",
@@ -284,7 +288,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
     }
     const offsetIndex = resolveOffsetIndex(input, eligible.length)
     const selected = eligible[offsetIndex]
-    assignSessionAccount(input, selected, "sticky", { offsetIndex })
+    assignSessionAccount(input, selected, "sticky", eligible.length, { offsetIndex })
     emitRotationDebug(input, {
       strategy,
       decision: "sticky-pid-offset",
@@ -305,7 +309,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
     }
     if (activeIndex >= 0) {
       const selected = eligible[activeIndex]
-      assignSessionAccount(input, selected, "hybrid")
+      assignSessionAccount(input, selected, "hybrid", eligible.length)
       emitRotationDebug(input, {
         strategy,
         decision: "hybrid-active",
@@ -328,7 +332,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
         selectedLastUsed = candidateLastUsed
       }
     }
-    assignSessionAccount(input, selected, "hybrid", { lastUsed: selected.lastUsed ?? 0 })
+    assignSessionAccount(input, selected, "hybrid", eligible.length, { lastUsed: selected.lastUsed ?? 0 })
     emitRotationDebug(input, {
       strategy,
       decision: "hybrid-lru",

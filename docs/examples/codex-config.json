@@ -18,7 +18,9 @@
     "pidOffset": false
   },
   "global": {
-    "personality": "pragmatic"
+    "personality": "pragmatic",
+    "verbosityEnabled": true,
+    "verbosity": "default"
   },
   "perModel": {}
 }

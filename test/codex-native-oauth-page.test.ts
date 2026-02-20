@@ -61,6 +61,12 @@ describe("codex-native oauth callback page branding", () => {
     expect(parsed.searchParams.get("id_token")).toBeNull()
   })
 
+  it("ignores untrusted platform_url query values in success page redirect script", () => {
+    const html = __testOnly.buildOAuthSuccessHtml()
+    expect(html).toContain("new Set(['https://platform.openai.com', 'https://platform.api.openai.org'])")
+    expect(html).toContain("if (!allowed.has(candidate)) return 'https://platform.openai.com';")
+  })
+
   it("maps auth account domain from runtime mode", () => {
     expect(__testOnly.modeForRuntimeMode("native")).toBe("native")
     expect(__testOnly.modeForRuntimeMode("codex")).toBe("codex")

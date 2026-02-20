@@ -6,7 +6,9 @@ This plugin supports multi-account OpenAI OAuth with strict identity, health-awa
 
 Primary file:
 
-- `~/.config/opencode/codex-accounts.json`
+- resolved `<config-root>/codex-accounts.json`
+  - `$XDG_CONFIG_HOME/opencode/codex-accounts.json` when `XDG_CONFIG_HOME` is set
+  - otherwise `~/.config/opencode/codex-accounts.json`
 
 Provider marker file:
 
@@ -16,8 +18,35 @@ OpenAI auth is stored with domain-aware account sets:
 
 - `openai.native`
 - `openai.codex`
+- compatibility aggregate: `openai.accounts`
 
 Each account can include `authTypes` so one identity can be valid in one or both auth modes.
+
+### Auth file shape
+
+`codex-accounts.json` stores both mode-specific domains and a compatibility aggregate:
+
+```json
+{
+  "openai": {
+    "type": "oauth",
+    "accounts": [
+      {
+        "identityKey": "acc|user@example.com|plus",
+        "authTypes": ["native", "codex"]
+      }
+    ],
+    "native": {
+      "accounts": []
+    },
+    "codex": {
+      "accounts": []
+    }
+  }
+}
+```
+
+Routing, refresh, and active-account selection use the mode-specific domain (`openai.native` or `openai.codex`) for the current runtime mode.
 
 ## Identity key policy
 

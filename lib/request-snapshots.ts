@@ -21,6 +21,7 @@ const REDACTED_BODY_KEYS = new Set([
   "refresh_token",
   "id_token",
   "authorization",
+  "prompt_cache_key",
   "accesstoken",
   "refreshtoken",
   "idtoken"
@@ -59,11 +60,11 @@ function sanitizeBodyValue(value: unknown): unknown {
 function redactRawBody(raw: string): string {
   return raw
     .replace(
-      /([?&;\s]|^)(access_token|refresh_token|id_token|accessToken|refreshToken|idToken)=([^&;\s]+)/gi,
+      /([?&;\s]|^)(access_token|refresh_token|id_token|prompt_cache_key|accessToken|refreshToken|idToken)=([^&;\s]+)/gi,
       (_full, prefix: string, key: string) => `${prefix}${key}=${REDACTED}`
     )
     .replace(
-      /"(access_token|refresh_token|id_token|accessToken|refreshToken|idToken)"\s*:\s*"[^"]*"/gi,
+      /"(access_token|refresh_token|id_token|prompt_cache_key|accessToken|refreshToken|idToken)"\s*:\s*"[^"]*"/gi,
       (_full, key: string) => `"${key}":"${REDACTED}"`
     )
 }
@@ -125,6 +126,11 @@ function getPromptCacheKey(body: unknown): string | undefined {
   if (!body || typeof body !== "object" || Array.isArray(body)) return undefined
   const candidate = (body as Record<string, unknown>).prompt_cache_key
   return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined
+}
+
+function sanitizePromptCacheKey(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  return REDACTED
 }
 
 function sanitizeSnapshotMeta(meta: SnapshotMeta): Record<string, unknown> {
@@ -301,7 +307,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
         method: request.method,
         url: sanitizedUrl,
         headers,
-        prompt_cache_key: getPromptCacheKey(body),
+        prompt_cache_key: sanitizePromptCacheKey(getPromptCacheKey(body)),
         ...sanitizedMeta
       })
     },

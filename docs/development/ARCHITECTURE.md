@@ -47,7 +47,7 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
 - `lib/fetch-orchestrator.ts`
   - retry/failover control around backend requests
   - standardized per-attempt failover reason codes (`initial_attempt`, `retry_same_account_after_429`, `retry_switched_account_after_429`) for snapshot/debug observability
-  - failover toasts include explicit taxonomy tags (for example `retry_pending_after_429`) to aid operator diagnosis
+  - failover toasts stay concise for end users; reason-code taxonomy remains available in snapshot/debug metadata
 - `lib/proactive-refresh.ts`
   - optional background refresh with lease/cooldown guards
 - `lib/model-catalog.ts`

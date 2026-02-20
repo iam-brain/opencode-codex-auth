@@ -173,14 +173,15 @@ export type CodexAuthPluginOptions = {
 export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginOptions = {}): Promise<Hooks> {
   opts.log?.debug("codex-native init")
   const codexCompactionSummaryPrefixSessions = new Set<string>()
-  const spoofMode: CodexSpoofMode =
+  const spoofModeFromOptions: CodexSpoofMode =
     (opts.spoofMode as string | undefined) === "codex" || (opts.spoofMode as string | undefined) === "strict"
       ? "codex"
       : "native"
   const runtimeMode: PluginRuntimeMode =
-    opts.mode === "codex" || opts.mode === "native" ? opts.mode : spoofMode === "codex" ? "codex" : "native"
+    opts.mode === "codex" || opts.mode === "native" ? opts.mode : spoofModeFromOptions === "codex" ? "codex" : "native"
+  const spoofMode: CodexSpoofMode = opts.mode ? (runtimeMode === "codex" ? "codex" : "native") : spoofModeFromOptions
   const authMode: OpenAIAuthMode = modeForRuntimeMode(runtimeMode)
-  const remapDeveloperMessagesToUserEnabled = spoofMode === "codex" && opts.remapDeveloperMessagesToUser !== false
+  const remapDeveloperMessagesToUserEnabled = runtimeMode === "codex" && opts.remapDeveloperMessagesToUser !== false
   const codexCompactionOverrideEnabled =
     opts.codexCompactionOverride !== undefined ? opts.codexCompactionOverride : runtimeMode === "codex"
   const collaborationProfileEnabled =

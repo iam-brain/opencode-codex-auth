@@ -42,14 +42,14 @@ This plugin is intended for personal development use with your own ChatGPT accou
 
 ## Install behavior
 
-By default, `npx -y @iam-brain/opencode-codex-auth` runs the installer.
+By default, `npx -y @iam-brain/opencode-codex-auth@latest` runs the installer.
 
 The installer does four things:
 
-1. Ensures `@iam-brain/opencode-codex-auth@latest` is present in `~/.config/opencode/opencode.json`.
-2. Creates `~/.config/opencode/codex-config.json` with defaults when missing.
-3. Synchronizes `~/.config/opencode/commands/create-personality.md` for `/create-personality` (created/updated as needed).
-4. Synchronizes `~/.config/opencode/skills/personality-builder/SKILL.md` (plus references) for skill-driven personality workflows.
+1. Ensures `@iam-brain/opencode-codex-auth@latest` is present in resolved `<config-root>/opencode.json` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`).
+2. Creates `codex-config.json` with defaults at resolved config root (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`) when missing.
+3. Synchronizes `<config-root>/commands/create-personality.md` for `/create-personality` (created/updated as needed).
+4. Synchronizes `<config-root>/skills/personality-builder/SKILL.md` (plus references) for skill-driven personality workflows.
 
 At plugin startup, managed templates are synchronized to the latest version:
 
@@ -61,14 +61,14 @@ At plugin startup, managed templates are synchronized to the latest version:
 Re-run installer (idempotent):
 
 ```bash
-npx -y @iam-brain/opencode-codex-auth install
+npx -y @iam-brain/opencode-codex-auth@latest install
 ```
 
 ## Config split
 
 Keep `opencode.json` minimal (plugin enablement only). Put runtime behavior in:
 
-- `~/.config/opencode/codex-config.json`
+- resolved `<config-root>/codex-config.json`
 
 Canonical config/env docs (complete key + variable reference) are in `docs/configuration.md`.
 
@@ -81,7 +81,7 @@ Schemas for user-edited JSON files are in:
 Personality files live in lowercase directories:
 
 - project-local: `.opencode/personalities/`
-- global: `~/.config/opencode/personalities/`
+- global: resolved `<config-root>/personalities/`
 
 Create guided custom personalities with:
 
@@ -96,14 +96,14 @@ Create guided custom personalities with:
 
 ## Account storage
 
-- Primary runtime store: `~/.config/opencode/codex-accounts.json`
+- Primary runtime store: resolved `<config-root>/codex-accounts.json` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`)
 - OpenCode provider auth marker (import source only): `~/.local/share/opencode/auth.json`
-- Session affinity cache: `~/.config/opencode/cache/codex-session-affinity.json`
-- Quota snapshot cache: `~/.config/opencode/cache/codex-snapshots.json`
+- Session affinity cache: resolved `<config-root>/cache/codex-session-affinity.json`
+- Quota snapshot cache: resolved `<config-root>/cache/codex-snapshots.json`
 
 Legacy sources can be imported explicitly from the auth menu:
 
-- `~/.config/opencode/openai-codex-accounts.json`
+- resolved `<config-root>/openai-codex-accounts.json`
 - `~/.local/share/opencode/auth.json`
 
 ## Documentation

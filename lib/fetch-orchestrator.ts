@@ -273,7 +273,7 @@ export class FetchOrchestrator {
       if (this.state.lastAccountKey !== null && this.state.lastAccountKey !== accountKey) {
         const accountSwitchMessage =
           attemptReasonCode === "retry_switched_account_after_429"
-            ? `Account switched after rate limit: ${accountLabel} [${attemptReasonCode}]`
+            ? `Account switched after rate limit: ${accountLabel}`
             : `Account switched: ${accountLabel}`
         await this.maybeShowToast(accountSwitchMessage, "info", {
           dedupeKey: "account:switch",
@@ -351,7 +351,7 @@ export class FetchOrchestrator {
       }
 
       if (attempt < maxAttempts - 1 && this.shouldShowRateLimitToast(auth.identityKey, now)) {
-        await this.maybeShowToast("Rate limited - switching account [retry_pending_after_429]", "warning")
+        await this.maybeShowToast("Rate limited - switching account", "warning")
       }
     }
 

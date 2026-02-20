@@ -5,7 +5,9 @@ import { isFsErrorCode } from "./cache-io"
 export const CONFIG_DIR_GITIGNORE_ENTRIES = [
   ".gitignore",
   "codex-accounts.json",
+  "codex-accounts.json.tmp.*",
   "codex-accounts.json.*.tmp",
+  "quarantine/",
   "cache/codex-session-affinity.json",
   "cache/codex-snapshots.json",
   "logs/codex-plugin/"

@@ -416,11 +416,7 @@ describe("FetchOrchestrator", () => {
 
     const response = await orch.execute("https://api.com")
     expect(response.status).toBe(200)
-    expect(showToast).toHaveBeenCalledWith(
-      "Rate limited - switching account [retry_pending_after_429]",
-      "warning",
-      false
-    )
+    expect(showToast).toHaveBeenCalledWith("Rate limited - switching account", "warning", false)
   })
 
   it("tags account-switch toast with reason code when switched after 429", async () => {
@@ -455,7 +451,7 @@ describe("FetchOrchestrator", () => {
     expect(
       showToast.mock.calls.some(
         (call) =>
-          call[0] === "Account switched after rate limit: two@example.com (plus) [retry_switched_account_after_429]" &&
+          call[0] === "Account switched after rate limit: two@example.com (plus)" &&
           call[1] === "info" &&
           call[2] === false
       )

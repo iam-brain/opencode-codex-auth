@@ -55,7 +55,7 @@ describe("request snapshots", () => {
     }
 
     expect(payload.body).toBe(
-      "access_token=[redacted]&refresh_token=[redacted]&idToken=[redacted]&prompt_cache_key=ses_snap_2"
+      "access_token=[redacted]&refresh_token=[redacted]&idToken=[redacted]&prompt_cache_key=[redacted]"
     )
   })
 
@@ -95,7 +95,7 @@ describe("request snapshots", () => {
     expect(payload.attempt).toBe(1)
     expect(payload.headers.authorization).toBe("Bearer [redacted]")
     expect(payload.headers["chatgpt-account-id"]).toBe("[redacted]")
-    expect(payload.body.prompt_cache_key).toBe("ses_snap_1")
+    expect(payload.body.prompt_cache_key).toBe("[redacted]")
     expect(payload.body.access_token).toBe("[redacted]")
     expect(payload.body.accessToken).toBe("[redacted]")
     expect(payload.body.refreshToken).toBe("[redacted]")
@@ -110,8 +110,8 @@ describe("request snapshots", () => {
     expect(liveHeaders).toHaveLength(1)
     expect(liveHeaders[0]?.headers.authorization).toBe("Bearer [redacted]")
     expect(liveHeaders[0]?.headers["chatgpt-account-id"]).toBe("[redacted]")
-    expect(liveHeaders[0]?.prompt_cache_key).toBe("ses_snap_1")
-  
+    expect(liveHeaders[0]?.prompt_cache_key).toBe("[redacted]")
+
     const requestMode = (await fs.stat(filePath)).mode & 0o777
     const liveHeadersMode = (await fs.stat(path.join(root, "live-headers.jsonl"))).mode & 0o777
     expect(requestMode).toBe(0o600)

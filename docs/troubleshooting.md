@@ -2,19 +2,19 @@
 
 ## Quick checks
 
-1. Confirm plugin is installed in `~/.config/opencode/opencode.json`.
-2. Confirm config exists at the resolved path (`OPENCODE_OPENAI_MULTI_CONFIG_PATH` when set, otherwise `$XDG_CONFIG_HOME/opencode/codex-config.json` or `~/.config/opencode/codex-config.json`).
+1. Confirm plugin is installed in resolved `<config-root>/opencode.json` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`).
+2. Confirm config exists at the resolved path (`OPENCODE_OPENAI_MULTI_CONFIG_PATH` when set, otherwise exactly one default path: `$XDG_CONFIG_HOME/opencode/codex-config.json` when `XDG_CONFIG_HOME` is set, else `~/.config/opencode/codex-config.json`).
 3. Confirm auth files exist:
-   - `~/.local/share/opencode/auth.json`
-   - `~/.config/opencode/codex-accounts.json`
-4. Confirm cache files exist (created on demand):
-   - `~/.config/opencode/cache/codex-client-version.json`
-   - `~/.config/opencode/cache/codex-models-cache-meta.json`
-   - `~/.config/opencode/cache/codex-models-cache.json`
-   - `~/.config/opencode/cache/codex-models-cache-<hash>.json`
-   - `~/.config/opencode/cache/codex-auth-models-<hash>.json`
-   - `~/.config/opencode/cache/codex-session-affinity.json`
-   - `~/.config/opencode/cache/codex-snapshots.json`
+   - required runtime store: resolved `<config-root>/codex-accounts.json`
+   - optional legacy transfer source: `~/.local/share/opencode/auth.json`
+4. Confirm cache files exist when relevant features were used (files are created on demand):
+   - `<config-root>/cache/codex-client-version.json`
+   - `<config-root>/cache/codex-models-cache-meta.json`
+   - `<config-root>/cache/codex-models-cache.json`
+   - `<config-root>/cache/codex-models-cache-<hash>.json`
+   - `<config-root>/cache/codex-auth-models-<hash>.json`
+   - `<config-root>/cache/codex-session-affinity.json`
+   - `<config-root>/cache/codex-snapshots.json`
 
 ## Common issues
 
@@ -37,14 +37,14 @@
 
 ### `/create-personality` command not found
 
-- Re-run installer: `npx -y @iam-brain/opencode-codex-auth`
-- Verify file exists: `~/.config/opencode/commands/create-personality.md`
+- Re-run installer: `npx -y @iam-brain/opencode-codex-auth@latest`
+- Verify file exists: `<config-root>/commands/create-personality.md`
 - Restart OpenCode so command discovery refreshes.
 
 ### `personality-builder` skill missing
 
-- Re-run installer: `npx -y @iam-brain/opencode-codex-auth`
-- Verify file exists: `~/.config/opencode/skills/personality-builder/SKILL.md`
+- Re-run installer: `npx -y @iam-brain/opencode-codex-auth@latest`
+- Verify file exists: `<config-root>/skills/personality-builder/SKILL.md`
 
 ### Quota output shows `Unknown`
 
@@ -92,6 +92,24 @@ If accounts reappear:
 - check external scripts touching auth files
 - stop OpenCode before manually editing `codex-accounts.json` (plugin writes are lock-guarded + atomic and can overwrite ad-hoc edits)
 
+### Corrupt auth file got quarantined
+
+Meaning:
+
+- auth storage JSON could not be parsed, so the plugin moved the file to quarantine and continued with empty auth state.
+
+Where quarantine files go:
+
+- default: `<auth-file-dir>/quarantine/`
+- filename pattern: `<original>.<timestamp>.quarantine.json`
+
+Recovery:
+
+- stop OpenCode
+- inspect and repair the quarantined JSON backup
+- copy the repaired file back to `codex-accounts.json`
+- rerun `opencode auth login` if needed to refresh tokens/identity metadata
+
 ## Debug mode
 
 Enable:
@@ -105,6 +123,7 @@ Optional request/response snapshots:
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS=true`
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG=true` (adds `before-header-transform` and `after-header-transform`)
 - output in `~/.config/opencode/logs/codex-plugin/`
+  - note: this log path currently does not follow `XDG_CONFIG_HOME`
 
 Optional OAuth timing controls:
 

@@ -10,6 +10,11 @@ export async function quarantineFile(input: {
 }): Promise<{ quarantinedPath: string }> {
   const keep = typeof input.keep === "number" && Number.isFinite(input.keep) ? Math.max(1, Math.floor(input.keep)) : 5
   await fs.mkdir(input.quarantineDir, { recursive: true })
+  await fs.chmod(input.quarantineDir, 0o700).catch((error) => {
+    if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
+      throw error
+    }
+  })
 
   const base = path.basename(input.sourcePath)
   const dest = path.join(input.quarantineDir, `${base}.${input.now()}.quarantine.json`)
@@ -22,13 +27,16 @@ export async function quarantineFile(input: {
     return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY
   }
 
+  const isQuarantineEntry = (fileName: string): boolean => {
+    const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    return new RegExp(`^${escapedBase}\\.(\\d+)\\.quarantine\\.json$`).test(fileName)
+  }
+
   // rename preferred; fallback to copy+unlink
   try {
     await fs.rename(input.sourcePath, dest)
   } catch (error) {
-    if (!isFsErrorCode(error, "EXDEV")) {
-      // fallback to copy+unlink for cross-device and similar rename failures
-    }
+    if (!isFsErrorCode(error, "EXDEV")) throw error
     await fs.copyFile(input.sourcePath, dest)
     await fs.unlink(input.sourcePath)
   }
@@ -46,7 +54,7 @@ export async function quarantineFile(input: {
   // bounded retention
   try {
     const allFiles = await fs.readdir(input.quarantineDir)
-    const files = allFiles.filter((f) => f.startsWith(base + "."))
+    const files = allFiles.filter((f) => isQuarantineEntry(f))
     files.sort((left, right) => {
       const leftTs = extractTimestamp(left)
       const rightTs = extractTimestamp(right)
