@@ -123,4 +123,5 @@ Legacy sources can be imported explicitly from the auth menu:
 ```bash
 npm install
 npm run verify
+npm run verify:esm
 ```

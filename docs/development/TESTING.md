@@ -9,9 +9,17 @@ npm run typecheck
 npm test
 npm run build
 npm run verify
+npm run verify:esm
 ```
 
 `npm run verify` is the pre-release gate.
+
+`npm run verify:esm` enforces Node ESM regression guards:
+
+- runtime source imports in `index.ts`, `lib/**/*.ts`, `bin/**/*.ts` must use explicit `.js` for relative specifiers
+- `index.ts` runtime `tool` import must stay `@opencode-ai/plugin/tool`
+- emitted `dist/**/*.js` relative imports must remain fully specified
+- built CLI smoke must pass (`node ./dist/bin/opencode-codex-auth.js --help`)
 
 ## Focused test runs
 
