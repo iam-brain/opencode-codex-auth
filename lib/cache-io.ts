@@ -24,6 +24,41 @@ export function isFsErrorCode(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code
 }
 
+function isUnsupportedSyncError(error: unknown): boolean {
+  if (process.platform !== "win32") return false
+  return (
+    isFsErrorCode(error, "EPERM") ||
+    isFsErrorCode(error, "EINVAL") ||
+    isFsErrorCode(error, "ENOTSUP") ||
+    isFsErrorCode(error, "ENOSYS")
+  )
+}
+
+async function syncHandleBestEffort(handle: fs.FileHandle): Promise<void> {
+  try {
+    await handle.sync()
+  } catch (error) {
+    if (!isUnsupportedSyncError(error)) {
+      throw error
+    }
+  }
+}
+
+async function syncDirectoryBestEffort(dirPath: string): Promise<void> {
+  let dirHandle: fs.FileHandle
+  try {
+    dirHandle = await fs.open(dirPath, "r")
+  } catch (error) {
+    if (isUnsupportedSyncError(error)) return
+    throw error
+  }
+  try {
+    await syncHandleBestEffort(dirHandle)
+  } finally {
+    await dirHandle.close()
+  }
+}
+
 export async function enforceOwnerOnlyPermissions(filePath: string): Promise<void> {
   try {
     await fs.chmod(filePath, 0o600)
@@ -62,17 +97,12 @@ export async function writeJsonFileAtomic(filePath: string, value: unknown): Pro
     await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
     const tempHandle = await fs.open(tempPath, "r")
     try {
-      await tempHandle.sync()
+      await syncHandleBestEffort(tempHandle)
     } finally {
       await tempHandle.close()
     }
     await fs.rename(tempPath, filePath)
-    const dirHandle = await fs.open(path.dirname(filePath), "r")
-    try {
-      await dirHandle.sync()
-    } finally {
-      await dirHandle.close()
-    }
+    await syncDirectoryBestEffort(path.dirname(filePath))
   } catch (error) {
     await fs.unlink(tempPath).catch((unlinkError) => {
       if (!isFsErrorCode(unlinkError, "ENOENT")) {
