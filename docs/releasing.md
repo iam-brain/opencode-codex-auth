@@ -24,10 +24,17 @@ npm run release -- <patch|minor|major>
 
 1. Confirms branch is `main`.
 2. Confirms working tree is clean.
-3. Runs `npm run verify`.
-4. Runs `npm version <bump> -m "release: v%s"`.
-5. Pushes `main` plus tags (`git push origin main --follow-tags`).
-6. If `gh` is installed and authenticated, waits for GitHub Release visibility.
+3. Confirms `HEAD` matches `origin/main`.
+4. Confirms latest `ci.yml` push run for `HEAD` is green and required jobs succeeded.
+5. Runs `npm run verify`.
+6. Runs `npm version <bump> -m "release: v%s"`.
+7. Pushes `main` plus tags (`git push origin main --follow-tags`).
+8. Waits for GitHub Release visibility.
+
+Remote CI gate notes:
+
+- Requires authenticated `gh` CLI.
+- Override only for emergency/manual recovery with `RELEASE_SKIP_REMOTE_CI_GATE=1`.
 
 ## Required checks before release
 
@@ -39,9 +46,12 @@ npm run verify
 
 `verify` runs:
 
+- `npm run check:esm-imports`
 - `npm run typecheck`
 - `npm test`
 - `npm run build`
+- `npm run check:dist-esm-imports`
+- `npm run smoke:cli:dist`
 
 Recommended additional checks:
 
@@ -62,6 +72,8 @@ GitHub Actions handle verification and publish automation:
 
 - `.github/workflows/ci.yml`
   - runs verify checks on pushes and pull requests
+  - includes Windows runtime hardening checks
+  - includes packed tarball execution smoke
 - `.github/workflows/release.yml`
   - on `v*` tag push, installs dependencies, runs `npm run verify`, publishes to npm with Trusted Publishing, and creates GitHub Release
 

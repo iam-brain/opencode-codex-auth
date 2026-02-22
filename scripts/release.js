@@ -5,6 +5,15 @@ import { readFileSync } from "node:fs"
 
 const VALID_BUMPS = new Set(["patch", "minor", "major"])
 const bump = process.argv[2] ?? "patch"
+const REQUIRED_CI_WORKFLOW = "ci.yml"
+const REQUIRED_CI_JOBS = [
+  "Verify on Node.js 20.x",
+  "Verify on Node.js 22.x",
+  "Package Smoke Test",
+  "Windows Runtime Hardening",
+  "Security Audit"
+]
+const REMOTE_CI_BYPASS_ENV = "RELEASE_SKIP_REMOTE_CI_GATE"
 
 if (!VALID_BUMPS.has(bump)) {
   console.error(`Invalid release bump "${bump}". Use one of: patch, minor, major.`)
@@ -37,6 +46,14 @@ function runCapture(command, args) {
   return run(command, args, { capture: true }).stdout?.trim() ?? ""
 }
 
+function parseJson(input, context) {
+  try {
+    return JSON.parse(input)
+  } catch {
+    throw new Error(`Failed to parse JSON for ${context}.`)
+  }
+}
+
 function sleep(ms) {
   const shared = new SharedArrayBuffer(4)
   const view = new Int32Array(shared)
@@ -59,6 +76,100 @@ function hasGhCli() {
 function hasGhAuth() {
   const result = run("gh", ["auth", "status"], { capture: true, allowFailure: true })
   return (result.status ?? 1) === 0
+}
+
+function shouldSkipRemoteCiGate() {
+  return process.env[REMOTE_CI_BYPASS_ENV] === "1"
+}
+
+function fetchOriginMain() {
+  run("git", ["fetch", "origin", "main", "--quiet"])
+}
+
+function assertHeadMatchesOriginMain() {
+  const head = runCapture("git", ["rev-parse", "HEAD"])
+  const originMain = runCapture("git", ["rev-parse", "origin/main"])
+  if (head !== originMain) {
+    throw new Error("HEAD does not match origin/main. Push main and wait for CI on that exact commit before releasing.")
+  }
+}
+
+function listCiRunsForHead(headSha) {
+  const output = runCapture("gh", [
+    "run",
+    "list",
+    "--workflow",
+    REQUIRED_CI_WORKFLOW,
+    "--commit",
+    headSha,
+    "--limit",
+    "20",
+    "--json",
+    "databaseId,status,conclusion,headSha,event,createdAt,url"
+  ])
+  const runs = parseJson(output || "[]", "gh run list")
+  if (!Array.isArray(runs)) {
+    throw new Error("Unexpected gh run list response shape.")
+  }
+  return runs
+    .filter((runEntry) => runEntry && runEntry.headSha === headSha && runEntry.event === "push")
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+}
+
+function readCiRunDetails(runId) {
+  const output = runCapture("gh", ["run", "view", String(runId), "--json", "status,conclusion,jobs,url"])
+  const details = parseJson(output || "{}", "gh run view")
+  if (!details || typeof details !== "object") {
+    throw new Error("Unexpected gh run view response shape.")
+  }
+  return details
+}
+
+function assertRequiredCiJobsSucceeded(details) {
+  const jobs = Array.isArray(details.jobs) ? details.jobs : []
+  for (const requiredJob of REQUIRED_CI_JOBS) {
+    const matching = jobs.find((job) => job && job.name === requiredJob)
+    if (!matching) {
+      throw new Error(`Required CI job missing in ${REQUIRED_CI_WORKFLOW}: ${requiredJob}`)
+    }
+    if (matching.conclusion !== "success") {
+      throw new Error(`Required CI job is not successful (${requiredJob}): ${matching.conclusion ?? "unknown"}`)
+    }
+  }
+}
+
+function assertRemoteCiGreenForHead() {
+  if (shouldSkipRemoteCiGate()) {
+    process.stdout.write(
+      `Skipping remote CI gate because ${REMOTE_CI_BYPASS_ENV}=1. Use only for emergency/manual release recovery.\n`
+    )
+    return
+  }
+
+  if (!hasGhCli() || !hasGhAuth()) {
+    throw new Error("gh CLI with authenticated session is required to confirm remote CI status before release.")
+  }
+
+  fetchOriginMain()
+  assertHeadMatchesOriginMain()
+
+  const head = runCapture("git", ["rev-parse", "HEAD"])
+  const runs = listCiRunsForHead(head)
+  if (runs.length === 0) {
+    throw new Error(
+      `No ${REQUIRED_CI_WORKFLOW} push run found for HEAD (${head}). Wait for CI to complete on main before releasing.`
+    )
+  }
+
+  const latestRun = runs[0]
+  const details = readCiRunDetails(latestRun.databaseId)
+  if (details.status !== "completed" || details.conclusion !== "success") {
+    throw new Error(
+      `Latest ${REQUIRED_CI_WORKFLOW} run is not green for HEAD (${head}): status=${details.status}, conclusion=${details.conclusion}. ${details.url ?? ""}`
+    )
+  }
+  assertRequiredCiJobsSucceeded(details)
+  process.stdout.write(`Remote CI gate passed for HEAD (${head}). ${details.url ?? ""}\n`)
 }
 
 function waitForGitHubRelease(repoSlug, tag) {
@@ -111,6 +222,7 @@ function main() {
   process.stdout.write(`Starting ${bump} release flow...\n`)
   assertCleanWorkingTree()
   assertMainBranch()
+  assertRemoteCiGreenForHead()
 
   process.stdout.write("Running verify...\n")
   run("npm", ["run", "verify"])

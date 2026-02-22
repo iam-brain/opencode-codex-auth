@@ -47,6 +47,15 @@ describe("release hygiene", () => {
     expect(pkg.scripts?.["release:major"]).toBe("npm run release -- major")
     expect(existsSync(join(process.cwd(), "scripts", "release.js"))).toBe(true)
   })
+
+  it("release script enforces remote CI gate on main HEAD", () => {
+    const releaseScriptPath = join(process.cwd(), "scripts", "release.js")
+    const releaseScript = readFileSync(releaseScriptPath, "utf-8")
+    expect(releaseScript).toContain("assertHeadMatchesOriginMain")
+    expect(releaseScript).toContain("assertRemoteCiGreenForHead")
+    expect(releaseScript).toContain("RELEASE_SKIP_REMOTE_CI_GATE")
+    expect(releaseScript).toContain("Windows Runtime Hardening")
+  })
 })
 
 describe("package publish surface", () => {
