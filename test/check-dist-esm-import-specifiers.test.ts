@@ -21,7 +21,7 @@ describe("check-dist-esm-import-specifiers script", () => {
 
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("extensionless relative imports in dist output")
-    expect(result.stderr).toContain("dist/index.js:1 -> ./lib/side-effect")
+    expect(result.stderr).toMatch(/dist[\\/]index\.js:1 -> \.\/lib\/side-effect/)
   })
 
   it("passes when dist side-effect imports are fully specified", async () => {
@@ -81,7 +81,7 @@ describe("check-dist-esm-import-specifiers script", () => {
     })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain("dist/index.mjs:1 -> ./lib/side-effect")
+    expect(result.stderr).toMatch(/dist[\\/]index\.mjs:1 -> \.\/lib\/side-effect/)
   })
 
   it("ignores commented from imports in dist output", async () => {
