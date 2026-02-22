@@ -31,8 +31,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check source ESM specifiers
+        run: npm run check:imports:src
+
       - name: Run verify
         run: npm run verify
+
+      - name: Check dist ESM specifiers
+        run: npm run check:imports:dist
+
+      - name: Built CLI smoke test
+        run: npm run smoke:cli
 
   package-smoke:
     name: Package Smoke Test

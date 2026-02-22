@@ -35,7 +35,11 @@
   },
   "scripts": {
     "clean:dist": "node scripts/clean-dist.js",
+    "check:imports:src": "node scripts/check-esm-specifiers.js --scope=src",
+    "check:imports:dist": "node scripts/check-esm-specifiers.js --scope=dist",
     "build": "npm run clean:dist && tsc",
+    "smoke:cli": "node ./dist/bin/opencode-codex-auth.js --help",
+    "verify:esm": "npm run check:imports:src && npm run build && npm run check:imports:dist && npm run smoke:cli",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "verify": "npm run typecheck && npm test && npm run build",
