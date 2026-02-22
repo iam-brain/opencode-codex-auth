@@ -1,4 +1,4 @@
-import type { AccountAuthType } from "./types"
+import type { AccountAuthType } from "./types.js"
 
 const ACCOUNT_AUTH_TYPE_ORDER: AccountAuthType[] = ["native", "codex"]
 

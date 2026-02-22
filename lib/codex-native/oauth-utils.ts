@@ -2,9 +2,9 @@ import {
   extractAccountIdFromClaims as extractAccountIdFromClaimsBase,
   parseJwtClaims,
   type IdTokenClaims
-} from "../claims"
-import type { CodexSpoofMode } from "../config"
-import { CODEX_OAUTH_SUCCESS_HTML } from "../oauth-pages"
+} from "../claims.js"
+import type { CodexSpoofMode } from "../config.js"
+import { CODEX_OAUTH_SUCCESS_HTML } from "../oauth-pages.js"
 
 export const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 export const ISSUER = "https://auth.openai.com"

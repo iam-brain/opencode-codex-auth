@@ -2,9 +2,9 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 
-import type { Logger } from "./logger"
-import { enforceOwnerOnlyPermissions, isFsErrorCode } from "./cache-io"
-import { defaultCodexPluginLogsPath } from "./paths"
+import type { Logger } from "./logger.js"
+import { enforceOwnerOnlyPermissions, isFsErrorCode } from "./cache-io.js"
+import { defaultCodexPluginLogsPath } from "./paths.js"
 const REDACTED = "[redacted]"
 const REDACTED_HEADERS = new Set([
   "authorization",

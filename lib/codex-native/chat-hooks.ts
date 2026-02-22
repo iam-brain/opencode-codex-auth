@@ -1,8 +1,8 @@
 import type { PluginInput } from "@opencode-ai/plugin"
 
-import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config"
-import type { CodexModelInfo } from "../model-catalog"
-import { getRuntimeDefaultsForModel, resolveInstructionsForModel } from "../model-catalog"
+import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config.js"
+import type { CodexModelInfo } from "../model-catalog.js"
+import { getRuntimeDefaultsForModel, resolveInstructionsForModel } from "../model-catalog.js"
 import {
   applyCodexRuntimeDefaultsToParams,
   findCatalogModelForCandidates,
@@ -12,16 +12,16 @@ import {
   getModelVerbosityOverride,
   getVariantLookupCandidates,
   resolvePersonalityForModel
-} from "./request-transform"
-import { resolveRequestUserAgent } from "./client-identity"
-import { resolveCodexOriginator } from "./originator"
+} from "./request-transform.js"
+import { resolveRequestUserAgent } from "./client-identity.js"
+import { resolveCodexOriginator } from "./originator.js"
 import {
   asString,
   getMessageProviderID,
   isRecord,
   readSessionMessageInfo,
   sessionUsesOpenAIProvider
-} from "./session-messages"
+} from "./session-messages.js"
 import {
   getCodexPlanModeInstructions,
   isOrchestratorInstructions,
@@ -30,7 +30,7 @@ import {
   resolveHookAgentName,
   resolveCollaborationProfile,
   resolveSubagentHeaderValue
-} from "./collaboration"
+} from "./collaboration.js"
 
 function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | undefined {
   if (typeof value !== "string") return undefined

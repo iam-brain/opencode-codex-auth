@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import type { CodexSpoofMode } from "./config"
+import type { CodexSpoofMode } from "./config.js"
 
 export const PROMPT_CACHE_KEY_VERSION = 1
 const PROMPT_CACHE_KEY_PREFIX = "ocpk"

@@ -1,5 +1,5 @@
-import type { CodexRateLimitSnapshot, AccountRecord, CodexLimit } from "./types"
-import { ANSI } from "./ui/tty/ansi"
+import type { CodexRateLimitSnapshot, AccountRecord, CodexLimit } from "./types.js"
+import { ANSI } from "./ui/tty/ansi.js"
 
 const FULL_BLOCK = "█"
 const EMPTY_BLOCK = "░"

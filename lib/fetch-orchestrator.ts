@@ -1,5 +1,5 @@
-import { computeBackoffMs, parseRetryAfterMs } from "./rate-limit"
-import { createSyntheticErrorResponse, formatWaitTime } from "./fatal-errors"
+import { computeBackoffMs, parseRetryAfterMs } from "./rate-limit.js"
+import { createSyntheticErrorResponse, formatWaitTime } from "./fatal-errors.js"
 
 export type AccountSelectionTrace = {
   strategy: string

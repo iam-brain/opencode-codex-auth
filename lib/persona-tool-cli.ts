@@ -1,7 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import { generatePersonaSpec, type PersonaDomain, type PersonaTargetStyle } from "./persona-tool"
+import { generatePersonaSpec, type PersonaDomain, type PersonaTargetStyle } from "./persona-tool.js"
 
 type CliIo = {
   out: (message: string) => void

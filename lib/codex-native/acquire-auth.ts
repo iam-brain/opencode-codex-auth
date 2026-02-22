@@ -1,13 +1,13 @@
-import type { AccountSelectionTrace, AuthData, FetchOrchestratorAuthContext } from "../fetch-orchestrator"
-import { PluginFatalError, formatWaitTime, isPluginFatalError } from "../fatal-errors"
-import { ensureIdentityKey, normalizeEmail, normalizePlan } from "../identity"
-import type { Logger } from "../logger"
-import { createStickySessionState, selectAccount, type StickySessionState } from "../rotation"
-import { ensureOpenAIOAuthDomain, saveAuthStorage } from "../storage"
-import type { OpenAIAuthMode, RotationStrategy } from "../types"
-import { parseJwtClaims } from "../claims"
-import { formatAccountLabel } from "./accounts"
-import { extractAccountId, refreshAccessToken, type OAuthTokenRefreshError } from "./oauth-utils"
+import type { AccountSelectionTrace, AuthData, FetchOrchestratorAuthContext } from "../fetch-orchestrator.js"
+import { PluginFatalError, formatWaitTime, isPluginFatalError } from "../fatal-errors.js"
+import { ensureIdentityKey, normalizeEmail, normalizePlan } from "../identity.js"
+import type { Logger } from "../logger.js"
+import { createStickySessionState, selectAccount, type StickySessionState } from "../rotation.js"
+import { ensureOpenAIOAuthDomain, saveAuthStorage } from "../storage.js"
+import type { OpenAIAuthMode, RotationStrategy } from "../types.js"
+import { parseJwtClaims } from "../claims.js"
+import { formatAccountLabel } from "./accounts.js"
+import { extractAccountId, refreshAccessToken, type OAuthTokenRefreshError } from "./oauth-utils.js"
 
 const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
 const AUTH_REFRESH_LEASE_MS = 30_000

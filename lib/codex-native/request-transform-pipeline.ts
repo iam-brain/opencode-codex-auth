@@ -1,6 +1,6 @@
-import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config"
-import type { CodexModelInfo } from "../model-catalog"
-import { applyCatalogInstructionOverrideToRequest } from "./request-transform"
+import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config.js"
+import type { CodexModelInfo } from "../model-catalog.js"
+import { applyCatalogInstructionOverrideToRequest } from "./request-transform.js"
 
 export type RequestTransformPipelineResult = {
   request: Request

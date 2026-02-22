@@ -1,4 +1,4 @@
-import type { CodexRateLimitSnapshot, CodexLimit } from "./types"
+import type { CodexRateLimitSnapshot, CodexLimit } from "./types.js"
 
 export type HeaderMap = Record<string, string | undefined>
 

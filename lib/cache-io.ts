@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import type { Logger } from "./logger"
+import type { Logger } from "./logger.js"
 
 type OnIoFailure = (event: { operation: string; filePath: string; error: unknown }) => void
 

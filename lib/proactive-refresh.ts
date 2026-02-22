@@ -1,5 +1,5 @@
-import { ensureOpenAIOAuthDomain, listOpenAIOAuthDomains, saveAuthStorage } from "./storage"
-import type { OpenAIAuthMode } from "./types"
+import { ensureOpenAIOAuthDomain, listOpenAIOAuthDomains, saveAuthStorage } from "./storage.js"
+import type { OpenAIAuthMode } from "./types.js"
 
 const PROACTIVE_REFRESH_FAILURE_COOLDOWN_MS = 30_000
 

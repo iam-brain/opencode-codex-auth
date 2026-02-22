@@ -1,4 +1,4 @@
-import { ANSI, isTTY, parseKey, shouldUseColor } from "./ansi"
+import { ANSI, isTTY, parseKey, shouldUseColor } from "./ansi.js"
 
 export interface MenuItem<T = string> {
   label: string

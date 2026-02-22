@@ -1,8 +1,8 @@
-import { extractAccountIdFromClaims, extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "../claims"
-import { normalizeAccountAuthTypes } from "../account-auth-types"
-import { buildIdentityKey, normalizeEmail, normalizePlan, synchronizeIdentityKey } from "../identity"
-import type { AccountAuthType, AccountRecord, OpenAIAuthMode, OpenAIOAuthDomain } from "../types"
-import type { AccountInfo } from "../ui/auth-menu"
+import { extractAccountIdFromClaims, extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "../claims.js"
+import { normalizeAccountAuthTypes } from "../account-auth-types.js"
+import { buildIdentityKey, normalizeEmail, normalizePlan, synchronizeIdentityKey } from "../identity.js"
+import type { AccountAuthType, AccountRecord, OpenAIAuthMode, OpenAIOAuthDomain } from "../types.js"
+import type { AccountInfo } from "../ui/auth-menu.js"
 
 export function upsertAccount(openai: OpenAIOAuthDomain, incoming: AccountRecord): AccountRecord {
   const normalizedEmail = normalizeEmail(incoming.email)

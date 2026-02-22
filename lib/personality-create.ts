@@ -1,8 +1,8 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import { defaultConfigRoot, normalizePersonalityKey } from "./personalities"
-import { isFsErrorCode } from "./cache-io"
+import { defaultConfigRoot, normalizePersonalityKey } from "./personalities.js"
+import { isFsErrorCode } from "./cache-io.js"
 
 export type PersonalityScope = "global" | "project"
 

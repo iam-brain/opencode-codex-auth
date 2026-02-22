@@ -1,4 +1,4 @@
-import type { AccountRecord } from "./types"
+import type { AccountRecord } from "./types.js"
 
 export function normalizeEmail(email?: string): string | undefined {
   if (!email) return undefined

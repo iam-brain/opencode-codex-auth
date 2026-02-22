@@ -1,4 +1,4 @@
-import type { AccountRecord, OpenAIMultiOauthAuth } from "./types"
+import type { AccountRecord, OpenAIMultiOauthAuth } from "./types.js"
 
 export type ToolAccountRow = {
   displayIndex: number // 1-based, matches tools

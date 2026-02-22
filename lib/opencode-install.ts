@@ -2,8 +2,8 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
-import { quarantineFile } from "./quarantine"
-import { isFsErrorCode, writeJsonFile } from "./cache-io"
+import { quarantineFile } from "./quarantine.js"
+import { isFsErrorCode, writeJsonFile } from "./cache-io.js"
 
 export const DEFAULT_PLUGIN_SPECIFIER = "@iam-brain/opencode-codex-auth@latest"
 

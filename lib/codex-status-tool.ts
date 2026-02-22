@@ -1,8 +1,8 @@
-import { loadAuthStorage } from "./storage"
-import { loadSnapshots } from "./codex-status-storage"
-import { renderDashboard, type StatusRenderStyle } from "./codex-status-ui"
-import { defaultAuthPath, defaultSnapshotsPath } from "./paths"
-import { shouldUseColor } from "./ui/tty/ansi"
+import { loadAuthStorage } from "./storage.js"
+import { loadSnapshots } from "./codex-status-storage.js"
+import { renderDashboard, type StatusRenderStyle } from "./codex-status-ui.js"
+import { defaultAuthPath, defaultSnapshotsPath } from "./paths.js"
+import { shouldUseColor } from "./ui/tty/ansi.js"
 
 /**
  * Returns a human-readable string summarizing the status of all Codex accounts.

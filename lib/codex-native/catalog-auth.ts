@@ -1,6 +1,6 @@
-import { selectAccount } from "../rotation"
-import { getOpenAIOAuthDomain, loadAuthStorage } from "../storage"
-import type { OpenAIAuthMode, RotationStrategy } from "../types"
+import { selectAccount } from "../rotation.js"
+import { getOpenAIOAuthDomain, loadAuthStorage } from "../storage.js"
+import type { OpenAIAuthMode, RotationStrategy } from "../types.js"
 
 export async function selectCatalogAuthCandidate(
   authMode: OpenAIAuthMode,

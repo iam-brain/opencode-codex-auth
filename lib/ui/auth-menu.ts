@@ -1,7 +1,7 @@
-import { ANSI, shouldUseColor } from "./tty/ansi"
-import { confirm } from "./tty/confirm"
-import { select, type MenuItem } from "./tty/select"
-import { normalizeAccountAuthTypes as normalizeSharedAccountAuthTypes } from "../account-auth-types"
+import { ANSI, shouldUseColor } from "./tty/ansi.js"
+import { confirm } from "./tty/confirm.js"
+import { select, type MenuItem } from "./tty/select.js"
+import { normalizeAccountAuthTypes as normalizeSharedAccountAuthTypes } from "../account-auth-types.js"
 
 export type AccountStatus = "active" | "rate-limited" | "expired" | "unknown"
 export type AccountAuthType = "native" | "codex"

@@ -1,8 +1,8 @@
-import type { PersonalityOption } from "../config"
-import type { Logger } from "../logger"
-import { applyCodexCatalogToProviderModels, getCodexModelCatalog, type CodexModelInfo } from "../model-catalog"
-import type { OpenAIAuthMode, RotationStrategy } from "../types"
-import { selectCatalogAuthCandidate } from "./catalog-auth"
+import type { PersonalityOption } from "../config.js"
+import type { Logger } from "../logger.js"
+import { applyCodexCatalogToProviderModels, getCodexModelCatalog, type CodexModelInfo } from "../model-catalog.js"
+import type { OpenAIAuthMode, RotationStrategy } from "../types.js"
+import { selectCatalogAuthCandidate } from "./catalog-auth.js"
 
 type CatalogHeaders = {
   originator: string

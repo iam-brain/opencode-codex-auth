@@ -1,4 +1,4 @@
-import { isRecord } from "./util"
+import { isRecord } from "./util.js"
 
 type CompatSanitizeResult = {
   payload: Record<string, unknown>

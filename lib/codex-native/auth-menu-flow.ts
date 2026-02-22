@@ -1,6 +1,6 @@
-import { extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "../claims"
-import { toolOutputForStatus } from "../codex-status-tool"
-import { buildIdentityKey, ensureIdentityKey } from "../identity"
+import { extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "../claims.js"
+import { toolOutputForStatus } from "../codex-status-tool.js"
+import { buildIdentityKey, ensureIdentityKey } from "../identity.js"
 import {
   ensureOpenAIOAuthDomain,
   getOpenAIOAuthDomain,
@@ -8,18 +8,18 @@ import {
   loadAuthStorage,
   saveAuthStorage,
   shouldOfferLegacyTransfer
-} from "../storage"
-import type { OpenAIAuthMode } from "../types"
-import { runAuthMenuOnce } from "../ui/auth-menu-runner"
-import { shouldUseColor } from "../ui/tty/ansi"
+} from "../storage.js"
+import type { OpenAIAuthMode } from "../types.js"
+import { runAuthMenuOnce } from "../ui/auth-menu-runner.js"
+import { shouldUseColor } from "../ui/tty/ansi.js"
 import {
   buildAuthMenuAccounts,
   ensureAccountAuthTypes,
   findDomainAccountIndex,
   hydrateAccountIdentityFromAccessClaims,
   reconcileActiveIdentityKey
-} from "./accounts"
-import { extractAccountId, refreshAccessToken } from "./oauth-utils"
+} from "./accounts.js"
+import { extractAccountId, refreshAccessToken } from "./oauth-utils.js"
 
 type RunInteractiveAuthMenuInput = {
   authMode: OpenAIAuthMode

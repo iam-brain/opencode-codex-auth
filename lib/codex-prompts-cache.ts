@@ -1,15 +1,15 @@
-import { fetchRemoteTextBatch, type RemoteTextFetchResult } from "./remote-cache-fetch"
-import { readJsonFileBestEffort, writeJsonFileBestEffort } from "./cache-io"
-import { withLockedDirectory } from "./cache-lock"
+import { fetchRemoteTextBatch, type RemoteTextFetchResult } from "./remote-cache-fetch.js"
+import { readJsonFileBestEffort, writeJsonFileBestEffort } from "./cache-io.js"
+import { withLockedDirectory } from "./cache-lock.js"
 import {
   CODEX_PROMPTS_CACHE_FILE,
   CODEX_PROMPTS_CACHE_META_FILE,
   codexPromptsCacheMetaPath,
   codexPromptsCachePath,
   resolveCodexCacheDir
-} from "./codex-cache-layout"
+} from "./codex-cache-layout.js"
 
-export { CODEX_PROMPTS_CACHE_FILE, CODEX_PROMPTS_CACHE_META_FILE } from "./codex-cache-layout"
+export { CODEX_PROMPTS_CACHE_FILE, CODEX_PROMPTS_CACHE_META_FILE } from "./codex-cache-layout.js"
 
 export const CODEX_ORCHESTRATOR_PROMPT_URL =
   "https://raw.githubusercontent.com/openai/codex/4ab44e2c5cc54ed47e47a6729dfd8aa5a3dc2476/codex-rs/core/templates/agents/orchestrator.md"

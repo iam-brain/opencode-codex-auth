@@ -2,9 +2,9 @@ import http from "node:http"
 import path from "node:path"
 import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs"
 
-import type { OpenAIAuthMode } from "../types"
-import { isFsErrorCode } from "../cache-io"
-import { defaultCodexPluginLogsPath } from "../paths"
+import type { OpenAIAuthMode } from "../types.js"
+import { isFsErrorCode } from "../cache-io.js"
+import { defaultCodexPluginLogsPath } from "../paths.js"
 
 type OAuthServerStopReason = "success" | "error" | "other"
 
