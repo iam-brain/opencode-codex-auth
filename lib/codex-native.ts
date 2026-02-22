@@ -1,28 +1,28 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import process from "node:process"
 
-import { loadAuthStorage, setAccountCooldown } from "./storage"
-import type { Logger } from "./logger"
-import type { OpenAIAuthMode, RotationStrategy } from "./types"
+import { loadAuthStorage, setAccountCooldown } from "./storage.js"
+import type { Logger } from "./logger.js"
+import type { OpenAIAuthMode, RotationStrategy } from "./types.js"
 import type {
   BehaviorSettings,
   CodexSpoofMode,
   PersonalityOption,
   PluginRuntimeMode,
   PromptCacheKeyStrategy
-} from "./config"
-import { formatToastMessage } from "./toast"
-import type { CodexModelInfo } from "./model-catalog"
-import { createRequestSnapshots } from "./request-snapshots"
-import { resolveCodexOriginator, type CodexOriginator } from "./codex-native/originator"
-import { tryOpenUrlInBrowser as openUrlInBrowser } from "./codex-native/browser"
+} from "./config.js"
+import { formatToastMessage } from "./toast.js"
+import type { CodexModelInfo } from "./model-catalog.js"
+import { createRequestSnapshots } from "./request-snapshots.js"
+import { resolveCodexOriginator, type CodexOriginator } from "./codex-native/originator.js"
+import { tryOpenUrlInBrowser as openUrlInBrowser } from "./codex-native/browser.js"
 import {
   buildCodexUserAgent,
   refreshCodexClientVersionFromGitHub,
   resolveCodexClientVersion,
   resolveRequestUserAgent
-} from "./codex-native/client-identity"
-import { createOAuthServerController } from "./codex-native/oauth-server"
+} from "./codex-native/client-identity.js"
+import { createOAuthServerController } from "./codex-native/oauth-server.js"
 import {
   buildAuthorizeUrl,
   buildOAuthErrorHtml,
@@ -41,24 +41,24 @@ import {
   OAUTH_SERVER_SHUTDOWN_GRACE_MS,
   type PkceCodes,
   type TokenResponse
-} from "./codex-native/oauth-utils"
-import { refreshQuotaSnapshotsForAuthMenu as refreshQuotaSnapshotsForAuthMenuBase } from "./codex-native/auth-menu-quotas"
-import { persistOAuthTokensForMode } from "./codex-native/oauth-persistence"
-import { createBrowserOAuthAuthorize, createHeadlessOAuthAuthorize } from "./codex-native/oauth-auth-methods"
-import { runInteractiveAuthMenu as runInteractiveAuthMenuBase } from "./codex-native/auth-menu-flow"
+} from "./codex-native/oauth-utils.js"
+import { refreshQuotaSnapshotsForAuthMenu as refreshQuotaSnapshotsForAuthMenuBase } from "./codex-native/auth-menu-quotas.js"
+import { persistOAuthTokensForMode } from "./codex-native/oauth-persistence.js"
+import { createBrowserOAuthAuthorize, createHeadlessOAuthAuthorize } from "./codex-native/oauth-auth-methods.js"
+import { runInteractiveAuthMenu as runInteractiveAuthMenuBase } from "./codex-native/auth-menu-flow.js"
 import {
   handleChatHeadersHook,
   handleChatMessageHook,
   handleChatParamsHook,
   handleSessionCompactingHook,
   handleTextCompleteHook
-} from "./codex-native/chat-hooks"
-import { createSessionAffinityRuntimeState } from "./codex-native/session-affinity-state"
-import { initializeCatalogSync } from "./codex-native/catalog-sync"
-import { createOpenAIFetchHandler } from "./codex-native/openai-loader-fetch"
-export { browserOpenInvocationFor } from "./codex-native/browser"
-export { upsertAccount } from "./codex-native/accounts"
-export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from "./codex-native/oauth-utils"
+} from "./codex-native/chat-hooks.js"
+import { createSessionAffinityRuntimeState } from "./codex-native/session-affinity-state.js"
+import { initializeCatalogSync } from "./codex-native/catalog-sync.js"
+import { createOpenAIFetchHandler } from "./codex-native/openai-loader-fetch.js"
+export { browserOpenInvocationFor } from "./codex-native/browser.js"
+export { upsertAccount } from "./codex-native/accounts.js"
+export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from "./codex-native/oauth-utils.js"
 
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const INTERNAL_COLLABORATION_AGENT_HEADER = "x-opencode-collaboration-agent-kind"

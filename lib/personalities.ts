@@ -2,7 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { isFsErrorCode } from "./cache-io"
+import { isFsErrorCode } from "./cache-io.js"
 
 const PERSONALITY_DIRS = ["personalities", "Personalities"] as const
 

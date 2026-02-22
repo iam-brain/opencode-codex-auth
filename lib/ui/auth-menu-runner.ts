@@ -1,5 +1,5 @@
-import type { AccountAuthType, AccountInfo, DeleteScope } from "./auth-menu"
-import { showAccountDetails, showAuthMenu, selectAccount } from "./auth-menu"
+import type { AccountAuthType, AccountInfo, DeleteScope } from "./auth-menu.js"
+import { showAccountDetails, showAuthMenu, selectAccount } from "./auth-menu.js"
 
 export type AuthMenuHandlers = {
   onCheckQuotas: () => Promise<void>

@@ -2,8 +2,8 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
-import { refreshCachedCodexPrompts } from "./codex-prompts-cache"
-import { replaceCodexToolCallsForOpenCode } from "./codex-native/collaboration"
+import { refreshCachedCodexPrompts } from "./codex-prompts-cache.js"
+import { replaceCodexToolCallsForOpenCode } from "./codex-native/collaboration.js"
 
 export const CODEX_ORCHESTRATOR_AGENT_FILE = "orchestrator.md"
 export const CODEX_ORCHESTRATOR_AGENT_FILE_DISABLED = `${CODEX_ORCHESTRATOR_AGENT_FILE}.disabled`

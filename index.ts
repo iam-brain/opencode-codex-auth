@@ -1,14 +1,14 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { tool } from "@opencode-ai/plugin"
+import { tool } from "@opencode-ai/plugin/tool"
 
 import {
   listAccountsForTools,
   removeAccountByIndex,
   switchAccountByIndex,
   toggleAccountEnabledByIndex
-} from "./lib/accounts-tools"
-import { removedAccountMessage, switchedAccountMessage, toggledAccountMessage } from "./lib/auth-messages"
-import { CodexAuthPlugin, refreshAccessToken } from "./lib/codex-native"
+} from "./lib/accounts-tools.js"
+import { removedAccountMessage, switchedAccountMessage, toggledAccountMessage } from "./lib/auth-messages.js"
+import { CodexAuthPlugin, refreshAccessToken } from "./lib/codex-native.js"
 import {
   ensureDefaultConfigFile,
   getCompatInputSanitizerEnabled,
@@ -32,18 +32,18 @@ import {
   getQuietMode,
   loadConfigFile,
   resolveConfig
-} from "./lib/config"
-import { createLogger } from "./lib/logger"
-import { generatePersonaSpec } from "./lib/persona-tool"
-import { createPersonalityFile } from "./lib/personality-create"
-import { installCreatePersonalityCommand } from "./lib/personality-command"
-import { installPersonalityBuilderSkill } from "./lib/personality-skill"
-import { reconcileOrchestratorAgentVisibility } from "./lib/orchestrator-agent"
-import { runOneProactiveRefreshTick } from "./lib/proactive-refresh"
-import { toolOutputForStatus } from "./lib/codex-status-tool"
-import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage"
-import { refreshCachedCodexPrompts } from "./lib/codex-prompts-cache"
-import { setCodexPlanModeInstructions } from "./lib/codex-native/collaboration"
+} from "./lib/config.js"
+import { createLogger } from "./lib/logger.js"
+import { generatePersonaSpec } from "./lib/persona-tool.js"
+import { createPersonalityFile } from "./lib/personality-create.js"
+import { installCreatePersonalityCommand } from "./lib/personality-command.js"
+import { installPersonalityBuilderSkill } from "./lib/personality-skill.js"
+import { reconcileOrchestratorAgentVisibility } from "./lib/orchestrator-agent.js"
+import { runOneProactiveRefreshTick } from "./lib/proactive-refresh.js"
+import { toolOutputForStatus } from "./lib/codex-status-tool.js"
+import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage.js"
+import { refreshCachedCodexPrompts } from "./lib/codex-prompts-cache.js"
+import { setCodexPlanModeInstructions } from "./lib/codex-native/collaboration.js"
 
 let scheduler: { stop: () => void } | undefined
 

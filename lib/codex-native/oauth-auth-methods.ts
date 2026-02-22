@@ -1,7 +1,7 @@
-import type { CodexSpoofMode } from "../config"
-import type { OpenAIAuthMode } from "../types"
-import { resolveRequestUserAgent } from "./client-identity"
-import { resolveCodexOriginator } from "./originator"
+import type { CodexSpoofMode } from "../config.js"
+import type { OpenAIAuthMode } from "../types.js"
+import { resolveRequestUserAgent } from "./client-identity.js"
+import { resolveCodexOriginator } from "./originator.js"
 import {
   buildAuthorizeUrl,
   CLIENT_ID,
@@ -16,7 +16,7 @@ import {
   sleep,
   type PkceCodes,
   type TokenResponse
-} from "./oauth-utils"
+} from "./oauth-utils.js"
 
 type OAuthSuccess = {
   type: "success"

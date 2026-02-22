@@ -1,4 +1,4 @@
-import type { CodexSpoofMode } from "../config"
+import type { CodexSpoofMode } from "../config.js"
 
 export type CodexOriginator = "opencode" | "codex_cli_rs" | "codex_exec"
 

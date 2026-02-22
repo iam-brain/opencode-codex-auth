@@ -1,11 +1,11 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import { defaultSessionAffinityPath, opencodeSessionFilePath } from "./paths"
-import type { OpenAIAuthMode } from "./types"
-import { withLockedFile } from "./cache-lock"
-import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io"
-import { isRecord } from "./util"
+import { defaultSessionAffinityPath, opencodeSessionFilePath } from "./paths.js"
+import type { OpenAIAuthMode } from "./types.js"
+import { withLockedFile } from "./cache-lock.js"
+import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io.js"
+import { isRecord } from "./util.js"
 
 export const MAX_SESSION_AFFINITY_ENTRIES = 200
 

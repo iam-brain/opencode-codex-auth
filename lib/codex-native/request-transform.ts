@@ -1,9 +1,9 @@
-import type { BehaviorSettings, PersonalityOption } from "../config"
-import type { CodexModelInfo } from "../model-catalog"
-import { resolveInstructionsForModel } from "../model-catalog"
-import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer"
-import { isRecord } from "../util"
-import { isOrchestratorInstructions, replaceCodexToolCallsForOpenCode } from "./collaboration"
+import type { BehaviorSettings, PersonalityOption } from "../config.js"
+import type { CodexModelInfo } from "../model-catalog.js"
+import { resolveInstructionsForModel } from "../model-catalog.js"
+import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer.js"
+import { isRecord } from "../util.js"
+import { isOrchestratorInstructions, replaceCodexToolCallsForOpenCode } from "./collaboration.js"
 
 type ChatParamsOutput = {
   temperature: number

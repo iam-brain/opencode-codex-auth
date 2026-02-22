@@ -1,7 +1,7 @@
-import { createFetchOrchestratorState, type FetchOrchestratorState } from "../fetch-orchestrator"
-import type { Logger } from "../logger"
-import { defaultSessionAffinityPath } from "../paths"
-import { createStickySessionState, type StickySessionState } from "../rotation"
+import { createFetchOrchestratorState, type FetchOrchestratorState } from "../fetch-orchestrator.js"
+import type { Logger } from "../logger.js"
+import { defaultSessionAffinityPath } from "../paths.js"
+import { createStickySessionState, type StickySessionState } from "../rotation.js"
 import {
   createSessionExistsFn,
   loadSessionAffinity,
@@ -9,8 +9,8 @@ import {
   readSessionAffinitySnapshot,
   saveSessionAffinity,
   writeSessionAffinitySnapshot
-} from "../session-affinity"
-import type { OpenAIAuthMode } from "../types"
+} from "../session-affinity.js"
+import type { OpenAIAuthMode } from "../types.js"
 
 export type SessionAffinityRuntimeState = {
   orchestratorState: FetchOrchestratorState

@@ -1,22 +1,22 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import { normalizeAccountAuthTypes } from "./account-auth-types"
-import { ensureIdentityKey, normalizeEmail, normalizePlan, synchronizeIdentityKey } from "./identity"
-import { extractAccountIdFromClaims, extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "./claims"
-import { quarantineFile } from "./quarantine"
+import { normalizeAccountAuthTypes } from "./account-auth-types.js"
+import { ensureIdentityKey, normalizeEmail, normalizePlan, synchronizeIdentityKey } from "./identity.js"
+import { extractAccountIdFromClaims, extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "./claims.js"
+import { quarantineFile } from "./quarantine.js"
 import {
   CODEX_ACCOUNTS_FILE,
   defaultAuthPath,
   opencodeProviderAuthLegacyFallbackPath,
   opencodeProviderAuthPath,
   legacyOpenAICodexAccountsPathFor
-} from "./paths"
-import { isRecord as isObject } from "./util"
-import { ensureConfigDirGitignore } from "./config-dir-gitignore"
-import { withLockedFile } from "./cache-lock"
-import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io"
-import type { AccountRecord, AuthFile, OpenAIAuthMode, OpenAIOAuthDomain, OpenAIMultiOauthAuth } from "./types"
+} from "./paths.js"
+import { isRecord as isObject } from "./util.js"
+import { ensureConfigDirGitignore } from "./config-dir-gitignore.js"
+import { withLockedFile } from "./cache-lock.js"
+import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io.js"
+import type { AccountRecord, AuthFile, OpenAIAuthMode, OpenAIOAuthDomain, OpenAIMultiOauthAuth } from "./types.js"
 
 type LegacyOpenAIOauth = {
   type: "oauth"

@@ -1,6 +1,6 @@
-import { CodexStatus, type HeaderMap } from "../codex-status"
-import { saveSnapshots } from "../codex-status-storage"
-import { defaultSnapshotsPath } from "../paths"
+import { CodexStatus, type HeaderMap } from "../codex-status.js"
+import { saveSnapshots } from "../codex-status-storage.js"
+import { defaultSnapshotsPath } from "../paths.js"
 
 export function persistRateLimitSnapshotFromResponse(response: Response, identityKey: string | undefined): void {
   if (!identityKey) return

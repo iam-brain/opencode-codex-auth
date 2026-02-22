@@ -1,4 +1,4 @@
-import { PluginFatalError } from "../fatal-errors"
+import { PluginFatalError } from "../fatal-errors.js"
 
 const CODEX_API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
 const OPENAI_OUTBOUND_HOST_ALLOWLIST = new Set(["api.openai.com", "auth.openai.com", "chat.openai.com", "chatgpt.com"])

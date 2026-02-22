@@ -1,4 +1,4 @@
-import type { AccountRecord, RotationStrategy } from "./types"
+import type { AccountRecord, RotationStrategy } from "./types.js"
 
 const DEFAULT_SESSION_ASSIGNMENT_MAX = 200
 

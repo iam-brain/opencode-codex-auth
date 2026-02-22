@@ -1,4 +1,4 @@
-import type { CodexLimit, CodexRateLimitSnapshot } from "./types"
+import type { CodexLimit, CodexRateLimitSnapshot } from "./types.js"
 
 export const QUOTA_WARNING_THRESHOLDS_PCT = [25, 20, 10, 5, 2.5, 0] as const
 

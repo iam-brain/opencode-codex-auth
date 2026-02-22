@@ -1,5 +1,5 @@
-import type { CodexLimit, CodexRateLimitSnapshot } from "./types"
-import type { Logger } from "./logger"
+import type { CodexLimit, CodexRateLimitSnapshot } from "./types.js"
+import type { Logger } from "./logger.js"
 
 const DEFAULT_CHATGPT_BASE_URL = "https://chatgpt.com/backend-api"
 const WHAM_USAGE_PATH = "/wham/usage"

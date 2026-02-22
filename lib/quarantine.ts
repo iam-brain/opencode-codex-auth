@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import { enforceOwnerOnlyPermissions, isFsErrorCode } from "./cache-io"
+import { enforceOwnerOnlyPermissions, isFsErrorCode } from "./cache-io.js"
 
 export async function quarantineFile(input: {
   sourcePath: string

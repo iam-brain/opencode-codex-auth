@@ -1,30 +1,30 @@
-import { FetchOrchestrator } from "../fetch-orchestrator"
-import { saveSnapshots } from "../codex-status-storage"
-import { fetchQuotaSnapshotFromBackend } from "../codex-quota-fetch"
-import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "../fatal-errors"
-import type { Logger } from "../logger"
-import type { CodexModelInfo } from "../model-catalog"
-import { defaultSnapshotsPath } from "../paths"
-import type { RotationStrategy } from "../types"
-import type { BehaviorSettings, CodexSpoofMode, PersonalityOption, PromptCacheKeyStrategy } from "../config"
-import type { OpenAIAuthMode } from "../types"
+import { FetchOrchestrator } from "../fetch-orchestrator.js"
+import { saveSnapshots } from "../codex-status-storage.js"
+import { fetchQuotaSnapshotFromBackend } from "../codex-quota-fetch.js"
+import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "../fatal-errors.js"
+import type { Logger } from "../logger.js"
+import type { CodexModelInfo } from "../model-catalog.js"
+import { defaultSnapshotsPath } from "../paths.js"
+import type { RotationStrategy } from "../types.js"
+import type { BehaviorSettings, CodexSpoofMode, PersonalityOption, PromptCacheKeyStrategy } from "../config.js"
+import type { OpenAIAuthMode } from "../types.js"
 import {
   DEFAULT_QUOTA_THRESHOLD_TRACKER_STATE,
   evaluateQuotaThresholds,
   type QuotaThresholdTrackerState
-} from "../quota-threshold-alerts"
-import { acquireOpenAIAuth } from "./acquire-auth"
-import { resolveRequestUserAgent } from "./client-identity"
-import { resolveCodexOriginator } from "./originator"
-import { buildProjectPromptCacheKey } from "../prompt-cache-key"
-import { persistRateLimitSnapshotFromResponse } from "./rate-limit-snapshots"
-import { assertAllowedOutboundUrl, rewriteUrl } from "./request-routing"
-import { applyRequestTransformPipeline } from "./request-transform-pipeline"
+} from "../quota-threshold-alerts.js"
+import { acquireOpenAIAuth } from "./acquire-auth.js"
+import { resolveRequestUserAgent } from "./client-identity.js"
+import { resolveCodexOriginator } from "./originator.js"
+import { buildProjectPromptCacheKey } from "../prompt-cache-key.js"
+import { persistRateLimitSnapshotFromResponse } from "./rate-limit-snapshots.js"
+import { assertAllowedOutboundUrl, rewriteUrl } from "./request-routing.js"
+import { applyRequestTransformPipeline } from "./request-transform-pipeline.js"
 import {
   type OutboundRequestPayloadTransformResult,
   transformOutboundRequestPayload,
-} from "./request-transform"
-import type { SessionAffinityRuntimeState } from "./session-affinity-state"
+} from "./request-transform.js"
+import type { SessionAffinityRuntimeState } from "./session-affinity-state.js"
 
 type SnapshotRecorder = {
   captureRequest: (stage: string, request: Request, metadata?: Record<string, unknown>) => Promise<void>

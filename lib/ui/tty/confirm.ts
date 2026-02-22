@@ -1,4 +1,4 @@
-import { select } from "./select"
+import { select } from "./select.js"
 
 export type ConfirmOptions = {
   input?: NodeJS.ReadStream

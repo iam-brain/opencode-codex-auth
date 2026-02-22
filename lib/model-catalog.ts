@@ -1,10 +1,10 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { resolveCustomPersonalityDescription } from "./personalities"
-import { fetchRemoteText } from "./remote-cache-fetch"
-import { isFsErrorCode, readJsonFileBestEffort, writeJsonFileBestEffort } from "./cache-io"
-import { withLockedDirectory } from "./cache-lock"
+import { resolveCustomPersonalityDescription } from "./personalities.js"
+import { fetchRemoteText } from "./remote-cache-fetch.js"
+import { isFsErrorCode, readJsonFileBestEffort, writeJsonFileBestEffort } from "./cache-io.js"
+import { withLockedDirectory } from "./cache-lock.js"
 import {
   buildCodexModelsMemoryCacheKey,
   codexAuthModelsCachePath,
@@ -13,7 +13,7 @@ import {
   codexModelsSharedCachePath,
   isCodexModelsCacheFileName,
   resolveCodexCacheDir
-} from "./codex-cache-layout"
+} from "./codex-cache-layout.js"
 
 export type PersonalityOption = string
 

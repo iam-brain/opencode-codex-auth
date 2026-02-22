@@ -1,8 +1,8 @@
-import { extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "../claims"
-import { ensureOpenAIOAuthDomain, saveAuthStorage } from "../storage"
-import type { AccountRecord, OpenAIAuthMode } from "../types"
-import { upsertAccount } from "./accounts"
-import { extractAccountId, type TokenResponse } from "./oauth-utils"
+import { extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "../claims.js"
+import { ensureOpenAIOAuthDomain, saveAuthStorage } from "../storage.js"
+import type { AccountRecord, OpenAIAuthMode } from "../types.js"
+import { upsertAccount } from "./accounts.js"
+import { extractAccountId, type TokenResponse } from "./oauth-utils.js"
 
 export async function persistOAuthTokensForMode(tokens: TokenResponse, authMode: OpenAIAuthMode): Promise<void> {
   const now = Date.now()

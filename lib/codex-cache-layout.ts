@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import path from "node:path"
 
-import { defaultOpencodeCachePath } from "./paths"
+import { defaultOpencodeCachePath } from "./paths.js"
 
 export const CODEX_PROMPTS_CACHE_FILE = "codex-prompts-cache.json"
 export const CODEX_PROMPTS_CACHE_META_FILE = "codex-prompts-cache-meta.json"

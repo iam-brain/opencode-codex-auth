@@ -2,8 +2,8 @@ import fs from "node:fs"
 import fsPromises from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import type { RotationStrategy } from "./types"
-import { isRecord } from "./util"
+import type { RotationStrategy } from "./types.js"
+import { isRecord } from "./util.js"
 
 export type PersonalityOption = string
 export type CodexSpoofMode = "native" | "codex"
