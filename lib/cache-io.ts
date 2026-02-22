@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import type { Logger } from "./logger"
+import type { Logger } from "./logger.js"
 
 type OnIoFailure = (event: { operation: string; filePath: string; error: unknown }) => void
 
@@ -23,6 +23,60 @@ function notifyCacheIoFailure(operation: string, filePath: string, error: unknow
 export function isFsErrorCode(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code
 }
+
+const defaultPlatformResolver = (): NodeJS.Platform => process.platform
+let platformResolver: () => NodeJS.Platform = defaultPlatformResolver
+
+export const __testOnly = {
+  setPlatformResolver(resolver?: () => NodeJS.Platform): void {
+    platformResolver = resolver ?? defaultPlatformResolver
+  }
+}
+
+function shouldIgnoreDirectorySyncError(error: unknown, platform: NodeJS.Platform = platformResolver()): boolean {
+  if (platform !== "win32") return false
+  return (
+    isFsErrorCode(error, "EPERM") ||
+    isFsErrorCode(error, "EINVAL") ||
+    isFsErrorCode(error, "ENOTSUP") ||
+    isFsErrorCode(error, "ENOSYS")
+  )
+}
+
+async function syncHandleBestEffort(handle: fs.FileHandle): Promise<void> {
+  await handle.sync()
+}
+
+async function syncDirectoryBestEffort(dirPath: string): Promise<void> {
+  let dirHandle: fs.FileHandle | undefined
+  try {
+    dirHandle = await fs.open(dirPath, "r")
+    try {
+      await dirHandle.sync()
+    } catch (error) {
+      if (!shouldIgnoreDirectorySyncError(error)) {
+        throw error
+      }
+    }
+  } catch (error) {
+    if (!shouldIgnoreDirectorySyncError(error)) {
+      throw error
+    }
+  } finally {
+    if (dirHandle) {
+      try {
+        await dirHandle.close()
+      } catch (error) {
+        if (!shouldIgnoreDirectorySyncError(error)) {
+          throw error
+        }
+      }
+    }
+  }
+}
+
+// Windows may surface unsupported directory fsync/open behavior, so
+// writeJsonFileAtomic tolerates only a narrow set of win32 directory sync errors.
 
 export async function enforceOwnerOnlyPermissions(filePath: string): Promise<void> {
   try {
@@ -60,19 +114,14 @@ export async function writeJsonFileAtomic(filePath: string, value: unknown): Pro
   const tempPath = `${filePath}.tmp.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
   try {
     await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
-    const tempHandle = await fs.open(tempPath, "r")
+    const tempHandle = await fs.open(tempPath, "r+")
     try {
-      await tempHandle.sync()
+      await syncHandleBestEffort(tempHandle)
     } finally {
       await tempHandle.close()
     }
     await fs.rename(tempPath, filePath)
-    const dirHandle = await fs.open(path.dirname(filePath), "r")
-    try {
-      await dirHandle.sync()
-    } finally {
-      await dirHandle.close()
-    }
+    await syncDirectoryBestEffort(path.dirname(filePath))
   } catch (error) {
     await fs.unlink(tempPath).catch((unlinkError) => {
       if (!isFsErrorCode(unlinkError, "ENOENT")) {
