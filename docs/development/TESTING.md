@@ -13,6 +13,16 @@ npm run verify
 
 `npm run verify` is the pre-release gate.
 
+It now includes Node ESM regression checks (source + dist import specifiers) and a built CLI smoke run.
+
+Package smoke validation:
+
+```bash
+TARBALL="$(npm pack --silent)"
+test -f "${TARBALL}"
+npx --yes --package "./${TARBALL}" opencode-codex-auth --help
+```
+
 ## Focused test runs
 
 ```bash

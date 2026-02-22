@@ -7,11 +7,30 @@ describe("release hygiene", () => {
   it("package.json has verify script", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
-    expect(pkg.scripts?.verify).toBe("npm run typecheck && npm test && npm run build")
+    const verifyScript = String(pkg.scripts?.verify ?? "")
+    const verifyOrder = [
+      "npm run check:esm-imports",
+      "npm run typecheck",
+      "npm test",
+      "npm run build",
+      "npm run check:dist-esm-imports",
+      "npm run smoke:cli:dist"
+    ]
+    let searchFrom = 0
+    for (const step of verifyOrder) {
+      const nextIndex = verifyScript.indexOf(step, searchFrom)
+      expect(nextIndex).toBeGreaterThanOrEqual(0)
+      searchFrom = nextIndex + step.length
+    }
+    expect(pkg.scripts?.["check:esm-imports"]).toBe("node scripts/check-esm-import-specifiers.mjs")
+    expect(pkg.scripts?.["check:dist-esm-imports"]).toBe("node scripts/check-dist-esm-import-specifiers.mjs")
+    expect(pkg.scripts?.["smoke:cli:dist"]).toBe("node ./dist/bin/opencode-codex-auth.js --help")
     expect(pkg.scripts?.prepack).toBe("npm run build")
     expect(pkg.scripts?.build).toBe("npm run clean:dist && tsc")
     expect(pkg.scripts?.["clean:dist"]).toBe("node scripts/clean-dist.js")
     expect(existsSync(join(process.cwd(), "scripts", "clean-dist.js"))).toBe(true)
+    expect(existsSync(join(process.cwd(), "scripts", "check-esm-import-specifiers.mjs"))).toBe(true)
+    expect(existsSync(join(process.cwd(), "scripts", "check-dist-esm-import-specifiers.mjs"))).toBe(true)
   })
 
   it("includes license and changelog files", () => {
@@ -44,5 +63,14 @@ describe("package publish surface", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "release.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
     expect(workflow).toContain("run: npm run verify")
+  })
+
+  it("ci package smoke executes packed CLI tarball", () => {
+    const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
+    const workflow = readFileSync(workflowPath, "utf-8")
+    expect(workflow).toContain("Pack and execute CLI tarball")
+    expect(workflow).toContain('TARBALL="$(npm pack --silent)"')
+    expect(workflow).toContain('test -f "${TARBALL}"')
+    expect(workflow).toContain('npx --yes --package "./${TARBALL}" opencode-codex-auth --help')
   })
 })

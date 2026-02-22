@@ -124,3 +124,5 @@ Legacy sources can be imported explicitly from the auth menu:
 npm install
 npm run verify
 ```
+
+`npm run verify` includes ESM import specifier guards and a built CLI smoke check.
