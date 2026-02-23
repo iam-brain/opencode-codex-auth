@@ -15,6 +15,11 @@ npm run verify
 
 It now includes Node ESM regression checks (source + dist import specifiers) and a built CLI smoke run.
 
+Vitest environment isolation:
+
+- Tests run with isolated `HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and temp directories via `test/setup-env.ts`.
+- This prevents test writes from touching the developer's real OpenCode config/cache paths.
+
 Package smoke validation:
 
 ```bash

@@ -82,4 +82,12 @@ describe("package publish surface", () => {
     expect(workflow).toContain('test -f "${TARBALL}"')
     expect(workflow).toContain('npx --yes --package "./${TARBALL}" opencode-codex-auth --help')
   })
+
+  it("vitest config isolates HOME/XDG test environment", () => {
+    const vitestPath = join(process.cwd(), "vitest.config.ts")
+    const vitestConfig = readFileSync(vitestPath, "utf-8")
+    expect(vitestConfig).toContain('setupFiles: ["test/setup-env.ts"]')
+    expect(existsSync(join(process.cwd(), "test", "setup-env.ts"))).toBe(true)
+    expect(existsSync(join(process.cwd(), "test", "helpers", "isolate-env.ts"))).toBe(true)
+  })
 })
