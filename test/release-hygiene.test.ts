@@ -3,6 +3,15 @@ import { describe, it, expect } from "vitest"
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
+const REQUIRED_RELEASE_RUNTIME_CI_JOBS = [
+  "Verify on Node.js 20.x",
+  "Verify on Node.js 22.x",
+  "Package Smoke Test",
+  "Windows Runtime Hardening",
+  "Security Audit"
+]
+const REQUIRED_WORKFLOW_STATIC_JOB_NAMES = ["Package Smoke Test", "Windows Runtime Hardening", "Security Audit"]
+
 describe("release hygiene", () => {
   it("package.json has verify script", () => {
     const pkgPath = join(process.cwd(), "package.json")
@@ -51,10 +60,22 @@ describe("release hygiene", () => {
   it("release script enforces remote CI gate on main HEAD", () => {
     const releaseScriptPath = join(process.cwd(), "scripts", "release.js")
     const releaseScript = readFileSync(releaseScriptPath, "utf-8")
-    expect(releaseScript).toContain("assertHeadMatchesOriginMain")
-    expect(releaseScript).toContain("assertRemoteCiGreenForHead")
-    expect(releaseScript).toContain("RELEASE_SKIP_REMOTE_CI_GATE")
-    expect(releaseScript).toContain("Windows Runtime Hardening")
+    expect(releaseScript).toMatch(/assertHeadMatchesOriginMain\s*\(/)
+    expect(releaseScript).toMatch(/assertRemoteCiGreenForHead\s*\(/)
+    expect(releaseScript).toMatch(/RELEASE_SKIP_REMOTE_CI_GATE/)
+    for (const job of REQUIRED_RELEASE_RUNTIME_CI_JOBS) {
+      expect(releaseScript).toContain(job)
+    }
+  })
+
+  it("required release CI jobs exist in workflow", () => {
+    const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
+    const workflow = readFileSync(workflowPath, "utf-8")
+    expect(workflow).toContain("Verify on Node.js ${{ matrix.node-version }}")
+    expect(workflow).toMatch(/node-version:\s*\[\s*20\.x\s*,\s*22\.x\s*\]/)
+    for (const job of REQUIRED_WORKFLOW_STATIC_JOB_NAMES) {
+      expect(workflow).toContain(job)
+    }
   })
 })
 
@@ -78,15 +99,16 @@ describe("package publish surface", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
     expect(workflow).toContain("Pack and execute CLI tarball")
-    expect(workflow).toContain('TARBALL="$(npm pack --silent)"')
-    expect(workflow).toContain('test -f "${TARBALL}"')
-    expect(workflow).toContain('npx --yes --package "./${TARBALL}" opencode-codex-auth --help')
+    expect(workflow).toContain("npm pack --silent")
+    expect(workflow).toContain("test -f")
+    expect(workflow).toContain("npx --yes --package")
+    expect(workflow).toContain("opencode-codex-auth --help")
   })
 
   it("vitest config isolates HOME/XDG test environment", () => {
     const vitestPath = join(process.cwd(), "vitest.config.ts")
     const vitestConfig = readFileSync(vitestPath, "utf-8")
-    expect(vitestConfig).toContain('setupFiles: ["test/setup-env.ts"]')
+    expect(vitestConfig).toMatch(/setupFiles:\s*\[\s*["']test\/setup-env\.ts["']\s*\]/)
     expect(existsSync(join(process.cwd(), "test", "setup-env.ts"))).toBe(true)
     expect(existsSync(join(process.cwd(), "test", "helpers", "isolate-env.ts"))).toBe(true)
   })

@@ -63,6 +63,8 @@ function sleep(ms) {
 function parseRepoSlug(remoteUrl) {
   const ssh = remoteUrl.match(/^git@github\.com:(.+?)(?:\.git)?$/)
   if (ssh?.[1]) return ssh[1]
+  const sshProto = remoteUrl.match(/^ssh:\/\/git@github\.com\/(.+?)(?:\.git)?$/)
+  if (sshProto?.[1]) return sshProto[1]
   const https = remoteUrl.match(/^https:\/\/github\.com\/(.+?)(?:\.git)?$/)
   if (https?.[1]) return https[1]
   return undefined

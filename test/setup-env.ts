@@ -11,6 +11,11 @@ function restoreToBaseline(): void {
     "XDG_DATA_HOME",
     "XDG_CACHE_HOME",
     "XDG_STATE_HOME",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "APPDATA",
+    "LOCALAPPDATA",
     "TMPDIR",
     "TMP",
     "TEMP"
@@ -34,6 +39,11 @@ beforeAll(async () => {
     XDG_DATA_HOME: process.env.XDG_DATA_HOME,
     XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
     XDG_STATE_HOME: process.env.XDG_STATE_HOME,
+    USERPROFILE: process.env.USERPROFILE,
+    HOMEDRIVE: process.env.HOMEDRIVE,
+    HOMEPATH: process.env.HOMEPATH,
+    APPDATA: process.env.APPDATA,
+    LOCALAPPDATA: process.env.LOCALAPPDATA,
     TMPDIR: process.env.TMPDIR,
     TMP: process.env.TMP,
     TEMP: process.env.TEMP
@@ -44,6 +54,6 @@ afterEach(() => {
   restoreToBaseline()
 })
 
-afterAll(() => {
-  teardownIsolatedTestEnv()
+afterAll(async () => {
+  await teardownIsolatedTestEnv()
 })

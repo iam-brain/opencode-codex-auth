@@ -17,7 +17,7 @@ It now includes Node ESM regression checks (source + dist import specifiers) and
 
 Vitest environment isolation:
 
-- Tests run with isolated `HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and temp directories via `test/setup-env.ts`.
+- Tests run with isolated `HOME`, `XDG_*`, temp directories, and Windows home/appdata env vars (`USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`, `APPDATA`, `LOCALAPPDATA`) via `test/setup-env.ts`.
 - This prevents test writes from touching the developer's real OpenCode config/cache paths.
 
 Package smoke validation:
