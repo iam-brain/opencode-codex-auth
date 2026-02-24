@@ -18,6 +18,16 @@ describe("codex native browser launch", () => {
     })
   })
 
+  it("preserves oauth query ampersands on Windows", () => {
+    const oauthUrl =
+      "https://auth.openai.com/oauth/authorize?client_id=test-client&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fcallback&state=test-state"
+
+    expect(browserOpenInvocationFor(oauthUrl, "win32")).toEqual({
+      command: "explorer.exe",
+      args: [oauthUrl]
+    })
+  })
+
   it("builds Linux xdg-open invocation", () => {
     expect(browserOpenInvocationFor("https://example.com", "linux")).toEqual({
       command: "xdg-open",
