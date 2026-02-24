@@ -52,7 +52,24 @@ export function opencodeSessionFilePath(
   sessionKey: string,
   env: Record<string, string | undefined> = process.env
 ): string {
-  return path.join(defaultOpencodeSessionStoragePath(env), `${sessionKey}.json`)
+  const baseDir = path.resolve(defaultOpencodeSessionStoragePath(env))
+  const normalized = sessionKey.trim()
+  if (!normalized) {
+    throw new Error("invalid_session_key")
+  }
+  if (
+    path.isAbsolute(normalized) ||
+    normalized.includes("..") ||
+    normalized.includes("/") ||
+    normalized.includes("\\")
+  ) {
+    throw new Error("invalid_session_key")
+  }
+  const candidate = path.resolve(baseDir, `${normalized}.json`)
+  if (candidate !== baseDir && !candidate.startsWith(`${baseDir}${path.sep}`)) {
+    throw new Error("invalid_session_key")
+  }
+  return candidate
 }
 
 export function legacyOpenAICodexAccountsPathFor(filePath: string): string {

@@ -187,6 +187,10 @@ describe("codex-native oauth callback flow", () => {
       const state = authUrl.searchParams.get("state")
       expect(state).toBeTruthy()
       if (!state) throw new Error("missing oauth state")
+      const displayUrl = (flow as { displayUrl?: string }).displayUrl
+      expect(displayUrl).toBeTruthy()
+      expect(displayUrl).toContain("state=%5Bredacted%5D")
+      expect(displayUrl).not.toContain(`state=${state}`)
 
       const callbackResponse = await httpGet(
         `http://localhost:1455/auth/callback?code=test_code&state=${encodeURIComponent(state)}`

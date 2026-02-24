@@ -6,6 +6,7 @@ import os from "node:os"
 import path from "node:path"
 
 import { loadSnapshots, saveSnapshots } from "../lib/codex-status-storage"
+import { lockTargetPathForFile } from "../lib/cache-lock"
 
 function isFsErrorCode(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code
@@ -60,7 +61,9 @@ describe("codex-status storage", () => {
     await fs.mkdir(dir, { recursive: true })
 
     // Acquire lock on a *missing* snapshots path
-    const release = await lockfile.lock(p, { realpath: false, retries: 0 })
+    const lockTarget = lockTargetPathForFile(p)
+    await fs.writeFile(lockTarget, "", { mode: 0o600 })
+    const release = await lockfile.lock(lockTarget, { realpath: true, retries: 0 })
 
     // Start saveSnapshots without awaiting it
     const promise = saveSnapshots(p, (cur) => ({

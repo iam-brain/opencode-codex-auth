@@ -34,9 +34,22 @@ type OAuthCallbackResult = OAuthSuccess | OAuthFailure
 
 type OAuthAuthorizePayload = {
   url: string
+  displayUrl?: string
   instructions: string
   method: "auto"
   callback: () => Promise<OAuthCallbackResult>
+}
+
+function redactOAuthDisplayUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.searchParams.has("state")) {
+      parsed.searchParams.set("state", "[redacted]")
+    }
+    return parsed.toString()
+  } catch {
+    return url
+  }
 }
 
 type AuthMenuResult = "add" | "exit"
@@ -170,9 +183,11 @@ export function createBrowserOAuthAuthorize(deps: BrowserAuthorizeDeps) {
     )
     const callbackPromise = deps.waitForOAuthCallback(pkce, state, deps.authMode)
     deps.openAuthUrl(authUrl)
+    const displayUrl = redactOAuthDisplayUrl(authUrl)
 
     return {
       url: authUrl,
+      displayUrl,
       instructions: "Complete authorization in your browser. If you close the tab early, cancel (Ctrl+C) and retry.",
       method: "auto",
       callback: async () => {

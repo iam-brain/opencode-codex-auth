@@ -28,6 +28,8 @@ describe("remote cache fetch helper", () => {
     const firstCall = fetchImpl.mock.calls[0]
     const init = firstCall ? (firstCall[1] as RequestInit | undefined) : undefined
     expect(init?.redirect).toBe("manual")
+    const headers = (init?.headers ?? {}) as Record<string, string>
+    expect(headers["cache-control"]).toBe("no-store")
   })
 
   it("blocks disallowed hosts", async () => {
@@ -39,6 +41,21 @@ describe("remote cache fetch helper", () => {
         url: "https://example.com/not-allowed"
       },
       { fetchImpl, timeoutMs: 1000, allowedHosts: ["raw.githubusercontent.com"] }
+    )
+
+    expect(result.status).toBe("error")
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it("blocks credentialed URLs even on allowlisted hosts", async () => {
+    const fetchImpl = vi.fn(async () => new Response("hello", { status: 200 }))
+
+    const result = await fetchRemoteText(
+      {
+        key: "k-credentialed",
+        url: "https://alice:secret@example.com/private"
+      },
+      { fetchImpl, timeoutMs: 1000, allowedHosts: ["example.com"] }
     )
 
     expect(result.status).toBe("error")
@@ -97,10 +114,86 @@ describe("remote cache fetch helper", () => {
     expect(result.status).toBe("error")
   })
 
+  it("supports relative redirects on allowlisted hosts", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { location: "/openai/codex/main/file.txt" }
+        })
+      )
+      .mockResolvedValueOnce(new Response("hello", { status: 200 }))
+
+    const result = await fetchRemoteText(
+      {
+        key: "k-relative-redirect",
+        url: "https://raw.githubusercontent.com/openai/codex/releases/latest"
+      },
+      {
+        fetchImpl,
+        timeoutMs: 1000,
+        allowedHosts: ["raw.githubusercontent.com"]
+      }
+    )
+
+    expect(result.status).toBe("ok")
+    if (result.status !== "ok") throw new Error("expected ok")
+    expect(result.finalUrl).toBe("https://raw.githubusercontent.com/openai/codex/main/file.txt")
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it("returns error for redirect responses missing location", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(null, {
+        status: 302
+      })
+    )
+
+    const result = await fetchRemoteText(
+      {
+        key: "k-missing-location",
+        url: "https://raw.githubusercontent.com/openai/codex/releases/latest"
+      },
+      {
+        fetchImpl,
+        timeoutMs: 1000,
+        allowedHosts: ["raw.githubusercontent.com"]
+      }
+    )
+
+    expect(result.status).toBe("error")
+  })
+
+  it("returns error when redirect hops exceed maxRedirects", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://raw.githubusercontent.com/openai/codex/main/file.txt" }
+      })
+    )
+
+    const result = await fetchRemoteText(
+      {
+        key: "k-max-redirect",
+        url: "https://raw.githubusercontent.com/openai/codex/releases/latest"
+      },
+      {
+        fetchImpl,
+        timeoutMs: 1000,
+        allowedHosts: ["raw.githubusercontent.com"],
+        maxRedirects: 0
+      }
+    )
+
+    expect(result.status).toBe("error")
+  })
+
   it("supports conditional not-modified fetches", async () => {
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const headers = (init?.headers ?? {}) as Record<string, string>
       expect(headers["if-none-match"]).toBe('W/"prev"')
+      expect(headers["cache-control"]).toBe("no-store")
       return new Response(null, { status: 304 })
     })
 

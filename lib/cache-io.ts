@@ -1,5 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
+import { randomUUID } from "node:crypto"
 import type { Logger } from "./logger.js"
 
 type OnIoFailure = (event: { operation: string; filePath: string; error: unknown }) => void
@@ -111,7 +112,7 @@ export async function writeJsonFile(filePath: string, value: unknown): Promise<v
 
 export async function writeJsonFileAtomic(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const tempPath = `${filePath}.tmp.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
+  const tempPath = `${filePath}.tmp.${Date.now().toString(36)}.${randomUUID()}`
   try {
     await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
     const tempHandle = await fs.open(tempPath, "r+")

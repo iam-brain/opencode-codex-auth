@@ -79,7 +79,7 @@ jobs:
         run: npm run check:esm-imports
 
       - name: Run targeted hardening tests
-        run: npm test -- test/cache-io.test.ts test/check-esm-import-specifiers.test.ts test/check-dist-esm-import-specifiers.test.ts
+        run: npm test -- test/cache-io.test.ts test/check-esm-import-specifiers.test.ts test/check-dist-esm-import-specifiers.test.ts test/codex-native-browser-open.test.ts test/remote-cache-fetch.test.ts test/codex-native-client-version.test.ts test/paths.test.ts
 
       - name: Build package
         run: npm run build

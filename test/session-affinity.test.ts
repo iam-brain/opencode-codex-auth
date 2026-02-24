@@ -13,6 +13,7 @@ import {
   saveSessionAffinity,
   writeSessionAffinitySnapshot
 } from "../lib/session-affinity"
+import { lockTargetPathForFile } from "../lib/cache-lock"
 
 describe("session affinity storage", () => {
   it("persists sticky/hybrid maps and seen sessions by mode", async () => {
@@ -116,8 +117,10 @@ describe("session affinity storage", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-session-affinity-"))
     const filePath = path.join(root, "codex-session-affinity.json")
 
-    const release = await lockfile.lock(filePath, {
-      realpath: false,
+    const lockTarget = lockTargetPathForFile(filePath)
+    await fs.writeFile(lockTarget, "", "utf8")
+    const release = await lockfile.lock(lockTarget, {
+      realpath: true,
       retries: {
         retries: 0
       }

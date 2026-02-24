@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { browserOpenInvocationFor } from "../lib/codex-native"
-import { tryOpenUrlInBrowser } from "../lib/codex-native/browser.js"
+import { isAllowedBrowserUrl, normalizeAllowedOrigins } from "../lib/codex-native/browser.js"
 
 describe("codex native browser launch", () => {
   it("builds macOS open invocation", () => {
@@ -35,12 +35,23 @@ describe("codex native browser launch", () => {
     })
   })
 
-  it("blocks disallowed browser URL origins", async () => {
-    const opened = await tryOpenUrlInBrowser({
-      url: "https://evil.example.invalid/oauth",
-      allowedOrigins: ["https://auth.openai.com"]
-    })
+  it("allows allowlisted https browser URLs", () => {
+    const allowedOrigins = normalizeAllowedOrigins(["https://auth.openai.com"])
+    expect(isAllowedBrowserUrl("https://auth.openai.com/oauth/authorize?client_id=abc", allowedOrigins)).toBe(true)
+  })
 
-    expect(opened).toBe(false)
+  it("blocks disallowed browser URL origins", () => {
+    const allowedOrigins = normalizeAllowedOrigins(["https://auth.openai.com"])
+    expect(isAllowedBrowserUrl("https://evil.example.invalid/oauth", allowedOrigins)).toBe(false)
+  })
+
+  it("blocks browser URLs with credentials", () => {
+    const allowedOrigins = normalizeAllowedOrigins(["https://auth.openai.com"])
+    expect(isAllowedBrowserUrl("https://alice:secret@auth.openai.com/oauth/authorize", allowedOrigins)).toBe(false)
+  })
+
+  it("blocks non-http browser URL schemes", () => {
+    const allowedOrigins = normalizeAllowedOrigins(["https://auth.openai.com"])
+    expect(isAllowedBrowserUrl("file:///tmp/oauth.html", allowedOrigins)).toBe(false)
   })
 })

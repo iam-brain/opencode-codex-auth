@@ -42,6 +42,7 @@ function isAllowedRemoteUrl(url: string, allowedHosts: Set<string>): boolean {
   try {
     const parsed = new URL(url)
     if (parsed.protocol !== "https:") return false
+    if (parsed.username || parsed.password) return false
     return allowedHosts.has(parsed.hostname.toLowerCase())
   } catch {
     return false
@@ -88,7 +89,9 @@ export async function fetchRemoteText(
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const headers: Record<string, string> = {}
+    const headers: Record<string, string> = {
+      "cache-control": "no-store"
+    }
     if (request.etag) {
       headers["if-none-match"] = request.etag
     }

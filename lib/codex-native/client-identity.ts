@@ -1,6 +1,7 @@
 import os from "node:os"
 import path from "node:path"
 import { execFileSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 
 import type { CodexSpoofMode } from "../config.js"
@@ -245,7 +246,7 @@ function writeCodexClientVersionCache(
 ): void {
   try {
     mkdirSync(path.dirname(cacheFilePath), { recursive: true })
-    const tempFilePath = `${cacheFilePath}.tmp.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
+    const tempFilePath = `${cacheFilePath}.tmp.${Date.now().toString(36)}.${randomUUID()}`
     writeFileSync(tempFilePath, `${JSON.stringify(entry, null, 2)}\n`, { mode: 0o600 })
     renameSync(tempFilePath, cacheFilePath)
     chmodSync(cacheFilePath, 0o600)

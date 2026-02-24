@@ -10,7 +10,7 @@ export type BrowserOpenInvocation = {
   args: string[]
 }
 
-function normalizeAllowedOrigins(input: string[] | undefined): Set<string> {
+export function normalizeAllowedOrigins(input: string[] | undefined): Set<string> {
   const out = new Set<string>()
   if (!input) return out
   for (const candidate of input) {
@@ -24,7 +24,7 @@ function normalizeAllowedOrigins(input: string[] | undefined): Set<string> {
   return out
 }
 
-function isAllowedBrowserUrl(url: string, allowedOrigins: Set<string>): boolean {
+export function isAllowedBrowserUrl(url: string, allowedOrigins: Set<string>): boolean {
   try {
     const parsed = new URL(url)
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false
