@@ -11,10 +11,10 @@ describe("codex native browser launch", () => {
     })
   })
 
-  it("builds Windows start invocation", () => {
+  it("builds Windows browser invocation without shell parsing", () => {
     expect(browserOpenInvocationFor("https://example.com", "win32")).toEqual({
-      command: "explorer.exe",
-      args: ["https://example.com"]
+      command: "rundll32.exe",
+      args: ["url.dll,FileProtocolHandler", "https://example.com"]
     })
   })
 
@@ -23,8 +23,8 @@ describe("codex native browser launch", () => {
       "https://auth.openai.com/oauth/authorize?client_id=test-client&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fcallback&state=test-state"
 
     expect(browserOpenInvocationFor(oauthUrl, "win32")).toEqual({
-      command: "explorer.exe",
-      args: [oauthUrl]
+      command: "rundll32.exe",
+      args: ["url.dll,FileProtocolHandler", oauthUrl]
     })
   })
 

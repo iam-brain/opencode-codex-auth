@@ -44,7 +44,8 @@ export function browserOpenInvocationFor(
     return { command: "open", args: [url] }
   }
   if (platform === "win32") {
-    return { command: "explorer.exe", args: [url] }
+    // Avoid cmd/explorer argument parsing edge-cases for OAuth URLs containing '&'.
+    return { command: "rundll32.exe", args: ["url.dll,FileProtocolHandler", url] }
   }
   return { command: "xdg-open", args: [url] }
 }
