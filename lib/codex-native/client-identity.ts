@@ -9,6 +9,7 @@ import { defaultOpencodeCachePath } from "../paths.js"
 import { fetchRemoteText } from "../remote-cache-fetch.js"
 import { isFsErrorCode } from "../cache-io.js"
 import type { CodexOriginator } from "./originator.js"
+import { URL } from "node:url"
 
 const DEFAULT_PLUGIN_VERSION = "0.1.0"
 const DEFAULT_CODEX_CLIENT_VERSION = "0.97.0"
@@ -16,6 +17,7 @@ const CODEX_CLIENT_VERSION_CACHE_FILE = path.join(defaultOpencodeCachePath(), "c
 const CODEX_CLIENT_VERSION_TTL_MS = 60 * 60 * 1000
 const CODEX_GITHUB_RELEASES_API = "https://api.github.com/repos/openai/codex/releases/latest"
 const CODEX_GITHUB_RELEASES_HTML = "https://github.com/openai/codex/releases/latest"
+const REMOTE_RELEASE_ALLOWED_HOSTS = ["api.github.com", "github.com", "raw.githubusercontent.com"]
 
 let cachedPluginVersion: string | undefined
 let cachedMacProductVersion: string | undefined
@@ -71,7 +73,7 @@ function splitProgramAndVersion(value: string): { program: string; version?: str
 
 function tmuxDisplayMessage(format: string): string | undefined {
   try {
-    const value = execFileSync("tmux", ["display-message", "-p", format], { encoding: "utf8" }).trim()
+    const value = execFileSync("tmux", ["display-message", "-p", format], { encoding: "utf8", timeout: 1500 }).trim()
     return value || undefined
   } catch (error) {
     if (error instanceof Error) {
@@ -79,6 +81,18 @@ function tmuxDisplayMessage(format: string): string | undefined {
     }
     return undefined
   }
+}
+
+function ensureAllowedReleaseUrl(input: string): string {
+  const parsed = new URL(input)
+  if (parsed.protocol !== "https:") {
+    throw new Error("invalid_release_url_scheme")
+  }
+  const host = parsed.hostname.toLowerCase()
+  if (!REMOTE_RELEASE_ALLOWED_HOSTS.includes(host)) {
+    throw new Error(`invalid_release_url_host:${host}`)
+  }
+  return parsed.toString()
 }
 
 function resolveTerminalUserAgentToken(env: NodeJS.ProcessEnv = process.env): string {
@@ -256,7 +270,8 @@ async function fetchLatestCodexReleaseTag(fetchImpl: typeof fetch = fetch): Prom
     },
     {
       fetchImpl,
-      timeoutMs: 5000
+      timeoutMs: 5000,
+      allowedHosts: REMOTE_RELEASE_ALLOWED_HOSTS
     }
   )
   if (apiResult.status === "ok") {
@@ -272,7 +287,8 @@ async function fetchLatestCodexReleaseTag(fetchImpl: typeof fetch = fetch): Prom
     },
     {
       fetchImpl,
-      timeoutMs: 5000
+      timeoutMs: 5000,
+      allowedHosts: REMOTE_RELEASE_ALLOWED_HOSTS
     }
   )
 
@@ -280,7 +296,7 @@ async function fetchLatestCodexReleaseTag(fetchImpl: typeof fetch = fetch): Prom
     throw new Error("failed to fetch codex release tag")
   }
 
-  const finalUrl = htmlResult.finalUrl ?? CODEX_GITHUB_RELEASES_HTML
+  const finalUrl = ensureAllowedReleaseUrl(htmlResult.finalUrl ?? CODEX_GITHUB_RELEASES_HTML)
   if (finalUrl.includes("/tag/")) {
     const tag = finalUrl.split("/tag/").pop()
     if (tag && !tag.includes("/")) return tag
@@ -365,7 +381,7 @@ export function resolveCodexClientVersion(cacheFilePath: string = CODEX_CLIENT_V
 function resolveMacProductVersion(): string {
   if (cachedMacProductVersion) return cachedMacProductVersion
   try {
-    const value = execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).trim()
+    const value = execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8", timeout: 1500 }).trim()
     cachedMacProductVersion = value || os.release()
   } catch (error) {
     if (error instanceof Error) {

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { fetchRemoteText, fetchRemoteTextBatch } from "../lib/remote-cache-fetch"
+import { fetchRemoteText, fetchRemoteTextBatch } from "../lib/remote-cache-fetch.js"
 
 describe("remote cache fetch helper", () => {
   it("fetches text with etag", async () => {
-    const fetchImpl = vi.fn(async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => {
       return new Response("hello", {
         status: 200,
         headers: { etag: 'W/"abc"' }
@@ -16,7 +16,7 @@ describe("remote cache fetch helper", () => {
         key: "k1",
         url: "https://example.com/a"
       },
-      { fetchImpl, timeoutMs: 1000 }
+      { fetchImpl, timeoutMs: 1000, allowedHosts: ["example.com"] }
     )
 
     expect(result.status).toBe("ok")
@@ -24,6 +24,77 @@ describe("remote cache fetch helper", () => {
     expect(result.text).toBe("hello")
     expect(result.etag).toBe('W/"abc"')
     expect(result.finalUrl).toBe("https://example.com/a")
+
+    const firstCall = fetchImpl.mock.calls[0]
+    const init = firstCall ? (firstCall[1] as RequestInit | undefined) : undefined
+    expect(init?.redirect).toBe("manual")
+  })
+
+  it("blocks disallowed hosts", async () => {
+    const fetchImpl = vi.fn(async () => new Response("hello", { status: 200 }))
+
+    const result = await fetchRemoteText(
+      {
+        key: "k-host",
+        url: "https://example.com/not-allowed"
+      },
+      { fetchImpl, timeoutMs: 1000, allowedHosts: ["raw.githubusercontent.com"] }
+    )
+
+    expect(result.status).toBe("error")
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it("follows allowlisted redirects", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { location: "https://raw.githubusercontent.com/openai/codex/main/file.txt" }
+        })
+      )
+      .mockResolvedValueOnce(new Response("hello", { status: 200 }))
+
+    const result = await fetchRemoteText(
+      {
+        key: "k-redirect",
+        url: "https://github.com/openai/codex/releases/latest"
+      },
+      {
+        fetchImpl,
+        timeoutMs: 1000,
+        allowedHosts: ["github.com", "raw.githubusercontent.com"]
+      }
+    )
+
+    expect(result.status).toBe("ok")
+    if (result.status !== "ok") throw new Error("expected ok")
+    expect(result.finalUrl).toBe("https://raw.githubusercontent.com/openai/codex/main/file.txt")
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it("blocks redirects to non-allowlisted origins", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://example.com/evil" }
+      })
+    )
+
+    const result = await fetchRemoteText(
+      {
+        key: "k-block-redirect",
+        url: "https://github.com/openai/codex/releases/latest"
+      },
+      {
+        fetchImpl,
+        timeoutMs: 1000,
+        allowedHosts: ["github.com", "raw.githubusercontent.com"]
+      }
+    )
+
+    expect(result.status).toBe("error")
   })
 
   it("supports conditional not-modified fetches", async () => {
@@ -39,7 +110,7 @@ describe("remote cache fetch helper", () => {
         url: "https://example.com/b",
         etag: 'W/"prev"'
       },
-      { fetchImpl, timeoutMs: 1000 }
+      { fetchImpl, timeoutMs: 1000, allowedHosts: ["example.com"] }
     )
 
     expect(result.status).toBe("not_modified")
@@ -59,7 +130,7 @@ describe("remote cache fetch helper", () => {
         url: "https://example.com/b",
         etag: 'W/"prev"'
       },
-      { fetchImpl, timeoutMs: 1000 }
+      { fetchImpl, timeoutMs: 1000, allowedHosts: ["example.com"] }
     )
 
     expect(result.status).toBe("not_modified")
@@ -78,7 +149,7 @@ describe("remote cache fetch helper", () => {
         url: "https://example.com/c",
         etag: 'W/"prev"'
       },
-      { fetchImpl, timeoutMs: 1000 }
+      { fetchImpl, timeoutMs: 1000, allowedHosts: ["example.com"] }
     )
 
     expect(result.status).toBe("not_modified")
@@ -96,7 +167,7 @@ describe("remote cache fetch helper", () => {
         key: "k2d",
         url: "https://example.com/d"
       },
-      { fetchImpl, timeoutMs: 1000 }
+      { fetchImpl, timeoutMs: 1000, allowedHosts: ["example.com"] }
     )
 
     expect(result.status).toBe("not_modified")
@@ -123,7 +194,7 @@ describe("remote cache fetch helper", () => {
           { key: "two", url: "https://example.com/two" }
         ]
       },
-      { fetchImpl, timeoutMs: 1000 }
+      { fetchImpl, timeoutMs: 1000, allowedHosts: ["example.com"] }
     )
 
     await vi.waitFor(() => {
@@ -160,7 +231,7 @@ describe("remote cache fetch helper", () => {
         key: "k4",
         url: "https://example.com/slow"
       },
-      { fetchImpl, timeoutMs: 1 }
+      { fetchImpl, timeoutMs: 1, allowedHosts: ["example.com"] }
     )
 
     expect(result.status).toBe("timeout")

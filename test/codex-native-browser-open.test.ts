@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { browserOpenInvocationFor } from "../lib/codex-native"
+import { tryOpenUrlInBrowser } from "../lib/codex-native/browser.js"
 
 describe("codex native browser launch", () => {
   it("builds macOS open invocation", () => {
@@ -12,8 +13,8 @@ describe("codex native browser launch", () => {
 
   it("builds Windows start invocation", () => {
     expect(browserOpenInvocationFor("https://example.com", "win32")).toEqual({
-      command: "cmd",
-      args: ["/c", "start", "", "https://example.com"]
+      command: "explorer.exe",
+      args: ["https://example.com"]
     })
   })
 
@@ -22,5 +23,14 @@ describe("codex native browser launch", () => {
       command: "xdg-open",
       args: ["https://example.com"]
     })
+  })
+
+  it("blocks disallowed browser URL origins", async () => {
+    const opened = await tryOpenUrlInBrowser({
+      url: "https://evil.example.invalid/oauth",
+      allowedOrigins: ["https://auth.openai.com"]
+    })
+
+    expect(opened).toBe(false)
   })
 })

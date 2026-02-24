@@ -225,7 +225,8 @@ async function refreshSharedGitHubModelsCache(input: {
     },
     {
       fetchImpl: input.fetchImpl,
-      timeoutMs: FETCH_TIMEOUT_MS
+      timeoutMs: FETCH_TIMEOUT_MS,
+      allowedHosts: ["raw.githubusercontent.com"]
     }
   )
 
@@ -486,11 +487,14 @@ function deriveReason(value: unknown): string {
   return "error"
 }
 
-function emitStaleCacheFallback(input: GetCodexModelCatalogInput, fallback: {
-  disk?: CodexModelsCache
-  opencode?: CodexModelsCache
-  codexCli?: CodexModelsCache
-}): CodexModelInfo[] | undefined {
+function emitStaleCacheFallback(
+  input: GetCodexModelCatalogInput,
+  fallback: {
+    disk?: CodexModelsCache
+    opencode?: CodexModelsCache
+    codexCli?: CodexModelsCache
+  }
+): CodexModelInfo[] | undefined {
   if (fallback.disk) {
     emitEvent(input, { type: "stale_cache_used", reason: "network_fetch_failed" })
     return fallback.disk.models
@@ -525,7 +529,8 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   const fetchImpl = input.fetchImpl ?? fetch
   const accessToken = input.accessToken?.trim()
   const targetClientVersion = normalizeSemver(input.clientVersion) ?? normalizeSemver(input.versionHeader)
-  const defaultGithubModelsRefresh = Boolean(accessToken) && input.fetchImpl === undefined && targetClientVersion !== undefined
+  const defaultGithubModelsRefresh =
+    Boolean(accessToken) && input.fetchImpl === undefined && targetClientVersion !== undefined
   const shouldRefreshGithubModelsCache = input.refreshGithubModelsCache ?? defaultGithubModelsRefresh
 
   if (shouldRefreshGithubModelsCache) {

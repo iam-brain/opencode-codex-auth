@@ -74,6 +74,7 @@ GitHub Actions handle verification and publish automation:
   - runs verify checks on pushes and pull requests
   - includes Windows runtime hardening checks
   - includes packed tarball execution smoke
+  - includes security dependency audit gate
 - `.github/workflows/release.yml`
   - on `v*` tag push, installs dependencies, runs `npm run verify`, publishes to npm with Trusted Publishing, and creates GitHub Release
 

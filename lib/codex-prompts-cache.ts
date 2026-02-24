@@ -18,6 +18,7 @@ export const CODEX_PLAN_PROMPT_URL =
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const FETCH_TIMEOUT_MS = 5000
+const PROMPT_ALLOWED_HOSTS = ["raw.githubusercontent.com"]
 
 type CodexPromptsCache = {
   fetchedAt: number
@@ -191,7 +192,8 @@ export async function refreshCachedCodexPrompts(
           },
           {
             fetchImpl,
-            timeoutMs: FETCH_TIMEOUT_MS
+            timeoutMs: FETCH_TIMEOUT_MS,
+            allowedHosts: PROMPT_ALLOWED_HOSTS
           }
         )
         const orchestratorResult = results.find((result) => result.key === "orchestrator")

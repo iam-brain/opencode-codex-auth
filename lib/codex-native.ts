@@ -27,6 +27,7 @@ import {
   buildAuthorizeUrl,
   buildOAuthErrorHtml,
   buildOAuthSuccessHtml,
+  ISSUER,
   composeCodexSuccessRedirectUrl,
   exchangeCodeForTokens,
   generatePKCE,
@@ -90,6 +91,7 @@ const CODEX_RS_COMPACT_SUMMARY_PREFIX =
 export async function tryOpenUrlInBrowser(url: string, log?: Logger): Promise<boolean> {
   return openUrlInBrowser({
     url,
+    allowedOrigins: [ISSUER],
     log,
     onEvent: (event, meta) => oauthServerController.emitDebug(event, meta ?? {})
   })

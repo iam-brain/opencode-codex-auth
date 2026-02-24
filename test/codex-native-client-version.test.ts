@@ -77,6 +77,45 @@ describe("codex client version resolution", () => {
     expect(fetchMock.mock.calls.length).toBe(2)
   })
 
+  it("rejects redirected release HTML final URL from non-allowlisted host", async () => {
+    const dir = await makeTmpDir()
+    const cacheFile = path.join(dir, "codex-client-version.json")
+    await fs.writeFile(cacheFile, JSON.stringify({ version: "0.98.0", fetchedAt: 1 }), "utf8")
+
+    const fetchMock = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
+      const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url
+      if (endpoint.includes("/repos/openai/codex/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "" }), { status: 200 })
+      }
+      if (endpoint.includes("/openai/codex/releases/latest")) {
+        return new Response('<a href="/openai/codex/releases/tag/rust-v0.99.2">latest</a>', {
+          status: 200,
+          headers: { "content-type": "text/html" }
+        })
+      }
+      throw new Error(`unexpected URL: ${endpoint}`)
+    })
+
+    const originalFetch = fetchMock
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const response = await originalFetch(url, init)
+      const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url
+      if (endpoint.includes("/openai/codex/releases/latest")) {
+        Object.defineProperty(response, "url", { value: "https://evil.example.invalid/tag" })
+      }
+      return response
+    }) as typeof fetch
+
+    const version = await __testOnly.refreshCodexClientVersionFromGitHub(undefined, {
+      cacheFilePath: cacheFile,
+      fetchImpl,
+      now: () => 2 * 60 * 60 * 1000,
+      allowInTest: true
+    })
+
+    expect(version).toBe("0.98.0")
+  })
+
   it("does not refresh when cache entry is still fresh", async () => {
     const dir = await makeTmpDir()
     const cacheFile = path.join(dir, "codex-client-version.json")
