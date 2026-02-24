@@ -640,9 +640,7 @@ export async function transformOutboundRequestPayload(
     return {
       request: input.request,
       changed: false,
-      replay: input.stripReasoningReplayEnabled
-        ? { ...disabledReplay, reason: "non_post" }
-        : disabledReplay,
+      replay: input.stripReasoningReplayEnabled ? { ...disabledReplay, reason: "non_post" } : disabledReplay,
       developerRoleRemap: input.remapDeveloperMessagesToUserEnabled
         ? { ...disabledRoleRemap, reason: "non_post" }
         : disabledRoleRemap,
@@ -662,9 +660,7 @@ export async function transformOutboundRequestPayload(
     return {
       request: input.request,
       changed: false,
-      replay: input.stripReasoningReplayEnabled
-        ? { ...disabledReplay, reason: "invalid_json" }
-        : disabledReplay,
+      replay: input.stripReasoningReplayEnabled ? { ...disabledReplay, reason: "invalid_json" } : disabledReplay,
       developerRoleRemap: input.remapDeveloperMessagesToUserEnabled
         ? { ...disabledRoleRemap, reason: "invalid_json" }
         : disabledRoleRemap,
@@ -701,9 +697,7 @@ export async function transformOutboundRequestPayload(
     return {
       request: input.request,
       changed: false,
-      replay: input.stripReasoningReplayEnabled
-        ? { ...disabledReplay, reason: "invalid_json" }
-        : disabledReplay,
+      replay: input.stripReasoningReplayEnabled ? { ...disabledReplay, reason: "invalid_json" } : disabledReplay,
       developerRoleRemap: input.remapDeveloperMessagesToUserEnabled
         ? { ...disabledRoleRemap, reason: "invalid_json" }
         : disabledRoleRemap,
@@ -720,9 +714,7 @@ export async function transformOutboundRequestPayload(
     return {
       request: input.request,
       changed: false,
-      replay: input.stripReasoningReplayEnabled
-        ? { ...disabledReplay, reason: "non_object_body" }
-        : disabledReplay,
+      replay: input.stripReasoningReplayEnabled ? { ...disabledReplay, reason: "non_object_body" } : disabledReplay,
       developerRoleRemap: input.remapDeveloperMessagesToUserEnabled
         ? { ...disabledRoleRemap, reason: "non_object_body" }
         : disabledRoleRemap,
@@ -736,9 +728,7 @@ export async function transformOutboundRequestPayload(
   }
 
   let changed = false
-  const replay = input.stripReasoningReplayEnabled
-    ? stripReasoningReplayFromPayload(payload)
-    : disabledReplay
+  const replay = input.stripReasoningReplayEnabled ? stripReasoningReplayFromPayload(payload) : disabledReplay
   changed = changed || replay.changed
 
   const developerRoleRemap = input.remapDeveloperMessagesToUserEnabled
@@ -814,7 +804,6 @@ function rebuildRequestWithJsonBody(request: Request, body: unknown): Request {
     redirect: request.redirect,
     signal: request.signal,
     credentials: request.credentials,
-    cache: request.cache,
     mode: request.mode,
     referrer: request.referrer,
     referrerPolicy: request.referrerPolicy,
@@ -1016,7 +1005,7 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
   const rendered = resolveInstructionsForModel(catalogModel, effectivePersonality)
   if (!rendered) return { request: input.request, changed: false, reason: "rendered_empty_or_unsafe" }
   const renderedForRequest =
-    input.replaceCodexToolCalls === true ? replaceCodexToolCallsForOpenCode(rendered) ?? rendered : rendered
+    input.replaceCodexToolCalls === true ? (replaceCodexToolCallsForOpenCode(rendered) ?? rendered) : rendered
 
   const currentInstructions = asString(payload.instructions)
 
