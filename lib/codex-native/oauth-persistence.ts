@@ -21,6 +21,12 @@ export async function persistOAuthTokensForMode(tokens: TokenResponse, authMode:
   }
 
   await saveAuthStorage(undefined, async (authFile) => {
+    if (!authFile.openai || authFile.openai.type !== "oauth") {
+      authFile.openai = {
+        type: "oauth",
+        accounts: []
+      }
+    }
     const domain = ensureOpenAIOAuthDomain(authFile, authMode)
     const stored = upsertAccount(domain, { ...account, authTypes: [authMode] })
     if (stored.identityKey) {

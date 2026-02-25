@@ -129,6 +129,7 @@ export function createOAuthServerController<TPkce, TTokens>(
 
   let oauthServer: http.Server | undefined
   let pendingOAuth: PendingOAuth<TPkce, TTokens> | undefined
+  let lastErrorState: string | undefined
   let oauthServerCloseTimer: ReturnType<typeof setTimeout> | undefined
 
   function isDebugEnabled(): boolean {
@@ -244,29 +245,13 @@ function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
             hasError: Boolean(error)
           })
 
-          if (error) {
-            const errorMsg = errorDescription || error
-            emitDebug("callback_error", { reason: errorMsg })
-            if (pendingOAuth && state === pendingOAuth.state) {
-              pendingOAuth.reject(new Error(errorMsg))
-              pendingOAuth = undefined
-            }
-            sendHtml(200, input.buildOAuthErrorHtml(errorMsg))
-            return
-          }
-
-          if (!code) {
-            const errorMsg = "Missing authorization code"
-            emitDebug("callback_error", { reason: errorMsg })
-            if (pendingOAuth && state === pendingOAuth.state) {
-              pendingOAuth.reject(new Error(errorMsg))
-              pendingOAuth = undefined
-            }
-            sendHtml(400, input.buildOAuthErrorHtml(errorMsg))
-            return
-          }
-
           if (!pendingOAuth || state !== pendingOAuth.state) {
+            if (error && state && state === lastErrorState) {
+              const errorMsg = errorDescription || error
+              emitDebug("callback_error", { reason: errorMsg })
+              sendHtml(200, input.buildOAuthErrorHtml(errorMsg))
+              return
+            }
             const errorMsg = "Invalid state - potential CSRF attack"
             emitDebug("callback_error", { reason: errorMsg })
             sendHtml(400, input.buildOAuthErrorHtml(errorMsg))
@@ -274,7 +259,28 @@ function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
           }
 
           const current = pendingOAuth
+
+          if (error) {
+            const errorMsg = errorDescription || error
+            emitDebug("callback_error", { reason: errorMsg })
+            current.reject(new Error(errorMsg))
+            lastErrorState = state ?? undefined
+            pendingOAuth = undefined
+            sendHtml(200, input.buildOAuthErrorHtml(errorMsg))
+            return
+          }
+
+          if (!code) {
+            const errorMsg = "Missing authorization code"
+            emitDebug("callback_error", { reason: errorMsg })
+            current.reject(new Error(errorMsg))
+            pendingOAuth = undefined
+            sendHtml(400, input.buildOAuthErrorHtml(errorMsg))
+            return
+          }
+
           pendingOAuth = undefined
+          lastErrorState = undefined
           emitDebug("token_exchange_start", { authMode: current.authMode })
           input
             .exchangeCodeForTokens(code, input.callbackUri, current.pkce)
@@ -368,6 +374,7 @@ function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
     emitDebug("server_stopping", { hadPendingOAuth: Boolean(pendingOAuth) })
     oauthServer?.close()
     oauthServer = undefined
+    lastErrorState = undefined
     emitDebug("server_stopped")
   }
 
@@ -387,6 +394,7 @@ function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
     if (pendingOAuth) {
       return Promise.reject(new Error("Authorization already in progress"))
     }
+    lastErrorState = undefined
     emitDebug("callback_wait_start", {
       authMode,
       stateTail: state.slice(-6)

@@ -96,7 +96,42 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
   }
 
   return async (requestInput: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    const baseRequest = new Request(requestInput, init)
+    const initialRequestUrl =
+      requestInput instanceof Request
+        ? requestInput.url
+        : requestInput instanceof URL
+          ? requestInput.toString()
+          : requestInput
+
+    try {
+      assertAllowedOutboundUrl(new URL(initialRequestUrl))
+    } catch (error) {
+      if (isPluginFatalError(error)) {
+        return toSyntheticErrorResponse(error)
+      }
+      return toSyntheticErrorResponse(
+        new PluginFatalError({
+          message: "Outbound request validation failed before preparing OpenAI request.",
+          status: 400,
+          type: "disallowed_outbound_request",
+          param: "request"
+        })
+      )
+    }
+
+    let baseRequest: Request
+    try {
+      baseRequest = new Request(requestInput, init)
+    } catch {
+      return toSyntheticErrorResponse(
+        new PluginFatalError({
+          message: "Outbound request could not be prepared for OpenAI backend.",
+          status: 400,
+          type: "disallowed_outbound_request",
+          param: "request"
+        })
+      )
+    }
     if (input.headerTransformDebug) {
       await input.requestSnapshots.captureRequest("before-header-transform", baseRequest, {
         spoofMode: input.spoofMode

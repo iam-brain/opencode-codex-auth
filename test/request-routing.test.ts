@@ -24,6 +24,12 @@ describe("request routing", () => {
     )
   })
 
+  it("blocks outbound URLs with embedded credentials", () => {
+    expect(() => assertAllowedOutboundUrl(new URL("https://alice:secret@api.openai.com/v1/responses"))).toThrow(
+      PluginFatalError
+    )
+  })
+
   it("allows api.openai.com outbound host", () => {
     expect(() => assertAllowedOutboundUrl(new URL("https://api.openai.com/v1/models"))).not.toThrow()
   })

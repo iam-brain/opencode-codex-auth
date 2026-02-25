@@ -6,6 +6,12 @@ type StorageState = {
   openai: Record<string, unknown>
 }
 
+type BrowserAuthorizeFlow = {
+  url: string
+  displayUrl?: string
+  callback: (...args: string[]) => Promise<{ type: string }>
+}
+
 function buildJwt(payload: Record<string, unknown>): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url")
   return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.${encode("sig")}`
@@ -182,15 +188,16 @@ describe("codex-native oauth callback flow", () => {
       const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
       if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
 
-      const flow = await browserMethod.authorize()
+      const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
       const authUrl = new URL(flow.url)
       const state = authUrl.searchParams.get("state")
       expect(state).toBeTruthy()
       if (!state) throw new Error("missing oauth state")
-      const displayUrl = (flow as { displayUrl?: string }).displayUrl
+      const displayUrl = flow.displayUrl
       expect(displayUrl).toBeTruthy()
       expect(displayUrl).toContain("state=%5Bredacted%5D")
       expect(displayUrl).not.toContain(`state=${state}`)
+      expect(flow.url).not.toContain("state=%5Bredacted%5D")
 
       const callbackResponse = await httpGet(
         `http://localhost:1455/auth/callback?code=test_code&state=${encodeURIComponent(state)}`
@@ -246,7 +253,7 @@ describe("codex-native oauth callback flow", () => {
       const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
       if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
 
-      const flow = await browserMethod.authorize()
+      const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
       const authUrl = new URL(flow.url)
       const state = authUrl.searchParams.get("state")
       expect(state).toBeTruthy()
@@ -296,7 +303,7 @@ describe("codex-native oauth callback flow", () => {
       const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
       if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
 
-      const flow = await browserMethod.authorize()
+      const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
       const authUrl = new URL(flow.url)
       const state = authUrl.searchParams.get("state")
       expect(state).toBeTruthy()
@@ -333,6 +340,37 @@ describe("codex-native oauth callback flow", () => {
     }
   })
 
+  it("rejects callback error requests without matching oauth state", async () => {
+    const { hooks } = await loadPluginForOAuthFlow({
+      mode: "codex",
+      spoofMode: "codex"
+    })
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
+    const authUrl = new URL(flow.url)
+    const state = authUrl.searchParams.get("state")
+    expect(state).toBeTruthy()
+    if (!state) throw new Error("missing oauth state")
+
+    const wrongStateError = await httpGet(
+      "http://localhost:1455/auth/callback?error=request_forbidden&error_description=csrf&state=wrong"
+    )
+    expect(wrongStateError.statusCode).toBe(400)
+    expect(wrongStateError.body).toContain("Invalid state")
+
+    const callbackResultPromise = flow.callback("")
+    const correctStateError = await httpGet(
+      `http://localhost:1455/auth/callback?error=request_forbidden&error_description=csrf&state=${encodeURIComponent(state)}`
+    )
+    expect(correctStateError.statusCode).toBe(200)
+    expect(correctStateError.body).toContain("Sign-in failed")
+
+    const result = await callbackResultPromise
+    expect(result.type).toBe("failed")
+  })
+
   it("rejects cancel requests without matching oauth state", async () => {
     const { hooks } = await loadPluginForOAuthFlow({
       mode: "codex",
@@ -341,7 +379,7 @@ describe("codex-native oauth callback flow", () => {
     const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
     if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
 
-    const flow = await browserMethod.authorize()
+    const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
     const authUrl = new URL(flow.url)
     const state = authUrl.searchParams.get("state")
     expect(state).toBeTruthy()
@@ -372,7 +410,7 @@ describe("codex-native oauth callback flow", () => {
     const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
     if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
 
-    const flow = await browserMethod.authorize()
+    const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
     const authUrl = new URL(flow.url)
     const state = authUrl.searchParams.get("state")
     expect(state).toBeTruthy()

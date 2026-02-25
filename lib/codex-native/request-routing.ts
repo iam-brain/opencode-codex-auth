@@ -45,6 +45,17 @@ export function assertAllowedOutboundUrl(url: URL): void {
     })
   }
 
+  if (url.username || url.password) {
+    throw new PluginFatalError({
+      message:
+        `Blocked outbound request to "${url.hostname}" with URL-embedded credentials. ` +
+        "This plugin only proxies OpenAI/ChatGPT backend traffic without URL credentials.",
+      status: 400,
+      type: "disallowed_outbound_credentials",
+      param: "request"
+    })
+  }
+
   const port = url.port.trim()
   if (port && port !== "443") {
     throw new PluginFatalError({

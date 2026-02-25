@@ -211,6 +211,40 @@ describe("codex-native fatal responses", () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
+  it("blocks credentialed outbound URLs before rewrite/network dispatch", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal("fetch", fetchImpl)
+
+    const { loaded } = await loadPluginForAuth({
+      openai: {
+        type: "oauth",
+        activeIdentityKey: "acc|user@example.com|plus",
+        accounts: [
+          {
+            identityKey: "acc|user@example.com|plus",
+            accountId: "acc",
+            email: "user@example.com",
+            plan: "plus",
+            enabled: true,
+            access: "access_token",
+            refresh: "refresh_token",
+            expires: Date.now() + 60_000
+          }
+        ]
+      }
+    })
+
+    const response = await loaded.fetch?.("https://alice:secret@api.openai.com/v1/responses", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-5.2-codex", input: "hi" })
+    })
+
+    expect(response?.status).toBe(400)
+    const body = await response?.json()
+    expect(body.error.type).toBe("disallowed_outbound_credentials")
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
   it("returns synthetic cooldown hard-stop with wait guidance", async () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-08T12:00:00.000Z")
