@@ -4,6 +4,8 @@ import { rm } from "node:fs/promises"
 
 try {
   await rm("dist", { recursive: true, force: true })
-} catch {
-  // best-effort cleanup
+} catch (error) {
+  if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+    throw error
+  }
 }

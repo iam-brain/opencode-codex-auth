@@ -2,7 +2,7 @@
 
 import fs from "node:fs"
 import path from "node:path"
-import { findExtensionlessRelativeImportOffenders } from "./lib/esm-import-guard.mjs"
+import { findExtensionlessRelativeImportOffenders, stripCommentsKeepLines } from "./lib/esm-import-guard.mjs"
 
 const roots = ["index.ts", "lib", "bin"]
 const sourceExtensions = new Set([".ts", ".mts"])
@@ -40,13 +40,32 @@ const TOOL_IMPORT_VIOLATION =
 
 function collectToolImportViolations(filePath, content) {
   if (path.relative(process.cwd(), filePath) !== "index.ts") return
-  const lines = content.split("\n")
-  const badImport = /^\s*import\s+(?!type\b).*\sfrom\s+["']@opencode-ai\/plugin["']/
-  for (let index = 0; index < lines.length; index += 1) {
-    if (!badImport.test(lines[index])) continue
+  const scan = stripCommentsKeepLines(content)
+  const badImport = /^\s*import\s+(?!type\b)[\s\S]*?\sfrom\s+["']@opencode-ai\/plugin["']/gm
+  const badRequire = /\brequire\(\s*["']@opencode-ai\/plugin["']\s*\)/gm
+  const badDynamicImport = /\bimport\(\s*["']@opencode-ai\/plugin["']\s*\)/gm
+  let match
+  while ((match = badImport.exec(scan)) !== null) {
+    const line = scan.slice(0, match.index).split("\n").length
     offenders.push({
       file: "index.ts",
-      line: index + 1,
+      line,
+      specifier: TOOL_IMPORT_VIOLATION
+    })
+  }
+  while ((match = badRequire.exec(scan)) !== null) {
+    const line = scan.slice(0, match.index).split("\n").length
+    offenders.push({
+      file: "index.ts",
+      line,
+      specifier: TOOL_IMPORT_VIOLATION
+    })
+  }
+  while ((match = badDynamicImport.exec(scan)) !== null) {
+    const line = scan.slice(0, match.index).split("\n").length
+    offenders.push({
+      file: "index.ts",
+      line,
       specifier: TOOL_IMPORT_VIOLATION
     })
   }

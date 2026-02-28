@@ -18,7 +18,7 @@ Config resolution has three stages.
 - reads from `OPENCODE_OPENAI_MULTI_CONFIG_PATH` if present
 - otherwise reads default config path (`$XDG_CONFIG_HOME/opencode/codex-config.json` or `~/.config/opencode/codex-config.json`)
 - parses canonical fields into `PluginConfig` partial
-- if known fields are invalid, ignores the config file and warns (env/defaults still apply)
+- if known fields are invalid, or the file is unreadable/malformed, ignores the config file and warns (env/defaults still apply)
 
 ## Stage 2: runtime resolve
 

@@ -5,39 +5,109 @@ import { readFile, writeFile } from "node:fs/promises"
 
 const WATCH_FILE = new URL("../docs/development/upstream-watch.json", import.meta.url)
 const USER_AGENT = "opencode-codex-auth-upstream-watch"
+const FETCH_TIMEOUT_MS = 10_000
+const FETCH_MAX_RETRIES = 3
+const FETCH_RETRY_BASE_DELAY_MS = 750
+const EXIT_CODE_DRIFT = 1
+const EXIT_CODE_OPERATIONAL_FAILURE = 2
+
+class RetryableUpstreamError extends Error {}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isRetryableStatus(status) {
+  return status === 408 || status === 425 || status === 429 || status >= 500
+}
 
 function sha256(value) {
   return createHash("sha256").update(value, "utf8").digest("hex")
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": USER_AGENT
+async function fetchWithTimeout(url, accept) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: accept,
+        "User-Agent": USER_AGENT
+      }
+    })
+    if (!response.ok) {
+      if (isRetryableStatus(response.status)) {
+        throw new RetryableUpstreamError(`Request failed (${response.status}) for ${url}`)
+      }
+      throw new Error(`Request failed (${response.status}) for ${url}`)
     }
-  })
-  if (!response.ok) {
-    throw new Error(`Request failed (${response.status}) for ${url}`)
+    return response
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new RetryableUpstreamError(`Request timed out after ${FETCH_TIMEOUT_MS}ms for ${url}`)
+    }
+    if (error instanceof RetryableUpstreamError) {
+      throw error
+    }
+    if (error instanceof TypeError) {
+      throw new RetryableUpstreamError(`Network request failed for ${url}: ${error.message}`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
   }
+}
+
+async function fetchWithRetry(url, accept) {
+  let attempt = 0
+  while (true) {
+    try {
+      return await fetchWithTimeout(url, accept)
+    } catch (error) {
+      if (!(error instanceof RetryableUpstreamError) || attempt >= FETCH_MAX_RETRIES - 1) {
+        throw error
+      }
+      const delayMs = FETCH_RETRY_BASE_DELAY_MS * 2 ** attempt
+      await sleep(delayMs)
+      attempt += 1
+    }
+  }
+}
+
+async function fetchJson(url) {
+  const response = await fetchWithRetry(url, "application/vnd.github+json")
   return response.json()
 }
 
 async function fetchText(url) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "text/plain",
-      "User-Agent": USER_AGENT
-    }
-  })
-  if (!response.ok) {
-    throw new Error(`Request failed (${response.status}) for ${url}`)
-  }
+  const response = await fetchWithRetry(url, "text/plain")
   return response.text()
 }
 
+function assertValidTrackedFile(item) {
+  if (!item || typeof item.path !== "string" || item.path.trim().length === 0) {
+    throw new Error("Invalid upstream watch file entry: missing path")
+  }
+  if (typeof item.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(item.sha256)) {
+    throw new Error(`Invalid upstream watch file entry sha256 for path: ${item.path}`)
+  }
+}
+
+function encodePathSegments(value) {
+  return value
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")
+}
+
 function buildRawUrl(repo, ref, filePath) {
-  return `https://raw.githubusercontent.com/${repo}/${ref}/${filePath}`
+  return `https://raw.githubusercontent.com/${encodePathSegments(repo)}/${encodeURIComponent(ref)}/${encodePathSegments(filePath)}`
+}
+
+function encodeCompareRef(ref) {
+  return encodeURIComponent(ref)
 }
 
 function normalizeConfig(parsed) {
@@ -101,6 +171,7 @@ async function collectSourceResult(source) {
 
   const results = []
   for (const item of source.files) {
+    assertValidTrackedFile(item)
     const rawUrl = buildRawUrl(source.repo, latestTag, item.path)
     const text = await fetchText(rawUrl)
     const latestSha = sha256(text)
@@ -112,7 +183,7 @@ async function collectSourceResult(source) {
     })
   }
 
-  const compareUrl = `https://github.com/${source.repo}/compare/${source.baselineTag}...${latestTag}`
+  const compareUrl = `https://github.com/${source.repo}/compare/${encodeCompareRef(source.baselineTag)}...${encodeCompareRef(latestTag)}`
   const hasTagDrift = latestTag !== source.baselineTag
   const hasHashDrift = results.some((result) => result.changed)
   const drift = hasTagDrift || hasHashDrift
@@ -169,11 +240,11 @@ async function main() {
   }
 
   process.stdout.write(`${reports.join("\n\n")}\n`)
-  if (anyDrift) process.exitCode = 1
+  if (anyDrift) process.exitCode = EXIT_CODE_DRIFT
 }
 
 main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error)
   process.stderr.write(`upstream watch failed: ${message}\n`)
-  process.exit(1)
+  process.exit(EXIT_CODE_OPERATIONAL_FAILURE)
 })

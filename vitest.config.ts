@@ -6,6 +6,17 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["test/setup-env.ts"],
     include: ["test/**/*.test.ts"],
-    exclude: ["node_modules/**", "dist/**", "tmp/**", "**/node_modules/**", "**/dist/**", "**/tmp/**"]
+    exclude: ["node_modules/**", "dist/**", "tmp/**", "**/node_modules/**", "**/dist/**", "**/tmp/**"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      include: ["lib/**/*.ts", "index.ts"],
+      thresholds: {
+        lines: 20,
+        branches: 20,
+        functions: 20,
+        statements: 20
+      }
+    }
   }
 })

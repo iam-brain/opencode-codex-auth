@@ -7,6 +7,15 @@ OpenCode plugin for OpenAI ChatGPT OAuth with multi-account management, Codex-co
 
 Quick links: [Getting Started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Multi-account](docs/multi-account.md) · [Troubleshooting](docs/troubleshooting.md) · [Persona Tool](docs/persona-tool.md)
 
+## Requirements
+
+- Node.js `20.x`
+- npm `10.9.2` (managed via Corepack using `packageManager`)
+- OpenCode CLI installed and available on your PATH
+- Optional live quota probe test: set `CODEX_IN_VIVO=1` before running tests
+- Release automation requires GitHub Actions permissions for `contents: write` and `id-token: write` (OIDC trusted publishing)
+- Release automation also requires a configured GitHub Actions environment named `npm-release`
+
 ## Why this plugin
 
 - Uses ChatGPT OAuth instead of API keys for OpenAI provider flows.
@@ -123,6 +132,10 @@ Legacy sources can be imported explicitly from the auth menu:
 ```bash
 npm install
 npm run verify
+npm run perf:profile
+npm run perf:profile:compare -- /path/to/baseline-root /path/to/optimized-root
 ```
 
 `npm run verify` includes ESM import specifier guards and a built CLI smoke check.
+`npm run perf:profile` runs explicit `single-root` profiling for one checkout.
+Use `npm run perf:profile:compare -- <baseline-root> <optimized-root>` for comparative gain output across two distinct roots.

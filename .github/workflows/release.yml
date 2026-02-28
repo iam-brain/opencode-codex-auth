@@ -6,42 +6,181 @@ on:
       - "v*"
 
 permissions:
-  contents: write
-  id-token: write
+  actions: read
+  contents: read
 
 jobs:
-  npm-publish:
-    name: Publish to npm
+  verify:
+    name: Verify release candidate
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
+      actions: read
       contents: read
-      id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          node-version: "24"
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20.x"
           registry-url: "https://registry.npmjs.org"
           cache: npm
+      - name: Pin npm version from packageManager
+        run: |
+          set -euo pipefail
+          PKG_MANAGER="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).packageManager")"
+          case "${PKG_MANAGER}" in
+            npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
+            *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
+          esac
+          corepack enable
+          corepack prepare "npm@${NPM_VERSION}" --activate
+          test "$(npm --version)" = "${NPM_VERSION}"
+      - name: Ensure tagged commit matches default branch tip
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          BRANCH="${DEFAULT_BRANCH:-main}"
+          git fetch --no-tags origin "${BRANCH}"
+          TAGGED_SHA="$(git rev-parse "${GITHUB_SHA}")"
+          BRANCH_HEAD_SHA="$(git rev-parse "origin/${BRANCH}")"
+          test "${TAGGED_SHA}" = "${BRANCH_HEAD_SHA}"
+      - name: Ensure required CI checks succeeded for tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUIRED_CI_WORKFLOW: ci.yml
+          REQUIRED_CI_JOBS_JSON: '["Verify on Node.js 20.x","Verify on Node.js 22.x","Package Smoke Test","Package Smoke Test (Windows)","Windows Runtime Hardening (Node.js 20.x)","Windows Runtime Hardening (Node.js 22.x)","Security Audit"]'
+        run: |
+          set -euo pipefail
+          RUNS_JSON="$(gh run list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --workflow "${REQUIRED_CI_WORKFLOW}" \
+            --commit "${GITHUB_SHA}" \
+            --event push \
+            --limit 20 \
+            --json databaseId,status,conclusion,headSha,createdAt,url)"
+          export RUNS_JSON
+          RUN_ID="$(node <<'NODE'
+          const runs = JSON.parse(process.env.RUNS_JSON || "[]")
+          const sha = process.env.GITHUB_SHA
+          const matching = Array.isArray(runs)
+            ? runs.filter((run) => run && run.headSha === sha)
+            : []
+          matching.sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+          const latest = matching[0]?.databaseId
+          if (!latest) {
+            console.error(`No ci.yml push run found for ${sha}.`)
+            process.exit(1)
+          }
+          process.stdout.write(String(latest))
+          NODE
+          )"
+          DETAILS_JSON="$(gh run view "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --json status,conclusion,jobs,url)"
+          export DETAILS_JSON
+          node <<'NODE'
+          const details = JSON.parse(process.env.DETAILS_JSON || "{}")
+          if (details.status !== "completed" || details.conclusion !== "success") {
+            throw new Error(
+              `Latest ci.yml push run is not green: status=${details.status ?? "unknown"}, conclusion=${details.conclusion ?? "unknown"} ${details.url ?? ""}`.trim()
+            )
+          }
+          const requiredJobs = JSON.parse(process.env.REQUIRED_CI_JOBS_JSON || "[]")
+          const jobs = Array.isArray(details.jobs) ? details.jobs : []
+          for (const requiredJob of requiredJobs) {
+            const match = jobs.find((job) => job && job.name === requiredJob)
+            if (!match) {
+              throw new Error(`Required CI job missing in ci.yml run: ${requiredJob}`)
+            }
+            if (match.conclusion !== "success") {
+              throw new Error(`Required CI job is not successful (${requiredJob}): ${match.conclusion ?? "unknown"}`)
+            }
+          }
+          NODE
+      - name: Ensure tag matches package version
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version")"
+          test "${TAG_VERSION}" = "${PACKAGE_VERSION}"
       - name: Install dependencies
         run: npm ci
       - name: Verify npm version
         run: npm --version
       - name: Run verify
         run: npm run verify
-      - name: Publish to npm (Trusted Publishing)
-        run: npm publish
+      - name: Pack release tarball
+        run: |
+          set -euo pipefail
+          TARBALL="$(npm pack --silent)"
+          test -f "${TARBALL}"
+          mkdir -p release-artifact
+          mv "${TARBALL}" release-artifact/
+      - name: Upload release artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-release-tarball
+          path: release-artifact/*.tgz
+
+  npm-publish:
+    name: Publish to npm
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20.x"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+      - name: Pin npm version from packageManager
+        run: |
+          set -euo pipefail
+          PKG_MANAGER="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).packageManager")"
+          case "${PKG_MANAGER}" in
+            npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
+            *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
+          esac
+          corepack enable
+          corepack prepare "npm@${NPM_VERSION}" --activate
+          test "$(npm --version)" = "${NPM_VERSION}"
+      - name: Download release artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          name: npm-release-tarball
+          path: release-artifact
+      - name: Publish to npm (Trusted Publishing, idempotent)
+        run: |
+          set -euo pipefail
+          PKG_NAME="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name")"
+          PKG_VERSION="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version")"
+          if npm view "${PKG_NAME}@${PKG_VERSION}" version >/dev/null 2>&1; then
+            echo "Package already published: ${PKG_NAME}@${PKG_VERSION}. Skipping npm publish."
+            exit 0
+          fi
+          TARBALL="$(ls -1 release-artifact/*.tgz | head -n 1)"
+          test -f "${TARBALL}"
+          npm publish "${TARBALL}"
 
   release:
     name: Create GitHub Release
     needs: npm-publish
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 

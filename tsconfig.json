@@ -8,7 +8,7 @@
     "rootDir": "./",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
+    "skipLibCheck": false,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": true,
@@ -16,6 +16,6 @@
     "sourceMap": true,
     "types": ["node"]
   },
-  "include": ["index.ts", "lib/**/*.ts", "bin/**/*.ts"],
+  "include": ["index.ts", "lib/**/*.ts", "bin/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist", "test", "**/*.mjs"]
 }

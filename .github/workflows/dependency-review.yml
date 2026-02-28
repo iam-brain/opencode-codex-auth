@@ -10,31 +10,12 @@ jobs:
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Check dependency graph support
-        id: dependency-graph
-        uses: actions/github-script@v7
-        with:
-          script: |
-            try {
-              const { data } = await github.rest.repos.get(context.repo)
-              const status = data.security_and_analysis?.dependency_graph?.status ?? "unknown"
-              core.setOutput("enabled", status === "enabled" ? "true" : "false")
-            } catch (error) {
-              core.warning(`Dependency graph probe failed: ${error instanceof Error ? error.message : String(error)}`)
-              core.setOutput("enabled", "false")
-            }
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Review dependency changes
-        if: steps.dependency-graph.outputs.enabled == 'true'
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@05fe4576374b728f0c523d6a13d64c25081e0803 # v4.8.3
         with:
           fail-on-severity: high
-
-      - name: Skip dependency review (unsupported)
-        if: steps.dependency-graph.outputs.enabled != 'true'
-        run: |
-          echo "Dependency graph is not enabled for this repository; skipping dependency review."

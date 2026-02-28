@@ -4,11 +4,11 @@ import path from "node:path"
 import { performance } from "node:perf_hooks"
 import { pathToFileURL } from "node:url"
 
-type RequestTransformModule = typeof import("../lib/codex-native/request-transform")
-type LoaderModule = typeof import("../lib/codex-native/openai-loader-fetch")
-type OrchestratorModule = typeof import("../lib/fetch-orchestrator")
-type RotationModule = typeof import("../lib/rotation")
-type AcquireAuthModule = typeof import("../lib/codex-native/acquire-auth")
+type RequestTransformModule = typeof import("../lib/codex-native/request-transform.js")
+type LoaderModule = typeof import("../lib/codex-native/openai-loader-fetch.js")
+type OrchestratorModule = typeof import("../lib/fetch-orchestrator.js")
+type RotationModule = typeof import("../lib/rotation.js")
+type AcquireAuthModule = typeof import("../lib/codex-native/acquire-auth.js")
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b)
@@ -107,7 +107,7 @@ async function benchmarkPayloadTransforms(root: string, iterations: number): Pro
   legacy: { medianMs: number; p95Ms: number }
   singlePass?: { medianMs: number; p95Ms: number }
 }> {
-  const mod = await importFromRoot<RequestTransformModule>(root, "lib/codex-native/request-transform.ts")
+  const mod = await importFromRoot<RequestTransformModule>(root, "dist/lib/codex-native/request-transform.js")
   const legacyDurations: number[] = []
   for (let i = 0; i < iterations; i += 1) {
     const t0 = performance.now()
@@ -164,7 +164,7 @@ async function benchmarkAcquireAuthNoop(root: string, iterations: number): Promi
   p95Ms: number
   fileWritesDetected: number
 }> {
-  const acquireMod = await importFromRoot<AcquireAuthModule>(root, "lib/codex-native/acquire-auth.ts")
+  const acquireMod = await importFromRoot<AcquireAuthModule>(root, "dist/lib/codex-native/acquire-auth.js")
 
   const xdgConfigHome = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-perf-xdg-"))
   const previousXdgConfigHome = process.env.XDG_CONFIG_HOME
@@ -175,7 +175,7 @@ async function benchmarkAcquireAuthNoop(root: string, iterations: number): Promi
     const defaults = acquireMod.createAcquireOpenAIAuthInputDefaults()
     const durations: number[] = []
     let writes = 0
-    let lastMtimeMs = (await fs.stat(authFilePath)).mtimeMs
+    let lastSnapshot = await fs.readFile(authFilePath, "utf8")
 
     for (let i = 0; i < iterations; i += 1) {
       const t0 = performance.now()
@@ -190,10 +190,10 @@ async function benchmarkAcquireAuthNoop(root: string, iterations: number): Promi
         pidOffsetEnabled: false
       })
       durations.push(performance.now() - t0)
-      const currentMtimeMs = (await fs.stat(authFilePath)).mtimeMs
-      if (currentMtimeMs !== lastMtimeMs) {
+      const currentSnapshot = await fs.readFile(authFilePath, "utf8")
+      if (currentSnapshot !== lastSnapshot) {
         writes += 1
-        lastMtimeMs = currentMtimeMs
+        lastSnapshot = currentSnapshot
       }
     }
 
@@ -208,13 +208,14 @@ async function benchmarkAcquireAuthNoop(root: string, iterations: number): Promi
     } else {
       process.env.XDG_CONFIG_HOME = previousXdgConfigHome
     }
+    await fs.rm(xdgConfigHome, { recursive: true, force: true })
   }
 }
 
 async function benchmarkQuotaBlocking(root: string): Promise<{ latencyMs: number }> {
-  const loaderMod = await importFromRoot<LoaderModule>(root, "lib/codex-native/openai-loader-fetch.ts")
-  const orchestratorMod = await importFromRoot<OrchestratorModule>(root, "lib/fetch-orchestrator.ts")
-  const rotationMod = await importFromRoot<RotationModule>(root, "lib/rotation.ts")
+  const loaderMod = await importFromRoot<LoaderModule>(root, "dist/lib/codex-native/openai-loader-fetch.js")
+  const orchestratorMod = await importFromRoot<OrchestratorModule>(root, "dist/lib/fetch-orchestrator.js")
+  const rotationMod = await importFromRoot<RotationModule>(root, "dist/lib/rotation.js")
 
   const xdgConfigHome = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-perf-quota-"))
   const previousXdgConfigHome = process.env.XDG_CONFIG_HOME
@@ -222,7 +223,7 @@ async function benchmarkQuotaBlocking(root: string): Promise<{ latencyMs: number
   await seedAuthStore(xdgConfigHome)
 
   const originalFetch = globalThis.fetch
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url
     if (url.includes("/wham/usage")) {
       await new Promise((resolve) => setTimeout(resolve, 120))
@@ -237,7 +238,12 @@ async function benchmarkQuotaBlocking(root: string): Promise<{ latencyMs: number
       )
     }
 
-    return new Response("ok", { status: 200 })
+    return new Response(JSON.stringify({ id: "res_perf", output: [] }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json"
+      }
+    })
   }) as typeof fetch
 
   try {
@@ -283,28 +289,60 @@ async function benchmarkQuotaBlocking(root: string): Promise<{ latencyMs: number
     } else {
       process.env.XDG_CONFIG_HOME = previousXdgConfigHome
     }
+    await fs.rm(xdgConfigHome, { recursive: true, force: true })
   }
+}
+
+type ProfileResult = {
+  transforms: Awaited<ReturnType<typeof benchmarkPayloadTransforms>>
+  acquireAuth: Awaited<ReturnType<typeof benchmarkAcquireAuthNoop>>
+  quota: Awaited<ReturnType<typeof benchmarkQuotaBlocking>>
+}
+
+async function collectProfile(root: string, iterations: number): Promise<ProfileResult> {
+  return {
+    transforms: await benchmarkPayloadTransforms(root, iterations),
+    acquireAuth: await benchmarkAcquireAuthNoop(root, Math.max(50, Math.floor(iterations / 2))),
+    quota: await benchmarkQuotaBlocking(root)
+  }
+}
+
+function resolveTransformMedian(result: ProfileResult["transforms"]): number {
+  return result.singlePass?.medianMs ?? result.legacy.medianMs
 }
 
 async function run(): Promise<void> {
   const iterations = Math.max(1, Number.parseInt(process.argv[2] ?? "300", 10) || 300)
-  const baselineRoot = path.resolve(process.argv[3] ?? path.join(process.cwd(), "..", ".."))
-  const optimizedRoot = path.resolve(process.argv[4] ?? process.cwd())
+  const baselineArg = process.argv[3]
+  const optimizedArg = process.argv[4]
+  const baselineRoot = path.resolve(baselineArg ?? process.cwd())
+  const optimizedRoot = optimizedArg ? path.resolve(optimizedArg) : undefined
+  const isComparativeMode = Boolean(optimizedRoot && optimizedRoot !== baselineRoot)
 
-  const baseline = {
-    transforms: await benchmarkPayloadTransforms(baselineRoot, iterations),
-    acquireAuth: await benchmarkAcquireAuthNoop(baselineRoot, Math.max(50, Math.floor(iterations / 2))),
-    quota: await benchmarkQuotaBlocking(baselineRoot)
+  if (!isComparativeMode) {
+    const root = optimizedRoot ?? baselineRoot
+    const profile = await collectProfile(root, iterations)
+    console.log(
+      JSON.stringify(
+        {
+          mode: "single-root",
+          iterations,
+          root,
+          profile
+        },
+        null,
+        2
+      )
+    )
+    return
   }
 
-  const optimized = {
-    transforms: await benchmarkPayloadTransforms(optimizedRoot, iterations),
-    acquireAuth: await benchmarkAcquireAuthNoop(optimizedRoot, Math.max(50, Math.floor(iterations / 2))),
-    quota: await benchmarkQuotaBlocking(optimizedRoot)
-  }
+  const comparativeOptimizedRoot = optimizedRoot as string
+  const baseline = await collectProfile(baselineRoot, iterations)
+  const optimized = await collectProfile(comparativeOptimizedRoot, iterations)
 
-  const baselineTransformMs = baseline.transforms.legacy.medianMs
-  const optimizedTransformMs = optimized.transforms.singlePass?.medianMs ?? optimized.transforms.legacy.medianMs
+  const baselineTransformMs = resolveTransformMedian(baseline.transforms)
+  const optimizedTransformMs = resolveTransformMedian(optimized.transforms)
   const transformGainPct =
     baselineTransformMs > 0 ? fmt(((baselineTransformMs - optimizedTransformMs) / baselineTransformMs) * 100) : 0
 
@@ -321,7 +359,12 @@ async function run(): Promise<void> {
   console.log(
     JSON.stringify(
       {
+        mode: "comparative",
         iterations,
+        roots: {
+          baseline: baselineRoot,
+          optimized: comparativeOptimizedRoot
+        },
         baseline,
         optimized,
         gains: {
@@ -338,4 +381,8 @@ async function run(): Promise<void> {
   )
 }
 
-void run()
+void run().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error)
+  process.stderr.write(`perf-profile failed: ${message}\n`)
+  process.exitCode = 1
+})

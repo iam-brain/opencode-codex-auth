@@ -256,6 +256,7 @@ Advanced path:
 ### Debug/OAuth controls
 
 - `OPENCODE_OPENAI_MULTI_DEBUG=1`: plugin debug logs.
+- `CODEX_IN_VIVO=1`: enables live quota probe tests.
 - `DEBUG_CODEX_PLUGIN=1`: alternate debug flag.
 - `CODEX_AUTH_DEBUG=1`: verbose OAuth lifecycle logging (`oauth-lifecycle.log`).
   - Accepted truthy values: `1`, `true`, `yes`, `on`.

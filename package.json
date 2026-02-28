@@ -4,6 +4,7 @@
   "description": "Native Codex auth with multi-account rotation for OpenCode",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "packageManager": "npm@10.9.2",
   "type": "module",
   "bin": {
     "opencode-codex-auth": "./dist/bin/opencode-codex-auth.js",
@@ -36,13 +37,18 @@
   "scripts": {
     "clean:dist": "node scripts/clean-dist.js",
     "build": "npm run clean:dist && tsc",
-    "typecheck": "tsc --noEmit",
+    "patch:plugin-dts": "node scripts/patch-opencode-plugin-dts.js",
+    "typecheck": "npm run patch:plugin-dts && tsc --noEmit",
+    "typecheck:test": "npm run patch:plugin-dts && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
-    "verify": "npm run check:esm-imports && npm run typecheck && npm test && npm run build && npm run check:dist-esm-imports && npm run smoke:cli:dist",
+    "test:coverage": "vitest run --coverage.enabled true --coverage.provider=v8",
+    "verify": "npm run check:esm-imports && npm run typecheck && npm run typecheck:test && npm run test:coverage && npm run build && npm run check:dist-esm-imports && npm run smoke:cli:dist",
     "check:esm-imports": "node scripts/check-esm-import-specifiers.mjs",
     "check:dist-esm-imports": "node scripts/check-dist-esm-import-specifiers.mjs",
     "smoke:cli": "npm run build && npm run smoke:cli:dist",
     "smoke:cli:dist": "node ./dist/bin/opencode-codex-auth.js --help",
+    "perf:profile": "npm run build && node dist/scripts/perf-profile.js 300 .",
+    "perf:profile:compare": "npm run build && node dist/scripts/perf-profile.js 300",
     "check:upstream": "node scripts/check-upstream-watch.js",
     "check:upstream:update": "node scripts/check-upstream-watch.js --update",
     "prepack": "npm run build",
@@ -55,24 +61,30 @@
     "format:check": "prettier --check ."
   },
   "files": [
-    "dist/",
+    "dist/bin/",
+    "dist/index.d.ts",
+    "dist/index.d.ts.map",
+    "dist/index.js",
+    "dist/index.js.map",
+    "dist/lib/",
     "schemas/",
     "README.md",
     "LICENSE"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20 <23"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": "^1.2.2"
+    "@opencode-ai/plugin": "^1.2.15"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.2.2",
+    "@opencode-ai/plugin": "^1.2.15",
     "@opencode-ai/sdk": "^1.2.2",
     "@types/node": "^20.17.24",
     "@types/proper-lockfile": "^4.1.2",
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^9.39.2",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",
