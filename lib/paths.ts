@@ -8,6 +8,12 @@ export const CODEX_SNAPSHOTS_FILE = "codex-snapshots.json"
 const OPENCODE_AUTH_FILE = "auth.json"
 const OPENCODE_SESSION_STORAGE_DIR = path.join("opencode", "storage", "session")
 
+function readAbsoluteEnvPath(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim()
+  if (!trimmed) return undefined
+  return path.isAbsolute(trimmed) ? trimmed : undefined
+}
+
 export function defaultAuthPath(): string {
   return path.join(defaultOpencodeConfigPath(), CODEX_ACCOUNTS_FILE)
 }
@@ -21,13 +27,13 @@ export function opencodeProviderAuthLegacyFallbackPath(env: Record<string, strin
 }
 
 export function defaultOpencodeDataPath(env: Record<string, string | undefined> = process.env): string {
-  const xdgData = env.XDG_DATA_HOME?.trim()
+  const xdgData = readAbsoluteEnvPath(env.XDG_DATA_HOME)
   if (xdgData) return xdgData
   return path.join(os.homedir(), ".local", "share")
 }
 
 export function defaultOpencodeConfigPath(env: Record<string, string | undefined> = process.env): string {
-  const xdgConfig = env.XDG_CONFIG_HOME?.trim()
+  const xdgConfig = readAbsoluteEnvPath(env.XDG_CONFIG_HOME)
   if (xdgConfig) return path.join(xdgConfig, "opencode")
   return path.join(os.homedir(), ".config", "opencode")
 }

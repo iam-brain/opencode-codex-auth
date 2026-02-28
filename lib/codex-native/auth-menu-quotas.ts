@@ -72,9 +72,12 @@ async function persistRefreshedTokensForQuotaSnapshot(input: {
     if (
       typeof target.refreshLeaseUntil !== "number" ||
       target.refreshLeaseUntil <= now ||
-      target.refreshLeaseUntil !== input.claim.leaseUntil
+      target.refreshLeaseUntil !== input.claim.leaseUntil ||
+      target.refresh !== input.claim.refreshToken
     ) {
-      delete target.refreshLeaseUntil
+      if (target.refreshLeaseUntil === input.claim.leaseUntil) {
+        delete target.refreshLeaseUntil
+      }
       return authFile
     }
 
@@ -108,7 +111,12 @@ async function releaseFailedRefreshClaimForQuotaSnapshot(input: { claim: Refresh
     const domain = ensureOpenAIOAuthDomain(authFile, input.claim.mode)
     const target = domain.accounts.find((account) => account.identityKey === input.claim.identityKey)
     if (!target) return authFile
-    if (target.refreshLeaseUntil !== input.claim.leaseUntil) return authFile
+    if (target.refreshLeaseUntil !== input.claim.leaseUntil || target.refresh !== input.claim.refreshToken) {
+      if (target.refreshLeaseUntil === input.claim.leaseUntil) {
+        delete target.refreshLeaseUntil
+      }
+      return authFile
+    }
     delete target.refreshLeaseUntil
     if (target.enabled !== false) {
       target.cooldownUntil = input.now + AUTH_MENU_QUOTA_FAILURE_COOLDOWN_MS
@@ -249,7 +257,7 @@ export async function refreshQuotaSnapshotsForAuthMenu(input: RefreshQuotaSnapsh
       accessToken: request.accessToken,
       accountId: request.accountId,
       now: Date.now(),
-      modelFamily: "gpt-5.3-codex",
+      modelFamily: "codex",
       userAgent,
       log: input.log,
       timeoutMs: AUTH_MENU_QUOTA_FETCH_TIMEOUT_MS

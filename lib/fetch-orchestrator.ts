@@ -24,7 +24,7 @@ export type AuthData = {
   email?: string
   plan?: string
   accountLabel?: string
-  selectionTrace?: AccountSelectionTrace
+  selectionTrace?: Partial<AccountSelectionTrace>
 }
 
 export type FetchOrchestratorAuthContext = {
@@ -93,6 +93,16 @@ const MAX_SESSION_KEYS = 200
 const DEFAULT_RATE_LIMIT_TOAST_DEBOUNCE_MS = 60_000
 const DEFAULT_SESSION_TOAST_DEBOUNCE_MS = 15_000
 const DEFAULT_ACCOUNT_SWITCH_TOAST_DEBOUNCE_MS = 15_000
+const MAX_TOAST_DEDUPE_KEYS = 512
+const TOAST_DEDUPE_TTL_MS = 6 * 60 * 60 * 1000
+const CROSS_ORIGIN_REDIRECT_STRIPPED_HEADERS = new Set([
+  "authorization",
+  "proxy-authorization",
+  "chatgpt-account-id",
+  "session_id",
+  "cookie",
+  "set-cookie"
+])
 
 function normalizeSessionKey(value: unknown): string | null {
   if (typeof value !== "string") return null
@@ -117,6 +127,31 @@ function formatAccountLabel(auth: AuthData): string {
   if (email) return email
   if (idSuffix) return `id:${idSuffix}`
   return "account"
+}
+
+function resolveRetryAccountKey(auth: AuthData): string | null {
+  const identityKey = auth.identityKey?.trim()
+  if (identityKey) return `identity:${identityKey}`
+
+  const attemptKey = auth.selectionTrace?.attemptKey?.trim()
+  if (attemptKey) return `attempt:${attemptKey}`
+
+  const accountId = auth.accountId?.trim()
+  const email = auth.email?.trim()?.toLowerCase()
+  const plan = auth.plan?.trim()?.toLowerCase()
+  if (accountId && email && plan) {
+    return `tuple:${accountId}|${email}|${plan}`
+  }
+
+  return null
+}
+
+function stripCrossOriginRedirectHeaders(headers: Headers): void {
+  for (const name of [...headers.keys()]) {
+    if (CROSS_ORIGIN_REDIRECT_STRIPPED_HEADERS.has(name.trim().toLowerCase())) {
+      headers.delete(name)
+    }
+  }
 }
 
 export class FetchOrchestrator {
@@ -167,9 +202,14 @@ export class FetchOrchestrator {
         )
       }
 
+      const redirectHeaders = new Headers(current.headers)
+      if (new URL(current.url).origin !== nextUrl.origin) {
+        stripCrossOriginRedirectHeaders(redirectHeaders)
+      }
+
       current = new Request(nextUrl.toString(), {
         method,
-        headers: current.headers,
+        headers: redirectHeaders,
         redirect: "manual"
       })
     }
@@ -190,10 +230,14 @@ export class FetchOrchestrator {
 
   private pruneSessionKeys(now: number): void {
     if (this.state.seenSessionKeys.size === 0) return
+    const staleKeys: string[] = []
     for (const [key, lastSeen] of this.state.seenSessionKeys) {
       if (now - lastSeen > SESSION_KEY_TTL_MS) {
-        this.state.seenSessionKeys.delete(key)
+        staleKeys.push(key)
       }
+    }
+    for (const key of staleKeys) {
+      this.state.seenSessionKeys.delete(key)
     }
   }
 
@@ -206,6 +250,7 @@ export class FetchOrchestrator {
   }
 
   private shouldShowRateLimitToast(identityKey: string | undefined, now: number): boolean {
+    this.pruneToastDedupeMap(this.state.rateLimitToastShownAt, now)
     const key = identityKey ?? "__global__"
     const debounceMs = Math.max(
       0,
@@ -220,6 +265,7 @@ export class FetchOrchestrator {
   }
 
   private shouldShowToastByKey(key: string, now: number, debounceMs: number): boolean {
+    this.pruneToastDedupeMap(this.state.toastShownAt, now)
     const normalizedDebounce = Math.max(0, Math.floor(debounceMs))
     const lastShownAt = this.state.toastShownAt.get(key)
     if (lastShownAt !== undefined && now - lastShownAt < normalizedDebounce) {
@@ -227,6 +273,22 @@ export class FetchOrchestrator {
     }
     this.state.toastShownAt.set(key, now)
     return true
+  }
+
+  private pruneToastDedupeMap(map: Map<string, number>, now: number): void {
+    const staleBefore = now - TOAST_DEDUPE_TTL_MS
+    if (map.size > 0) {
+      for (const [key, at] of map) {
+        if (at < staleBefore) {
+          map.delete(key)
+        }
+      }
+    }
+    while (map.size > MAX_TOAST_DEDUPE_KEYS) {
+      const oldest = map.keys().next().value as string | undefined
+      if (!oldest) break
+      map.delete(oldest)
+    }
   }
 
   private async maybeShowToast(
@@ -269,7 +331,7 @@ export class FetchOrchestrator {
       const hasSeen = this.touchSessionKey(sessionKey, sessionNow)
       if (!hasSeen) {
         sessionEvent = "new"
-      } else if (!this.state.lastSessionKey) {
+      } else if (this.state.lastSessionKey === sessionKey) {
         sessionEvent = "resume"
       } else if (this.state.lastSessionKey && this.state.lastSessionKey !== sessionKey) {
         sessionEvent = "switch"
@@ -299,12 +361,13 @@ export class FetchOrchestrator {
       const now = nowFn()
       const auth = await this.deps.acquireAuth({ sessionKey })
       const accountLabel = formatAccountLabel(auth)
-      const accountKey =
+      const accountDisplayKey =
         auth.identityKey?.trim() || auth.accountId?.trim() || auth.email?.trim()?.toLowerCase() || accountLabel
+      const retryAccountKey = resolveRetryAccountKey(auth)
       const attemptReasonCode: FetchAttemptReasonCode =
         attempt === 0 || previousAttemptStatus !== 429
           ? "initial_attempt"
-          : previousAttemptAccountKey && previousAttemptAccountKey !== accountKey
+          : previousAttemptAccountKey && retryAccountKey && previousAttemptAccountKey !== retryAccountKey
             ? "retry_switched_account_after_429"
             : "retry_same_account_after_429"
 
@@ -323,7 +386,7 @@ export class FetchOrchestrator {
         sessionToastEmitted = true
       }
 
-      if (this.state.lastAccountKey !== null && this.state.lastAccountKey !== accountKey) {
+      if (this.state.lastAccountKey !== null && this.state.lastAccountKey !== accountDisplayKey) {
         const accountSwitchMessage =
           attemptReasonCode === "retry_switched_account_after_429"
             ? `Account switched after rate limit: ${accountLabel}`
@@ -334,10 +397,11 @@ export class FetchOrchestrator {
           now
         })
       }
-      this.state.lastAccountKey = accountKey
+      this.state.lastAccountKey = accountDisplayKey
 
       let request = baseRequest.clone()
       request.headers.set("Authorization", `Bearer ${auth.access}`)
+      request.headers.delete("ChatGPT-Account-Id")
       if (auth.accountId) {
         request.headers.set("ChatGPT-Account-Id", auth.accountId)
       }
@@ -386,7 +450,7 @@ export class FetchOrchestrator {
 
       lastResponse = response
       previousAttemptStatus = response.status
-      previousAttemptAccountKey = accountKey
+      previousAttemptAccountKey = retryAccountKey
 
       // Handle 429
       const retryAfterStr = response.headers.get("retry-after")
@@ -400,7 +464,14 @@ export class FetchOrchestrator {
           jitterMaxMs: 0
         })
         const cooldownUntil = now + (retryAfterMs ?? fallbackMs)
-        await this.deps.setCooldown(auth.identityKey, cooldownUntil)
+        try {
+          await this.deps.setCooldown(auth.identityKey, cooldownUntil)
+        } catch (error) {
+          if (error instanceof Error) {
+            // Cooldown persistence failures should not prevent retrying another account.
+          }
+          // Cooldown persistence failures should not prevent retrying another account.
+        }
       }
 
       if (attempt < maxAttempts - 1 && this.shouldShowRateLimitToast(auth.identityKey, now)) {
@@ -420,7 +491,15 @@ export class FetchOrchestrator {
       )
     }
 
-    // Safe: the loop always runs at least once (maxAttempts >= 1), so lastResponse is assigned.
-    return lastResponse!
+    if (lastResponse) {
+      return lastResponse
+    }
+
+    return createSyntheticErrorResponse(
+      "OpenAI request failed before receiving a response. Check connectivity and try again.",
+      503,
+      "upstream_unreachable",
+      "network"
+    )
   }
 }

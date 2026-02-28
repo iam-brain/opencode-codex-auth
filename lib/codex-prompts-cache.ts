@@ -2,8 +2,6 @@ import { fetchRemoteTextBatch, type RemoteTextFetchResult } from "./remote-cache
 import { readJsonFileBestEffort, writeJsonFileBestEffort } from "./cache-io.js"
 import { withLockedDirectory } from "./cache-lock.js"
 import {
-  CODEX_PROMPTS_CACHE_FILE,
-  CODEX_PROMPTS_CACHE_META_FILE,
   codexPromptsCacheMetaPath,
   codexPromptsCachePath,
   resolveCodexCacheDir

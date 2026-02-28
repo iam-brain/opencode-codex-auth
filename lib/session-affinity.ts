@@ -1,5 +1,4 @@
 import fs from "node:fs/promises"
-import path from "node:path"
 
 import { defaultSessionAffinityPath, opencodeSessionFilePath } from "./paths.js"
 import type { OpenAIAuthMode } from "./types.js"
@@ -8,6 +7,7 @@ import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io.js"
 import { isRecord } from "./util.js"
 
 export const MAX_SESSION_AFFINITY_ENTRIES = 200
+const MAX_SESSION_EXISTS_CONCURRENCY = 8
 
 type SessionAffinityModeRecord = {
   seenSessionKeys?: Record<string, number>
@@ -35,22 +35,17 @@ export type PruneSessionAffinityOptions = {
 
 const DEFAULT_FILE: SessionAffinityFile = { version: 1 }
 
-function clampEntries<T>(entries: Array<[string, T]>, maxEntries: number): Array<[string, T]> {
-  if (entries.length <= maxEntries) return entries
-  return entries.slice(entries.length - maxEntries)
-}
-
-function sanitizeStringMap(value: unknown, maxEntries = MAX_SESSION_AFFINITY_ENTRIES): Map<string, string> {
+function sanitizeStringMap(value: unknown): Map<string, string> {
   if (!isRecord(value)) return new Map()
   const entries: Array<[string, string]> = []
   for (const [key, mapValue] of Object.entries(value)) {
     if (key.trim().length === 0 || typeof mapValue !== "string") continue
     entries.push([key, mapValue])
   }
-  return new Map(clampEntries(entries, maxEntries))
+  return new Map(entries)
 }
 
-function sanitizeSeenMap(value: unknown, maxEntries = MAX_SESSION_AFFINITY_ENTRIES): Map<string, number> {
+function sanitizeSeenMap(value: unknown): Map<string, number> {
   if (!isRecord(value)) return new Map()
   const entries: Array<[string, number]> = []
   for (const [key, mapValue] of Object.entries(value)) {
@@ -59,17 +54,15 @@ function sanitizeSeenMap(value: unknown, maxEntries = MAX_SESSION_AFFINITY_ENTRI
     }
     entries.push([key, Math.floor(mapValue)])
   }
-  entries.sort((left, right) => left[1] - right[1])
-  return new Map(clampEntries(entries, maxEntries))
+  return new Map(entries)
 }
 
 function toModeRecord(snapshot: SessionAffinitySnapshot): SessionAffinityModeRecord {
-  const seenEntries = clampEntries(
-    [...snapshot.seenSessionKeys.entries()].sort((left, right) => left[1] - right[1]),
-    MAX_SESSION_AFFINITY_ENTRIES
-  )
-  const stickyEntries = clampEntries([...snapshot.stickyBySessionKey.entries()], MAX_SESSION_AFFINITY_ENTRIES)
-  const hybridEntries = clampEntries([...snapshot.hybridBySessionKey.entries()], MAX_SESSION_AFFINITY_ENTRIES)
+  const seenEntries = [...snapshot.seenSessionKeys.entries()]
+    .sort((left, right) => left[1] - right[1])
+    .slice(-MAX_SESSION_AFFINITY_ENTRIES)
+  const stickyEntries = [...snapshot.stickyBySessionKey.entries()].slice(-MAX_SESSION_AFFINITY_ENTRIES)
+  const hybridEntries = [...snapshot.hybridBySessionKey.entries()].slice(-MAX_SESSION_AFFINITY_ENTRIES)
 
   return {
     seenSessionKeys: Object.fromEntries(seenEntries),
@@ -165,19 +158,40 @@ export async function pruneSessionAffinitySnapshot(
     ...snapshot.hybridBySessionKey.keys()
   ])
 
+  const keys = [...keySet]
+  const missingKeys = new Set<string>()
+  let cursor = 0
+  const concurrency = Math.min(MAX_SESSION_EXISTS_CONCURRENCY, keys.length)
+  await Promise.all(
+    Array.from({ length: concurrency }, async () => {
+      while (true) {
+        const index = cursor
+        cursor += 1
+        if (index >= keys.length) break
+        const sessionKey = keys[index]
+        if (!sessionKey) continue
+        const exists = await sessionExists(sessionKey)
+        if (!exists) {
+          missingKeys.add(sessionKey)
+        }
+      }
+    })
+  )
+
   let removed = 0
-  for (const sessionKey of keySet) {
-    const exists = await sessionExists(sessionKey)
-    if (exists) continue
+  for (const sessionKey of missingKeys) {
     const lastSeenAt = snapshot.seenSessionKeys.get(sessionKey)
     if (missingGraceMs > 0 && typeof lastSeenAt === "number" && Number.isFinite(lastSeenAt)) {
       if (now - lastSeenAt <= missingGraceMs) {
         continue
       }
     }
-    if (snapshot.seenSessionKeys.delete(sessionKey)) removed += 1
-    snapshot.stickyBySessionKey.delete(sessionKey)
-    snapshot.hybridBySessionKey.delete(sessionKey)
+    const removedSeen = snapshot.seenSessionKeys.delete(sessionKey)
+    const removedSticky = snapshot.stickyBySessionKey.delete(sessionKey)
+    const removedHybrid = snapshot.hybridBySessionKey.delete(sessionKey)
+    if (removedSeen || removedSticky || removedHybrid) {
+      removed += 1
+    }
   }
 
   return removed

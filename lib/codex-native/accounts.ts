@@ -26,25 +26,28 @@ export function upsertAccount(openai: OpenAIOAuthDomain, incoming: AccountRecord
       })
     : undefined
 
-  const refreshFallbackMatch =
-    strictMatch || !incoming.refresh
-      ? undefined
-      : openai.accounts.find((existing) => existing.refresh === incoming.refresh)
+  let match: AccountRecord | undefined
+  let matchedByRefreshFallback = false
 
-  const match = strictMatch ?? refreshFallbackMatch
-  const matchedByRefreshFallback = refreshFallbackMatch !== undefined && strictMatch === undefined
-  const requiresInsert =
-    matchedByRefreshFallback &&
-    strictIdentityKey !== undefined &&
-    match?.identityKey !== undefined &&
-    match.identityKey !== strictIdentityKey
+  if (strictMatch) {
+    match = strictMatch
+  } else if (!strictIdentityKey) {
+    const incomingRefresh = incoming.refresh?.trim()
+    if (incomingRefresh) {
+      const refreshMatches = openai.accounts.filter((existing) => existing.refresh?.trim() === incomingRefresh)
+      if (refreshMatches.length === 1) {
+        match = refreshMatches[0]
+        matchedByRefreshFallback = true
+      }
+    }
+  }
 
-  const target = !match || requiresInsert ? ({} as AccountRecord) : match
-  if (!match || requiresInsert) {
+  const target = match ?? ({} as AccountRecord)
+  if (!match) {
     openai.accounts.push(target)
   }
 
-  if (!matchedByRefreshFallback || requiresInsert) {
+  if (!matchedByRefreshFallback) {
     if (normalizedAccountId) target.accountId = normalizedAccountId
     if (normalizedEmail) target.email = normalizedEmail
     if (normalizedPlan) target.plan = normalizedPlan

@@ -83,7 +83,14 @@ export async function enforceOwnerOnlyPermissions(filePath: string): Promise<voi
   try {
     await fs.chmod(filePath, 0o600)
   } catch (error) {
-    if (!isFsErrorCode(error, "EACCES") && !isFsErrorCode(error, "EPERM")) {
+    if (
+      !isFsErrorCode(error, "EACCES") &&
+      !isFsErrorCode(error, "EPERM") &&
+      !isFsErrorCode(error, "ENOTSUP") &&
+      !isFsErrorCode(error, "EOPNOTSUPP") &&
+      !isFsErrorCode(error, "ENOSYS") &&
+      !isFsErrorCode(error, "EINVAL")
+    ) {
       throw error
     }
   }

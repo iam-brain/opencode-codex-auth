@@ -1,5 +1,3 @@
-import fs from "node:fs/promises"
-
 import type { CodexRateLimitSnapshot } from "./types.js"
 import { withLockedFile } from "./cache-lock.js"
 import { readJsonFileBestEffort, writeJsonFileAtomicBestEffort } from "./cache-io.js"

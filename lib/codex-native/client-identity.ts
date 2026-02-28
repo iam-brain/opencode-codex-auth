@@ -276,9 +276,15 @@ async function fetchLatestCodexReleaseTag(fetchImpl: typeof fetch = fetch): Prom
     }
   )
   if (apiResult.status === "ok") {
-    const payload = JSON.parse(apiResult.text) as { tag_name?: unknown }
-    const tagName = normalizeCodexClientVersion(payload.tag_name)
-    if (tagName) return tagName
+    try {
+      const payload = JSON.parse(apiResult.text) as { tag_name?: unknown }
+      const tagName = normalizeCodexClientVersion(payload.tag_name)
+      if (tagName) return tagName
+    } catch (error) {
+      if (error instanceof Error) {
+        // best-effort API parse; continue to HTML fallback
+      }
+    }
   }
 
   const htmlResult = await fetchRemoteText(

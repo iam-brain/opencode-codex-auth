@@ -43,9 +43,9 @@ function normalizePluginList(raw: unknown): string[] {
   return []
 }
 
-async function quarantineMalformedConfig(configPath: string): Promise<void> {
+async function quarantineMalformedConfig(configPath: string): Promise<{ quarantinedPath: string }> {
   const quarantineDir = path.join(path.dirname(configPath), "quarantine")
-  await quarantineFile({
+  return quarantineFile({
     sourcePath: configPath,
     quarantineDir,
     now: Date.now
@@ -66,12 +66,13 @@ export async function ensurePluginInstalled(
     try {
       current = JSON.parse(raw) as OpencodeConfigShape
     } catch (error) {
-      await quarantineMalformedConfig(configPath)
-      created = true
-      current = {}
-      if (!(error instanceof SyntaxError)) {
-        throw error
+      if (error instanceof SyntaxError) {
+        const { quarantinedPath } = await quarantineMalformedConfig(configPath)
+        throw new Error(
+          `Malformed OpenCode config at ${configPath}. Moved corrupt file to ${quarantinedPath}; repair and rerun.`
+        )
       }
+      throw error
     }
   } catch (error) {
     if (isFsErrorCode(error, "ENOENT")) {

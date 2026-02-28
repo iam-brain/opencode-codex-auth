@@ -12,7 +12,7 @@ export interface AccountInfo {
   email?: string
   plan?: string
   accountId?: string
-  authTypes?: AccountAuthType[]
+  authTypes?: readonly AccountAuthType[]
   index: number
   addedAt?: number
   lastUsed?: number
@@ -176,10 +176,10 @@ export function buildAuthMenuItems(
 
 export function buildAccountActionItems(
   account: AccountInfo,
-  options: { availableAuthTypes?: AccountAuthType[] } = {}
+  options: { availableAuthTypes?: readonly AccountAuthType[]; availableDeleteScopes?: readonly AccountAuthType[] } = {}
 ): MenuItem<AccountAction>[] {
   const accountScopes = getDeleteScopes(account.authTypes)
-  const globalScopes = getDeleteScopes(options.availableAuthTypes ?? account.authTypes)
+  const globalScopes = getDeleteScopes(options.availableDeleteScopes ?? options.availableAuthTypes ?? account.authTypes)
 
   const accountDeleteItems: MenuItem<AccountAction>[] = []
   if (accountScopes.length === 1) {

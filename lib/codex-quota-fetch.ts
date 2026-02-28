@@ -21,10 +21,9 @@ function toEpochMs(value: number | undefined): number | undefined {
   return value < 2_000_000_000 ? value * 1000 : value
 }
 
-function clampPct(value: number): number {
-  if (!Number.isFinite(value)) return 0
-  if (value < 0) return 0
-  if (value > 100) return 100
+function normalizePct(value: number): number | undefined {
+  if (!Number.isFinite(value)) return undefined
+  if (value < 0 || value > 100) return undefined
   return Math.round(value)
 }
 
@@ -32,7 +31,8 @@ function parseWindowLimit(name: string, windowData: unknown): CodexLimit | null 
   if (!isRecord(windowData)) return null
   const usedPct = asNumber(windowData.used_percent)
   if (usedPct === undefined) return null
-  const leftPct = clampPct(100 - usedPct)
+  const leftPct = normalizePct(100 - usedPct)
+  if (leftPct === undefined) return null
   const resetsAt = toEpochMs(asNumber(windowData.reset_at ?? windowData.resets_at))
   return {
     name,
@@ -106,9 +106,11 @@ function snapshotFromUsagePayload(input: {
             ? (remaining / total) * 100
             : undefined)
       if (computedLeftPct === undefined) continue
+      const leftPct = normalizePct(computedLeftPct)
+      if (leftPct === undefined) continue
       limits.push({
         name,
-        leftPct: clampPct(computedLeftPct),
+        leftPct,
         ...(toEpochMs(asNumber(entry.reset_at ?? entry.resets_at))
           ? {
               resetsAt: toEpochMs(asNumber(entry.reset_at ?? entry.resets_at))
@@ -181,7 +183,7 @@ export async function fetchQuotaSnapshotFromBackend(input: {
     return snapshotFromUsagePayload({
       payload,
       now: input.now ?? Date.now(),
-      modelFamily: input.modelFamily ?? "gpt-5.3-codex"
+      modelFamily: input.modelFamily ?? "codex"
     })
   } catch (error) {
     input.log?.debug("quota fetch failed", {

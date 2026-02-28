@@ -66,6 +66,7 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
           let refreshed = 0
           const refreshClaims: Array<{
             mode: OpenAIAuthMode
+            accountIndex: number
             identityKey?: string
             refreshToken: string
             leaseUntil: number
@@ -84,18 +85,22 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
                 const hasIdentityAfterClaims = Boolean(buildIdentityKey(account))
                 if (!hadIdentity && hasIdentityAfterClaims) hydrated += 1
 
-                if (hasIdentityAfterClaims || account.enabled === false || !account.refresh) {
+                if (account.enabled === false || !account.refresh) {
                   continue
                 }
                 const now = Date.now()
                 if (typeof account.refreshLeaseUntil === "number" && account.refreshLeaseUntil > now) {
                   continue
                 }
+                if (account.expires && account.expires > now) {
+                  delete account.refreshLeaseUntil
+                  continue
+                }
                 const leaseUntil = now + AUTH_MENU_REFRESH_LEASE_MS
                 account.refreshLeaseUntil = leaseUntil
-                if (account.expires && account.expires > now) continue
                 refreshClaims.push({
                   mode,
+                  accountIndex: index,
                   identityKey: account.identityKey,
                   refreshToken: account.refresh,
                   leaseUntil
@@ -111,13 +116,15 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
               await saveAuthStorage(undefined, (authFile) => {
                 const domain = getOpenAIOAuthDomain(authFile, claim.mode)
                 if (!domain) return authFile
-                const account = domain.accounts.find(
-                  (entry) =>
-                    entry.refreshLeaseUntil === claim.leaseUntil &&
-                    entry.refresh === claim.refreshToken &&
-                    (!claim.identityKey || entry.identityKey === claim.identityKey)
-                )
+                const account = domain.accounts[claim.accountIndex]
                 if (!account) return authFile
+                if (
+                  account.refreshLeaseUntil !== claim.leaseUntil ||
+                  account.refresh !== claim.refreshToken ||
+                  (claim.identityKey && account.identityKey !== claim.identityKey)
+                ) {
+                  return authFile
+                }
 
                 const now = Date.now()
                 if (
@@ -150,13 +157,15 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
               await saveAuthStorage(undefined, (authFile) => {
                 const domain = getOpenAIOAuthDomain(authFile, claim.mode)
                 if (!domain) return authFile
-                const account = domain.accounts.find(
-                  (entry) =>
-                    entry.refreshLeaseUntil === claim.leaseUntil &&
-                    entry.refresh === claim.refreshToken &&
-                    (!claim.identityKey || entry.identityKey === claim.identityKey)
-                )
+                const account = domain.accounts[claim.accountIndex]
                 if (!account) return authFile
+                if (
+                  account.refreshLeaseUntil !== claim.leaseUntil ||
+                  account.refresh !== claim.refreshToken ||
+                  (claim.identityKey && account.identityKey !== claim.identityKey)
+                ) {
+                  return authFile
+                }
                 if (account.refreshLeaseUntil === claim.leaseUntil) {
                   delete account.refreshLeaseUntil
                   if (account.enabled !== false) {
@@ -265,9 +274,12 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
                   target.enabled === false ||
                   typeof target.refreshLeaseUntil !== "number" ||
                   target.refreshLeaseUntil !== claimed.leaseUntil ||
-                  target.refreshLeaseUntil <= now
+                  target.refreshLeaseUntil <= now ||
+                  target.refresh !== claimed.refreshToken
                 ) {
-                  delete target.refreshLeaseUntil
+                  if (target.refreshLeaseUntil === claimed.leaseUntil) {
+                    delete target.refreshLeaseUntil
+                  }
                   return authFile
                 }
 
@@ -293,11 +305,13 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
                 if (!domain) return authFile
                 const target = domain.accounts.find((entry) => entry.identityKey === claimed.identityKey)
                 if (!target) return authFile
-                if (target.refreshLeaseUntil === claimed.leaseUntil) {
+                if (target.refreshLeaseUntil === claimed.leaseUntil && target.refresh === claimed.refreshToken) {
                   delete target.refreshLeaseUntil
                   if (target.enabled !== false) {
                     target.cooldownUntil = Date.now() + AUTH_MENU_REFRESH_LEASE_MS
                   }
+                } else if (target.refreshLeaseUntil === claimed.leaseUntil) {
+                  delete target.refreshLeaseUntil
                 }
                 return authFile
               })

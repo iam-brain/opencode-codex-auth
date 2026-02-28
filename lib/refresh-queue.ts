@@ -60,6 +60,7 @@ export function createRefreshScheduler(input: {
 
       const runners = input.getTasks()
       for (const task of due) {
+        input.queue.remove(task.key)
         const runner = runners.find((r) => r.key === task.key)
         if (!runner) continue
         try {

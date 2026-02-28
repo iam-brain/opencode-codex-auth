@@ -51,13 +51,6 @@ export async function handleChatMessageHook(input: {
     directProviderID === "openai" ||
     (directProviderID === undefined && (await sessionUsesOpenAIProvider(input.client, input.hookInput.sessionID)))
   if (!isOpenAI) return
-
-  for (const part of input.output.parts) {
-    const partRecord = part as Record<string, unknown>
-    if (asString(partRecord.type) !== "subtask") continue
-    if ((asString(partRecord.command) ?? "").trim().toLowerCase() !== "review") continue
-    partRecord.agent = "Codex Review"
-  }
 }
 
 export async function handleChatParamsHook(input: {

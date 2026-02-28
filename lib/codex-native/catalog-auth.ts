@@ -13,12 +13,13 @@ export async function selectCatalogAuthCandidate(
     if (!domain) {
       return {}
     }
+    const now = Date.now()
 
     const selected = selectAccount({
       accounts: domain.accounts,
       strategy: rotationStrategy ?? domain.strategy,
       activeIdentityKey: domain.activeIdentityKey,
-      now: Date.now(),
+      now,
       stickyPidOffset: pidOffsetEnabled
     })
 
@@ -26,7 +27,8 @@ export async function selectCatalogAuthCandidate(
       return { accountId: selected?.accountId }
     }
 
-    if (selected.expires && selected.expires <= Date.now()) {
+    const expires = selected.expires
+    if (typeof expires !== "number" || !Number.isFinite(expires) || expires <= now) {
       return { accountId: selected.accountId }
     }
 

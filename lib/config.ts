@@ -31,6 +31,7 @@ export type PluginConfig = {
   debug?: boolean
   proactiveRefresh?: boolean
   proactiveRefreshBufferMs?: number
+  quiet?: boolean
   quietMode?: boolean
   pidOffsetEnabled?: boolean
   personality?: PersonalityOption
@@ -44,7 +45,9 @@ export type PluginConfig = {
   headerSnapshotBodies?: boolean
   headerTransformDebug?: boolean
   promptCacheKeyStrategy?: PromptCacheKeyStrategy
+  collaborationProfile?: boolean
   collaborationProfileEnabled?: boolean
+  orchestratorSubagents?: boolean
   orchestratorSubagentsEnabled?: boolean
   behaviorSettings?: BehaviorSettings
 }
@@ -381,13 +384,15 @@ export function validateConfigFileObject(raw: unknown): ConfigValidationResult {
 
 function parseEnvBoolean(value: string | undefined): boolean | undefined {
   if (value === undefined) return undefined
-  if (value === "1" || value === "true") return true
-  if (value === "0" || value === "false") return false
+  const normalized = value.trim().toLowerCase()
+  if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") return true
+  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") return false
   return undefined
 }
 
 function parseEnvNumber(value: string | undefined): number | undefined {
   if (value === undefined) return undefined
+  if (value.trim().length === 0) return undefined
   const n = Number(value)
   return Number.isFinite(n) ? n : undefined
 }
@@ -715,6 +720,7 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     debug,
     proactiveRefresh,
     proactiveRefreshBufferMs,
+    quiet: quietMode,
     quietMode,
     pidOffsetEnabled,
     personality: personalityFromBehavior,
@@ -728,7 +734,9 @@ function parseConfigFileObject(raw: unknown): Partial<PluginConfig> {
     headerSnapshots,
     headerSnapshotBodies,
     headerTransformDebug,
+    collaborationProfile: collaborationProfileEnabled,
     collaborationProfileEnabled,
+    orchestratorSubagents: orchestratorSubagentsEnabled,
     orchestratorSubagentsEnabled,
     behaviorSettings
   }
@@ -765,6 +773,13 @@ export async function ensureDefaultConfigFile(
   await fsPromises.mkdir(path.dirname(filePath), { recursive: true })
   const content = DEFAULT_CODEX_CONFIG_TEMPLATE
   await fsPromises.writeFile(filePath, content, { encoding: "utf8", mode: 0o600 })
+  try {
+    await fsPromises.chmod(filePath, 0o600)
+  } catch (error) {
+    if (error instanceof Error) {
+      // best-effort permission hardening
+    }
+  }
   return { filePath, created: true }
 }
 
@@ -787,16 +802,16 @@ export function loadConfigFile(
       const parsed = parseConfigJsonWithComments(raw)
       const validation = validateConfigFileObject(parsed)
       if (!validation.valid) {
-        console.warn(
-          `[opencode-codex-auth] Invalid codex-config at ${filePath}; ignoring file. ${validation.issues.join("; ")}`
-        )
-        return {}
+        const message = `[opencode-codex-auth] Invalid codex-config at ${filePath}. ${validation.issues.join("; ")}`
+        console.warn(message)
+        continue
       }
       return parseConfigFileObject(parsed)
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
-      console.warn(`[opencode-codex-auth] Failed to read codex-config at ${filePath}; ignoring file. ${detail}`)
-      return {}
+      const message = `[opencode-codex-auth] Failed to read codex-config at ${filePath}. ${detail}`
+      console.warn(message)
+      continue
     }
   }
 
@@ -816,7 +831,7 @@ export function resolveConfig(input: {
   const proactiveRefresh = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH) ?? file.proactiveRefresh
   const proactiveRefreshBufferMs =
     parseEnvNumber(env.OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS) ?? file.proactiveRefreshBufferMs
-  const quietMode = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_QUIET) ?? file.quietMode
+  const quietMode = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_QUIET) ?? file.quietMode ?? file.quiet
   const pidOffsetEnabled = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_PID_OFFSET) ?? file.pidOffsetEnabled
   const rotationStrategy = parseRotationStrategy(env.OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY) ?? file.rotationStrategy
   const promptCacheKeyStrategy =
@@ -828,9 +843,17 @@ export function resolveConfig(input: {
   const envVerbosity = normalizeVerbosityOption(env.OPENCODE_OPENAI_MULTI_VERBOSITY)
   const spoofModeFromEnv = parseSpoofMode(env.OPENCODE_OPENAI_MULTI_SPOOF_MODE)
   const modeFromEnv = parseRuntimeMode(env.OPENCODE_OPENAI_MULTI_MODE)
-  const modeFromSpoofEnv = spoofModeFromEnv === "codex" ? "codex" : spoofModeFromEnv === "native" ? "native" : undefined
-  const modeFromFileSpoof = file.spoofMode === "codex" ? "codex" : file.spoofMode === "native" ? "native" : undefined
-  const mode = modeFromEnv ?? file.mode ?? modeFromSpoofEnv ?? modeFromFileSpoof ?? "native"
+  const modeFromLegacySpoofInput =
+    spoofModeFromEnv === "codex"
+      ? "codex"
+      : spoofModeFromEnv === "native"
+        ? "native"
+        : file.spoofMode === "codex"
+          ? "codex"
+          : file.spoofMode === "native"
+            ? "native"
+            : undefined
+  const mode = modeFromEnv ?? file.mode ?? modeFromLegacySpoofInput ?? "native"
 
   const behaviorSettings = cloneBehaviorSettings(fileBehavior) ?? {}
   const globalBehavior: ModelBehaviorOverride = {
@@ -864,16 +887,8 @@ export function resolveConfig(input: {
 
   const personality = envPersonality ?? resolvedBehaviorSettings?.global?.personality
 
-  // Runtime mode is canonical; spoofMode remains a compatibility input only.
-  // Spoof compatibility inputs are only authoritative when runtime mode is otherwise unset.
-  // If runtime mode is explicit (env or file), derive spoof mode from runtime mode for consistency.
-  const runtimeModeExplicit = modeFromEnv !== undefined || file.mode !== undefined
-  const spoofMode =
-    runtimeModeExplicit
-      ? mode === "native"
-        ? "native"
-        : "codex"
-      : (spoofModeFromEnv ?? (mode === "native" ? "native" : "codex"))
+  // Runtime mode is canonical; spoofMode is always derived for compatibility output.
+  const spoofMode = mode === "native" ? "native" : "codex"
   const compatInputSanitizer =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER) ?? file.compatInputSanitizer
   const remapDeveloperMessagesToUser =
@@ -886,9 +901,13 @@ export function resolveConfig(input: {
   const headerTransformDebug =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG) ?? file.headerTransformDebug
   const collaborationProfileEnabled =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE) ?? file.collaborationProfileEnabled
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE) ??
+    file.collaborationProfileEnabled ??
+    file.collaborationProfile
   const orchestratorSubagentsEnabled =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS) ?? file.orchestratorSubagentsEnabled
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS) ??
+    file.orchestratorSubagentsEnabled ??
+    file.orchestratorSubagents
 
   return {
     ...file,

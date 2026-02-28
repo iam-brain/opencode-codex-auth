@@ -40,6 +40,7 @@ import { installCreatePersonalityCommand } from "./lib/personality-command.js"
 import { installPersonalityBuilderSkill } from "./lib/personality-skill.js"
 import { reconcileOrchestratorAgentVisibility } from "./lib/orchestrator-agent.js"
 import { runOneProactiveRefreshTick } from "./lib/proactive-refresh.js"
+import { createRefreshScheduler, ProactiveRefreshQueue } from "./lib/refresh-queue.js"
 import { toolOutputForStatus } from "./lib/codex-status-tool.js"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage.js"
 import { refreshCachedCodexPrompts } from "./lib/codex-prompts-cache.js"
@@ -95,25 +96,47 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
 
   if (getProactiveRefreshEnabled(cfg)) {
     const bufferMs = getProactiveRefreshBufferMs(cfg)
-    const timer = setInterval(() => {
-      runOneProactiveRefreshTick({
-        now: Date.now,
-        bufferMs,
-        refresh: async (refreshToken) => {
-          const tokens = await refreshAccessToken(refreshToken)
-          return {
-            access: tokens.access_token,
-            refresh: tokens.refresh_token,
-            expires: Date.now() + (tokens.expires_in ?? 3600) * 1000
+    const intervalMs = 60_000
+    const taskKey = "proactive-refresh"
+    const queue = new ProactiveRefreshQueue({ bufferMs: 0 })
+    queue.enqueue({ key: taskKey, expiresAt: Date.now() + intervalMs })
+
+    const refreshScheduler = createRefreshScheduler({
+      intervalMs,
+      queue,
+      now: Date.now,
+      getTasks: () => [
+        {
+          key: taskKey,
+          expiresAt: 0,
+          refresh: async () => {
+            try {
+              await runOneProactiveRefreshTick({
+                now: Date.now,
+                bufferMs,
+                refresh: async (refreshToken) => {
+                  const tokens = await refreshAccessToken(refreshToken)
+                  return {
+                    access: tokens.access_token,
+                    refresh: tokens.refresh_token,
+                    expires: Date.now() + (tokens.expires_in ?? 3600) * 1000
+                  }
+                }
+              })
+            } catch (error) {
+              if (error instanceof Error) {
+                // best-effort background scheduler
+              }
+            } finally {
+              queue.enqueue({ key: taskKey, expiresAt: Date.now() + intervalMs })
+            }
           }
         }
-      }).catch((error) => {
-        if (error instanceof Error) {
-          // best-effort background scheduler
-        }
-      })
-    }, 60_000)
-    scheduler = { stop: () => clearInterval(timer) }
+      ]
+    })
+
+    refreshScheduler.start()
+    scheduler = { stop: refreshScheduler.stop }
   }
 
   log.debug("plugin init")

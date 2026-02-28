@@ -14,7 +14,7 @@ import type {
 import { formatToastMessage } from "./toast.js"
 import type { CodexModelInfo } from "./model-catalog.js"
 import { createRequestSnapshots } from "./request-snapshots.js"
-import { resolveCodexOriginator, type CodexOriginator } from "./codex-native/originator.js"
+import { resolveCodexOriginator } from "./codex-native/originator.js"
 import { tryOpenUrlInBrowser as openUrlInBrowser } from "./codex-native/browser.js"
 import {
   buildCodexUserAgent,

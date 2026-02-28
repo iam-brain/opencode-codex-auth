@@ -28,6 +28,7 @@ const REDACTED_HEADERS = new Set([
   "chatgpt-account-id",
   "session_id"
 ])
+const REDACTED_HEADER_KEY_FRAGMENTS = ["api-key", "token", "secret", "session", "cookie", "auth"]
 const REDACTED_BODY_KEYS = new Set([
   "access_token",
   "refresh_token",
@@ -49,18 +50,51 @@ const REDACTED_BODY_KEYS = new Set([
   "codeverifier",
   "accesstoken",
   "refreshtoken",
-  "idtoken"
+  "idtoken",
+  "session_id",
+  "sessionid",
+  "chatgpt-account-id",
+  "chatgpt_account_id",
+  "account_id",
+  "accountid"
 ])
 const LIVE_HEADERS_LOG_FILE = "live-headers.jsonl"
 
+function shouldRedactHeader(name: string): boolean {
+  const lower = name.toLowerCase()
+  if (REDACTED_HEADERS.has(lower)) return true
+  return REDACTED_HEADER_KEY_FRAGMENTS.some((fragment) => lower.includes(fragment))
+}
+
 function sanitizeHeaderValue(name: string, value: string): string {
   const lower = name.toLowerCase()
-  if (!REDACTED_HEADERS.has(lower) && !lower.includes("api-key")) return value
+  if (!shouldRedactHeader(lower)) return value
   if (lower === "authorization") {
     const [scheme] = value.split(" ")
     return scheme ? `${scheme} ${REDACTED}` : REDACTED
   }
   return REDACTED
+}
+
+function sanitizeSnapshotStage(stage: string): string {
+  const trimmed = stage.trim()
+  if (!trimmed) return "snapshot"
+  const segments = trimmed.match(/[A-Za-z0-9]+/g)
+  if (!segments || segments.length === 0) return "snapshot"
+  return segments.join("-")
+}
+
+function resolveSnapshotFilePath(rootDir: string, fileName: string): string {
+  const root = path.resolve(rootDir)
+  const resolved = path.resolve(root, fileName)
+  if (resolved === root) {
+    throw new Error("snapshot path resolves to output directory")
+  }
+  const rootPrefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`
+  if (!resolved.startsWith(rootPrefix)) {
+    throw new Error("snapshot path escaped output directory")
+  }
+  return resolved
 }
 
 function sanitizeHeaders(headers: Headers): Record<string, string> {
@@ -85,11 +119,11 @@ function sanitizeBodyValue(value: unknown): unknown {
 function redactRawBody(raw: string): string {
   return raw
     .replace(
-      /([?&;\s]|^)(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken)=([^&;\s]+)/gi,
+      /([?&;\s]|^)(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken|session_id|sessionId|sessionid|chatgpt_account_id|chatgptAccountId|chatgpt-account-id|account_id|accountId|accountid)=([^&;\s]+)/gi,
       (_full, prefix: string, key: string) => `${prefix}${key}=${REDACTED}`
     )
     .replace(
-      /"(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken)"\s*:\s*"[^"]*"/gi,
+      /"(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken|session_id|sessionId|sessionid|chatgpt_account_id|chatgptAccountId|chatgpt-account-id|account_id|accountId|accountid)"\s*:\s*"[^"]*"/gi,
       (_full, key: string) => `"${key}":"${REDACTED}"`
     )
 }
@@ -97,11 +131,11 @@ function redactRawBody(raw: string): string {
 function sanitizeMetaString(value: string): string {
   return value
     .replace(
-      /([?&;\s]|^)(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken)=([^&;\s]+)/gi,
+      /([?&;\s]|^)(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken|session_id|sessionId|sessionid|chatgpt_account_id|chatgptAccountId|chatgpt-account-id|account_id|accountId|accountid)=([^&;\s]+)/gi,
       (_full, prefix: string, key: string) => `${prefix}${key}=${REDACTED}`
     )
     .replace(
-      /"(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken)"\s*:\s*"[^"]*"/gi,
+      /"(access_token|refresh_token|id_token|prompt_cache_key|authorization_code|auth_code|code_verifier|pkce_verifier|verifier|state|code|api_key|apikey|client_secret|clientsecret|authorizationCode|authorizationcode|codeVerifier|codeverifier|apiKey|clientSecret|accessToken|refreshToken|idToken|session_id|sessionId|sessionid|chatgpt_account_id|chatgptAccountId|chatgpt-account-id|account_id|accountId|accountid)"\s*:\s*"[^"]*"/gi,
       (_full, key: string) => `"${key}":"${REDACTED}"`
     )
     .replace(/\b(authorization)\s*:\s*bearer\s+[^\s,;]+/gi, `$1: Bearer ${REDACTED}`)
@@ -337,7 +371,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
   const writeJson = async (fileName: string, payload: Record<string, unknown>): Promise<void> => {
     try {
       await ensureDir()
-      const filePath = path.join(dir, `${runId}-${fileName}`)
+      const filePath = resolveSnapshotFilePath(dir, `${runId}-${fileName}`)
       await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 })
       await enforceOwnerOnlyPermissions(filePath)
       await pruneSnapshotFiles()
@@ -352,7 +386,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
   const appendJsonl = async (fileName: string, payload: Record<string, unknown>): Promise<void> => {
     try {
       await ensureDir()
-      const filePath = path.join(dir, fileName)
+      const filePath = resolveSnapshotFilePath(dir, fileName)
       const rotatedPath = `${filePath}.1`
       try {
         const stat = await fs.stat(filePath)
@@ -387,6 +421,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
     captureRequest: async (stage, request, meta) => {
       const requestId = ++requestCounter
       const timestamp = new Date().toISOString()
+      const safeStage = sanitizeSnapshotStage(stage)
       const body = captureBodies ? await serializeRequestBody(request) : undefined
       const headers = sanitizeHeaders(request.headers)
       const sanitizedMeta = sanitizeSnapshotMeta(meta)
@@ -402,7 +437,7 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
         body,
         meta: sanitizedMeta
       }
-      await writeJson(`request-${requestId}-${stage}.json`, {
+      await writeJson(`request-${requestId}-${safeStage}.json`, {
         ...payload
       })
       await appendJsonl(LIVE_HEADERS_LOG_FILE, {
@@ -420,8 +455,9 @@ export function createRequestSnapshots(input: SnapshotWriterInput): RequestSnaps
     captureResponse: async (stage, response, meta) => {
       const responseId = ++responseCounter
       const timestamp = new Date().toISOString()
+      const safeStage = sanitizeSnapshotStage(stage)
       const sanitizedMeta = sanitizeSnapshotMeta(meta)
-      await writeJson(`response-${responseId}-${stage}.json`, {
+      await writeJson(`response-${responseId}-${safeStage}.json`, {
         timestamp,
         runId,
         responseId,

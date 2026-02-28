@@ -70,20 +70,92 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
   const internalCollaborationAgentHeader = input.internalCollaborationAgentHeader ?? "x-opencode-collaboration-agent-kind"
   const quotaTrackerByIdentity = new Map<string, QuotaThresholdTrackerState>()
   const quotaRefreshAtByIdentity = new Map<string, number>()
+  const catalogSyncByScope = new Map<
+    string,
+    { lastAttemptAt: number; lastFailureAt: number; inFlight: Promise<void> | null }
+  >()
   const QUOTA_STATE_MAX_ENTRIES = 512
   const QUOTA_REFRESH_TTL_MS = 60_000
   const QUOTA_REFRESH_FAILURE_RETRY_MS = 10_000
   const QUOTA_FETCH_TIMEOUT_MS = 3000
   const QUOTA_EXHAUSTED_FALLBACK_COOLDOWN_MS = 5 * 60 * 1000
+  const CATALOG_REFRESH_TTL_MS = 60_000
+  const CATALOG_REFRESH_FAILURE_RETRY_MS = 10_000
+  const CATALOG_SCOPE_MAX_ENTRIES = 256
+  const CATALOG_SCOPE_STALE_TTL_MS = 6 * 60 * 60 * 1000
+
+  const normalizeCatalogScopePart = (value: string | undefined): string | undefined => {
+    const trimmed = value?.trim()
+    return trimmed && trimmed.length > 0 ? trimmed : undefined
+  }
+
+  const resolveCatalogScopeKey = (auth: {
+    accountId?: string
+    identityKey?: string
+    email?: string
+    plan?: string
+    selectionTrace?: { attemptKey?: string }
+  }): string => {
+    const identityKey = normalizeCatalogScopePart(auth.identityKey)
+    if (identityKey) return `identity:${identityKey}`
+
+    const accountId = normalizeCatalogScopePart(auth.accountId)
+    const email = normalizeCatalogScopePart(auth.email)?.toLowerCase()
+    const plan = normalizeCatalogScopePart(auth.plan)?.toLowerCase()
+    if (accountId && email && plan) return `tuple:${accountId}|${email}|${plan}`
+
+    const attemptKey = normalizeCatalogScopePart(auth.selectionTrace?.attemptKey)
+    if (attemptKey) return `attempt:${attemptKey}`
+
+    return "anonymous"
+  }
+
+  const pruneCatalogSyncState = (now: number): void => {
+    const staleCutoff = now - CATALOG_SCOPE_STALE_TTL_MS
+    if (catalogSyncByScope.size > 0) {
+      for (const [scopeKey, state] of catalogSyncByScope) {
+        if (state.inFlight === null && state.lastAttemptAt < staleCutoff) {
+          catalogSyncByScope.delete(scopeKey)
+        }
+      }
+    }
+
+    if (catalogSyncByScope.size <= CATALOG_SCOPE_MAX_ENTRIES) return
+
+    for (const [scopeKey, state] of catalogSyncByScope) {
+      if (catalogSyncByScope.size <= CATALOG_SCOPE_MAX_ENTRIES) break
+      if (state.inFlight !== null) continue
+      catalogSyncByScope.delete(scopeKey)
+    }
+  }
+
+  const getCatalogSyncState = (
+    scopeKey: string
+  ): { lastAttemptAt: number; lastFailureAt: number; inFlight: Promise<void> | null } => {
+    pruneCatalogSyncState(Date.now())
+    const existing = catalogSyncByScope.get(scopeKey)
+    if (existing) {
+      catalogSyncByScope.delete(scopeKey)
+      catalogSyncByScope.set(scopeKey, existing)
+      return existing
+    }
+    const next = { lastAttemptAt: 0, lastFailureAt: 0, inFlight: null as Promise<void> | null }
+    catalogSyncByScope.set(scopeKey, next)
+    return next
+  }
 
   const pruneQuotaState = (now: number): void => {
     if (quotaRefreshAtByIdentity.size <= QUOTA_STATE_MAX_ENTRIES) return
 
+    const staleKeys: string[] = []
     for (const [identityKey, nextRefreshAt] of quotaRefreshAtByIdentity) {
       if (nextRefreshAt < now - QUOTA_REFRESH_TTL_MS) {
-        quotaRefreshAtByIdentity.delete(identityKey)
-        quotaTrackerByIdentity.delete(identityKey)
+        staleKeys.push(identityKey)
       }
+    }
+    for (const identityKey of staleKeys) {
+      quotaRefreshAtByIdentity.delete(identityKey)
+      quotaTrackerByIdentity.delete(identityKey)
       if (quotaRefreshAtByIdentity.size <= QUOTA_STATE_MAX_ENTRIES) return
     }
 
@@ -237,31 +309,41 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           log: input.log
         })
 
-        if (input.spoofMode === "codex") {
-          const catalogModels = input.getCatalogModels()
-          const shouldAwaitCatalog = !catalogModels || catalogModels.length === 0
-          if (shouldAwaitCatalog) {
-            try {
-              await input.syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId })
-            } catch (error) {
-              if (error instanceof Error) {
-                // best-effort catalog load; request can still proceed
-              }
-              // best-effort catalog load; request can still proceed
-            }
-          } else {
-            void input.syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId }).catch((error) => {
-              if (error instanceof Error) {
-                // best-effort background catalog refresh
+        const now = Date.now()
+        const currentCatalog = input.getCatalogModels()
+        const shouldAwaitCatalog = input.spoofMode === "codex" && (!currentCatalog || currentCatalog.length === 0)
+        const catalogScopeKey = resolveCatalogScopeKey(auth)
+        const catalogSyncState = getCatalogSyncState(catalogScopeKey)
+        const refreshRetryMs =
+          catalogSyncState.lastFailureAt > 0 ? CATALOG_REFRESH_FAILURE_RETRY_MS : CATALOG_REFRESH_TTL_MS
+        const shouldRefreshCatalog =
+          catalogSyncState.lastAttemptAt === 0 || now - catalogSyncState.lastAttemptAt >= refreshRetryMs
+
+        if (shouldRefreshCatalog) {
+          if (!catalogSyncState.inFlight) {
+            catalogSyncState.lastAttemptAt = now
+            const syncPromise = input
+              .syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId })
+              .then(() => {
+                catalogSyncState.lastFailureAt = 0
+              })
+              .catch((error) => {
+                if (error instanceof Error) {
+                  // best-effort catalog refresh
+                }
+                catalogSyncState.lastFailureAt = Date.now()
+              })
+            const inFlight = syncPromise.finally(() => {
+              const latest = catalogSyncByScope.get(catalogScopeKey)
+              if (latest?.inFlight === inFlight) {
+                latest.inFlight = null
               }
             })
+            catalogSyncState.inFlight = inFlight
           }
-        } else {
-          void input.syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId }).catch((error) => {
-            if (error instanceof Error) {
-              // best-effort background catalog refresh
-            }
-          })
+        }
+        if (shouldAwaitCatalog && catalogSyncState.inFlight) {
+          await catalogSyncState.inFlight
         }
 
         selectedIdentityKey = auth.identityKey
@@ -275,16 +357,13 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       setCooldown: input.setCooldown,
       quietMode: input.quietMode,
       state: orchestratorState,
-      onSessionObserved: ({ event, sessionKey }) => {
+      onSessionObserved: async ({ event }) => {
         if (isSubagentRequest) {
-          orchestratorState.seenSessionKeys.delete(sessionKey)
-          stickySessionState.bySessionKey.delete(sessionKey)
-          hybridSessionState.bySessionKey.delete(sessionKey)
           return
         }
 
         if (event === "new" || event === "resume" || event === "switch") {
-          persistSessionAffinityState()
+          await persistSessionAffinityState()
         }
       },
       validateRedirectUrl: (url) => {
@@ -417,14 +496,14 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
               accessToken: selectedAuthForQuota!.access,
               accountId: selectedAuthForQuota!.accountId,
               now,
-              modelFamily: "gpt-5.3-codex",
+              modelFamily: "codex",
               userAgent: resolveRequestUserAgent(input.spoofMode, resolveCodexOriginator(input.spoofMode)),
               log: input.log,
               timeoutMs: QUOTA_FETCH_TIMEOUT_MS
             })
 
             if (!quotaSnapshot) {
-              quotaRefreshAtByIdentity.set(identityForQuota, Date.now() + QUOTA_REFRESH_FAILURE_RETRY_MS)
+              quotaRefreshAtByIdentity.set(identityForQuota, now + QUOTA_REFRESH_FAILURE_RETRY_MS)
               return
             }
 
@@ -466,7 +545,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
               }
             }
           } catch (error) {
-            quotaRefreshAtByIdentity.set(identityForQuota, Date.now() + QUOTA_REFRESH_FAILURE_RETRY_MS)
+            quotaRefreshAtByIdentity.set(identityForQuota, now + QUOTA_REFRESH_FAILURE_RETRY_MS)
             input.log?.debug("quota refresh during request failed", {
               identityKey: identityForQuota,
               error: error instanceof Error ? error.message : String(error)

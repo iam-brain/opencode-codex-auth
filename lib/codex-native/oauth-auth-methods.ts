@@ -196,10 +196,7 @@ export function createBrowserOAuthAuthorize(deps: BrowserAuthorizeDeps) {
           const tokens = await callbackPromise
           await deps.persistOAuthTokens(tokens)
           return toOAuthSuccess(tokens)
-        } catch (error) {
-          if (error instanceof Error) {
-            // callback failures map to a generic failed result
-          }
+        } catch {
           authFailed = true
           return { type: "failed" }
         } finally {
@@ -246,6 +243,7 @@ export function createHeadlessOAuthAuthorize(deps: HeadlessAuthorizeDeps) {
       method: "auto",
       async callback() {
         const startedAt = Date.now()
+        let pollIntervalMs = interval
         while (true) {
           if (Date.now() - startedAt > OAUTH_DEVICE_AUTH_TIMEOUT_MS) {
             return { type: "failed" }
@@ -298,11 +296,26 @@ export function createHeadlessOAuthAuthorize(deps: HeadlessAuthorizeDeps) {
             return toOAuthSuccess(tokens)
           }
 
-          if (response.status !== 403 && response.status !== 404) {
+          if (response.status === 400) {
+            try {
+              const payload = (await response.json()) as Record<string, unknown>
+              const code = typeof payload.error === "string" ? payload.error : undefined
+              if (code !== "authorization_pending" && code !== "slow_down") {
+                return { type: "failed" }
+              }
+              if (code === "slow_down") {
+                pollIntervalMs = Math.min(pollIntervalMs + interval, 30_000)
+              }
+            } catch (error) {
+              return { type: "failed" }
+            }
+          } else if (response.status === 403 || response.status === 404 || response.status === 429 || response.status >= 500) {
+            // recoverable poll result; continue until timeout
+          } else {
             return { type: "failed" }
           }
 
-          await sleep(interval + OAUTH_POLLING_SAFETY_MARGIN_MS)
+          await sleep(pollIntervalMs + OAUTH_POLLING_SAFETY_MARGIN_MS)
         }
       }
     }

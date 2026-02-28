@@ -16,7 +16,7 @@ export type SessionAffinityRuntimeState = {
   orchestratorState: FetchOrchestratorState
   stickySessionState: StickySessionState
   hybridSessionState: StickySessionState
-  persistSessionAffinityState: () => void
+  persistSessionAffinityState: () => void | Promise<void>
 }
 
 export async function createSessionAffinityRuntimeState(input: {
@@ -45,7 +45,7 @@ export async function createSessionAffinityRuntimeState(input: {
 
   let sessionAffinityPersistQueue = Promise.resolve()
   let persistenceErrorLogged = false
-  const persistSessionAffinityState = (): void => {
+  const persistSessionAffinityState = (): Promise<void> => {
     sessionAffinityPersistQueue = sessionAffinityPersistQueue
       .then(async () => {
         await pruneSessionAffinitySnapshot(
@@ -78,6 +78,7 @@ export async function createSessionAffinityRuntimeState(input: {
           })
         }
       })
+    return sessionAffinityPersistQueue
   }
 
   return {

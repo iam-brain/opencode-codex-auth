@@ -242,6 +242,7 @@ function resolveHybridSessionAccount(input: SelectAccountInput, eligible: Accoun
 export function selectAccount(input: SelectAccountInput): AccountRecord | undefined {
   const { accounts, now, activeIdentityKey } = input
   const strategy: RotationStrategy = input.strategy ?? "sticky"
+  const hasStickySessionKey = Boolean(input.stickySessionKey?.trim())
 
   const eligible = accounts.filter((acc) => isEligible(acc, now))
   if (eligible.length === 0) {
@@ -260,7 +261,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
   if (strategy === "sticky") {
     const stickySessionAccount =
       resolveAssignedSessionAccount(input, eligible, "sticky") ??
-      (input.stickyPidOffset === true ? resolveStickySessionAccount(input, eligible) : undefined)
+      (input.stickyPidOffset === true && hasStickySessionKey ? resolveStickySessionAccount(input, eligible) : undefined)
     if (stickySessionAccount) return stickySessionAccount
     if (activeIndex >= 0) {
       const selected = eligible[activeIndex]
@@ -303,7 +304,7 @@ export function selectAccount(input: SelectAccountInput): AccountRecord | undefi
   if (strategy === "hybrid") {
     const existingSession = resolveAssignedSessionAccount(input, eligible, "hybrid")
     if (existingSession) return existingSession
-    if (input.stickyPidOffset === true) {
+    if (input.stickyPidOffset === true && hasStickySessionKey) {
       const sessionAccount = resolveHybridSessionAccount(input, eligible)
       if (sessionAccount) return sessionAccount
     }

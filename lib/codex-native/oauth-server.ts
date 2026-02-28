@@ -113,6 +113,45 @@ function rotateDebugLogIfNeeded(debugLogFile: string, maxBytes: number): void {
   }
 }
 
+export function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
+  if (!remoteAddress) return false
+  const normalized = remoteAddress.split("%")[0]?.toLowerCase()
+  if (!normalized) return false
+  if (normalized === "::1") return true
+  if (normalized.startsWith("127.")) return true
+  if (normalized.startsWith("::ffff:127.")) return true
+  return false
+}
+
+function resolveListenHosts(loopbackHost: string): string[] {
+  const normalized = loopbackHost.trim().toLowerCase()
+  if (normalized === "localhost") {
+    return ["localhost", "127.0.0.1", "::1"]
+  }
+  return [loopbackHost]
+}
+
+function shouldRetryListenWithFallback(error: unknown): boolean {
+  return (
+    isFsErrorCode(error, "EADDRNOTAVAIL") ||
+    isFsErrorCode(error, "EAFNOSUPPORT") ||
+    isFsErrorCode(error, "ENOTFOUND")
+  )
+}
+
+function rewriteCallbackUriHost(callbackUri: string, host: string): string {
+  try {
+    const url = new URL(callbackUri)
+    url.hostname = host
+    return url.toString()
+  } catch (error) {
+    if (error instanceof Error) {
+      // fallback to configured callback URI when URL parsing fails
+    }
+    return callbackUri
+  }
+}
+
 export function createOAuthServerController<TPkce, TTokens>(
   input: OAuthServerControllerInput<TPkce, TTokens>
 ): {
@@ -128,6 +167,7 @@ export function createOAuthServerController<TPkce, TTokens>(
   const debugLogMaxBytes = resolveDebugLogMaxBytes()
 
   let oauthServer: http.Server | undefined
+  let activeRedirectUri = input.callbackUri
   let pendingOAuth: PendingOAuth<TPkce, TTokens> | undefined
   let lastErrorState: string | undefined
   let oauthServerCloseTimer: ReturnType<typeof setTimeout> | undefined
@@ -174,16 +214,6 @@ export function createOAuthServerController<TPkce, TTokens>(
     oauthServerCloseTimer = undefined
   }
 
-function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
-  if (!remoteAddress) return false
-  const normalized = remoteAddress.split("%")[0]?.toLowerCase()
-  if (!normalized) return false
-  if (normalized === "::1") return true
-  if (normalized.startsWith("127.")) return true
-  if (normalized.startsWith("::ffff:127.")) return true
-  return false
-}
-
   function setResponseHeaders(res: http.ServerResponse, options?: { contentType?: string; isHtml?: boolean }): void {
     res.setHeader("Cache-Control", "no-store")
     res.setHeader("Pragma", "no-cache")
@@ -204,11 +234,11 @@ function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
     clearCloseTimer()
     if (oauthServer) {
       emitDebug("server_reuse", { port: input.port })
-      return { redirectUri: input.callbackUri }
+      return { redirectUri: activeRedirectUri }
     }
 
     emitDebug("server_starting", { port: input.port })
-    oauthServer = http.createServer((req, res) => {
+    oauthServer = http.createServer(async (req, res) => {
       try {
         if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
           emitDebug("callback_rejected_non_loopback", {
@@ -282,25 +312,23 @@ function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
           pendingOAuth = undefined
           lastErrorState = undefined
           emitDebug("token_exchange_start", { authMode: current.authMode })
-          input
-            .exchangeCodeForTokens(code, input.callbackUri, current.pkce)
-            .then((tokens) => {
-              current.resolve(tokens)
-              emitDebug("token_exchange_success", { authMode: current.authMode })
-              if (res.writableEnded) return
-              if (current.authMode === "codex") {
-                redirect(input.composeCodexSuccessRedirectUrl(tokens))
-                return
-              }
-              sendHtml(200, input.buildOAuthSuccessHtml("native"))
-            })
-            .catch((err) => {
-              const oauthError = err instanceof Error ? err : new Error(String(err))
-              current.reject(oauthError)
-              emitDebug("token_exchange_error", { error: oauthError.message })
-              if (res.writableEnded) return
-              sendHtml(500, input.buildOAuthErrorHtml("OAuth token exchange failed"))
-            })
+          try {
+            const tokens = await input.exchangeCodeForTokens(code, activeRedirectUri, current.pkce)
+            current.resolve(tokens)
+            emitDebug("token_exchange_success", { authMode: current.authMode })
+            if (res.writableEnded) return
+            if (current.authMode === "codex") {
+              redirect(input.composeCodexSuccessRedirectUrl(tokens))
+              return
+            }
+            sendHtml(200, input.buildOAuthSuccessHtml("native"))
+          } catch (err) {
+            const oauthError = err instanceof Error ? err : new Error(String(err))
+            current.reject(oauthError)
+            emitDebug("token_exchange_error", { error: oauthError.message })
+            if (res.writableEnded) return
+            sendHtml(500, input.buildOAuthErrorHtml("OAuth token exchange failed"))
+          }
           return
         }
 
@@ -344,11 +372,51 @@ function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
     })
 
     try {
-      await new Promise<void>((resolve, reject) => {
-        oauthServer?.once("error", reject)
-        oauthServer?.listen(input.port, input.loopbackHost, () => resolve())
-      })
-      emitDebug("server_started", { port: input.port })
+      const listenHosts = resolveListenHosts(input.loopbackHost)
+      let boundHost: string | undefined
+      let lastListenError: unknown
+
+      for (const host of listenHosts) {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const server = oauthServer
+            if (!server) {
+              reject(new Error("OAuth server was not initialized"))
+              return
+            }
+            const onError = (error: Error) => {
+              server.off("listening", onListening)
+              reject(error)
+            }
+            const onListening = () => {
+              server.off("error", onError)
+              resolve()
+            }
+            server.once("error", onError)
+            server.once("listening", onListening)
+            server.listen(input.port, host)
+          })
+          boundHost = host
+          activeRedirectUri = rewriteCallbackUriHost(input.callbackUri, host)
+          break
+        } catch (error) {
+          lastListenError = error
+          emitDebug("server_listen_attempt_failed", {
+            port: input.port,
+            host,
+            error: error instanceof Error ? error.message : String(error)
+          })
+          if (!shouldRetryListenWithFallback(error)) {
+            throw error
+          }
+        }
+      }
+
+      if (!boundHost) {
+        throw (lastListenError ?? new Error("Failed to bind OAuth callback server"))
+      }
+
+      emitDebug("server_started", { port: input.port, host: boundHost, redirectUri: activeRedirectUri })
     } catch (error) {
       emitDebug("server_start_error", {
         error: error instanceof Error ? error.message : String(error)
@@ -366,7 +434,7 @@ function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
       throw error
     }
 
-    return { redirectUri: input.callbackUri }
+    return { redirectUri: activeRedirectUri }
   }
 
   function stop(): void {
@@ -374,6 +442,7 @@ function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
     emitDebug("server_stopping", { hadPendingOAuth: Boolean(pendingOAuth) })
     oauthServer?.close()
     oauthServer = undefined
+    activeRedirectUri = input.callbackUri
     lastErrorState = undefined
     emitDebug("server_stopped")
   }

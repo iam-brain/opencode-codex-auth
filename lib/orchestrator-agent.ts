@@ -127,6 +127,8 @@ Sub-agents are their to make you go fast and time is a big constraint so leverag
 5. Ask the user before shutting sub-agents down unless you need to because you reached the agent limit.
 `
 
+const CODEX_ORCHESTRATOR_AGENT_PROMPT_FALLBACK = stripLeadingFrontmatter(CODEX_ORCHESTRATOR_AGENT_TEMPLATE)
+
 function stripLeadingFrontmatter(content: string): string {
   const trimmed = content.trimStart()
   if (!trimmed.startsWith("---\n")) return content.trim()
@@ -145,7 +147,7 @@ async function resolveOrchestratorAgentTemplate(cacheDir?: string): Promise<stri
   const prompts = await refreshCachedCodexPrompts({ cacheDir })
   const upstream = prompts.orchestrator?.trim()
   if (upstream) return composeTemplateFromPrompt(upstream)
-  return CODEX_ORCHESTRATOR_AGENT_TEMPLATE
+  return composeTemplateFromPrompt(CODEX_ORCHESTRATOR_AGENT_PROMPT_FALLBACK)
 }
 
 export type InstallOrchestratorAgentInput = {

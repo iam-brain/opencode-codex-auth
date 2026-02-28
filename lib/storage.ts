@@ -2,7 +2,14 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 import { normalizeAccountAuthTypes } from "./account-auth-types.js"
-import { ensureIdentityKey, normalizeEmail, normalizePlan, synchronizeIdentityKey } from "./identity.js"
+import {
+  buildIdentityKey,
+  buildLegacyIdentityFingerprint,
+  ensureIdentityKey,
+  normalizeEmail,
+  normalizePlan,
+  synchronizeIdentityKey
+} from "./identity.js"
 import { extractAccountIdFromClaims, extractEmailFromClaims, extractPlanFromClaims, parseJwtClaims } from "./claims.js"
 import { quarantineFile } from "./quarantine.js"
 import {
@@ -44,7 +51,12 @@ type LegacyCodexAccountsRecord = {
   cooldownUntil?: unknown
 }
 
-type AuthLoadOptions = { quarantineDir?: string; now?: () => number; keep?: number; lockReads?: boolean }
+type AuthLoadOptions = {
+  quarantineDir?: string
+  now?: () => number
+  keep?: number
+  lockReads?: boolean
+}
 
 const OPENAI_AUTH_MODES: OpenAIAuthMode[] = ["native", "codex"]
 
@@ -108,14 +120,50 @@ function splitAccountsByAuthMode(accounts: AccountRecord[]): Record<OpenAIAuthMo
   return out
 }
 
+function isAccountEnabled(account: AccountRecord | undefined): boolean {
+  return account?.enabled !== false
+}
+
+function mergeAccountRecordsByFreshness(
+  existing: AccountRecord,
+  incoming: AccountRecord,
+  mergedTypes: AccountRecord["authTypes"],
+  preferIncoming: boolean
+): AccountRecord {
+  const primary = preferIncoming ? incoming : existing
+  const secondary = preferIncoming ? existing : incoming
+  return {
+    ...secondary,
+    ...primary,
+    authTypes: mergedTypes,
+    enabled: isAccountEnabled(existing) || isAccountEnabled(incoming)
+  }
+}
+
 function mergeDomainAccounts(native?: OpenAIOAuthDomain, codex?: OpenAIOAuthDomain): OpenAIOAuthDomain {
   const mergedByIdentity = new Map<string, AccountRecord>()
-  const fallbackAccounts: AccountRecord[] = []
+  const fallbackByFingerprint = new Map<string, AccountRecord>()
 
   const add = (authMode: OpenAIAuthMode, account: AccountRecord) => {
     const identity = account.identityKey
     if (!identity) {
-      fallbackAccounts.push({ ...account, authTypes: [authMode] })
+      const fingerprint = buildLegacyIdentityFingerprint(account)
+      const existingFallback = fallbackByFingerprint.get(fingerprint)
+      if (!existingFallback) {
+        fallbackByFingerprint.set(fingerprint, {
+          ...account,
+          authTypes: [authMode]
+        })
+        return
+      }
+
+      const mergedTypes = normalizeAccountAuthTypes([...(existingFallback.authTypes ?? []), authMode])
+      const existingExpires = typeof existingFallback.expires === "number" ? existingFallback.expires : -Infinity
+      const incomingExpires = typeof account.expires === "number" ? account.expires : -Infinity
+      const preferIncoming = incomingExpires > existingExpires
+      fallbackByFingerprint.set(fingerprint, {
+        ...mergeAccountRecordsByFreshness(existingFallback, account, mergedTypes, preferIncoming)
+      })
       return
     }
 
@@ -133,18 +181,22 @@ function mergeDomainAccounts(native?: OpenAIOAuthDomain, codex?: OpenAIOAuthDoma
     const incomingExpires = typeof account.expires === "number" ? account.expires : -Infinity
     const preferIncoming = incomingExpires > existingExpires
 
-    mergedByIdentity.set(identity, {
-      ...existing,
-      ...(preferIncoming ? account : {}),
-      authTypes: mergedTypes
-    })
+    mergedByIdentity.set(identity, mergeAccountRecordsByFreshness(existing, account, mergedTypes, preferIncoming))
   }
 
   for (const account of native?.accounts ?? []) add("native", account)
   for (const account of codex?.accounts ?? []) add("codex", account)
 
-  const mergedAccounts = [...mergedByIdentity.values(), ...fallbackAccounts]
-  for (const account of mergedAccounts) normalizeAccountRecord(account)
+  const mergedAccounts = [...mergedByIdentity.values(), ...fallbackByFingerprint.values()]
+  const fallbackIdentityCounts = new Map<string, number>()
+  for (const account of mergedAccounts) {
+    normalizeAccountRecord(account)
+    if (account.identityKey) continue
+    const fingerprint = buildLegacyIdentityFingerprint(account)
+    const occurrence = fallbackIdentityCounts.get(fingerprint) ?? 0
+    fallbackIdentityCounts.set(fingerprint, occurrence + 1)
+    account.identityKey = occurrence > 0 ? `${fingerprint}|dup:${occurrence + 1}` : fingerprint
+  }
 
   const hasEnabledIdentity = (identityKey: string | undefined): identityKey is string =>
     typeof identityKey === "string" &&
@@ -390,21 +442,25 @@ async function readAuthUnlocked(
 
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (!isObject(parsed)) return {}
+    if (!isObject(parsed)) {
+      throw new Error("Auth storage root must be a JSON object")
+    }
     const legacyMigrated = migrateLegacyCodexAccounts(parsed)
     if (legacyMigrated) return sanitizeAuthFile(legacyMigrated, { openAIOnly })
     return sanitizeAuthFile(migrateAuthFile(parsed as AuthFile), { openAIOnly })
   } catch (error: unknown) {
+    let quarantinedPath: string | undefined
     if (opts?.quarantineDir && opts.now) {
       try {
-        await quarantineFile({
+        const quarantined = await quarantineFile({
           sourcePath: filePath,
           quarantineDir: opts.quarantineDir,
           now: opts.now,
           keep: opts.keep
         })
+        quarantinedPath = quarantined.quarantinedPath
         console.warn(
-          `[opencode-codex-auth] Corrupt auth storage at ${filePath} was quarantined to ${opts.quarantineDir}. Continuing with empty auth state.`
+          `[opencode-codex-auth] Corrupt auth storage at ${filePath} was quarantined to ${opts.quarantineDir}.`
         )
       } catch (error) {
         if (!isFsErrorCode(error, "ENOENT")) {
@@ -412,9 +468,9 @@ async function readAuthUnlocked(
         }
         // Best effort quarantine only.
       }
-      return {}
     }
-    throw error
+    const detail = quarantinedPath ? ` Quarantined file: ${quarantinedPath}.` : ""
+    throw new Error(`Corrupt auth storage JSON at ${filePath}.${detail} Re-authenticate or repair the file.`)
   }
 }
 
@@ -482,13 +538,38 @@ function upsertDomainAccount(domain: OpenAIOAuthDomain, input: AccountRecord, au
   normalizeAccountRecord(incoming, authMode)
 
   const incomingIdentity = incoming.identityKey
+  const incomingStrictIdentity = buildIdentityKey(incoming)
   const incomingRefresh = typeof incoming.refresh === "string" ? incoming.refresh : ""
-  const matchIndex = domain.accounts.findIndex((existing) => {
+  let strictMatchIndex = -1
+  let refreshFallbackMatchIndex = -1
+  let refreshFallbackAmbiguous = false
+
+  domain.accounts.forEach((existing, index) => {
+    if (strictMatchIndex >= 0) return
     normalizeAccountRecord(existing, authMode)
-    if (incomingIdentity && existing.identityKey === incomingIdentity) return true
-    if (!incomingIdentity && incomingRefresh && existing.refresh === incomingRefresh) return true
-    return false
+    const existingStrictIdentity = buildIdentityKey(existing)
+    if (incomingIdentity && existing.identityKey === incomingIdentity) {
+      strictMatchIndex = index
+      return
+    }
+    if (incomingStrictIdentity && existingStrictIdentity && incomingStrictIdentity === existingStrictIdentity) {
+      strictMatchIndex = index
+      return
+    }
+    if (incomingRefresh && existing.refresh === incomingRefresh && (!incomingStrictIdentity || !existingStrictIdentity)) {
+      if (refreshFallbackMatchIndex >= 0 && refreshFallbackMatchIndex !== index) {
+        refreshFallbackAmbiguous = true
+      } else {
+        refreshFallbackMatchIndex = index
+      }
+    }
   })
+  const matchIndex =
+    strictMatchIndex >= 0
+      ? strictMatchIndex
+      : !refreshFallbackAmbiguous && refreshFallbackMatchIndex >= 0
+        ? refreshFallbackMatchIndex
+        : -1
 
   if (matchIndex < 0) {
     domain.accounts.push(incoming)
@@ -535,35 +616,41 @@ export async function importLegacyInstallData(filePath: string = defaultAuthPath
         continue
       }
 
-      const legacyAuth = await readAuthUnlocked(legacyPath)
-      if (!hasUsableOpenAIOAuth(legacyAuth)) continue
-      sourcesUsed += 1
+      try {
+        const legacyAuth = await readAuthUnlocked(legacyPath)
+        if (!hasUsableOpenAIOAuth(legacyAuth)) continue
+        sourcesUsed += 1
 
-      const legacyOpenAI = legacyAuth.openai
-      if (!legacyOpenAI || legacyOpenAI.type !== "oauth") continue
-      const normalizedLegacy = normalizeOpenAIOAuthState(
-        isMultiOauthAuth(legacyOpenAI)
-          ? legacyOpenAI
-          : (migrateAuthFile({ openai: legacyOpenAI }).openai as OpenAIMultiOauthAuth)
-      )
+        const legacyOpenAI = legacyAuth.openai
+        if (!legacyOpenAI || legacyOpenAI.type !== "oauth") continue
+        const normalizedLegacy = normalizeOpenAIOAuthState(
+          isMultiOauthAuth(legacyOpenAI)
+            ? legacyOpenAI
+            : (migrateAuthFile({ openai: legacyOpenAI }).openai as OpenAIMultiOauthAuth)
+        )
 
-      for (const mode of OPENAI_AUTH_MODES) {
-        const sourceDomain = normalizedLegacy[mode]
-        if (!sourceDomain) continue
-        const targetDomain = ensureOpenAIOAuthDomain(current, mode)
-        if (targetDomain.strategy === undefined && sourceDomain.strategy !== undefined) {
-          targetDomain.strategy = sourceDomain.strategy
-        }
-        for (const account of sourceDomain.accounts) {
-          if (upsertDomainAccount(targetDomain, account, mode)) {
-            imported += 1
+        for (const mode of OPENAI_AUTH_MODES) {
+          const sourceDomain = normalizedLegacy[mode]
+          if (!sourceDomain) continue
+          const targetDomain = ensureOpenAIOAuthDomain(current, mode)
+          if (targetDomain.strategy === undefined && sourceDomain.strategy !== undefined) {
+            targetDomain.strategy = sourceDomain.strategy
+          }
+          for (const account of sourceDomain.accounts) {
+            if (upsertDomainAccount(targetDomain, account, mode)) {
+              imported += 1
+            }
+          }
+          if (
+            sourceDomain.activeIdentityKey &&
+            targetDomain.accounts.some((account) => account.identityKey === sourceDomain.activeIdentityKey)
+          ) {
+            targetDomain.activeIdentityKey = sourceDomain.activeIdentityKey
           }
         }
-        if (
-          sourceDomain.activeIdentityKey &&
-          targetDomain.accounts.some((account) => account.identityKey === sourceDomain.activeIdentityKey)
-        ) {
-          targetDomain.activeIdentityKey = sourceDomain.activeIdentityKey
+      } catch (error) {
+        if (error instanceof Error) {
+          // ignore unreadable/corrupt legacy source and continue
         }
       }
     }

@@ -796,6 +796,7 @@ export async function applyPromptCacheKeyOverrideToRequest(input: {
 function rebuildRequestWithJsonBody(request: Request, body: unknown): Request {
   const headers = new Headers(request.headers)
   headers.set("content-type", "application/json")
+  headers.delete("content-length")
 
   return new Request(request.url, {
     method: request.method,
@@ -825,13 +826,42 @@ function messageContentToText(value: unknown): string {
   return parts.join("\n")
 }
 
+const STRUCTURED_INSTRUCTION_MARKERS = [
+  "<permissions instructions>",
+  "<environment_context>",
+  "<app-context>",
+  "<collaboration_mode>",
+  "<personality_spec>",
+  "<instructions>"
+]
+
+const RUNTIME_POLICY_SIGNALS = [
+  "approval policy",
+  "filesystem sandboxing",
+  "sandbox_mode",
+  "agents.md",
+  "environment context",
+  "collaboration mode"
+]
+
+const DIRECTIVE_LANGUAGE_SIGNALS = ["must", "never", "do not", "always", "required", "only"]
+const POLICY_DOMAIN_SIGNALS = ["permission", "policy", "sandbox", "filesystem", "security", "compliance"]
+
 function shouldPreserveDeveloperRole(item: Record<string, unknown>): boolean {
   const text = messageContentToText(item.content).toLowerCase()
   if (!text) return false
-  return (
-    text.includes("<permissions instructions>") ||
-    text.includes("filesystem sandboxing defines which files can be read or written")
-  )
+  if (
+    text.includes("instructions") &&
+    (text.includes("must") || text.includes("never") || text.includes("do not") || text.includes("required"))
+  ) {
+    return true
+  }
+  if (STRUCTURED_INSTRUCTION_MARKERS.some((marker) => text.includes(marker))) return true
+  const hasDirectiveLanguage = DIRECTIVE_LANGUAGE_SIGNALS.some((signal) => text.includes(signal))
+  const hasPolicyDomainSignal = POLICY_DOMAIN_SIGNALS.some((signal) => text.includes(signal))
+  if (hasDirectiveLanguage && hasPolicyDomainSignal) return true
+  const signalCount = RUNTIME_POLICY_SIGNALS.reduce((count, signal) => count + (text.includes(signal) ? 1 : 0), 0)
+  return signalCount >= 2
 }
 
 export async function remapDeveloperMessagesToUserOnRequest(input: { request: Request; enabled: boolean }): Promise<{
@@ -937,7 +967,12 @@ function getVariantCandidatesFromBody(input: { body: Record<string, unknown>; mo
   return out
 }
 
-const COLLABORATION_INSTRUCTION_MARKERS = ["# Plan Mode (Conversational)", "# Sub-agents", "# Tooling Compatibility ("]
+const COLLABORATION_INSTRUCTION_MARKERS = [
+  "# Plan Mode",
+  "# Plan Mode (Conversational)",
+  "# Sub-agents",
+  "# Tooling Compatibility ("
+]
 
 function extractCollaborationInstructionTail(instructions: string): string | undefined {
   const normalized = instructions.trim()
@@ -1018,13 +1053,9 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
     return { request: input.request, changed: false, reason: "already_matches" }
   }
 
-  if (currentInstructions && currentInstructions.includes(renderedForRequest)) {
-    return { request: input.request, changed: false, reason: "already_contains_rendered" }
-  }
-
   const collaborationTail = currentInstructions ? extractCollaborationInstructionTail(currentInstructions) : undefined
-  const nextInstructionsBase = collaborationTail ? `${renderedForRequest}\n\n${collaborationTail}` : renderedForRequest
-  const nextInstructions = nextInstructionsBase
+  const preservedInstructions = collaborationTail ?? currentInstructions?.trim()
+  const nextInstructions = preservedInstructions ? `${renderedForRequest}\n\n${preservedInstructions}` : renderedForRequest
 
   if (currentInstructions === nextInstructions) {
     return { request: input.request, changed: false, reason: "already_matches" }
