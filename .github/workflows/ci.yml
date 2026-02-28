@@ -90,9 +90,10 @@ jobs:
         run: |
           TARBALL="$(npm pack --silent)"
           test -f "${TARBALL}"
+          TARBALL_PATH="$(node -e "console.log(require('node:path').resolve(process.argv[1]))" "${TARBALL}")"
           TMP_DIR="$(mktemp -d)"
           npm init -y --prefix "${TMP_DIR}" >/dev/null 2>&1
-          npm install --silent --prefix "${TMP_DIR}" "./${TARBALL}"
+          npm install --silent --prefix "${TMP_DIR}" "${TARBALL_PATH}"
           test -f "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js"
           node "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js" --help
 
@@ -136,9 +137,10 @@ jobs:
         run: |
           TARBALL="$(npm pack --silent)"
           test -f "${TARBALL}"
+          TARBALL_PATH="$(node -e "console.log(require('node:path').resolve(process.argv[1]))" "${TARBALL}")"
           TMP_DIR="$(mktemp -d)"
           npm init -y --prefix "${TMP_DIR}" >/dev/null 2>&1
-          npm install --silent --prefix "${TMP_DIR}" "./${TARBALL}"
+          npm install --silent --prefix "${TMP_DIR}" "${TARBALL_PATH}"
           test -f "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js"
           node "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js" --help
 
