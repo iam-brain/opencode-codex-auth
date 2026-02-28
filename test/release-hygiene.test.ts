@@ -199,8 +199,8 @@ describe("package publish surface", () => {
     expect(workflow).toContain("Package Smoke Test (Windows)")
     expect(workflow).toContain("npm pack --silent")
     expect(workflow).toContain("test -f")
-    expect(workflow).toContain("tar -xzf")
-    expect(workflow).toContain("dist/bin/opencode-codex-auth.js")
+    expect(workflow).toContain("npm install --silent --prefix")
+    expect(workflow).toContain("node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js")
     expect(workflow).toContain("node")
   })
 

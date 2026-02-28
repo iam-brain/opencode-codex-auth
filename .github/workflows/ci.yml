@@ -91,9 +91,10 @@ jobs:
           TARBALL="$(npm pack --silent)"
           test -f "${TARBALL}"
           TMP_DIR="$(mktemp -d)"
-          tar -xzf "${TARBALL}" -C "${TMP_DIR}"
-          test -f "${TMP_DIR}/package/dist/bin/opencode-codex-auth.js"
-          node "${TMP_DIR}/package/dist/bin/opencode-codex-auth.js" --help
+          npm init -y --prefix "${TMP_DIR}" >/dev/null 2>&1
+          npm install --silent --prefix "${TMP_DIR}" "./${TARBALL}"
+          test -f "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js"
+          node "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js" --help
 
   package-smoke-windows:
     name: Package Smoke Test (Windows)
@@ -136,9 +137,10 @@ jobs:
           TARBALL="$(npm pack --silent)"
           test -f "${TARBALL}"
           TMP_DIR="$(mktemp -d)"
-          tar -xzf "${TARBALL}" -C "${TMP_DIR}"
-          test -f "${TMP_DIR}/package/dist/bin/opencode-codex-auth.js"
-          node "${TMP_DIR}/package/dist/bin/opencode-codex-auth.js" --help
+          npm init -y --prefix "${TMP_DIR}" >/dev/null 2>&1
+          npm install --silent --prefix "${TMP_DIR}" "./${TARBALL}"
+          test -f "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js"
+          node "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js" --help
 
   windows-runtime-hardening:
     name: Windows Runtime Hardening (Node.js ${{ matrix.node-version }})
