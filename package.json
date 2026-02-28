@@ -1,6 +1,6 @@
 {
   "name": "@iam-brain/opencode-codex-auth",
-  "version": "1.2.5",
+  "version": "1.2.4",
   "description": "Native Codex auth with multi-account rotation for OpenCode",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
