@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs"
 const VALID_BUMPS = new Set(["patch", "minor", "major"])
 const bump = process.argv[2] ?? "patch"
 const REQUIRED_CI_WORKFLOW = "ci.yml"
+const RELEASE_WORKFLOW = "release.yml"
 const REQUIRED_CI_JOBS = [
   "Verify on Node.js 20.x",
   "Verify on Node.js 22.x",
@@ -17,6 +18,19 @@ const REQUIRED_CI_JOBS = [
 ]
 const REMOTE_CI_BYPASS_ENV = "RELEASE_SKIP_REMOTE_CI_GATE"
 const DEFAULT_BRANCH_FALLBACK = "main"
+const releaseAttemptState = {
+  defaultBranch: "",
+  tag: "",
+  releaseHead: "",
+  pushed: false
+}
+
+class ReleaseWorkflowFailureError extends Error {
+  constructor(tag, conclusion, url) {
+    super(`Release workflow failed for ${tag}: ${conclusion ?? "unknown"} ${url ?? ""}`.trim())
+    this.name = "ReleaseWorkflowFailureError"
+  }
+}
 
 if (!VALID_BUMPS.has(bump)) {
   console.error(`Invalid release bump "${bump}". Use one of: patch, minor, major.`)
@@ -255,6 +269,59 @@ function assertRemoteCiGreenForHead(defaultBranch) {
   process.stdout.write(`Remote CI gate passed for HEAD (${head}). ${details.url ?? ""}\n`)
 }
 
+function listReleaseRunsForTag(tag, headSha) {
+  const output = runCapture("gh", [
+    "run",
+    "list",
+    "--workflow",
+    RELEASE_WORKFLOW,
+    "--branch",
+    tag,
+    "--event",
+    "push",
+    "--limit",
+    "20",
+    "--json",
+    "databaseId,status,conclusion,headBranch,headSha,createdAt,url"
+  ])
+  const runs = parseJson(output || "[]", "gh run list (release)")
+  if (!Array.isArray(runs)) {
+    throw new Error("Unexpected gh run list response shape for release workflow.")
+  }
+  return runs
+    .filter((runEntry) => runEntry && runEntry.headBranch === tag && (!headSha || runEntry.headSha === headSha))
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+}
+
+function waitForReleaseWorkflowSuccess(tag, headSha) {
+  const maxAttempts = 420
+  const delayMs = 10_000
+
+  process.stdout.write(`Waiting for ${RELEASE_WORKFLOW} to complete for ${tag}...\n`)
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const latest = listReleaseRunsForTag(tag, headSha)[0]
+    if (!latest) {
+      process.stdout.write(`  release workflow not visible yet (attempt ${attempt}/${maxAttempts})\n`)
+      sleep(delayMs)
+      continue
+    }
+    if (latest.status !== "completed") {
+      process.stdout.write(`  release workflow status=${latest.status} (attempt ${attempt}/${maxAttempts})\n`)
+      sleep(delayMs)
+      continue
+    }
+    if (latest.conclusion !== "success") {
+      throw new ReleaseWorkflowFailureError(tag, latest.conclusion, latest.url)
+    }
+    process.stdout.write(`Release workflow succeeded for ${tag}. ${latest.url ?? ""}\n`)
+    return
+  }
+  throw new Error(
+    `Timed out waiting for ${RELEASE_WORKFLOW} completion for ${tag}. ` +
+      "The release workflow may still be running; check Actions and release logs."
+  )
+}
+
 function waitForGitHubRelease(repoSlug, tag) {
   const maxAttempts = 240
   const delayMs = 15_000
@@ -276,10 +343,55 @@ function waitForGitHubRelease(repoSlug, tag) {
     sleep(delayMs)
   }
 
-  process.stdout.write(
-    `Timed out waiting for GitHub release ${tag} visibility. ` +
-      "The release workflow may still be running; check Actions and release logs.\n"
+  throw new Error(
+    `Timed out waiting for GitHub release ${tag} visibility in ${repoSlug}. ` +
+      "The release workflow may still be running; check Actions and release logs."
   )
+}
+
+function getNpmPublishStatus(tag, headSha) {
+  if (!hasGhCli() || !hasGhAuth()) return "unknown"
+  try {
+    const latest = listReleaseRunsForTag(tag, headSha)[0]
+    if (!latest?.databaseId) return "unknown"
+    const details = readCiRunDetails(latest.databaseId)
+    const jobs = Array.isArray(details.jobs) ? details.jobs : []
+    const publishJob = jobs.find((job) => job && job.name === "Publish to npm")
+    if (publishJob?.conclusion === "success") return "success"
+    if (publishJob?.conclusion) return "not_published"
+    return "unknown"
+  } catch {
+    return "unknown"
+  }
+}
+
+function rollbackFailedRelease(defaultBranch, tag) {
+  process.stderr.write(`Attempting automatic rollback for failed release ${tag}...\n`)
+  run("git", ["fetch", "origin", defaultBranch, "--quiet"])
+
+  const originHead = runCapture("git", ["rev-parse", `origin/${defaultBranch}`])
+  const tagLookup = runCaptureAllowFailure("git", ["rev-list", "-n", "1", tag])
+  if (tagLookup.status !== 0 || !tagLookup.stdout) {
+    throw new Error(`Cannot auto-rollback ${tag}: tag not found locally.`)
+  }
+  const tagSha = tagLookup.stdout
+  if (originHead !== tagSha) {
+    throw new Error(
+      `Cannot auto-rollback ${tag}: origin/${defaultBranch} (${originHead}) is not the tagged commit (${tagSha}).`
+    )
+  }
+
+  const localHead = runCapture("git", ["rev-parse", "HEAD"])
+  if (localHead !== originHead) {
+    throw new Error(
+      `Cannot auto-rollback ${tag}: local HEAD (${localHead}) differs from origin/${defaultBranch} (${originHead}).`
+    )
+  }
+
+  run("git", ["revert", "--no-edit", tagSha])
+  run("git", ["push", "--atomic", "origin", defaultBranch, `:refs/tags/${tag}`])
+  run("git", ["tag", "-d", tag], { allowFailure: true })
+  process.stderr.write(`Rollback complete for ${tag}: reverted ${defaultBranch} and removed tag from origin.\n`)
 }
 
 function assertCleanWorkingTree() {
@@ -308,6 +420,7 @@ function main() {
   process.stdout.write(`Starting ${bump} release flow...\n`)
   assertCleanWorkingTree()
   const defaultBranch = resolveDefaultBranch()
+  releaseAttemptState.defaultBranch = defaultBranch
   assertDefaultBranch(defaultBranch)
   const remoteUrl = runCapture("git", ["config", "--get", "remote.origin.url"])
   const repoSlug = parseRepoSlug(remoteUrl)
@@ -327,8 +440,12 @@ function main() {
 
   const version = readVersion()
   const tag = `v${version}`
+  releaseAttemptState.tag = tag
+  const releaseHead = runCapture("git", ["rev-parse", "HEAD"])
+  releaseAttemptState.releaseHead = releaseHead
   process.stdout.write(`Created ${tag}. Pushing ${defaultBranch} and tags...\n`)
   run("git", ["push", "origin", defaultBranch, "--follow-tags"])
+  releaseAttemptState.pushed = true
 
   if (!hasGhCli() || !hasGhAuth()) {
     process.stdout.write(
@@ -338,6 +455,7 @@ function main() {
     return
   }
 
+  waitForReleaseWorkflowSuccess(tag, releaseHead)
   waitForGitHubRelease(repoSlug, tag)
 }
 
@@ -345,6 +463,29 @@ try {
   main()
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error)
+  if (releaseAttemptState.pushed && releaseAttemptState.tag && releaseAttemptState.defaultBranch) {
+    try {
+      if (error instanceof ReleaseWorkflowFailureError) {
+        const publishStatus = getNpmPublishStatus(releaseAttemptState.tag, releaseAttemptState.releaseHead)
+        if (publishStatus === "success") {
+          console.error(
+            `Skipping auto-rollback for ${releaseAttemptState.tag}: npm publish already succeeded in release workflow.`
+          )
+        } else if (publishStatus === "unknown") {
+          console.error(
+            `Skipping auto-rollback for ${releaseAttemptState.tag}: publish status is unknown; manual triage required to avoid rollbacking a published version.`
+          )
+        } else {
+          rollbackFailedRelease(releaseAttemptState.defaultBranch, releaseAttemptState.tag)
+        }
+      } else {
+        console.error(`Skipping auto-rollback for ${releaseAttemptState.tag}: failure is not a release-workflow failure.`)
+      }
+    } catch (rollbackError) {
+      const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+      console.error(`Automatic rollback failed: ${rollbackMessage}`)
+    }
+  }
   console.error(`Release failed: ${message}`)
   process.exit(1)
 }
