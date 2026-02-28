@@ -182,6 +182,9 @@ jobs:
           name: npm-release-tarball
           path: release-artifact
       - name: Publish to npm (Trusted Publishing, idempotent)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           PKG_NAME="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name")"
@@ -192,13 +195,56 @@ jobs:
           fi
           TARBALL="$(ls -1 ./release-artifact/*.tgz | head -n 1)"
           test -f "${TARBALL}"
-          # Ensure trusted publishing uses OIDC instead of any stale token/userconfig.
+          ORIGINAL_NODE_AUTH_TOKEN="${NODE_AUTH_TOKEN:-}"
+          ORIGINAL_NPM_TOKEN="${NPM_TOKEN:-}"
+          OIDC_LOG="$(mktemp)"
+          TOKEN_LOG="$(mktemp)"
+
+          # Attempt OIDC trusted publishing first.
           if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "${NPM_CONFIG_USERCONFIG}" ]; then
             rm -f "${NPM_CONFIG_USERCONFIG}"
           fi
           rm -f "${HOME}/.npmrc" || true
           unset NODE_AUTH_TOKEN NPM_TOKEN NPM_CONFIG_USERCONFIG || true
-          npm publish "${TARBALL}" --access public --provenance
+          set +e
+          npm publish "${TARBALL}" --access public --provenance >"${OIDC_LOG}" 2>&1
+          OIDC_STATUS=$?
+          set -e
+          if [ ${OIDC_STATUS} -eq 0 ]; then
+            cat "${OIDC_LOG}"
+            rm -f "${OIDC_LOG}" "${TOKEN_LOG}"
+            exit 0
+          fi
+
+          # If OIDC isn't configured for this package, retry once with token auth when available.
+          if grep -Eiq "ENEEDAUTH|need auth" "${OIDC_LOG}"; then
+            FALLBACK_TOKEN="${ORIGINAL_NODE_AUTH_TOKEN:-${ORIGINAL_NPM_TOKEN:-}}"
+            if [ -n "${FALLBACK_TOKEN}" ]; then
+              echo "OIDC publish unavailable; retrying with token auth."
+              export NODE_AUTH_TOKEN="${FALLBACK_TOKEN}"
+              export NPM_CONFIG_USERCONFIG="${RUNNER_TEMP:-/tmp}/npmrc.publish"
+              umask 077
+              printf "//registry.npmjs.org/:_authToken=%s\n" "${NODE_AUTH_TOKEN}" > "${NPM_CONFIG_USERCONFIG}"
+              chmod 600 "${NPM_CONFIG_USERCONFIG}"
+              set +e
+              npm publish "${TARBALL}" --access public --provenance >"${TOKEN_LOG}" 2>&1
+              TOKEN_STATUS=$?
+              set -e
+              if [ ${TOKEN_STATUS} -eq 0 ]; then
+                cat "${TOKEN_LOG}"
+                rm -f "${OIDC_LOG}" "${TOKEN_LOG}" "${NPM_CONFIG_USERCONFIG}"
+                exit 0
+              fi
+              cat "${TOKEN_LOG}"
+              rm -f "${OIDC_LOG}" "${TOKEN_LOG}" "${NPM_CONFIG_USERCONFIG}"
+              exit ${TOKEN_STATUS}
+            fi
+            echo "OIDC publish failed and no token fallback is configured."
+          fi
+
+          cat "${OIDC_LOG}"
+          rm -f "${OIDC_LOG}" "${TOKEN_LOG}"
+          exit ${OIDC_STATUS}
 
   release:
     name: Create GitHub Release
