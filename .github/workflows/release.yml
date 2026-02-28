@@ -193,7 +193,9 @@ jobs:
           fi
           TARBALL="$(ls -1 ./release-artifact/*.tgz | head -n 1)"
           test -f "${TARBALL}"
-          npm publish "${TARBALL}"
+          # Ensure trusted publishing uses OIDC instead of any stale token from env secrets.
+          unset NODE_AUTH_TOKEN NPM_TOKEN || true
+          npm publish "${TARBALL}" --access public --provenance
 
   release:
     name: Create GitHub Release
