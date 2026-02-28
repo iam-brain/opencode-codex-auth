@@ -34,8 +34,12 @@ jobs:
             npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
             *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
           esac
-          corepack enable
-          corepack prepare "npm@${NPM_VERSION}" --activate
+          if corepack enable && corepack prepare "npm@${NPM_VERSION}" --activate; then
+            :
+          else
+            echo "corepack activation failed, falling back to npm install -g"
+            npm install -g "npm@${NPM_VERSION}"
+          fi
           test "$(npm --version)" = "${NPM_VERSION}"
       - name: Ensure tagged commit matches default branch tip
         env:
@@ -149,8 +153,12 @@ jobs:
             npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
             *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
           esac
-          corepack enable
-          corepack prepare "npm@${NPM_VERSION}" --activate
+          if corepack enable && corepack prepare "npm@${NPM_VERSION}" --activate; then
+            :
+          else
+            echo "corepack activation failed, falling back to npm install -g"
+            npm install -g "npm@${NPM_VERSION}"
+          fi
           test "$(npm --version)" = "${NPM_VERSION}"
       - name: Download release artifact
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4

@@ -36,8 +36,12 @@ jobs:
             npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
             *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
           esac
-          corepack enable
-          corepack prepare "npm@${NPM_VERSION}" --activate
+          if corepack enable && corepack prepare "npm@${NPM_VERSION}" --activate; then
+            :
+          else
+            echo "corepack activation failed, falling back to npm install -g"
+            npm install -g "npm@${NPM_VERSION}"
+          fi
           test "$(npm --version)" = "${NPM_VERSION}"
 
       - name: Install dependencies
@@ -70,8 +74,12 @@ jobs:
             npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
             *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
           esac
-          corepack enable
-          corepack prepare "npm@${NPM_VERSION}" --activate
+          if corepack enable && corepack prepare "npm@${NPM_VERSION}" --activate; then
+            :
+          else
+            echo "corepack activation failed, falling back to npm install -g"
+            npm install -g "npm@${NPM_VERSION}"
+          fi
           test "$(npm --version)" = "${NPM_VERSION}"
 
       - name: Install dependencies
@@ -108,8 +116,12 @@ jobs:
             npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
             *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
           esac
-          corepack enable
-          corepack prepare "npm@${NPM_VERSION}" --activate
+          if corepack enable && corepack prepare "npm@${NPM_VERSION}" --activate; then
+            :
+          else
+            echo "corepack activation failed, falling back to npm install -g"
+            npm install -g "npm@${NPM_VERSION}"
+          fi
           test "$(npm --version)" = "${NPM_VERSION}"
 
       - name: Install dependencies
@@ -149,8 +161,12 @@ jobs:
             npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
             *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
           esac
-          corepack enable
-          corepack prepare "npm@${NPM_VERSION}" --activate
+          if corepack enable && corepack prepare "npm@${NPM_VERSION}" --activate; then
+            :
+          else
+            echo "corepack activation failed, falling back to npm install -g"
+            npm install -g "npm@${NPM_VERSION}"
+          fi
           test "$(npm --version)" = "${NPM_VERSION}"
 
       - name: Install dependencies
@@ -183,8 +199,12 @@ jobs:
             npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
             *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
           esac
-          corepack enable
-          corepack prepare "npm@${NPM_VERSION}" --activate
+          if corepack enable && corepack prepare "npm@${NPM_VERSION}" --activate; then
+            :
+          else
+            echo "corepack activation failed, falling back to npm install -g"
+            npm install -g "npm@${NPM_VERSION}"
+          fi
           test "$(npm --version)" = "${NPM_VERSION}"
 
       - name: Install dependencies
