@@ -34,10 +34,10 @@ jobs:
             npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
             *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
           esac
-          if corepack enable && corepack prepare "npm@${NPM_VERSION}" --activate; then
-            :
-          else
-            echo "corepack activation failed, falling back to npm install -g"
+          corepack enable || true
+          corepack prepare "npm@${NPM_VERSION}" --activate || true
+          if [ "$(npm --version)" != "${NPM_VERSION}" ]; then
+            echo "npm version mismatch after corepack, falling back to npm install -g"
             npm install -g "npm@${NPM_VERSION}"
           fi
           test "$(npm --version)" = "${NPM_VERSION}"
@@ -153,10 +153,10 @@ jobs:
             npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
             *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
           esac
-          if corepack enable && corepack prepare "npm@${NPM_VERSION}" --activate; then
-            :
-          else
-            echo "corepack activation failed, falling back to npm install -g"
+          corepack enable || true
+          corepack prepare "npm@${NPM_VERSION}" --activate || true
+          if [ "$(npm --version)" != "${NPM_VERSION}" ]; then
+            echo "npm version mismatch after corepack, falling back to npm install -g"
             npm install -g "npm@${NPM_VERSION}"
           fi
           test "$(npm --version)" = "${NPM_VERSION}"
