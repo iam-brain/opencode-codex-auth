@@ -81,7 +81,24 @@ jobs:
           process.stdout.write(String(latest))
           NODE
           )"
-          DETAILS_JSON="$(gh run view "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --json status,conclusion,jobs,url)"
+
+          DETAILS_JSON=""
+          STATUS=""
+          CONCLUSION=""
+          for attempt in $(seq 1 120); do
+            DETAILS_JSON="$(gh run view "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --json status,conclusion,jobs,url)"
+            STATUS="$(node -e 'const details = JSON.parse(process.argv[1] || "{}"); process.stdout.write(String(details.status ?? ""))' "${DETAILS_JSON}")"
+            CONCLUSION="$(node -e 'const details = JSON.parse(process.argv[1] || "{}"); process.stdout.write(String(details.conclusion ?? ""))' "${DETAILS_JSON}")"
+            if [ "${STATUS}" = "completed" ]; then
+              break
+            fi
+            sleep 10
+          done
+          if [ "${STATUS}" != "completed" ]; then
+            echo "Timed out waiting for ci.yml run ${RUN_ID} to complete."
+            exit 1
+          fi
+
           export DETAILS_JSON
           node <<'NODE'
           const details = JSON.parse(process.env.DETAILS_JSON || "{}")
