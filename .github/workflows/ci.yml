@@ -90,7 +90,7 @@ jobs:
         run: |
           TARBALL="$(npm pack --silent)"
           test -f "${TARBALL}"
-          npx --yes --package "./${TARBALL}" opencode-codex-auth --help
+          npm exec --yes --package "./${TARBALL}" -- opencode-codex-auth --help
 
   package-smoke-windows:
     name: Package Smoke Test (Windows)
@@ -132,7 +132,7 @@ jobs:
         run: |
           TARBALL="$(npm pack --silent)"
           test -f "${TARBALL}"
-          npx --yes --package "./${TARBALL}" opencode-codex-auth --help
+          npm exec --yes --package "./${TARBALL}" -- opencode-codex-auth --help
 
   windows-runtime-hardening:
     name: Windows Runtime Hardening (Node.js ${{ matrix.node-version }})

@@ -213,7 +213,9 @@ describe("auth storage", () => {
   it("imports native OpenCode provider auth marker only through explicit transfer", async () => {
     const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
+    const prevXdgData = process.env.XDG_DATA_HOME
     process.env.HOME = root
+    process.env.XDG_DATA_HOME = path.join(root, ".local", "share")
 
     try {
       const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
@@ -240,13 +242,20 @@ describe("auth storage", () => {
       } else {
         process.env.HOME = prevHome
       }
+      if (prevXdgData === undefined) {
+        delete process.env.XDG_DATA_HOME
+      } else {
+        process.env.XDG_DATA_HOME = prevXdgData
+      }
     }
   })
 
   it("continues legacy transfer when one legacy source is corrupt", async () => {
     const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
+    const prevXdgData = process.env.XDG_DATA_HOME
     process.env.HOME = root
+    process.env.XDG_DATA_HOME = path.join(root, ".local", "share")
 
     try {
       const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
@@ -275,13 +284,20 @@ describe("auth storage", () => {
       } else {
         process.env.HOME = prevHome
       }
+      if (prevXdgData === undefined) {
+        delete process.env.XDG_DATA_HOME
+      } else {
+        process.env.XDG_DATA_HOME = prevXdgData
+      }
     }
   })
 
   it("dedupes legacy transfer records when strict identity appears after refresh-only import", async () => {
     const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
+    const prevXdgData = process.env.XDG_DATA_HOME
     process.env.HOME = root
+    process.env.XDG_DATA_HOME = path.join(root, ".local", "share")
 
     try {
       const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
@@ -346,6 +362,11 @@ describe("auth storage", () => {
         delete process.env.HOME
       } else {
         process.env.HOME = prevHome
+      }
+      if (prevXdgData === undefined) {
+        delete process.env.XDG_DATA_HOME
+      } else {
+        process.env.XDG_DATA_HOME = prevXdgData
       }
     }
   })
@@ -435,7 +456,9 @@ describe("auth storage", () => {
   it("keeps codex-accounts.json OpenAI-only when transfering from provider auth.json", async () => {
     const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
+    const prevXdgData = process.env.XDG_DATA_HOME
     process.env.HOME = root
+    process.env.XDG_DATA_HOME = path.join(root, ".local", "share")
 
     try {
       const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
@@ -492,6 +515,11 @@ describe("auth storage", () => {
       } else {
         process.env.HOME = prevHome
       }
+      if (prevXdgData === undefined) {
+        delete process.env.XDG_DATA_HOME
+      } else {
+        process.env.XDG_DATA_HOME = prevXdgData
+      }
     }
   })
 
@@ -527,7 +555,9 @@ describe("auth storage", () => {
   it("offers legacy transfer when codex-accounts.json is missing and native auth.json exists", async () => {
     const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
+    const prevXdgData = process.env.XDG_DATA_HOME
     process.env.HOME = root
+    process.env.XDG_DATA_HOME = path.join(root, ".local", "share")
 
     try {
       const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
@@ -547,6 +577,11 @@ describe("auth storage", () => {
         delete process.env.HOME
       } else {
         process.env.HOME = prevHome
+      }
+      if (prevXdgData === undefined) {
+        delete process.env.XDG_DATA_HOME
+      } else {
+        process.env.XDG_DATA_HOME = prevXdgData
       }
     }
   })
