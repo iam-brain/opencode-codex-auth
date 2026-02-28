@@ -24,7 +24,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20.x"
-          registry-url: "https://registry.npmjs.org"
           cache: npm
       - name: Pin npm version from packageManager
         run: |
@@ -193,8 +192,12 @@ jobs:
           fi
           TARBALL="$(ls -1 ./release-artifact/*.tgz | head -n 1)"
           test -f "${TARBALL}"
-          # Ensure trusted publishing uses OIDC instead of any stale token from env secrets.
-          unset NODE_AUTH_TOKEN NPM_TOKEN || true
+          # Ensure trusted publishing uses OIDC instead of any stale token/userconfig.
+          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "${NPM_CONFIG_USERCONFIG}" ]; then
+            rm -f "${NPM_CONFIG_USERCONFIG}"
+          fi
+          rm -f "${HOME}/.npmrc" || true
+          unset NODE_AUTH_TOKEN NPM_TOKEN NPM_CONFIG_USERCONFIG || true
           npm publish "${TARBALL}" --access public --provenance
 
   release:
