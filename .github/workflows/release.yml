@@ -191,7 +191,7 @@ jobs:
             echo "Package already published: ${PKG_NAME}@${PKG_VERSION}. Skipping npm publish."
             exit 0
           fi
-          TARBALL="$(ls -1 release-artifact/*.tgz | head -n 1)"
+          TARBALL="$(ls -1 ./release-artifact/*.tgz | head -n 1)"
           test -f "${TARBALL}"
           npm publish "${TARBALL}"
 
