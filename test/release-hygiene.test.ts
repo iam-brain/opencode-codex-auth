@@ -199,8 +199,9 @@ describe("package publish surface", () => {
     expect(workflow).toContain("Package Smoke Test (Windows)")
     expect(workflow).toContain("npm pack --silent")
     expect(workflow).toContain("test -f")
-    expect(workflow).toContain("npm exec --yes --package")
-    expect(workflow).toContain("opencode-codex-auth --help")
+    expect(workflow).toContain("tar -xzf")
+    expect(workflow).toContain("dist/bin/opencode-codex-auth.js")
+    expect(workflow).toContain("node")
   })
 
   it("vitest config isolates HOME/XDG test environment", () => {
