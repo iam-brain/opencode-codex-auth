@@ -47,7 +47,7 @@ describe("release hygiene", () => {
     expect(pkg.scripts?.typecheck).toContain("npm run patch:plugin-dts")
     expect(pkg.scripts?.["typecheck:test"]).toContain("npm run patch:plugin-dts")
     expect(pkg.scripts?.prepack).toBe("npm run build")
-    expect(pkg.scripts?.build).toBe("npm run clean:dist && tsc")
+    expect(pkg.scripts?.build).toBe("npm run patch:plugin-dts && npm run clean:dist && tsc")
     expect(pkg.scripts?.["clean:dist"]).toBe("node scripts/clean-dist.js")
     expect(existsSync(join(process.cwd(), "scripts", "clean-dist.js"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "check-esm-import-specifiers.mjs"))).toBe(true)

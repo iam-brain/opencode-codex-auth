@@ -36,7 +36,7 @@
   },
   "scripts": {
     "clean:dist": "node scripts/clean-dist.js",
-    "build": "npm run clean:dist && tsc",
+    "build": "npm run patch:plugin-dts && npm run clean:dist && tsc",
     "patch:plugin-dts": "node scripts/patch-opencode-plugin-dts.js",
     "typecheck": "npm run patch:plugin-dts && tsc --noEmit",
     "typecheck:test": "npm run patch:plugin-dts && tsc --noEmit -p tsconfig.test.json",
