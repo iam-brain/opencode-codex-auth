@@ -52,7 +52,8 @@ describe("request snapshots", () => {
         Authorization: "Bearer super-secret-token",
         "Content-Type": "application/x-www-form-urlencoded"
       },
-      body: "access_token=abc123&refresh_token=def456&idToken=ghi789&prompt_cache_key=ses_snap_2"
+      body:
+        "access_token=abc123&refresh_token=def456&idToken=ghi789&prompt_cache_key=ses_snap_2&session_id=ses_2&chatgpt_account_id=acc_2"
     })
 
     await snapshots.captureRequest("outbound-attempt", request, { attempt: 2 })
@@ -64,7 +65,7 @@ describe("request snapshots", () => {
     }
 
     expect(payload.body).toBe(
-      "access_token=[redacted]&refresh_token=[redacted]&idToken=[redacted]&prompt_cache_key=[redacted]"
+      "access_token=[redacted]&refresh_token=[redacted]&idToken=[redacted]&prompt_cache_key=[redacted]&session_id=[redacted]&chatgpt_account_id=[redacted]"
     )
   })
 
@@ -84,7 +85,9 @@ describe("request snapshots", () => {
         prompt_cache_key: "ses_snap_1",
         access_token: "should-redact",
         accessToken: "should-redact-too",
-        refreshToken: "refresh-secret"
+        refreshToken: "refresh-secret",
+        session_id: "ses_snap_1",
+        account_id: "acc_123"
       })
     })
 
@@ -108,6 +111,8 @@ describe("request snapshots", () => {
     expect(payload.body.access_token).toBe("[redacted]")
     expect(payload.body.accessToken).toBe("[redacted]")
     expect(payload.body.refreshToken).toBe("[redacted]")
+    expect(payload.body.session_id).toBe("[redacted]")
+    expect(payload.body.account_id).toBe("[redacted]")
 
     const liveHeadersRaw = await fs.readFile(path.join(root, "live-headers.jsonl"), "utf8")
     const liveHeaders = liveHeadersRaw
@@ -123,8 +128,10 @@ describe("request snapshots", () => {
 
     const requestMode = (await fs.stat(filePath)).mode & 0o777
     const liveHeadersMode = (await fs.stat(path.join(root, "live-headers.jsonl"))).mode & 0o777
-    expect(requestMode).toBe(0o600)
-    expect(liveHeadersMode).toBe(0o600)
+    if (process.platform !== "win32") {
+      expect(requestMode).toBe(0o600)
+      expect(liveHeadersMode).toBe(0o600)
+    }
   })
 
   it("redacts session and account identifier headers", async () => {
@@ -153,6 +160,34 @@ describe("request snapshots", () => {
     expect(payload.headers.authorization).toBe("Bearer [redacted]")
     expect(payload.headers["chatgpt-account-id"]).toBe("[redacted]")
     expect(payload.headers.session_id).toBe("[redacted]")
+  })
+
+  it("redacts token-like custom header names", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root, captureBodies: false })
+
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: {
+        "x-auth-token": "abc123",
+        "x-session-token": "ses_secret",
+        "x-csrf-token": "csrf_secret",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex" })
+    })
+
+    await snapshots.captureRequest("outbound-attempt", request)
+
+    const files = await fs.readdir(root)
+    const filePath = path.join(root, files.find((file) => file.includes("request-1-outbound-attempt"))!)
+    const payload = JSON.parse(await fs.readFile(filePath, "utf8")) as {
+      headers: Record<string, string>
+    }
+
+    expect(payload.headers["x-auth-token"]).toBe("[redacted]")
+    expect(payload.headers["x-session-token"]).toBe("[redacted]")
+    expect(payload.headers["x-csrf-token"]).toBe("[redacted]")
   })
 
   it("redacts sensitive metadata fields and URL query values", async () => {
@@ -330,6 +365,23 @@ describe("request snapshots", () => {
 
     expect(payload.url).toContain("apiKey=%5Bredacted%5D")
     expect(payload.url).toContain("clientSecret=%5Bredacted%5D")
+  })
+
+  it("sanitizes stage names to keep snapshot writes within snapshot root", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-snapshots-"))
+    const snapshots = createRequestSnapshots({ enabled: true, dir: root, captureBodies: false })
+
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5.3-codex" })
+    })
+
+    await snapshots.captureRequest("../outside/../../attempt", request)
+
+    const files = await fs.readdir(root)
+    expect(files.some((file) => file.includes(".."))).toBe(false)
+    expect(files.some((file) => file.includes("request-1-outside-attempt"))).toBe(true)
   })
 
   it("skips writing files when disabled", async () => {

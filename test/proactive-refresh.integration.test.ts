@@ -114,6 +114,62 @@ describe("proactive refresh", () => {
     expect(refresh).toHaveBeenCalledWith("rz")
   })
 
+  it("applies cooldown when refreshed token is still due to avoid tight loops", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-refresh-"))
+    const p = path.join(dir, "auth.json")
+
+    await saveAuthStorage(p, (cur) => ({
+      ...cur,
+      openai: {
+        type: "oauth",
+        strategy: "round_robin",
+        accounts: [
+          {
+            identityKey: "loop",
+            enabled: true,
+            refresh: "rloop",
+            access: "oldLoop",
+            expires: 0,
+            accountId: "6",
+            email: "loop@example.com",
+            plan: "plus"
+          }
+        ]
+      }
+    }))
+
+    let calls = 0
+    const refresh = vi.fn(async () => {
+      calls += 1
+      if (calls > 1) {
+        throw new Error("refresh called more than once")
+      }
+      return {
+        access: "newLoop",
+        refresh: "rloop2",
+        expires: 1_005
+      }
+    })
+
+    await runOneProactiveRefreshTick({
+      authPath: p,
+      now: () => 1_000,
+      bufferMs: 10_000,
+      refresh
+    })
+
+    const stored = await loadAuthStorage(p)
+    const openai = stored.openai
+    if (!openai || !("accounts" in openai)) throw new Error("missing")
+
+    const account = openai.accounts.find((a) => a.identityKey === "loop")
+    expect(account?.access).toBe("newLoop")
+    expect(account?.refresh).toBe("rloop2")
+    expect(account?.cooldownUntil).toBe(31_000)
+    expect(account?.refreshLeaseUntil).toBeUndefined()
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
   it("disables account when proactive refresh returns invalid_grant", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-refresh-"))
     const p = path.join(dir, "auth.json")

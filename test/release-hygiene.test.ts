@@ -7,10 +7,17 @@ const REQUIRED_RELEASE_RUNTIME_CI_JOBS = [
   "Verify on Node.js 20.x",
   "Verify on Node.js 22.x",
   "Package Smoke Test",
-  "Windows Runtime Hardening",
+  "Package Smoke Test (Windows)",
+  "Windows Runtime Hardening (Node.js 20.x)",
+  "Windows Runtime Hardening (Node.js 22.x)",
   "Security Audit"
 ]
-const REQUIRED_WORKFLOW_STATIC_JOB_NAMES = ["Package Smoke Test", "Windows Runtime Hardening", "Security Audit"]
+const REQUIRED_WORKFLOW_STATIC_JOB_NAMES = [
+  "Package Smoke Test",
+  "Package Smoke Test (Windows)",
+  "Windows Runtime Hardening (Node.js ${{ matrix.node-version }})",
+  "Security Audit"
+]
 
 describe("release hygiene", () => {
   it("package.json has verify script", () => {
@@ -20,7 +27,8 @@ describe("release hygiene", () => {
     const verifyOrder = [
       "npm run check:esm-imports",
       "npm run typecheck",
-      "npm test",
+      "npm run typecheck:test",
+      "npm run test:coverage",
       "npm run build",
       "npm run check:dist-esm-imports",
       "npm run smoke:cli:dist"
@@ -34,12 +42,22 @@ describe("release hygiene", () => {
     expect(pkg.scripts?.["check:esm-imports"]).toBe("node scripts/check-esm-import-specifiers.mjs")
     expect(pkg.scripts?.["check:dist-esm-imports"]).toBe("node scripts/check-dist-esm-import-specifiers.mjs")
     expect(pkg.scripts?.["smoke:cli:dist"]).toBe("node ./dist/bin/opencode-codex-auth.js --help")
+    expect(pkg.scripts?.["test:coverage"]).toBe("vitest run --coverage.enabled true --coverage.provider=v8")
+    expect(pkg.scripts?.["patch:plugin-dts"]).toBe("node scripts/patch-opencode-plugin-dts.js")
+    expect(pkg.scripts?.typecheck).toContain("npm run patch:plugin-dts")
+    expect(pkg.scripts?.["typecheck:test"]).toContain("npm run patch:plugin-dts")
     expect(pkg.scripts?.prepack).toBe("npm run build")
     expect(pkg.scripts?.build).toBe("npm run clean:dist && tsc")
     expect(pkg.scripts?.["clean:dist"]).toBe("node scripts/clean-dist.js")
     expect(existsSync(join(process.cwd(), "scripts", "clean-dist.js"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "check-esm-import-specifiers.mjs"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "check-dist-esm-import-specifiers.mjs"))).toBe(true)
+  })
+
+  it("declares Node engine range aligned with CI matrix", () => {
+    const pkgPath = join(process.cwd(), "package.json")
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
+    expect(pkg.engines?.node).toBe(">=20 <23")
   })
 
   it("includes license and changelog files", () => {
@@ -57,12 +75,17 @@ describe("release hygiene", () => {
     expect(existsSync(join(process.cwd(), "scripts", "release.js"))).toBe(true)
   })
 
-  it("release script enforces remote CI gate on main HEAD", () => {
+  it("release script enforces remote CI gate on default branch HEAD", () => {
     const releaseScriptPath = join(process.cwd(), "scripts", "release.js")
     const releaseScript = readFileSync(releaseScriptPath, "utf-8")
-    expect(releaseScript).toMatch(/assertHeadMatchesOriginMain\s*\(/)
+    expect(releaseScript).toMatch(/resolveDefaultBranch\s*\(/)
+    expect(releaseScript).toMatch(/assertHeadMatchesOriginDefaultBranch\s*\(/)
+    expect(releaseScript).toMatch(/assertDefaultBranch\s*\(/)
     expect(releaseScript).toMatch(/assertRemoteCiGreenForHead\s*\(/)
     expect(releaseScript).toMatch(/RELEASE_SKIP_REMOTE_CI_GATE/)
+    expect(releaseScript).toContain('"ls-remote", "--symref", "origin", "HEAD"')
+    expect(releaseScript).toContain("const maxAttempts = 240")
+    expect(releaseScript).toContain("release workflow may still be running")
     for (const job of REQUIRED_RELEASE_RUNTIME_CI_JOBS) {
       expect(releaseScript).toContain(job)
     }
@@ -77,6 +100,70 @@ describe("release hygiene", () => {
       expect(workflow).toContain(job)
     }
   })
+
+  it("release workflow validates tag/package version parity and idempotent publish", () => {
+    const workflowPath = join(process.cwd(), ".github", "workflows", "release.yml")
+    const workflow = readFileSync(workflowPath, "utf-8")
+    expect(workflow).toContain("Ensure tagged commit matches default branch tip")
+    expect(workflow).toContain('test "${TAGGED_SHA}" = "${BRANCH_HEAD_SHA}"')
+    expect(workflow).toContain("Ensure required CI checks succeeded for tagged commit")
+    expect(workflow).toContain("gh run list")
+    expect(workflow).toContain("gh run view")
+    expect(workflow).toContain("Ensure tag matches package version")
+    expect(workflow).toContain('TAG_VERSION="${GITHUB_REF_NAME#v}"')
+    expect(workflow).toContain('if npm view "${PKG_NAME}@${PKG_VERSION}" version >/dev/null 2>&1; then')
+    expect(workflow).toContain("Package already published")
+  })
+
+  it("release workflow avoids npm ci under id-token permissions", () => {
+    const workflowPath = join(process.cwd(), ".github", "workflows", "release.yml")
+    const workflow = readFileSync(workflowPath, "utf-8")
+    const publishJob = workflow
+      .split(/\n/)
+      .slice(workflow.split(/\n/).findIndex((line) => line.includes("npm-publish:")))
+      .join("\n")
+    expect(publishJob).toContain("id-token: write")
+    expect(publishJob).not.toContain("run: npm ci")
+  })
+
+  it("all workflows pin external actions by commit SHA", () => {
+    const workflowsDir = join(process.cwd(), ".github", "workflows")
+    const files = ["ci.yml", "dependency-review.yml", "release.yml", "secret-scan.yml", "upstream-watch.yml"]
+
+    for (const file of files) {
+      const content = readFileSync(join(workflowsDir, file), "utf-8")
+      const uses = [...content.matchAll(/uses:\s*([^\s#]+)/g)].map((match) => match[1])
+      for (const actionRef of uses) {
+        if (!actionRef) continue
+        if (actionRef.startsWith("./")) continue
+        if (actionRef.startsWith("docker://")) continue
+        const [action, ref] = actionRef.split("@")
+        expect(action.length).toBeGreaterThan(0)
+        expect(ref).toMatch(/^[a-f0-9]{40}$/i)
+      }
+    }
+  })
+
+  it("all workflows define timeout-minutes for each job", () => {
+    const workflowsDir = join(process.cwd(), ".github", "workflows")
+    const files = ["ci.yml", "dependency-review.yml", "release.yml", "secret-scan.yml", "upstream-watch.yml"]
+
+    for (const file of files) {
+      const content = readFileSync(join(workflowsDir, file), "utf-8")
+      const runsOnCount = (content.match(/^\s{4}runs-on:/gm) ?? []).length
+      const timeoutCount = (content.match(/^\s{4}timeout-minutes:/gm) ?? []).length
+      expect(timeoutCount).toBe(runsOnCount)
+    }
+  })
+
+  it("upstream-watch workflow distinguishes drift from operational failures", () => {
+    const workflowPath = join(process.cwd(), ".github", "workflows", "upstream-watch.yml")
+    const workflow = readFileSync(workflowPath, "utf-8")
+    expect(workflow).toContain('echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"')
+    expect(workflow).toContain('if [ "${EXIT_CODE}" -eq 2 ]; then')
+    expect(workflow).toContain("if: steps.check.outputs.exit_code == '1'")
+    expect(workflow).toContain("if: steps.check.outputs.exit_code == '2'")
+  })
 })
 
 describe("package publish surface", () => {
@@ -84,7 +171,9 @@ describe("package publish surface", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
     expect(Array.isArray(pkg.files)).toBe(true)
-    expect(pkg.files).toContain("dist/")
+    expect(pkg.files).toContain("dist/bin/")
+    expect(pkg.files).toContain("dist/lib/")
+    expect(pkg.files).not.toContain("dist/")
     expect(pkg.files).toContain("README.md")
     expect(pkg.files).toContain("LICENSE")
   })
@@ -95,10 +184,19 @@ describe("package publish surface", () => {
     expect(workflow).toContain("run: npm run verify")
   })
 
+  it("ci security audit includes dev dependencies", () => {
+    const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
+    const workflow = readFileSync(workflowPath, "utf-8")
+    expect(workflow).toContain("Audit dependencies (including dev toolchain)")
+    expect(workflow).toContain("npm audit --audit-level=high")
+    expect(workflow).not.toContain("npm audit --omit=dev")
+  })
+
   it("ci package smoke executes packed CLI tarball", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
     expect(workflow).toContain("Pack and execute CLI tarball")
+    expect(workflow).toContain("Package Smoke Test (Windows)")
     expect(workflow).toContain("npm pack --silent")
     expect(workflow).toContain("test -f")
     expect(workflow).toContain("npx --yes --package")

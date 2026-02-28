@@ -4,6 +4,8 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { CodexAuthPlugin } from "../../lib/codex-native"
+import { refreshCachedCodexPrompts } from "../../lib/codex-prompts-cache"
+import { setCodexPlanModeInstructions } from "../../lib/codex-native/collaboration"
 import { defaultAuthPath } from "../../lib/paths"
 
 type InVivoProbeInput = {
@@ -111,11 +113,30 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
   let outboundUrl: string | undefined
   let outboundOriginator: string | undefined
   let outboundUserAgent: string | undefined
+  const mockedPlanPrompt = [
+    "# Plan Mode (Conversational)",
+    "",
+    "You may explore and execute **non-mutating** actions that improve the plan.",
+    "Before asking the user any question, perform at least one targeted non-mutating exploration pass.",
+    "Use the `request_user_input` tool only for decisions that materially change the plan."
+  ].join("\n")
+  const mockedOrchestratorPrompt = [
+    "# Sub-agents",
+    "",
+    "When subagents are available, delegate independent work in parallel, coordinate with wait/send_input, and synthesize."
+  ].join("\n")
 
   const originalFetch = globalThis.fetch
   globalThis.fetch = async (requestInput: RequestInfo | URL, init?: RequestInit) => {
     const request = requestInput instanceof Request ? requestInput : new Request(requestInput, init)
     const url = request.url
+
+    if (url.includes("/templates/collaboration_mode/plan.md")) {
+      return new Response(mockedPlanPrompt, { status: 200, headers: { "content-type": "text/plain" } })
+    }
+    if (url.includes("/templates/agents/orchestrator.md")) {
+      return new Response(mockedOrchestratorPrompt, { status: 200, headers: { "content-type": "text/plain" } })
+    }
 
     if (url.includes("/backend-api/codex/models")) {
       return new Response(
@@ -160,6 +181,9 @@ export async function runCodexInVivoInstructionProbe(input: InVivoProbeInput): P
   }
 
   try {
+    const prompts = await refreshCachedCodexPrompts({ forceRefresh: true })
+    setCodexPlanModeInstructions(prompts.plan)
+
     const hooks = await CodexAuthPlugin({} as never, {
       spoofMode: "codex",
       behaviorSettings: { global: { personality: input.personalityKey } },

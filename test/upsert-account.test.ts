@@ -76,6 +76,47 @@ describe("upsertAccount", () => {
     expect(stored.access).toBe("new-access")
   })
 
+  it("inserts a new account when refresh fallback is ambiguous", () => {
+    const openai: OpenAIMultiOauthAuth = {
+      type: "oauth",
+      accounts: [
+        {
+          identityKey: "acc_1|one@example.com|plus",
+          enabled: true,
+          refresh: "shared-refresh",
+          access: "old-access-1",
+          expires: 1,
+          accountId: "acc_1",
+          email: "one@example.com",
+          plan: "plus"
+        },
+        {
+          identityKey: "acc_2|two@example.com|plus",
+          enabled: true,
+          refresh: "shared-refresh",
+          access: "old-access-2",
+          expires: 1,
+          accountId: "acc_2",
+          email: "two@example.com",
+          plan: "plus"
+        }
+      ],
+      activeIdentityKey: "acc_1|one@example.com|plus"
+    }
+
+    const stored = upsertAccount(openai, {
+      enabled: true,
+      refresh: "shared-refresh",
+      access: "new-access",
+      expires: 2
+    })
+
+    expect(openai.accounts).toHaveLength(3)
+    expect(stored).not.toBe(openai.accounts[0])
+    expect(stored).not.toBe(openai.accounts[1])
+    expect(stored.access).toBe("new-access")
+  })
+
   it("does not match by accountId alone when strict identity and refresh backup both miss", () => {
     const openai: OpenAIMultiOauthAuth = {
       type: "oauth",

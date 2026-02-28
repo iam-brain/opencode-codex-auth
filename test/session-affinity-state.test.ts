@@ -34,10 +34,9 @@ describe("session-affinity runtime state", () => {
 
     expect(defaultSessionAffinityPath).toHaveBeenCalledWith(env)
     runtime.persistSessionAffinityState()
-    await Promise.resolve()
-    await Promise.resolve()
-
-    expect(saveSessionAffinity).toHaveBeenCalledWith(expect.any(Function), "/tmp/custom-session-affinity.json")
+    await vi.waitFor(() => {
+      expect(saveSessionAffinity).toHaveBeenCalledWith(expect.any(Function), "/tmp/custom-session-affinity.json")
+    })
   })
 
   it("logs when session-affinity persistence fails", async () => {
@@ -76,11 +75,11 @@ describe("session-affinity runtime state", () => {
     })
 
     runtime.persistSessionAffinityState()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    expect(log.debug).toHaveBeenCalledWith(
-      "session affinity persistence failed",
-      expect.objectContaining({ error: "disk write failed" })
-    )
+    await vi.waitFor(() => {
+      expect(log.debug).toHaveBeenCalledWith(
+        "session affinity persistence failed",
+        expect.objectContaining({ error: "disk write failed" })
+      )
+    })
   })
 })

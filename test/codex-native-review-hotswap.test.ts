@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { CodexAuthPlugin } from "../lib/codex-native"
 
 describe("codex-native review hotswap", () => {
-  it("rewrites review subtask agent to Codex Review for OpenAI provider models", async () => {
+  it("preserves review subtask agent for OpenAI provider models", async () => {
     const hooks = await CodexAuthPlugin({} as never)
     const chatMessage = hooks["chat.message"]
     expect(chatMessage).toBeTypeOf("function")
@@ -14,11 +14,11 @@ describe("codex-native review hotswap", () => {
       model: { providerID: "openai", modelID: "gpt-5.3-codex" }
     } as unknown as Parameters<NonNullable<typeof chatMessage>>[0]
 
-    const output = {
+    const output: any = {
       message: {
         id: "msg_review_swap",
         sessionID: "ses_review_swap_openai",
-        role: "user",
+        role: "user" as const,
         time: { created: Date.now() },
         agent: "build",
         model: { providerID: "openai", modelID: "gpt-5.3-codex" }
@@ -39,7 +39,7 @@ describe("codex-native review hotswap", () => {
     }
 
     await chatMessage?.(input, output)
-    expect((output.parts[0] as { agent?: string }).agent).toBe("Codex Review")
+    expect((output.parts[0] as { agent?: string }).agent).toBe("general")
   })
 
   it("does not rewrite non-review subtasks", async () => {
@@ -53,11 +53,11 @@ describe("codex-native review hotswap", () => {
       model: { providerID: "openai", modelID: "gpt-5.3-codex" }
     } as unknown as Parameters<NonNullable<typeof chatMessage>>[0]
 
-    const output = {
+    const output: any = {
       message: {
         id: "msg_non_review_subtask",
         sessionID: "ses_non_review_subtask",
-        role: "user",
+        role: "user" as const,
         time: { created: Date.now() },
         agent: "build",
         model: { providerID: "openai", modelID: "gpt-5.3-codex" }
@@ -92,11 +92,11 @@ describe("codex-native review hotswap", () => {
       model: { providerID: "anthropic", modelID: "claude-sonnet-4-5" }
     } as unknown as Parameters<NonNullable<typeof chatMessage>>[0]
 
-    const output = {
+    const output: any = {
       message: {
         id: "msg_review_non_openai",
         sessionID: "ses_review_non_openai",
-        role: "user",
+        role: "user" as const,
         time: { created: Date.now() },
         agent: "build",
         model: { providerID: "anthropic", modelID: "claude-sonnet-4-5" }
@@ -120,7 +120,7 @@ describe("codex-native review hotswap", () => {
     expect((output.parts[0] as { agent?: string }).agent).toBe("general")
   })
 
-  it("uses session message lookup when model is absent", async () => {
+  it("preserves review subtask agent when model is absent and provider is inferred", async () => {
     const hooks = await CodexAuthPlugin({
       client: {
         session: {
@@ -145,11 +145,11 @@ describe("codex-native review hotswap", () => {
       agent: "build"
     } as unknown as Parameters<NonNullable<typeof chatMessage>>[0]
 
-    const output = {
+    const output: any = {
       message: {
         id: "msg_review_lookup_openai",
         sessionID: "ses_review_lookup_openai",
-        role: "user",
+        role: "user" as const,
         time: { created: Date.now() },
         agent: "build",
         model: { providerID: "openai", modelID: "gpt-5.3-codex" }
@@ -170,6 +170,6 @@ describe("codex-native review hotswap", () => {
     }
 
     await chatMessage?.(input, output)
-    expect((output.parts[0] as { agent?: string }).agent).toBe("Codex Review")
+    expect((output.parts[0] as { agent?: string }).agent).toBe("general")
   })
 })

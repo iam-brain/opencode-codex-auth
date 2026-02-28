@@ -10,7 +10,8 @@ describe("quarantine", () => {
   it("moves corrupt file to quarantine dir and sets 0600 best-effort", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-q-"))
     const src = path.join(dir, "auth.json")
-    await fs.writeFile(src, "{ not json", { mode: 0o600 })
+    const corruptContent = "{ not json"
+    await fs.writeFile(src, corruptContent, { mode: 0o600 })
 
     const result = await quarantineFile({
       sourcePath: src,
@@ -20,8 +21,13 @@ describe("quarantine", () => {
 
     expect(result.quarantinedPath).toContain("quarantine")
     expect(result.quarantinedPath).toContain("auth.json.123.quarantine.json")
-    await expect(fs.stat(result.quarantinedPath)).resolves.toBeTruthy()
-    await expect(fs.stat(src)).rejects.toThrow() // Source should be gone
+    const quarantinedStat = await fs.stat(result.quarantinedPath)
+    expect(quarantinedStat.isFile()).toBe(true)
+    if (process.platform !== "win32") {
+      expect(quarantinedStat.mode & 0o777).toBe(0o600)
+    }
+    expect(await fs.readFile(result.quarantinedPath, "utf8")).toBe(corruptContent)
+    await expect(fs.stat(src)).rejects.toMatchObject({ code: "ENOENT" }) // Source should be gone
   })
 
   it("enforces bounded retention (default 5)", async () => {

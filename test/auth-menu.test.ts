@@ -55,7 +55,8 @@ describe("auth menu helpers", () => {
     )
     expect(enabledRefresh?.disabled).not.toBe(true)
     expect(disabledRefresh?.disabled).toBe(true)
-    expect(enabledDeleteAll).toBeDefined()
+    expect(enabledDeleteAll?.label.toLowerCase()).toContain("delete")
+    expect(enabledDeleteAll?.disabled).not.toBe(true)
   })
 
   it("formats account auth types and includes both scopes for mixed accounts", () => {

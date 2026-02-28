@@ -65,7 +65,7 @@ async function loadPluginForAuth(authFile: MockAuthFile, pluginOpts?: PluginOpts
   const listOpenAIOAuthDomains = vi.fn((auth: MockAuthFile) =>
     (["native", "codex"] as const)
       .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(auth, mode) }))
-      .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+      .filter((entry): entry is any =>
         Boolean(entry.domain && Array.isArray(entry.domain.accounts))
       )
   )

@@ -24,6 +24,21 @@ describe("check-dist-esm-import-specifiers script", () => {
     expect(result.stderr).toMatch(/dist[\\/]index\.js:1 -> \.\/lib\/side-effect/)
   })
 
+  it("fails for semicolon-prefixed extensionless side-effect imports in dist output", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-dist-esm-guard-"))
+    await fs.mkdir(path.join(root, "dist", "lib"), { recursive: true })
+    await fs.writeFile(path.join(root, "dist", "index.js"), 'void 0;import "./lib/side-effect"\n', "utf8")
+    await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export {}\n", "utf8")
+
+    const result = spawnSync("node", [script], {
+      cwd: root,
+      encoding: "utf8"
+    })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toMatch(/dist[\\/]index\.js:1 -> \.\/lib\/side-effect/)
+  })
+
   it("passes when dist side-effect imports are fully specified", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-dist-esm-guard-"))
     await fs.mkdir(path.join(root, "dist", "lib"), { recursive: true })
@@ -135,5 +150,24 @@ describe("check-dist-esm-import-specifiers script", () => {
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain("fully specified")
+  })
+
+  it("parses interpolation braces and still reports later offenders in dist output", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-dist-esm-guard-"))
+    await fs.mkdir(path.join(root, "dist", "lib"), { recursive: true })
+    await fs.writeFile(
+      path.join(root, "dist", "index.js"),
+      'const value = `${"}"} and ${`{"nested"}`}`;\nimport "./lib/side-effect"\n',
+      "utf8"
+    )
+    await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export {}\n", "utf8")
+
+    const result = spawnSync("node", [script], {
+      cwd: root,
+      encoding: "utf8"
+    })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toMatch(/dist[\\/]index\.js:2 -> \.\/lib\/side-effect/)
   })
 })

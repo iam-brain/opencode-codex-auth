@@ -29,7 +29,7 @@ describe("codex-native in-vivo instruction replacement", () => {
     })
 
     expect(result.preflightInstructions).toBe("OpenCode Host Instructions")
-    expect(result.outboundInstructions).toBe("Base Vivo Persona Voice")
+    expect(result.outboundInstructions).toContain("Base Vivo Persona Voice")
     expect(result.outboundInstructions).not.toBe("OpenCode Host Instructions")
   })
 

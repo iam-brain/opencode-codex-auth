@@ -156,6 +156,9 @@ async function loadPluginWithMenu(input: {
       update: (current: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>
     ) => {
       const next = await update(snapshotStore)
+      for (const key of Object.keys(snapshotStore)) {
+        delete snapshotStore[key]
+      }
       Object.assign(snapshotStore, next)
       return snapshotStore
     }
@@ -858,6 +861,87 @@ describe("codex-native auth menu wiring", () => {
       await browserMethod.authorize({})
       expect(refreshAccessToken).toHaveBeenCalled()
       expect(observedLockStates).toEqual([false])
+    } finally {
+      stdin.isTTY = prevIn
+      stdout.isTTY = prevOut
+    }
+  })
+
+  it("ignores stale manual refresh results when account refresh token changes mid-flight", async () => {
+    const { hooks, storageState } = await loadPluginWithMenu({
+      offerLegacyTransfer: false,
+      authFile: {
+        openai: {
+          type: "oauth",
+          accounts: [
+            {
+              identityKey: "acc_1|one@example.com|plus",
+              accountId: "acc_1",
+              email: "one@example.com",
+              plan: "plus",
+              authTypes: ["native"],
+              enabled: true,
+              refresh: "rt_1",
+              access: "at_old",
+              expires: Date.now() - 1_000
+            }
+          ],
+          activeIdentityKey: "acc_1|one@example.com|plus"
+        }
+      },
+      runAuthMenuOnceImpl: async (args) => {
+        const account = args.accounts[0]
+        if (!account) throw new Error("Missing menu account")
+        await args.handlers.onRefreshAccount(account)
+        return "exit"
+      },
+      beforeSaveAuthStorageUpdate: (state, callCount) => {
+        if (callCount !== 2) return
+        const openai = state.openai as { accounts?: Array<Record<string, unknown>> } | undefined
+        const target = openai?.accounts?.find((account) => account.identityKey === "acc_1|one@example.com|plus")
+        if (target) {
+          target.refresh = "rt_newer"
+        }
+      },
+      refreshAccessTokenImpl: async () => ({
+        refresh_token: "rt_1_rotated",
+        access_token: "at_new",
+        expires_in: 3600,
+        id_token: buildJwt({
+          "https://api.openai.com/auth": {
+            chatgpt_account_id: "acc_1",
+            chatgpt_plan_type: "plus"
+          },
+          "https://api.openai.com/profile": {
+            email: "one@example.com"
+          }
+        })
+      })
+    })
+
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const prevIn = stdin.isTTY
+    const prevOut = stdout.isTTY
+    stdin.isTTY = true
+    stdout.isTTY = true
+
+    try {
+      await browserMethod.authorize({})
+      const openai = (
+        storageState as {
+          openai?: {
+            native?: { accounts?: Array<{ refresh?: string; access?: string; refreshLeaseUntil?: number }> }
+          }
+        }
+      ).openai
+      const account = openai?.native?.accounts?.[0]
+      expect(account?.refresh).toBe("rt_newer")
+      expect(account?.access).toBe("at_old")
+      expect(account?.refreshLeaseUntil).toBeUndefined()
     } finally {
       stdin.isTTY = prevIn
       stdout.isTTY = prevOut

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
-import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -12,6 +12,20 @@ function fixturePath(name: string): string {
 }
 
 describe("auth storage", () => {
+  const createdTempDirs = new Set<string>()
+
+  async function createTempDir(prefix: string): Promise<string> {
+    const dir = await mkdtemp(path.join(os.tmpdir(), prefix))
+    createdTempDirs.add(dir)
+    return dir
+  }
+
+  afterEach(async () => {
+    const dirs = [...createdTempDirs]
+    createdTempDirs.clear()
+    await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
   function fakeJwt(payload: Record<string, unknown>): string {
     const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url")
     const body = Buffer.from(JSON.stringify(payload)).toString("base64url")
@@ -33,7 +47,7 @@ describe("auth storage", () => {
   })
 
   it("loadAuthStorage creates parent dir and returns {} when missing", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, "nested", "auth.json")
 
     const auth = await loadAuthStorage(filePath)
@@ -55,7 +69,7 @@ describe("auth storage", () => {
 
     const { loadAuthStorage: loadAuthStorageWithMock } = await import("../lib/storage")
 
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, "auth.json")
     await writeFile(filePath, "{}\n", { mode: 0o600 })
 
@@ -66,7 +80,7 @@ describe("auth storage", () => {
   })
 
   it("creates config-dir .gitignore entries for codex account storage", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, CODEX_ACCOUNTS_FILE)
 
     await saveAuthStorage(filePath, () => ({ openai: { type: "oauth", accounts: [] } }))
@@ -84,7 +98,7 @@ describe("auth storage", () => {
   })
 
   it("does not duplicate config-dir .gitignore entries", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, CODEX_ACCOUNTS_FILE)
     const gitignorePath = path.join(dir, ".gitignore")
 
@@ -102,7 +116,7 @@ describe("auth storage", () => {
   })
 
   it("migrates single-account openai oauth to multi-account schema", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, "auth.json")
     const singleJson = await readFile(fixturePath("auth-single.json"), "utf8")
     await writeFile(filePath, singleJson, { mode: 0o600 })
@@ -127,7 +141,7 @@ describe("auth storage", () => {
   })
 
   it("imports legacy v4 openai-codex-accounts schema only through explicit transfer", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
+    const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
     process.env.HOME = root
 
@@ -197,7 +211,7 @@ describe("auth storage", () => {
   })
 
   it("imports native OpenCode provider auth marker only through explicit transfer", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
+    const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
     process.env.HOME = root
 
@@ -229,8 +243,115 @@ describe("auth storage", () => {
     }
   })
 
+  it("continues legacy transfer when one legacy source is corrupt", async () => {
+    const root = await createTempDir("opencode-auth-home-")
+    const prevHome = process.env.HOME
+    process.env.HOME = root
+
+    try {
+      const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
+      const legacyPath = path.join(root, ".config", "opencode", "openai-codex-accounts.json")
+      const providerAuthPath = path.join(root, ".local", "share", "opencode", "auth.json")
+      await mkdir(path.dirname(legacyPath), { recursive: true })
+      await mkdir(path.dirname(providerAuthPath), { recursive: true })
+
+      await writeFile(legacyPath, "{ invalid", { mode: 0o600 })
+      const singleJson = await readFile(fixturePath("auth-single.json"), "utf8")
+      await writeFile(providerAuthPath, singleJson, { mode: 0o600 })
+
+      const transfer = await importLegacyInstallData(filePath)
+      expect(transfer.sourcesUsed).toBe(1)
+      expect(transfer.imported).toBe(1)
+
+      const auth = await loadAuthStorage(filePath)
+      const openai = auth.openai
+      if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
+        throw new Error("Expected migrated multi-account auth")
+      }
+      expect(openai.accounts).toHaveLength(1)
+    } finally {
+      if (prevHome === undefined) {
+        delete process.env.HOME
+      } else {
+        process.env.HOME = prevHome
+      }
+    }
+  })
+
+  it("dedupes legacy transfer records when strict identity appears after refresh-only import", async () => {
+    const root = await createTempDir("opencode-auth-home-")
+    const prevHome = process.env.HOME
+    process.env.HOME = root
+
+    try {
+      const filePath = path.join(root, ".config", "opencode", "codex-accounts.json")
+      const legacyPath = path.join(root, ".config", "opencode", "openai-codex-accounts.json")
+      const providerAuthPath = path.join(root, ".local", "share", "opencode", "auth.json")
+      await mkdir(path.dirname(legacyPath), { recursive: true })
+      await mkdir(path.dirname(providerAuthPath), { recursive: true })
+
+      await writeFile(
+        legacyPath,
+        `${JSON.stringify(
+          {
+            version: 4,
+            accounts: [{ refreshToken: "rt_shared", enabled: true }]
+          },
+          null,
+          2
+        )}\n`,
+        { mode: 0o600 }
+      )
+
+      const access = fakeJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "acc_shared",
+          chatgpt_plan_type: "plus"
+        },
+        "https://api.openai.com/profile": {
+          email: "one@example.com"
+        }
+      })
+      await writeFile(
+        providerAuthPath,
+        `${JSON.stringify(
+          {
+            openai: {
+              type: "oauth",
+              refresh: "rt_shared",
+              access,
+              expires: Date.now() + 60_000
+            }
+          },
+          null,
+          2
+        )}\n`,
+        { mode: 0o600 }
+      )
+
+      const transfer = await importLegacyInstallData(filePath)
+      expect(transfer.sourcesUsed).toBe(2)
+      expect(transfer.imported).toBe(1)
+
+      const auth = await loadAuthStorage(filePath)
+      const openai = auth.openai
+      if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
+        throw new Error("Expected migrated multi-account auth")
+      }
+      expect(openai.accounts).toHaveLength(1)
+      expect(openai.accounts[0]?.refresh).toBe("rt_shared")
+      expect(openai.accounts[0]?.identityKey).toBe("acc_shared|one@example.com|plus")
+    } finally {
+      if (prevHome === undefined) {
+        delete process.env.HOME
+      } else {
+        process.env.HOME = prevHome
+      }
+    }
+  })
+
   it("hydrates account identity from JWT claims when oauth fields are missing", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, "auth.json")
     const access = fakeJwt({
       "https://api.openai.com/auth": {
@@ -269,7 +390,7 @@ describe("auth storage", () => {
   })
 
   it("hydrates multi-account oauth records from access-token claims", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, "codex-accounts.json")
     const access = fakeJwt({
       "https://api.openai.com/auth": {
@@ -312,7 +433,7 @@ describe("auth storage", () => {
   })
 
   it("keeps codex-accounts.json OpenAI-only when transfering from provider auth.json", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
+    const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
     process.env.HOME = root
 
@@ -375,7 +496,7 @@ describe("auth storage", () => {
   })
 
   it("offers legacy transfer when codex-accounts.json is missing and legacy v4 file exists", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
+    const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
     process.env.HOME = root
 
@@ -404,7 +525,7 @@ describe("auth storage", () => {
   })
 
   it("offers legacy transfer when codex-accounts.json is missing and native auth.json exists", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
+    const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
     process.env.HOME = root
 
@@ -431,7 +552,7 @@ describe("auth storage", () => {
   })
 
   it("checks provider auth marker path via XDG_DATA_HOME", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-home-"))
+    const root = await createTempDir("opencode-auth-home-")
     const prevHome = process.env.HOME
     const prevXdgData = process.env.XDG_DATA_HOME
     process.env.HOME = root
@@ -465,7 +586,7 @@ describe("auth storage", () => {
   })
 
   it("does not offer legacy transfer when codex-accounts.json already exists", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, "codex-accounts.json")
     const legacyPath = path.join(dir, "openai-codex-accounts.json")
     await writeFile(filePath, JSON.stringify({ openai: { type: "oauth", accounts: [] } }), "utf8")
@@ -475,7 +596,7 @@ describe("auth storage", () => {
   })
 
   it("does not repopulate from legacy when codex-accounts exists with zero accounts", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, "codex-accounts.json")
     const legacyPath = path.join(dir, "openai-codex-accounts.json")
 
@@ -525,7 +646,7 @@ describe("auth storage", () => {
   })
 
   it("saveAuthStorage writes atomically and enforces 0600 permissions", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, "auth.json")
     await mkdir(path.dirname(filePath), { recursive: true })
 
@@ -555,13 +676,15 @@ describe("auth storage", () => {
     expect(onDisk.openai?.native?.accounts?.[0]?.identityKey).toBe(expected.openai.accounts[0]?.identityKey)
 
     const mode = (await stat(filePath)).mode & 0o777
-    expect(mode).toBe(0o600)
+    if (process.platform !== "win32") {
+      expect(mode).toBe(0o600)
+    }
 
     await expect(stat(`${filePath}.tmp`)).rejects.toBeDefined()
   })
 
   it("saveAuthStorage migrates before applying update", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "opencode-auth-"))
+    const dir = await createTempDir("opencode-auth-")
     const filePath = path.join(dir, "auth.json")
     const singleJson = await readFile(fixturePath("auth-single.json"), "utf8")
     await writeFile(filePath, singleJson, { mode: 0o600 })
@@ -581,5 +704,112 @@ describe("auth storage", () => {
     expect(onDisk.openai.strategy).toBe("round_robin")
     expect(onDisk.openai.native?.strategy).toBe("round_robin")
     expect(onDisk.openai.accounts).toHaveLength(1)
+  })
+
+  it("dedupes fallback identityless accounts across native/codex merge", async () => {
+    const dir = await createTempDir("opencode-auth-")
+    const filePath = path.join(dir, "auth.json")
+    await writeFile(
+      filePath,
+      `${JSON.stringify(
+        {
+          openai: {
+            type: "oauth",
+            native: {
+              accounts: [
+                {
+                  accountId: "acc_legacy",
+                  email: "legacy@example.com",
+                  refresh: "rt_native",
+                  expires: 1000
+                }
+              ]
+            },
+            codex: {
+              accounts: [
+                {
+                  accountId: "acc_legacy",
+                  email: "legacy@example.com",
+                  refresh: "rt_codex",
+                  expires: 2000
+                }
+              ]
+            }
+          }
+        },
+        null,
+        2
+      )}\n`,
+      { mode: 0o600 }
+    )
+
+    const first = await loadAuthStorage(filePath)
+    const second = await loadAuthStorage(filePath)
+    const openai = second.openai
+    if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
+      throw new Error("Expected multi-account auth")
+    }
+
+    expect(first.openai).toEqual(second.openai)
+    expect(openai.accounts).toHaveLength(1)
+    expect(openai.accounts[0]?.identityKey?.startsWith("legacy|")).toBe(true)
+    expect(openai.accounts[0]?.authTypes?.sort()).toEqual(["codex", "native"])
+  })
+
+  it("keeps aggregate account enabled when any mode-specific record remains enabled", async () => {
+    const dir = await createTempDir("opencode-auth-")
+    const filePath = path.join(dir, "auth.json")
+    await writeFile(
+      filePath,
+      `${JSON.stringify(
+        {
+          openai: {
+            type: "oauth",
+            native: {
+              accounts: [
+                {
+                  identityKey: "acc_1|user@example.com|plus",
+                  accountId: "acc_1",
+                  email: "user@example.com",
+                  plan: "plus",
+                  enabled: true,
+                  access: "at_native",
+                  refresh: "rt_native",
+                  expires: 1000
+                }
+              ]
+            },
+            codex: {
+              accounts: [
+                {
+                  identityKey: "acc_1|user@example.com|plus",
+                  accountId: "acc_1",
+                  email: "user@example.com",
+                  plan: "plus",
+                  enabled: false,
+                  access: "at_codex",
+                  refresh: "rt_codex",
+                  expires: 2000
+                }
+              ]
+            }
+          }
+        },
+        null,
+        2
+      )}\n`,
+      { mode: 0o600 }
+    )
+
+    const auth = await loadAuthStorage(filePath)
+    const openai = auth.openai
+    if (!openai || openai.type !== "oauth" || !("accounts" in openai)) {
+      throw new Error("Expected multi-account auth")
+    }
+
+    expect(openai.accounts).toHaveLength(1)
+    expect(openai.accounts[0]?.identityKey).toBe("acc_1|user@example.com|plus")
+    expect(openai.accounts[0]?.enabled).toBe(true)
+    expect(openai.accounts[0]?.authTypes?.sort()).toEqual(["codex", "native"])
   })
 })

@@ -22,6 +22,22 @@ describe("accounts-tools listing", () => {
     expect(rows[1]?.displayIndex).toBe(2)
     expect(rows[1]?.enabled).toBe(false)
   })
+
+  it("auto-hydrates identityless rows so tooling indices remain stable", () => {
+    const openai = {
+      type: "oauth" as const,
+      accounts: [
+        { accountId: "acc_1", email: "One@Example.com", plan: "Plus", enabled: true },
+        { email: "legacy@example.com", enabled: true }
+      ]
+    }
+    const rows = listAccountsForTools(openai)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]?.identityKey).toBe("acc_1|one@example.com|plus")
+    expect(rows[1]?.identityKey.startsWith("legacy|")).toBe(true)
+    expect(rows[0]?.displayIndex).toBe(1)
+    expect(rows[1]?.displayIndex).toBe(2)
+  })
 })
 
 describe("switchAccountByIndex", () => {
@@ -98,6 +114,20 @@ describe("switchAccountByIndex", () => {
     expect(next.native?.activeIdentityKey).toBe("a|u1@example.com|plus")
     expect(next.codex?.activeIdentityKey).toBe("b|u2@example.com|pro")
   })
+
+  it("switches correctly when selected account was originally identityless", () => {
+    const openai = {
+      type: "oauth" as const,
+      accounts: [
+        { accountId: "acc_1", email: "one@example.com", plan: "plus", enabled: true },
+        { accountId: "acc_2", email: "two@example.com", enabled: true }
+      ]
+    }
+
+    const rows = listAccountsForTools(openai)
+    const next = switchAccountByIndex(openai, 2)
+    expect(next.activeIdentityKey).toBe(rows[1]?.identityKey)
+  })
 })
 
 describe("toggleAccountEnabledByIndex", () => {
@@ -167,6 +197,25 @@ describe("toggleAccountEnabledByIndex", () => {
     expect(next.accounts[1]?.enabled).toBe(false)
     expect(next.codex?.accounts[1]?.enabled).toBe(false)
     expect(next.codex?.activeIdentityKey).toBe("a|u1@example.com|plus")
+  })
+
+  it("does not mutate domain accounts when fallback matching is ambiguous", () => {
+    const openai = {
+      type: "oauth" as const,
+      accounts: [{ identityKey: "target-only", refresh: "shared-refresh", enabled: true }],
+      codex: {
+        accounts: [
+          { refresh: "shared-refresh", enabled: true },
+          { refresh: "shared-refresh", enabled: false }
+        ],
+        activeIdentityKey: undefined
+      }
+    }
+
+    const next = toggleAccountEnabledByIndex(openai, 1)
+    expect(next.accounts[0]?.enabled).toBe(false)
+    expect(next.codex?.accounts[0]?.enabled).toBe(true)
+    expect(next.codex?.accounts[1]?.enabled).toBe(false)
   })
 })
 

@@ -1,6 +1,7 @@
 import http from "node:http"
 
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { OAUTH_CALLBACK_ORIGIN, OAUTH_HTTP_TIMEOUT_MS } from "../lib/codex-native/oauth-utils"
 
 type StorageState = {
   openai: Record<string, unknown>
@@ -15,6 +16,16 @@ type BrowserAuthorizeFlow = {
 function buildJwt(payload: Record<string, unknown>): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url")
   return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.${encode("sig")}`
+}
+
+function oauthUrl(pathAndQuery: string): string {
+  return new URL(pathAndQuery, OAUTH_CALLBACK_ORIGIN).toString()
+}
+
+function requireOAuthState(state: string | null): string {
+  expect(state).toMatch(/^[A-Za-z0-9_-]{20,}$/)
+  if (!state) throw new Error("missing oauth state")
+  return state
 }
 
 async function httpGet(url: string): Promise<{
@@ -53,7 +64,7 @@ async function httpGet(url: string): Promise<{
       })
     })
     req.once("error", reject)
-    req.setTimeout(5000, () => {
+    req.setTimeout(OAUTH_HTTP_TIMEOUT_MS, () => {
       req.destroy(new Error("request timeout"))
     })
   })
@@ -190,17 +201,22 @@ describe("codex-native oauth callback flow", () => {
 
       const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
       const authUrl = new URL(flow.url)
-      const state = authUrl.searchParams.get("state")
-      expect(state).toBeTruthy()
-      if (!state) throw new Error("missing oauth state")
+      const state = requireOAuthState(authUrl.searchParams.get("state"))
       const displayUrl = flow.displayUrl
-      expect(displayUrl).toBeTruthy()
-      expect(displayUrl).toContain("state=%5Bredacted%5D")
+      expect(typeof displayUrl).toBe("string")
+      if (typeof displayUrl !== "string") throw new Error("missing displayUrl")
+      const parsedDisplayUrl = new URL(displayUrl)
+      expect(parsedDisplayUrl.origin).toBe(authUrl.origin)
+      expect(parsedDisplayUrl.pathname).toBe(authUrl.pathname)
+      expect(parsedDisplayUrl.searchParams.get("state")).toBe("[redacted]")
+      expect(parsedDisplayUrl.searchParams.get("response_type")).toBe(authUrl.searchParams.get("response_type"))
+      expect(parsedDisplayUrl.searchParams.get("client_id")).toBe(authUrl.searchParams.get("client_id"))
+      expect(parsedDisplayUrl.searchParams.get("redirect_uri")).toBe(authUrl.searchParams.get("redirect_uri"))
       expect(displayUrl).not.toContain(`state=${state}`)
       expect(flow.url).not.toContain("state=%5Bredacted%5D")
 
       const callbackResponse = await httpGet(
-        `http://localhost:1455/auth/callback?code=test_code&state=${encodeURIComponent(state)}`
+        oauthUrl(`/auth/callback?code=test_code&state=${encodeURIComponent(state)}`)
       )
       expect(callbackResponse.statusCode).toBe(302)
       expect(callbackResponse.location).toContain("/success?")
@@ -255,12 +271,10 @@ describe("codex-native oauth callback flow", () => {
 
       const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
       const authUrl = new URL(flow.url)
-      const state = authUrl.searchParams.get("state")
-      expect(state).toBeTruthy()
-      if (!state) throw new Error("missing oauth state")
+      const state = requireOAuthState(authUrl.searchParams.get("state"))
 
       const callbackResponse = await httpGet(
-        `http://localhost:1455/auth/callback?code=test_code&state=${encodeURIComponent(state)}`
+        oauthUrl(`/auth/callback?code=test_code&state=${encodeURIComponent(state)}`)
       )
       expect(callbackResponse.statusCode).toBe(200)
       expect(callbackResponse.location).toBeUndefined()
@@ -305,12 +319,12 @@ describe("codex-native oauth callback flow", () => {
 
       const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
       const authUrl = new URL(flow.url)
-      const state = authUrl.searchParams.get("state")
-      expect(state).toBeTruthy()
-      if (!state) throw new Error("missing oauth state")
+      const state = requireOAuthState(authUrl.searchParams.get("state"))
 
       const callbackResultPromise = flow.callback("")
-      const callbackUrl = `http://localhost:1455/auth/callback?error=request_forbidden&error_description=csrf&state=${encodeURIComponent(state)}`
+      const callbackUrl = oauthUrl(
+        `/auth/callback?error=request_forbidden&error_description=csrf&state=${encodeURIComponent(state)}`
+      )
       const callbackResponse = await httpGet(callbackUrl)
       expect(callbackResponse.statusCode).toBe(200)
       expect(callbackResponse.body).toContain("Sign-in failed")
@@ -350,19 +364,17 @@ describe("codex-native oauth callback flow", () => {
 
     const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
     const authUrl = new URL(flow.url)
-    const state = authUrl.searchParams.get("state")
-    expect(state).toBeTruthy()
-    if (!state) throw new Error("missing oauth state")
+    const state = requireOAuthState(authUrl.searchParams.get("state"))
 
     const wrongStateError = await httpGet(
-      "http://localhost:1455/auth/callback?error=request_forbidden&error_description=csrf&state=wrong"
+      oauthUrl("/auth/callback?error=request_forbidden&error_description=csrf&state=wrong")
     )
     expect(wrongStateError.statusCode).toBe(400)
     expect(wrongStateError.body).toContain("Invalid state")
 
     const callbackResultPromise = flow.callback("")
     const correctStateError = await httpGet(
-      `http://localhost:1455/auth/callback?error=request_forbidden&error_description=csrf&state=${encodeURIComponent(state)}`
+      oauthUrl(`/auth/callback?error=request_forbidden&error_description=csrf&state=${encodeURIComponent(state)}`)
     )
     expect(correctStateError.statusCode).toBe(200)
     expect(correctStateError.body).toContain("Sign-in failed")
@@ -381,20 +393,18 @@ describe("codex-native oauth callback flow", () => {
 
     const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
     const authUrl = new URL(flow.url)
-    const state = authUrl.searchParams.get("state")
-    expect(state).toBeTruthy()
-    if (!state) throw new Error("missing oauth state")
+    const state = requireOAuthState(authUrl.searchParams.get("state"))
 
-    const missingState = await httpGet("http://localhost:1455/cancel")
+    const missingState = await httpGet(oauthUrl("/cancel"))
     expect(missingState.statusCode).toBe(400)
     expect(missingState.body).toContain("Invalid cancel state")
 
-    const wrongState = await httpGet("http://localhost:1455/cancel?state=wrong")
+    const wrongState = await httpGet(oauthUrl("/cancel?state=wrong"))
     expect(wrongState.statusCode).toBe(400)
     expect(wrongState.body).toContain("Invalid cancel state")
 
     const callbackResponse = await httpGet(
-      `http://localhost:1455/auth/callback?code=test_code&state=${encodeURIComponent(state)}`
+      oauthUrl(`/auth/callback?code=test_code&state=${encodeURIComponent(state)}`)
     )
     expect(callbackResponse.statusCode).toBe(302)
 
@@ -412,12 +422,10 @@ describe("codex-native oauth callback flow", () => {
 
     const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
     const authUrl = new URL(flow.url)
-    const state = authUrl.searchParams.get("state")
-    expect(state).toBeTruthy()
-    if (!state) throw new Error("missing oauth state")
+    const state = requireOAuthState(authUrl.searchParams.get("state"))
 
     const callbackResultPromise = flow.callback("")
-    const cancelResponse = await httpGet(`http://localhost:1455/cancel?state=${encodeURIComponent(state)}`)
+    const cancelResponse = await httpGet(oauthUrl(`/cancel?state=${encodeURIComponent(state)}`))
     expect(cancelResponse.statusCode).toBe(200)
     expect(cancelResponse.body).toContain("Login cancelled")
 

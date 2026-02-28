@@ -30,7 +30,7 @@ describe("opencode compatibility", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -65,7 +65,7 @@ describe("opencode compatibility", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,

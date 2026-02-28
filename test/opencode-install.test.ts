@@ -29,17 +29,13 @@ describe("opencode installer config", () => {
     expect(raw.plugin).toContain(DEFAULT_PLUGIN_SPECIFIER)
   })
 
-  it("quarantines malformed opencode.json before writing a new config", async () => {
+  it("quarantines malformed opencode.json and surfaces an actionable error", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-"))
     const configPath = path.join(root, "opencode.json")
     await fs.writeFile(configPath, "{ not: valid json", "utf8")
 
-    const result = await ensurePluginInstalled({ configPath })
-    expect(result.created).toBe(true)
-    expect(result.changed).toBe(true)
-
-    const written = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
-    expect(written.plugin).toContain(DEFAULT_PLUGIN_SPECIFIER)
+    await expect(ensurePluginInstalled({ configPath })).rejects.toThrow("Malformed OpenCode config")
+    await expect(fs.readFile(configPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" })
 
     const quarantineDir = path.join(root, "quarantine")
     const quarantineEntries = await fs.readdir(quarantineDir)

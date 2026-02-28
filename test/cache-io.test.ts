@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   __testOnly,
+  enforceOwnerOnlyPermissions,
   readJsonFileBestEffort,
   setCacheIoFailureObserver,
   writeJsonFileAtomic,
@@ -93,6 +94,34 @@ describe("cache-io failure observer", () => {
     })
 
     await expect(readJsonFileBestEffort(filePath)).resolves.toBeUndefined()
+  })
+
+  it("tolerates unsupported chmod errors when enforcing owner-only mode", async () => {
+    const chmodSpy = vi.spyOn(fs, "chmod").mockImplementation(async () => {
+      const error = new Error("operation not supported") as NodeJS.ErrnoException
+      error.code = "ENOTSUP"
+      throw error
+    })
+
+    try {
+      await expect(enforceOwnerOnlyPermissions("/tmp/noop")).resolves.toBeUndefined()
+    } finally {
+      chmodSpy.mockRestore()
+    }
+  })
+
+  it("propagates unexpected chmod errors when enforcing owner-only mode", async () => {
+    const chmodSpy = vi.spyOn(fs, "chmod").mockImplementation(async () => {
+      const error = new Error("io failure") as NodeJS.ErrnoException
+      error.code = "EIO"
+      throw error
+    })
+
+    try {
+      await expect(enforceOwnerOnlyPermissions("/tmp/noop")).rejects.toMatchObject({ code: "EIO" })
+    } finally {
+      chmodSpy.mockRestore()
+    }
   })
 
   it("does not swallow win32 temp-file sync EPERM errors", async () => {

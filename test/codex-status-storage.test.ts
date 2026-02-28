@@ -25,7 +25,9 @@ describe("codex-status storage", () => {
     const next = await loadSnapshots(p)
     expect(next["acc|u@e.com|plus"]?.limits[0]?.leftPct).toBe(50)
     const mode = (await fs.stat(p)).mode & 0o777
-    expect(mode).toBe(0o600)
+    if (process.platform !== "win32") {
+      expect(mode).toBe(0o600)
+    }
 
     // Cleanup
     await fs.rm(dir, { recursive: true, force: true })
@@ -65,41 +67,26 @@ describe("codex-status storage", () => {
     await fs.writeFile(lockTarget, "", { mode: 0o600 })
     const release = await lockfile.lock(lockTarget, { realpath: true, retries: 0 })
 
-    // Start saveSnapshots without awaiting it
-    const promise = saveSnapshots(p, (cur) => ({
-      ...cur,
-      locked: { updatedAt: 99, modelFamily: "test", limits: [] }
-    }))
-
-    // Wait a small amount of time
-    await new Promise((r) => setTimeout(r, 25))
-
-    // Assert the snapshots file still does NOT exist yet
-    let exists = true
-    try {
-      await fs.stat(p)
-    } catch (error) {
-      if (!isFsErrorCode(error, "ENOENT")) {
-        throw error
+    let enteredUpdate = false
+    const promise = saveSnapshots(p, (cur) => {
+      enteredUpdate = true
+      return {
+        ...cur,
+        locked: { updatedAt: 99, modelFamily: "test", limits: [] }
       }
-      exists = false
-    }
+    })
 
-    // Capture state before releasing lock
-    const existsWhileLocked = exists
+    await Promise.resolve()
+    expect(enteredUpdate).toBe(false)
+    await expect(fs.stat(p)).rejects.toMatchObject({ code: "ENOENT" })
 
     // Release the lock
     await release()
 
-    // Await the pending promise
     const result = await promise
+    expect(enteredUpdate).toBe(true)
     expect(result.locked?.updatedAt).toBe(99)
-
-    // Verify it exists now
     await fs.stat(p)
-
-    // The bug is that existsWhileLocked will be true with the current implementation
-    expect(existsWhileLocked).toBe(false)
 
     // Cleanup
     await fs.rm(dir, { recursive: true, force: true })
@@ -113,13 +100,12 @@ describe("codex-status storage", () => {
       "acc|u@e.com|plus": { updatedAt: 1, modelFamily: "gpt-5.2", limits: [{ name: "requests", leftPct: 50 }] }
     }))
 
-    const firstMtime = (await fs.stat(p)).mtimeMs
-    await new Promise((r) => setTimeout(r, 15))
+    const beforeRaw = await fs.readFile(p, "utf8")
 
     await saveSnapshots(p, (cur) => ({ ...cur }))
 
-    const secondMtime = (await fs.stat(p)).mtimeMs
-    expect(secondMtime).toBe(firstMtime)
+    const afterRaw = await fs.readFile(p, "utf8")
+    expect(afterRaw).toBe(beforeRaw)
 
     await fs.rm(dir, { recursive: true, force: true })
   })

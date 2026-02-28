@@ -20,9 +20,18 @@ describe("codex-native oauth parity", () => {
       "codex_cli_rs"
     )
 
-    expect(url).toBe(
-      "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_EMoamEEZ73f0CkXaXp7hrann&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid%20profile%20email%20offline_access&code_challenge=abc123-_~&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true&state=state_value&originator=codex_cli_rs"
-    )
+    const parsed = new URL(url)
+    expect(`${parsed.origin}${parsed.pathname}`).toBe("https://auth.openai.com/oauth/authorize")
+    expect(parsed.searchParams.get("response_type")).toBe("code")
+    expect(parsed.searchParams.get("client_id")).toBe("app_EMoamEEZ73f0CkXaXp7hrann")
+    expect(parsed.searchParams.get("redirect_uri")).toBe("http://localhost:1455/auth/callback")
+    expect(parsed.searchParams.get("scope")).toBe("openid profile email offline_access")
+    expect(parsed.searchParams.get("code_challenge")).toBe("abc123-_~")
+    expect(parsed.searchParams.get("code_challenge_method")).toBe("S256")
+    expect(parsed.searchParams.get("id_token_add_organizations")).toBe("true")
+    expect(parsed.searchParams.get("codex_cli_simplified_flow")).toBe("true")
+    expect(parsed.searchParams.get("state")).toBe("state_value")
+    expect(parsed.searchParams.get("originator")).toBe("codex_cli_rs")
     expect(url).not.toContain("openid+profile+email+offline_access")
   })
 
@@ -80,7 +89,9 @@ describe("codex-native oauth parity", () => {
   })
 
   it("forces oauth fetch calls to reject redirects", async () => {
-    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }))
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () => new Response("ok", { status: 200 })
+    )
     vi.stubGlobal("fetch", fetchMock)
 
     await fetchWithTimeout("https://auth.openai.com/oauth/token", { method: "POST" }, 1000)

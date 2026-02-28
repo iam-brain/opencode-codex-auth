@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildIdentityKey } from "../lib/identity"
+import { buildIdentityKey, synchronizeIdentityKey } from "../lib/identity"
 import { parseJwtClaims } from "../lib/claims"
 
 describe("identity", () => {
@@ -42,5 +42,16 @@ describe("identity", () => {
     ].join(".")
 
     expect(parseJwtClaims(tokenWithNullPayload)).toBeUndefined()
+  })
+
+  it("upgrades legacy identity keys to canonical strict identity when available", () => {
+    const account = synchronizeIdentityKey({
+      identityKey: "legacy|acc_123|user%40example.com|plus",
+      accountId: "acc_123",
+      email: "User@Example.com",
+      plan: "Plus"
+    })
+
+    expect(account.identityKey).toBe("acc_123|user@example.com|plus")
   })
 })

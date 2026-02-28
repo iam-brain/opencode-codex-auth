@@ -151,7 +151,7 @@ describe("codex-status tool", () => {
     })
 
     const output = await toolOutputForStatus(authPath, snapshotsPath)
-    expect(output).toContain("missing@example.com (plus) [identity-missing]")
-    expect(output).toContain("Unknown, missing identity metadata")
+    expect(output).toContain("missing@example.com (plus)")
+    expect(output).toContain("Unknown, no snapshot yet")
   })
 })

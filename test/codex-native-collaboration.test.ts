@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  CODEX_PLAN_MODE_INSTRUCTIONS_FALLBACK,
   hasCodexToolNameMarkers,
   isOrchestratorInstructions,
   mergeInstructions,
@@ -11,6 +12,12 @@ import {
 } from "../lib/codex-native/collaboration"
 
 describe("codex collaboration profile", () => {
+  it("keeps fallback plan instructions runtime-safe", () => {
+    expect(CODEX_PLAN_MODE_INSTRUCTIONS_FALLBACK).toContain("# Plan Mode")
+    expect(CODEX_PLAN_MODE_INSTRUCTIONS_FALLBACK).not.toContain("request_user_input")
+    expect(CODEX_PLAN_MODE_INSTRUCTIONS_FALLBACK).not.toContain("<proposed_plan>")
+  })
+
   it("maps plan agent to plan mode", () => {
     const profile = resolveCollaborationProfile("plan")
     expect(profile.enabled).toBe(true)

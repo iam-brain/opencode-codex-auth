@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe("codex-native snapshots", () => {
   it("persists rate-limit snapshot from response headers for the selected account", async () => {
@@ -53,7 +57,7 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+        .filter((entry): entry is any =>
           Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
@@ -168,7 +172,7 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+        .filter((entry): entry is any =>
           Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
@@ -290,7 +294,7 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+        .filter((entry): entry is any =>
           Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
@@ -411,7 +415,7 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+        .filter((entry): entry is any =>
           Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
@@ -432,7 +436,9 @@ describe("codex-native snapshots", () => {
       )
     }))
 
-    const captureRequest = vi.fn(async () => {})
+    const captureRequest = vi.fn<
+      (stage: string, request: Request, meta?: Record<string, unknown>) => Promise<void>
+    >(async () => {})
     const captureResponse = vi.fn(async () => {})
     const createRequestSnapshots = vi.fn(() => ({
       captureRequest,
@@ -491,6 +497,8 @@ describe("codex-native snapshots", () => {
     const afterTransformCall = captureRequest.mock.calls.find((call) => call[0] === "after-header-transform")
     const beforeAuthCall = captureRequest.mock.calls.find((call) => call[0] === "before-auth")
     expect(beforeTransformCall).toBeDefined()
+    expect(afterTransformCall).toBeDefined()
+    expect(beforeAuthCall).toBeDefined()
     expect(afterTransformCall?.[2]?.collaborationModeKind).toBeUndefined()
     expect(beforeAuthCall?.[2]?.collaborationModeKind).toBeUndefined()
     expect(seenInternalHeader).toBe("")
@@ -548,7 +556,7 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+        .filter((entry): entry is any =>
           Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
@@ -569,7 +577,9 @@ describe("codex-native snapshots", () => {
       )
     }))
 
-    const captureRequest = vi.fn(async () => {})
+    const captureRequest = vi.fn<
+      (stage: string, request: Request, meta?: Record<string, unknown>) => Promise<void>
+    >(async () => {})
     const captureResponse = vi.fn(async () => {})
     const createRequestSnapshots = vi.fn(() => ({
       captureRequest,

@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe("codex-native session affinity persistence", () => {
   it("skips affinity persistence for subagent requests", async () => {
@@ -55,7 +59,7 @@ describe("codex-native session affinity persistence", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is { mode: "native" | "codex"; domain: { accounts: unknown[] } } =>
+        .filter((entry): entry is any =>
           Boolean(entry.domain && Array.isArray(entry.domain.accounts))
         )
     )
@@ -145,7 +149,9 @@ describe("codex-native session affinity persistence", () => {
     })
 
     expect(pruneSessionAffinitySnapshot).toHaveBeenCalled()
-    const pruneOptions = pruneSessionAffinitySnapshot.mock.calls[0]?.[2] as { missingGraceMs?: number } | undefined
+    const pruneOptions = (pruneSessionAffinitySnapshot.mock.calls as unknown[][])[0]?.[2] as
+      | { missingGraceMs?: number }
+      | undefined
     expect((pruneOptions?.missingGraceMs ?? 0) > 0).toBe(true)
   })
 })

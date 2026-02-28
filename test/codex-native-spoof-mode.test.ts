@@ -53,7 +53,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -96,7 +96,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -130,7 +130,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -165,7 +165,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -213,7 +213,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -274,7 +274,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -323,7 +323,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -345,6 +345,7 @@ describe("codex-native spoof + params hooks", () => {
       } else {
         process.env.XDG_CONFIG_HOME = prevXdg
       }
+      await fs.rm(root, { recursive: true, force: true })
     }
   })
 
@@ -390,7 +391,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -412,6 +413,7 @@ describe("codex-native spoof + params hooks", () => {
       } else {
         process.env.XDG_CONFIG_HOME = prevXdg
       }
+      await fs.rm(root, { recursive: true, force: true })
     }
   })
 
@@ -463,7 +465,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -505,7 +507,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -552,7 +554,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -602,7 +604,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -644,7 +646,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -686,7 +688,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -725,7 +727,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -758,7 +760,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -767,8 +769,8 @@ describe("codex-native spoof + params hooks", () => {
 
     await chatParams?.(input, output)
     expect(output.options.instructions).toContain("Catalog instructions")
-    expect(output.options.instructions).toContain("# Plan Mode (Conversational)")
-    expect(output.options.instructions).toContain("request_user_input")
+    expect(output.options.instructions).toContain("# Plan Mode")
+    expect(output.options.instructions).not.toContain("request_user_input")
     expect(output.options.instructions).not.toContain("Tooling Compatibility (OpenCode)")
   })
 
@@ -794,7 +796,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -833,7 +835,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -857,7 +859,7 @@ describe("codex-native spoof + params hooks", () => {
       model: { providerID: "openai", options: { promptCacheKey: "ses_prompt_native" } }
     } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-    const output = { headers: {} as Record<string, string> }
+    const output: any = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
     expect(output.headers.originator).toBe("opencode")
@@ -877,7 +879,7 @@ describe("codex-native spoof + params hooks", () => {
       model: { providerID: "openai", options: {} }
     } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-    const output = { headers: {} as Record<string, string> }
+    const output: any = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
     expect(output.headers.originator).toBe("opencode")
@@ -902,7 +904,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-    const output = { headers: {} as Record<string, string> }
+    const output: any = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
     expect(output.headers.originator).toBe("codex_cli_rs")
@@ -923,7 +925,7 @@ describe("codex-native spoof + params hooks", () => {
         model: { providerID: "openai", options: {} }
       } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-      const output = { headers: {} as Record<string, string> }
+      const output: any = { headers: {} as Record<string, string> }
       await chatHeaders?.(input, output)
       expect(output.headers.originator).toBe("codex_exec")
       expect(output.headers["User-Agent"]).toMatch(/^codex_exec\//)
@@ -941,7 +943,7 @@ describe("codex-native spoof + params hooks", () => {
         model: { providerID: "openai", options: {} }
       } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-      const output = { headers: {} as Record<string, string> }
+      const output: any = { headers: {} as Record<string, string> }
       await chatHeaders?.(input, output)
       expect(output.headers.originator).toBe("codex_cli_rs")
       expect(output.headers["User-Agent"]).toMatch(/^codex_cli_rs\//)
@@ -958,7 +960,7 @@ describe("codex-native spoof + params hooks", () => {
       model: { providerID: "openai", options: {} }
     } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-    const output = { headers: {} as Record<string, string> }
+    const output: any = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
     expect(output.headers.originator).toBe("codex_cli_rs")
@@ -979,7 +981,7 @@ describe("codex-native spoof + params hooks", () => {
       model: { providerID: "openai", options: {} }
     } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-    const output = { headers: {} as Record<string, string> }
+    const output: any = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
     expect(output.headers["x-openai-subagent"]).toBe("review")
@@ -997,7 +999,7 @@ describe("codex-native spoof + params hooks", () => {
       model: { providerID: "openai", options: {} }
     } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-    const output = { headers: {} as Record<string, string> }
+    const output: any = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
     expect(output.headers["x-openai-subagent"]).toBeUndefined()
@@ -1033,7 +1035,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const paramsOutput = {
+    const paramsOutput: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -1068,7 +1070,7 @@ describe("codex-native spoof + params hooks", () => {
       model: { providerID: "openai", options: {} }
     } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-    const output = { headers: {} as Record<string, string> }
+    const output: any = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
     expect(output.headers["x-openai-subagent"]).toBeUndefined()
@@ -1101,7 +1103,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -1111,7 +1113,7 @@ describe("codex-native spoof + params hooks", () => {
     await chatParams?.(input, output)
 
     expect(output.options.instructions).toContain("Catalog instructions")
-    expect(output.options.instructions).toContain("# Plan Mode (Conversational)")
+    expect(output.options.instructions).toContain("# Plan Mode")
   })
 
   it("does not append orchestrator profile instructions at runtime", async () => {
@@ -1141,7 +1143,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -1181,7 +1183,7 @@ describe("codex-native spoof + params hooks", () => {
       }
     } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
 
-    const output = {
+    const output: any = {
       temperature: 0,
       topP: 1,
       topK: 0,
@@ -1222,7 +1224,7 @@ describe("codex-native spoof + params hooks", () => {
       model: { providerID: "openai", options: {} }
     } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-    const output = { headers: {} as Record<string, string> }
+    const output: any = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
     expect(output.headers["x-opencode-collaboration-mode-kind"]).toBe("plan")
@@ -1249,7 +1251,7 @@ describe("codex-native spoof + params hooks", () => {
       model: { providerID: "openai", options: {} }
     } as unknown as Parameters<NonNullable<typeof chatHeaders>>[0]
 
-    const output = { headers: {} as Record<string, string> }
+    const output: any = { headers: {} as Record<string, string> }
     await chatHeaders?.(input, output)
 
     expect(output.headers["x-opencode-collaboration-mode-kind"]).toBe("code")
@@ -1270,7 +1272,7 @@ describe("codex-native spoof + params hooks", () => {
     const chatHeaders = hooks["chat.headers"]
     expect(chatHeaders).toBeTypeOf("function")
 
-    const output = { headers: {} as Record<string, string> }
+    const output: any = { headers: {} as Record<string, string> }
     await chatHeaders?.(
       {
         sessionID: "ses_orchestrator_collab_headers",

@@ -322,6 +322,13 @@ describe("config", () => {
     expect(getProactiveRefreshBufferMs({ proactiveRefreshBufferMs: 30_000 })).toBe(30_000)
   })
 
+  it("treats blank proactive refresh buffer env as unset", () => {
+    const cfg = resolveConfig({
+      env: { OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS: "   " }
+    })
+    expect(getProactiveRefreshBufferMs(cfg)).toBe(60_000)
+  })
+
   it("clamps and floors buffer", () => {
     expect(getProactiveRefreshBufferMs({ proactiveRefreshBufferMs: -500 })).toBe(0)
     expect(getProactiveRefreshBufferMs({ proactiveRefreshBufferMs: 1234.56 })).toBe(1234)
@@ -503,7 +510,7 @@ describe("config file loading", () => {
     expect(loaded.spoofMode).toBe("codex")
   })
 
-  it("ignores unsupported runtime mode field in config file", async () => {
+  it("ignores unsupported runtime mode field in config file and falls back to defaults", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const filePath = path.join(root, "codex-config.json")
     await fs.writeFile(
@@ -514,12 +521,16 @@ describe("config file loading", () => {
       "utf8"
     )
 
-    const loaded = loadConfigFile({
-      env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath }
-    })
-
-    expect(loaded.mode).toBeUndefined()
-    expect(loaded.spoofMode).toBeUndefined()
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const loaded = loadConfigFile({
+        env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath }
+      })
+      expect(loaded).toEqual({})
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid codex-config"))
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it("loads codex-config.json from XDG config home", async () => {
@@ -600,6 +611,25 @@ describe("config file loading", () => {
     expect(written).toEqual(DEFAULT_CODEX_CONFIG)
   })
 
+  it("enforces 0600 mode when overwriting codex config", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const configDir = path.join(root, "opencode")
+    const filePath = path.join(configDir, "codex-config.json")
+    await fs.mkdir(configDir, { recursive: true })
+    await fs.writeFile(filePath, JSON.stringify({ debug: true }), { encoding: "utf8", mode: 0o644 })
+    await fs.chmod(filePath, 0o644)
+
+    await ensureDefaultConfigFile({
+      env: { XDG_CONFIG_HOME: root },
+      overwrite: true
+    })
+
+    const mode = (await fs.stat(filePath)).mode & 0o777
+    if (process.platform !== "win32") {
+      expect(mode).toBe(0o600)
+    }
+  })
+
   it("loads config JSON with line and block comments", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const filePath = path.join(root, "codex-config.json")
@@ -621,7 +651,7 @@ describe("config file loading", () => {
     expect(loaded.spoofMode).toBe("codex")
   })
 
-  it("rejects config file when known fields have invalid types", async () => {
+  it("ignores config file when known fields have invalid types", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const filePath = path.join(root, "codex-config.json")
     await fs.writeFile(
@@ -635,11 +665,17 @@ describe("config file loading", () => {
       "utf8"
     )
 
-    const loaded = loadConfigFile({ filePath })
-    expect(loaded).toEqual({})
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const loaded = loadConfigFile({ filePath })
+      expect(loaded).toEqual({})
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid codex-config"))
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
-  it("warns when codex-config.json cannot be parsed", async () => {
+  it("warns and falls back when codex-config.json cannot be parsed", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
     const filePath = path.join(root, "codex-config.json")
     await fs.writeFile(filePath, "{ invalid json", "utf8")

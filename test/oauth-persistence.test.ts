@@ -40,7 +40,7 @@ describe("oauth token persistence", () => {
 
       const auth = await loadAuthStorage()
       const domain = getOpenAIOAuthDomain(auth, "codex")
-      expect(domain).toBeTruthy()
+      expect(domain).toBeDefined()
       if (!domain) throw new Error("expected codex oauth domain")
       expect(domain.accounts).toHaveLength(1)
 
@@ -50,8 +50,8 @@ describe("oauth token persistence", () => {
       expect(account?.accountId).toBe("acc_codex")
       expect(account?.email).toBe("codex@example.com")
       expect(account?.plan).toBe("pro")
-      expect(account?.identityKey).toBeTruthy()
-      expect(domain.activeIdentityKey).toBe(account?.identityKey)
+      expect(account?.identityKey).toBe("acc_codex|codex@example.com|pro")
+      expect(domain.activeIdentityKey).toBe("acc_codex|codex@example.com|pro")
     } finally {
       if (previousXdgConfigHome === undefined) {
         delete process.env.XDG_CONFIG_HOME

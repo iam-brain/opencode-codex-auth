@@ -69,7 +69,7 @@ describe("installer cli", () => {
       )
       expect(skillFile).toContain("name: personality-builder")
 
-      await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md"))).rejects.toBeTruthy()
+      await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md"))).rejects.toThrow()
       await expect(
         fs.access(path.join(root, "opencode", "agents", "orchestrator.md.disabled"))
       ).resolves.toBeUndefined()
@@ -109,7 +109,7 @@ describe("installer cli", () => {
       )
       expect(capture.out.join("\n")).toContain("Codex prompts cache synchronized: yes")
       await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md"))).resolves.toBeUndefined()
-      await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md.disabled"))).rejects.toBeTruthy()
+      await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md.disabled"))).rejects.toThrow()
     } finally {
       if (previousXdg === undefined) {
         delete process.env.XDG_CONFIG_HOME

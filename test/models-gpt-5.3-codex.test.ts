@@ -41,7 +41,7 @@ describe("codex-native model allowlist", () => {
     await withIsolatedHome(async () => {
       const { CodexAuthPlugin } = await import("../lib/codex-native")
       const hooks = await CodexAuthPlugin({} as any)
-      const provider = {
+      const provider: { models: Record<string, { instructions?: string; id?: string }> } = {
         models: {
           "gpt-5.2-codex": { instructions: "TEMPLATE" },
           "o3-mini": { id: "o3-mini" }
@@ -139,7 +139,7 @@ describe("codex-native model allowlist", () => {
       const module = await import("../lib/codex-native")
       const hooks = await module.CodexAuthPlugin({} as any)
 
-      const provider = {
+      const provider: { models: Record<string, { instructions?: string; id?: string }> } = {
         models: {
           "gpt-5.2-codex": { instructions: "TEMPLATE" },
           "o3-mini": { id: "o3-mini" }

@@ -151,7 +151,9 @@ describe("orchestrator agent installer", () => {
     expect(visible.visible).toBe(true)
     expect(visible.filePath).toBe(path.join(agentsDir, CODEX_ORCHESTRATOR_AGENT_FILE))
 
-    await expect(fs.access(path.join(agentsDir, CODEX_ORCHESTRATOR_AGENT_FILE_DISABLED))).rejects.toBeTruthy()
+    await expect(fs.access(path.join(agentsDir, CODEX_ORCHESTRATOR_AGENT_FILE_DISABLED))).rejects.toMatchObject({
+      code: "ENOENT"
+    })
     expect(await fs.readFile(visible.filePath, "utf8")).toContain("You are Codex, a coding agent based on GPT-5.")
   })
 
@@ -204,6 +206,8 @@ describe("orchestrator agent installer", () => {
       "description: Codex-style orchestration profile for parallel delegation and synthesis."
     )
     expect(firstContent).toContain("You are Codex, a coding agent based on GPT-5.")
-    expect(firstContent).toContain("If `spawn_agent` is unavailable or fails, ignore this section and proceed solo.")
+    expect(firstContent).toContain("If `task` is unavailable or fails, ignore this section and proceed solo.")
+    expect(firstContent).not.toContain("spawn_agent")
+    expect(firstContent).toContain("task")
   })
 })

@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest"
+import os from "node:os"
+import path from "node:path"
+
 import { createOAuthServerController } from "../lib/codex-native/oauth-server"
 
 import { __testOnly } from "../lib/codex-native"
@@ -48,9 +51,10 @@ describe("codex-native oauth debug gating", () => {
 
   it("resolves provider auth marker path via XDG_DATA_HOME", () => {
     const previousXdgData = process.env.XDG_DATA_HOME
-    process.env.XDG_DATA_HOME = "/tmp/xdg-data-root"
+    const xdgRoot = path.join(os.tmpdir(), "xdg-data-root")
+    process.env.XDG_DATA_HOME = xdgRoot
     try {
-      expect(opencodeProviderAuthPath()).toBe("/tmp/xdg-data-root/opencode/auth.json")
+      expect(opencodeProviderAuthPath()).toBe(path.join(xdgRoot, "opencode", "auth.json"))
     } finally {
       if (previousXdgData === undefined) {
         delete process.env.XDG_DATA_HOME

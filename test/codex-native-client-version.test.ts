@@ -77,6 +77,36 @@ describe("codex client version resolution", () => {
     expect(fetchMock.mock.calls.length).toBe(2)
   })
 
+  it("falls back to HTML release endpoint when API payload is malformed JSON", async () => {
+    const dir = await makeTmpDir()
+    const cacheFile = path.join(dir, "codex-client-version.json")
+    await fs.writeFile(cacheFile, JSON.stringify({ version: "0.98.0", fetchedAt: 1 }), "utf8")
+
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url
+      if (endpoint.includes("/repos/openai/codex/releases/latest")) {
+        return new Response("{ not json", { status: 200 })
+      }
+      if (endpoint.includes("/openai/codex/releases/latest")) {
+        return new Response('<a href="/openai/codex/releases/tag/rust-v0.99.3">latest</a>', {
+          status: 200,
+          headers: { "content-type": "text/html" }
+        })
+      }
+      throw new Error(`unexpected URL: ${endpoint}`)
+    })
+
+    const version = await __testOnly.refreshCodexClientVersionFromGitHub(undefined, {
+      cacheFilePath: cacheFile,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      now: () => 2 * 60 * 60 * 1000,
+      allowInTest: true
+    })
+
+    expect(version).toBe("0.99.3")
+    expect(fetchMock.mock.calls.length).toBe(2)
+  })
+
   it("rejects redirected release HTML final URL from non-allowlisted host", async () => {
     const dir = await makeTmpDir()
     const cacheFile = path.join(dir, "codex-client-version.json")

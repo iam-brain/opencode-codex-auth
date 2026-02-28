@@ -89,6 +89,38 @@ describe("codex request role remap", () => {
     expect(remapped.preservedCount).toBe(1)
   })
 
+  it("preserves structured policy blocks even when exact marker phrasing differs", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: [
+          {
+            type: "message",
+            role: "developer",
+            content: [
+              {
+                type: "input_text",
+                text: "<runtime_policy>\nFilesystem sandbox mode must only read files from the workspace."
+              }
+            ]
+          }
+        ]
+      })
+    })
+
+    const remapped = await remapDeveloperMessagesToUserOnRequest({
+      request,
+      enabled: true
+    })
+
+    expect(remapped.changed).toBe(false)
+    expect(remapped.reason).toBe("permissions_only")
+    expect(remapped.remappedCount).toBe(0)
+    expect(remapped.preservedCount).toBe(1)
+  })
+
   it("does nothing when remap is disabled", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
@@ -482,6 +514,76 @@ describe("catalog instruction override orchestrator preservation gating", () => 
     expect(body.instructions).not.toContain("spawn_agent")
     expect(body.instructions).not.toContain("send_input")
     expect(body.instructions).not.toContain("write_stdin")
+  })
+
+  it("updates instructions when rendered text appears only as an incidental substring", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: "prefix Base Default voice suffix"
+      })
+    })
+
+    const result = await applyCatalogInstructionOverrideToRequest({
+      request,
+      enabled: true,
+      catalogModels,
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined
+    })
+
+    expect(result.changed).toBe(true)
+    expect(result.reason).toBe("updated")
+    const body = JSON.parse(await result.request.text()) as { instructions?: string }
+    expect(body.instructions).toBe("Base Default voice\n\nprefix Base Default voice suffix")
+  })
+
+  it("remains idempotent across repeated transforms when fallback plan header is present", async () => {
+    const initialRequest = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: "# Plan Mode\n\nUse concise sections and produce a concrete plan."
+      })
+    })
+
+    const first = await applyCatalogInstructionOverrideToRequest({
+      request: initialRequest,
+      enabled: true,
+      catalogModels,
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined
+    })
+
+    expect(first.changed).toBe(true)
+    expect(first.reason).toBe("updated")
+    const firstBody = JSON.parse(await first.request.text()) as { instructions?: string }
+    expect(firstBody.instructions).toContain("# Plan Mode")
+
+    const secondRequest = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: firstBody.instructions
+      })
+    })
+
+    const second = await applyCatalogInstructionOverrideToRequest({
+      request: secondRequest,
+      enabled: true,
+      catalogModels,
+      behaviorSettings: undefined,
+      fallbackPersonality: undefined
+    })
+
+    expect(second.changed).toBe(false)
+    expect(second.reason).toBe("already_matches")
+    const secondBody = JSON.parse(await second.request.text()) as { instructions?: string }
+    expect(secondBody.instructions).toBe(firstBody.instructions)
   })
 })
 

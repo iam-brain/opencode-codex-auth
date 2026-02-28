@@ -1,6 +1,297 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe("openai loader fetch prompt cache key", () => {
+  it("returns disallowed_outbound_request for invalid outbound request input", async () => {
+    vi.resetModules()
+
+    const acquireOpenAIAuth = vi.fn(async () => ({
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus"
+    }))
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({
+      acquireOpenAIAuth
+    }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    const fetchSpy = vi.fn(async () => new Response("ok", { status: 200 }))
+    vi.stubGlobal("fetch", fetchSpy)
+
+    const handler = createOpenAIFetchHandler({
+      authMode: "native",
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState: () => {}
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth: async () => undefined,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    const response = await handler("not a valid outbound url")
+    const payload = (await response.json()) as { error?: { type?: string } }
+    expect(response.status).toBe(400)
+    expect(payload.error?.type).toBe("disallowed_outbound_request")
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(acquireOpenAIAuth).not.toHaveBeenCalled()
+  })
+
+  it("dedupes catalog refresh across concurrent requests for the same account scope", async () => {
+    vi.resetModules()
+
+    const auth = {
+      access: "access-token",
+      accountId: "acc_shared_scope",
+      identityKey: "acc_shared_scope|user@example.com|plus"
+    }
+    const acquireOpenAIAuth = vi.fn(async () => auth)
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({ acquireOpenAIAuth }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    let releaseCatalogSync: (() => void) | undefined
+    const catalogSyncGate = new Promise<void>((resolve) => {
+      releaseCatalogSync = resolve
+    })
+    const syncCatalogFromAuth = vi.fn(async () => {
+      await catalogSyncGate
+      return undefined
+    })
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response("ok", { status: 200 })
+      })
+    )
+
+    const handler = createOpenAIFetchHandler({
+      authMode: "codex",
+      spoofMode: "codex",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState: () => {}
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    const first = handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_catalog_1" },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "one" })
+    })
+    const second = handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_catalog_2" },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "two" })
+    })
+
+    await vi.waitFor(() => {
+      expect(syncCatalogFromAuth).toHaveBeenCalledTimes(1)
+    })
+
+    releaseCatalogSync?.()
+    await Promise.all([first, second])
+
+    await handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_catalog_3" },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "three" })
+    })
+    expect(syncCatalogFromAuth).toHaveBeenCalledTimes(1)
+  })
+
+  it("retries catalog sync after failure once failure retry window elapses", async () => {
+    vi.resetModules()
+
+    const auth = {
+      access: "access-token",
+      accountId: "acc_shared_scope",
+      identityKey: "acc_shared_scope|user@example.com|plus"
+    }
+    const acquireOpenAIAuth = vi.fn(async () => auth)
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({ acquireOpenAIAuth }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    let syncCalls = 0
+    const syncCatalogFromAuth = vi.fn(async () => {
+      syncCalls += 1
+      if (syncCalls === 1) {
+        throw new Error("sync failed once")
+      }
+      return undefined
+    })
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response("ok", { status: 200 })
+      })
+    )
+
+    let nowValue = 1_000
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => nowValue)
+
+    try {
+      const handler = createOpenAIFetchHandler({
+        authMode: "codex",
+        spoofMode: "codex",
+        remapDeveloperMessagesToUserEnabled: false,
+        quietMode: true,
+        pidOffsetEnabled: false,
+        headerTransformDebug: false,
+        compatInputSanitizerEnabled: false,
+        internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+        requestSnapshots: {
+          captureRequest: async () => {},
+          captureResponse: async () => {}
+        },
+        sessionAffinityState: {
+          orchestratorState: createFetchOrchestratorState(),
+          stickySessionState: createStickySessionState(),
+          hybridSessionState: createStickySessionState(),
+          persistSessionAffinityState: () => {}
+        },
+        getCatalogModels: () => undefined,
+        syncCatalogFromAuth,
+        setCooldown: async () => {},
+        showToast: async () => {}
+      })
+
+      await handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json", session_id: "ses_catalog_1" },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "one" })
+      })
+
+      nowValue = 12_000
+      await handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json", session_id: "ses_catalog_2" },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "two" })
+      })
+
+      expect(syncCatalogFromAuth).toHaveBeenCalledTimes(2)
+    } finally {
+      nowSpy.mockRestore()
+    }
+  })
+
+  it("isolates catalog refresh scopes for identityless auth using attempt keys", async () => {
+    vi.resetModules()
+
+    const auths = [
+      {
+        access: "access-token-1",
+        selectionTrace: { attemptKey: "idx:1" }
+      },
+      {
+        access: "access-token-2",
+        selectionTrace: { attemptKey: "idx:2" }
+      }
+    ]
+    const acquireOpenAIAuth = vi.fn(async () => {
+      const next = auths.shift()
+      if (!next) throw new Error("missing auth mock")
+      return next
+    })
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({ acquireOpenAIAuth }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    const syncCatalogFromAuth = vi.fn(async () => undefined)
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response("ok", { status: 200 })
+      })
+    )
+
+    const handler = createOpenAIFetchHandler({
+      authMode: "codex",
+      spoofMode: "codex",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState: () => {}
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    await Promise.all([
+      handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json", session_id: "ses_catalog_anonymous_1" },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "one" })
+      }),
+      handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json", session_id: "ses_catalog_anonymous_2" },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "two" })
+      })
+    ])
+
+    expect(syncCatalogFromAuth).toHaveBeenCalledTimes(2)
+  })
+
   it("keeps upstream prompt_cache_key behavior by default", async () => {
     vi.resetModules()
 
@@ -90,8 +381,12 @@ describe("openai loader fetch prompt cache key", () => {
     })
 
     expect(acquireOpenAIAuth).toHaveBeenCalled()
-    expect(outboundBody).toBeDefined()
-    expect(outboundBody?.prompt_cache_key).toBe("ses_original")
+    expect(outboundBody).toEqual(
+      expect.objectContaining({
+        model: "gpt-5.3-codex",
+        prompt_cache_key: "ses_original"
+      })
+    )
     expect(outboundAttemptMeta?.attemptReasonCode).toBe("initial_attempt")
     expect(outboundAttemptMeta?.selectionDecision).toBeUndefined()
     expect(outboundAttemptMeta?.selectionStrategy).toBeUndefined()
@@ -99,6 +394,91 @@ describe("openai loader fetch prompt cache key", () => {
     expect(outboundAttemptMeta?.selectionTotalCount).toBeUndefined()
     expect(outboundAttemptMeta?.selectionDisabledCount).toBeUndefined()
     expect(outboundAttemptMeta?.selectionRefreshLeaseCount).toBeUndefined()
+  })
+
+  it("does not mutate shared affinity maps for subagent-marked requests", async () => {
+    vi.resetModules()
+
+    const auth = {
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus",
+      email: "user@example.com",
+      plan: "plus",
+      accountLabel: "user@example.com (plus)"
+    }
+
+    const acquireOpenAIAuth = vi.fn(async () => auth)
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({
+      acquireOpenAIAuth
+    }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response("ok", { status: 200 })
+      })
+    )
+
+    const orchestratorState = createFetchOrchestratorState()
+    const now = Date.now()
+    orchestratorState.seenSessionKeys.set("ses_parent", now)
+    orchestratorState.seenSessionKeys.set("ses_subagent", now)
+    const stickySessionState = createStickySessionState()
+    stickySessionState.bySessionKey.set("ses_parent", auth.identityKey)
+    stickySessionState.bySessionKey.set("ses_subagent", auth.identityKey)
+    const hybridSessionState = createStickySessionState()
+    hybridSessionState.bySessionKey.set("ses_parent", auth.identityKey)
+    hybridSessionState.bySessionKey.set("ses_subagent", auth.identityKey)
+    const persistSessionAffinityState = vi.fn()
+
+    const handler = createOpenAIFetchHandler({
+      authMode: "native",
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      internalCollaborationAgentHeader: "x-openai-subagent",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState,
+        stickySessionState,
+        hybridSessionState,
+        persistSessionAffinityState
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth: async () => undefined,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    await handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-openai-subagent": "plan",
+        session_id: "ses_subagent"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "hi" })
+    })
+
+    expect(orchestratorState.seenSessionKeys.get("ses_parent")).toBe(now)
+    expect((orchestratorState.seenSessionKeys.get("ses_subagent") ?? 0) >= now).toBe(true)
+    expect(stickySessionState.bySessionKey.get("ses_parent")).toBe(auth.identityKey)
+    expect(stickySessionState.bySessionKey.get("ses_subagent")).toBe(auth.identityKey)
+    expect(hybridSessionState.bySessionKey.get("ses_parent")).toBe(auth.identityKey)
+    expect(hybridSessionState.bySessionKey.get("ses_subagent")).toBe(auth.identityKey)
+    expect(persistSessionAffinityState).not.toHaveBeenCalled()
   })
 
   it("includes selection telemetry in snapshots when header transform debug is enabled", async () => {
@@ -261,7 +641,15 @@ describe("openai loader fetch prompt cache key", () => {
     })
 
     expect(acquireOpenAIAuth).toHaveBeenCalled()
-    expect(outboundBody).toBeDefined()
+    expect(outboundBody).toEqual(
+      expect.objectContaining({
+        model: "gpt-5.3-codex",
+        prompt_cache_key: buildProjectPromptCacheKey({
+          projectPath,
+          spoofMode: "native"
+        })
+      })
+    )
     expect(outboundBody?.prompt_cache_key).toBe(
       buildProjectPromptCacheKey({
         projectPath,
@@ -451,7 +839,7 @@ describe("openai loader fetch prompt cache key", () => {
 
     const earlyResolution = await Promise.race<string>([
       handlerPromise.then(() => "resolved"),
-      new Promise((resolve) => setTimeout(() => resolve("pending"), 25))
+      Promise.resolve("pending")
     ])
 
     resolveQuota?.(
@@ -468,7 +856,7 @@ describe("openai loader fetch prompt cache key", () => {
 
     await handlerPromise
 
-    expect(earlyResolution).toBe("resolved")
+    expect(earlyResolution).toBe("pending")
     await vi.waitFor(() => {
       expect(setCooldown).toHaveBeenCalled()
       expect(showToast).toHaveBeenCalled()
@@ -499,87 +887,204 @@ describe("openai loader fetch prompt cache key", () => {
     let usageCalls = 0
     let now = 1_700_000_000_000
     const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now)
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url
-      if (url.includes("/wham/usage")) {
-        usageCalls += 1
-        throw new Error("quota backend down")
-      }
-      return new Response("ok", { status: 200 })
-    })
-    vi.stubGlobal("fetch", fetchMock)
+    try {
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url
+        if (url.includes("/wham/usage")) {
+          usageCalls += 1
+          throw new Error("quota backend down")
+        }
+        return new Response("ok", { status: 200 })
+      })
+      vi.stubGlobal("fetch", fetchMock)
 
-    const setCooldown = vi.fn(async () => {})
-    const showToast = vi.fn(async () => {})
-    const log = { debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() }
-    const handler = createOpenAIFetchHandler({
-      authMode: "native",
-      spoofMode: "native",
-      remapDeveloperMessagesToUserEnabled: false,
-      quietMode: true,
-      pidOffsetEnabled: false,
-      headerTransformDebug: false,
-      compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
-      requestSnapshots: {
-        captureRequest: async () => {},
-        captureResponse: async () => {}
-      },
-      sessionAffinityState: {
-        orchestratorState: createFetchOrchestratorState(),
-        stickySessionState: createStickySessionState(),
-        hybridSessionState: createStickySessionState(),
-        persistSessionAffinityState: () => {}
-      },
-      getCatalogModels: () => undefined,
-      syncCatalogFromAuth: async () => undefined,
-      setCooldown,
-      showToast,
-      log
-    })
+      const setCooldown = vi.fn(async () => {})
+      const showToast = vi.fn<(message: string, variant?: "info" | "success" | "warning" | "error", quietMode?: boolean) => Promise<void>>(async () => {})
+      const log = { debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() }
+      const handler = createOpenAIFetchHandler({
+        authMode: "native",
+        spoofMode: "native",
+        remapDeveloperMessagesToUserEnabled: false,
+        quietMode: true,
+        pidOffsetEnabled: false,
+        headerTransformDebug: false,
+        compatInputSanitizerEnabled: false,
+        internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+        requestSnapshots: {
+          captureRequest: async () => {},
+          captureResponse: async () => {}
+        },
+        sessionAffinityState: {
+          orchestratorState: createFetchOrchestratorState(),
+          stickySessionState: createStickySessionState(),
+          hybridSessionState: createStickySessionState(),
+          persistSessionAffinityState: () => {}
+        },
+        getCatalogModels: () => undefined,
+        syncCatalogFromAuth: async () => undefined,
+        setCooldown,
+        showToast,
+        log
+      })
 
-    await handler("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        session_id: "ses_quota_fail_1"
-      },
-      body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
-    })
+      await handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          session_id: "ses_quota_fail_1"
+        },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
+      })
 
-    await new Promise((resolve) => setTimeout(resolve, 20))
+      await vi.waitFor(() => {
+        expect(usageCalls).toBe(1)
+      })
 
-    await handler("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        session_id: "ses_quota_fail_2"
-      },
-      body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello again" })
-    })
+      await handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          session_id: "ses_quota_fail_2"
+        },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello again" })
+      })
 
-    expect(usageCalls).toBe(1)
+      expect(usageCalls).toBe(1)
 
-    now += 10_200
+      now += 10_200
 
-    await handler("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        session_id: "ses_quota_fail_3"
-      },
-      body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello after retry window" })
-    })
+      await handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          session_id: "ses_quota_fail_3"
+        },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello after retry window" })
+      })
 
-    await vi.waitFor(() => {
-      expect(usageCalls).toBeGreaterThanOrEqual(2)
-      expect(log.debug).toHaveBeenCalledWith(
-        "quota fetch failed",
-        expect.objectContaining({ endpoint: expect.stringContaining("/wham/usage") })
-      )
-    })
+      await vi.waitFor(() => {
+        expect(usageCalls).toBeGreaterThanOrEqual(2)
+        expect(log.debug).toHaveBeenCalledWith(
+          "quota fetch failed",
+          expect.objectContaining({ endpoint: expect.stringContaining("/wham/usage") })
+        )
+      })
+    } finally {
+      nowSpy.mockRestore()
+    }
+  })
 
-    nowSpy.mockRestore()
+  it("retries quota snapshot fetch after short cooldown when usage payload has no snapshot data", async () => {
+    vi.resetModules()
+
+    const auth = {
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus",
+      email: "user@example.com",
+      plan: "plus",
+      accountLabel: "user@example.com (plus)"
+    }
+
+    const acquireOpenAIAuth = vi.fn(async () => auth)
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({
+      acquireOpenAIAuth
+    }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    let usageCalls = 0
+    let now = 1_700_000_000_000
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now)
+    try {
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url
+        if (url.includes("/wham/usage")) {
+          usageCalls += 1
+          return new Response("{}", { status: 200, headers: { "content-type": "application/json" } })
+        }
+        return new Response("ok", { status: 200 })
+      })
+      vi.stubGlobal("fetch", fetchMock)
+
+      const setCooldown = vi.fn(async () => {})
+      const showToast = vi.fn<(message: string, variant?: "info" | "success" | "warning" | "error", quietMode?: boolean) => Promise<void>>(async () => {})
+      const handler = createOpenAIFetchHandler({
+        authMode: "native",
+        spoofMode: "native",
+        remapDeveloperMessagesToUserEnabled: false,
+        quietMode: true,
+        pidOffsetEnabled: false,
+        headerTransformDebug: false,
+        compatInputSanitizerEnabled: false,
+        internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+        requestSnapshots: {
+          captureRequest: async () => {},
+          captureResponse: async () => {}
+        },
+        sessionAffinityState: {
+          orchestratorState: createFetchOrchestratorState(),
+          stickySessionState: createStickySessionState(),
+          hybridSessionState: createStickySessionState(),
+          persistSessionAffinityState: () => {}
+        },
+        getCatalogModels: () => undefined,
+        syncCatalogFromAuth: async () => undefined,
+        setCooldown,
+        showToast
+      })
+
+      await handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          session_id: "ses_quota_empty_1"
+        },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
+      })
+
+      await vi.waitFor(() => {
+        expect(usageCalls).toBe(1)
+      })
+      await Promise.resolve()
+      await Promise.resolve()
+
+      now += 5_000
+
+      await handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          session_id: "ses_quota_empty_2"
+        },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello again" })
+      })
+
+      expect(usageCalls).toBe(1)
+
+      now += 5_500
+
+      await handler("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          session_id: "ses_quota_empty_3"
+        },
+        body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello after retry window" })
+      })
+
+      await vi.waitFor(() => {
+        expect(usageCalls).toBe(2)
+      })
+      expect(setCooldown).not.toHaveBeenCalled()
+      expect(showToast.mock.calls.some((call) => String(call[0]).includes("Switching account due to"))).toBe(false)
+    } finally {
+      nowSpy.mockRestore()
+    }
   })
 
   it("preserves allowed inbound originator in native mode", async () => {

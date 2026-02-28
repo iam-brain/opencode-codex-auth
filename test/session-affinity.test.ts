@@ -6,6 +6,7 @@ import lockfile from "proper-lockfile"
 import { describe, expect, it } from "vitest"
 
 import {
+  MAX_SESSION_AFFINITY_ENTRIES,
   createSessionExistsFn,
   loadSessionAffinity,
   pruneSessionAffinitySnapshot,
@@ -36,7 +37,48 @@ describe("session affinity storage", () => {
     expect(snapshot.stickyBySessionKey.get("ses_a")).toBe("id_a")
     expect(snapshot.hybridBySessionKey.get("ses_b")).toBe("id_b")
     const mode = (await fs.stat(filePath)).mode & 0o777
-    expect(mode).toBe(0o600)
+    if (process.platform !== "win32") {
+      expect(mode).toBe(0o600)
+    }
+  })
+
+  it("caps persisted session-affinity maps to MAX_SESSION_AFFINITY_ENTRIES", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-session-affinity-"))
+    const filePath = path.join(root, "codex-session-affinity.json")
+
+    const seenEntries = Array.from({ length: MAX_SESSION_AFFINITY_ENTRIES + 10 }, (_, index) => [
+      `ses_${index}`,
+      index
+    ] as const)
+    const stickyEntries = Array.from({ length: MAX_SESSION_AFFINITY_ENTRIES + 10 }, (_, index) => [
+      `ses_${index}`,
+      `sticky_${index}`
+    ] as const)
+    const hybridEntries = Array.from({ length: MAX_SESSION_AFFINITY_ENTRIES + 10 }, (_, index) => [
+      `ses_${index}`,
+      `hybrid_${index}`
+    ] as const)
+
+    await saveSessionAffinity(
+      async (current) =>
+        writeSessionAffinitySnapshot(current, "native", {
+          seenSessionKeys: new Map(seenEntries),
+          stickyBySessionKey: new Map(stickyEntries),
+          hybridBySessionKey: new Map(hybridEntries)
+        }),
+      filePath
+    )
+
+    const loaded = await loadSessionAffinity(filePath)
+    const snapshot = readSessionAffinitySnapshot(loaded, "native")
+
+    expect(snapshot.seenSessionKeys.size).toBe(MAX_SESSION_AFFINITY_ENTRIES)
+    expect(snapshot.stickyBySessionKey.size).toBe(MAX_SESSION_AFFINITY_ENTRIES)
+    expect(snapshot.hybridBySessionKey.size).toBe(MAX_SESSION_AFFINITY_ENTRIES)
+    expect(snapshot.seenSessionKeys.has("ses_0")).toBe(false)
+    expect(snapshot.stickyBySessionKey.has("ses_0")).toBe(false)
+    expect(snapshot.hybridBySessionKey.has("ses_0")).toBe(false)
+    expect(snapshot.seenSessionKeys.has(`ses_${MAX_SESSION_AFFINITY_ENTRIES + 9}`)).toBe(true)
   })
 
   it("tolerates missing or malformed files", async () => {
@@ -73,6 +115,19 @@ describe("session affinity storage", () => {
     expect(snapshot.seenSessionKeys.has("ses_drop")).toBe(false)
     expect(snapshot.stickyBySessionKey.has("ses_drop")).toBe(false)
     expect(snapshot.hybridBySessionKey.has("ses_drop")).toBe(false)
+  })
+
+  it("counts removals when key exists only in sticky/hybrid maps", async () => {
+    const snapshot = {
+      seenSessionKeys: new Map<string, number>(),
+      stickyBySessionKey: new Map([["ses_sticky_only", "id_keep"]]),
+      hybridBySessionKey: new Map([["ses_hybrid_only", "id_keep"]])
+    }
+
+    const removed = await pruneSessionAffinitySnapshot(snapshot, async () => false)
+    expect(removed).toBe(2)
+    expect(snapshot.stickyBySessionKey.size).toBe(0)
+    expect(snapshot.hybridBySessionKey.size).toBe(0)
   })
 
   it("keeps recent missing sessions during grace window", async () => {
@@ -126,21 +181,27 @@ describe("session affinity storage", () => {
       }
     })
 
+    let enteredUpdate = false
     const pendingWrite = saveSessionAffinity(
-      async (current) =>
+      async (current) => {
+        enteredUpdate = true
         writeSessionAffinitySnapshot(current, "native", {
           seenSessionKeys: new Map([["ses_lock", Date.now()]]),
           stickyBySessionKey: new Map([["ses_lock", "id_lock"]]),
           hybridBySessionKey: new Map()
-        }),
+        })
+        return current
+      },
       filePath
     )
 
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    await expect(fs.access(filePath)).rejects.toBeDefined()
+    await Promise.resolve()
+    expect(enteredUpdate).toBe(false)
+    await expect(fs.access(filePath)).rejects.toMatchObject({ code: "ENOENT" })
 
     await release()
     await pendingWrite
+    expect(enteredUpdate).toBe(true)
     await expect(fs.access(filePath)).resolves.toBeUndefined()
   })
 

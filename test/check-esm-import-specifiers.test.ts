@@ -24,6 +24,21 @@ describe("check-esm-import-specifiers script", () => {
     expect(result.stderr).toContain("index.ts:1 -> ./lib/side-effect")
   })
 
+  it("fails for semicolon-prefixed side-effect imports without runtime extension", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-esm-guard-"))
+    await fs.mkdir(path.join(root, "lib"), { recursive: true })
+    await fs.writeFile(path.join(root, "index.ts"), 'void 0;import "./lib/side-effect"\n', "utf8")
+    await fs.writeFile(path.join(root, "lib", "side-effect.ts"), "export {}\n", "utf8")
+
+    const result = spawnSync("node", [script], {
+      cwd: root,
+      encoding: "utf8"
+    })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("index.ts:1 -> ./lib/side-effect")
+  })
+
   it("passes when side-effect imports are fully specified", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-esm-guard-"))
     await fs.mkdir(path.join(root, "lib"), { recursive: true })
@@ -120,6 +135,25 @@ describe("check-esm-import-specifiers script", () => {
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain("fully specified")
+  })
+
+  it("parses template interpolation braces without masking later import offenders", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-esm-guard-"))
+    await fs.mkdir(path.join(root, "lib"), { recursive: true })
+    await fs.writeFile(
+      path.join(root, "index.ts"),
+      'const value = `${"}"} and ${`{"nested"}`}`;\nimport "./lib/side-effect"\n',
+      "utf8"
+    )
+    await fs.writeFile(path.join(root, "lib", "side-effect.ts"), "export {}\n", "utf8")
+
+    const result = spawnSync("node", [script], {
+      cwd: root,
+      encoding: "utf8"
+    })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("index.ts:2 -> ./lib/side-effect")
   })
 
   it("fails when index.ts uses @opencode-ai/plugin runtime import", async () => {

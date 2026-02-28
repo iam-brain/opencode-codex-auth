@@ -8,8 +8,8 @@ describe("codex quota fetch", () => {
   })
 
   it("parses wham usage response into requests/tokens limits", async () => {
-    const fetchMock = vi.fn(
-      async () =>
+    const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
+      async (_url: string | URL | Request, _init?: RequestInit) =>
         new Response(
           JSON.stringify({
             rate_limit: {
@@ -57,8 +57,8 @@ describe("codex quota fetch", () => {
   })
 
   it("resolves codex-api usage path for non-backend base URLs", async () => {
-    const fetchMock = vi.fn(
-      async () =>
+    const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
+      async (_url: string | URL | Request, _init?: RequestInit) =>
         new Response(
           JSON.stringify({
             rate_limit: {
@@ -89,8 +89,8 @@ describe("codex quota fetch", () => {
   })
 
   it("routes quota requests with ChatGPT-Account-Id header for account isolation parity", async () => {
-    const fetchMock = vi.fn(
-      async () =>
+    const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
+      async (_url: string | URL | Request, _init?: RequestInit) =>
         new Response(
           JSON.stringify({
             rate_limit: {
@@ -120,8 +120,8 @@ describe("codex quota fetch", () => {
   })
 
   it("normalizes chatgpt base URL to backend-api before usage lookup", async () => {
-    const fetchMock = vi.fn(
-      async () =>
+    const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
+      async (_url: string | URL | Request, _init?: RequestInit) =>
         new Response(
           JSON.stringify({
             rate_limit: {
@@ -150,7 +150,9 @@ describe("codex quota fetch", () => {
   })
 
   it("returns null for non-success usage responses without fallback requests", async () => {
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 500 }))
+    const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
+      async (_url: string | URL | Request, _init?: RequestInit) => new Response("{}", { status: 500 })
+    )
     vi.stubGlobal("fetch", fetchMock)
 
     const snapshot = await fetchQuotaSnapshotFromBackend({
