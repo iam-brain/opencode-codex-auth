@@ -15,6 +15,8 @@ Quick links: [Getting Started](docs/getting-started.md) · [Configuration](docs/
 - Optional live quota probe test: set `CODEX_IN_VIVO=1` before running tests
 - Release automation requires GitHub Actions permissions for `contents: write` and `id-token: write` (OIDC trusted publishing)
 - Release automation also requires a configured GitHub Actions environment named `npm-release`
+- Release publish job requires Node.js `>=22.14` and npm `>=11.5.1` for GitHub OIDC trusted publishing compatibility
+- If npm publish fails with `ENEEDAUTH`, verify npm Trusted Publisher mapping for repo `iam-brain/opencode-codex-auth`, workflow `.github/workflows/release.yml`, and environment `npm-release`
 
 ## Why this plugin
 

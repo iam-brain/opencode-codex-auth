@@ -158,24 +158,57 @@ jobs:
           fetch-depth: 1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20.x"
+          node-version: "22.x"
           registry-url: "https://registry.npmjs.org"
           cache: npm
-      - name: Pin npm version from packageManager
+      - name: Ensure OIDC publish runtime
         run: |
           set -euo pipefail
-          PKG_MANAGER="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).packageManager")"
-          case "${PKG_MANAGER}" in
-            npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
-            *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
-          esac
-          corepack enable || true
-          corepack prepare "npm@${NPM_VERSION}" --activate || true
-          if [ "$(npm --version)" != "${NPM_VERSION}" ]; then
-            echo "npm version mismatch after corepack, falling back to npm install -g"
-            npm install -g "npm@${NPM_VERSION}"
+          node - <<'NODE'
+          const [major, minor] = process.versions.node.split(".").map((value) => Number(value))
+          const isSupported = major > 22 || (major === 22 && minor >= 14)
+          if (!isSupported) {
+            console.error(`Node.js ${process.versions.node} is too old for OIDC trusted publishing (need >=22.14.0).`)
+            process.exit(1)
+          }
+          NODE
+          if ! node - "$(npm --version)" <<'NODE'
+          const input = String(process.argv[2] ?? "")
+          const [major, minor, patch] = input.split(".").map((value) => Number(value))
+          const isValid = Number.isFinite(major) && Number.isFinite(minor) && Number.isFinite(patch)
+          const isSupported = isValid && (major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1))))
+          if (!isSupported) process.exit(1)
+          NODE
+          then
+            echo "Upgrading npm to 11.5.1 for OIDC trusted publishing compatibility..."
+            npm install -g npm@11.5.1
           fi
-          test "$(npm --version)" = "${NPM_VERSION}"
+          echo "Using Node $(node --version)"
+          echo "Using npm $(npm --version)"
+      - name: OIDC trusted publishing preflight
+        env:
+          EXPECTED_REPO: "iam-brain/opencode-codex-auth"
+          EXPECTED_WORKFLOW_FILE: ".github/workflows/release.yml"
+          EXPECTED_ENVIRONMENT: "npm-release"
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REPOSITORY}" != "${EXPECTED_REPO}" ]; then
+            echo "Unexpected repository for trusted publishing: ${GITHUB_REPOSITORY}" >&2
+            echo "Expected repository: ${EXPECTED_REPO}" >&2
+            exit 1
+          fi
+          if [ -n "${GITHUB_WORKFLOW_REF:-}" ] && [[ "${GITHUB_WORKFLOW_REF}" != "${EXPECTED_REPO}/${EXPECTED_WORKFLOW_FILE}@"* ]]; then
+            echo "Unexpected workflow ref for trusted publishing: ${GITHUB_WORKFLOW_REF}" >&2
+            echo "Expected workflow file: ${EXPECTED_WORKFLOW_FILE}" >&2
+            exit 1
+          fi
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "Missing GitHub OIDC request metadata in job environment." >&2
+            echo "Expected ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN." >&2
+            echo "Verify workflow permissions include id-token: write and environment ${EXPECTED_ENVIRONMENT} is correctly configured." >&2
+            exit 1
+          fi
+          echo "OIDC preflight passed for ${EXPECTED_REPO} (${EXPECTED_WORKFLOW_FILE}, environment ${EXPECTED_ENVIRONMENT})."
       - name: Download release artifact
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
         with:
@@ -192,7 +225,18 @@ jobs:
           fi
           TARBALL="$(ls -1 ./release-artifact/*.tgz | head -n 1)"
           test -f "${TARBALL}"
-          npm publish "${TARBALL}" --access public --provenance
+          PUBLISH_LOG="$(mktemp)"
+          set +e
+          npm publish "${TARBALL}" --access public --provenance >"${PUBLISH_LOG}" 2>&1
+          PUBLISH_STATUS=$?
+          set -e
+          cat "${PUBLISH_LOG}"
+          if [ ${PUBLISH_STATUS} -ne 0 ] && grep -Eiq "ENEEDAUTH|need auth" "${PUBLISH_LOG}"; then
+            echo "OIDC trusted publish returned ENEEDAUTH." >&2
+            echo "Verify npm Trusted Publisher mapping repo=iam-brain/opencode-codex-auth workflow=.github/workflows/release.yml environment=npm-release." >&2
+          fi
+          rm -f "${PUBLISH_LOG}"
+          exit ${PUBLISH_STATUS}
 
   release:
     name: Create GitHub Release

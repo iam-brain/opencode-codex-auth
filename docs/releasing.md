@@ -77,6 +77,7 @@ GitHub Actions handle verification and publish automation:
   - includes security dependency audit gate
 - `.github/workflows/release.yml`
   - on `v*` tag push, installs dependencies, runs `npm run verify`, publishes to npm with Trusted Publishing, and creates GitHub Release
+  - publish job runs on Node `22.x`, enforces npm `>=11.5.1`, and fails early when GitHub OIDC metadata is unavailable
 
 ## Manual smoke checklist
 
@@ -95,8 +96,23 @@ Run a quick live pass in OpenCode:
 ## One-time setup (maintainer)
 
 1. Create npm package `@iam-brain/opencode-codex-auth` (public).
-2. Configure npm Trusted Publishing for `iam-brain/opencode-codex-auth`.
+2. Configure npm Trusted Publishing for:
+   - repo: `iam-brain/opencode-codex-auth`
+   - workflow: `.github/workflows/release.yml`
+   - environment: `npm-release`
 3. Ensure GitHub Actions are enabled for the repo.
+
+## OIDC troubleshooting
+
+If release publish fails with `ENEEDAUTH`:
+
+1. Confirm npm Trusted Publisher mapping exactly matches:
+   - repo `iam-brain/opencode-codex-auth`
+   - workflow `.github/workflows/release.yml`
+   - environment `npm-release`
+2. Confirm release publish job still has `id-token: write`.
+3. Confirm publish job runtime is Node `>=22.14` and npm `>=11.5.1`.
+4. Re-run release after fixing mapping/runtime mismatch.
 
 ## Safety rules
 

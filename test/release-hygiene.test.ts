@@ -124,6 +124,17 @@ describe("release hygiene", () => {
       .join("\n")
     expect(publishJob).toContain("id-token: write")
     expect(publishJob).not.toContain("run: npm ci")
+    expect(publishJob).toContain('node-version: "22.x"')
+    expect(publishJob).toContain("npm install -g npm@11.5.1")
+    expect(publishJob).toContain("ACTIONS_ID_TOKEN_REQUEST_URL")
+    expect(publishJob).toContain("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+    expect(publishJob).toContain('EXPECTED_REPO: "iam-brain/opencode-codex-auth"')
+    expect(publishJob).toContain('EXPECTED_WORKFLOW_FILE: ".github/workflows/release.yml"')
+    expect(publishJob).toContain('EXPECTED_ENVIRONMENT: "npm-release"')
+    expect(publishJob).toContain('TARBALL="$(ls -1 ./release-artifact/*.tgz | head -n 1)"')
+    expect(publishJob).not.toContain("OIDC publish unavailable; retrying with token auth.")
+    expect(publishJob).not.toContain("${{ secrets.NPM_TOKEN")
+    expect(publishJob).not.toContain("${{ secrets.NODE_AUTH_TOKEN")
   })
 
   it("all workflows pin external actions by commit SHA", () => {
