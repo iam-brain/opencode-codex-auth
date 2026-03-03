@@ -8,12 +8,34 @@ This repo uses Vitest + TypeScript type checks.
 npm run typecheck
 npm test
 npm run build
+npm run lint
+npm run test:anti-mock
+npm run check:file-size
+npm run check:coverage-ratchet
+npm run check:docs
 npm run verify
 ```
 
 `npm run verify` is the pre-release gate.
 
-It now includes Node ESM regression checks (source + dist import specifiers) and a built CLI smoke run.
+It now includes strict Biome linting + format checks (including typed promise-safety rules), anti-mock policy checks, coverage ratcheting, file-size caps, docs drift checks, Node ESM regression checks (source + dist import specifiers), and a built CLI smoke run.
+
+## Quality policy gates
+
+- `npm run lint`
+  - Runs Biome lint on source + tests with focused-test bans and typed promise-safety rules.
+- `npm run test:anti-mock`
+  - Enforces boundary-only mock policy.
+  - No new `vi.doMock`/`vi.mock`/direct `vi.stubGlobal` usage beyond the tracked baseline in `scripts/test-mocking-allowlist.json`.
+  - Shared global stub seam lives in `test/helpers/mock-policy.ts`.
+- `npm run check:file-size`
+  - Enforces source/test line-count caps with transitional allowlists in `scripts/file-size-allowlist.json`.
+- `npm run check:coverage-ratchet`
+  - Enforces global coverage floor and prevents touched-file coverage regressions against `scripts/coverage-ratchet.baseline.json`.
+  - Uses `regressionTolerancePct: 1` from `scripts/coverage-ratchet.config.json` when comparing touched files to baseline.
+  - Future milestones are tracked in `scripts/coverage-ratchet.config.json`.
+- `npm run check:docs`
+  - Enforces canonical-doc reference hygiene (deleted test paths, removed tooling references, and broken repo-relative Markdown links).
 
 Vitest environment isolation:
 
@@ -36,7 +58,10 @@ npx --yes --package "./${TARBALL}" opencode-codex-auth --help
 
 ```bash
 npx vitest run test/storage.test.ts
-npx vitest run test/config.test.ts
+npx vitest run test/config-file-loading.test.ts
+npx vitest run test/config-loading-resolve.test.ts
+npx vitest run test/config-validation.test.ts
+npx vitest run test/config-getters.test.ts
 npx vitest run test/installer-cli.test.ts
 npx vitest run test/codex-prompts-cache.test.ts
 npx vitest run test/remote-cache-fetch.test.ts

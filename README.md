@@ -16,6 +16,7 @@ Quick links: [Getting Started](docs/getting-started.md) · [Configuration](docs/
 - Release automation requires GitHub Actions permissions for `contents: write` and `id-token: write` (OIDC trusted publishing)
 - Release automation also requires a configured GitHub Actions environment named `npm-release`
 - Release publish job requires Node.js `>=22.14` and npm `>=11.5.1` for GitHub OIDC trusted publishing compatibility
+- Release publish preflight validates OIDC token identity claims for repository/workflow/environment (`iam-brain/opencode-codex-auth`, `.github/workflows/release.yml`, `npm-release`), not just env-variable presence
 - If npm publish fails with `ENEEDAUTH`, verify npm Trusted Publisher mapping for repo `iam-brain/opencode-codex-auth`, workflow `.github/workflows/release.yml`, and environment `npm-release`
 
 ## Why this plugin
@@ -133,11 +134,17 @@ Legacy sources can be imported explicitly from the auth menu:
 
 ```bash
 npm install
+npm run lint
+npm run test:anti-mock
+npm run test:coverage
+npm run check:coverage-ratchet
+npm run check:file-size
+npm run check:docs
 npm run verify
 npm run perf:profile
 npm run perf:profile:compare -- /path/to/baseline-root /path/to/optimized-root
 ```
 
-`npm run verify` includes ESM import specifier guards and a built CLI smoke check.
+`npm run verify` includes strict Biome linting + format checks (with typed promise-safety rules), anti-mock policy checks, coverage ratcheting, file-size caps, docs drift checks, ESM import specifier guards, and a built CLI smoke check.
 `npm run perf:profile` runs explicit `single-root` profiling for one checkout.
 Use `npm run perf:profile:compare -- <baseline-root> <optimized-root>` for comparative gain output across two distinct roots.

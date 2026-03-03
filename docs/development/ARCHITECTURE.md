@@ -5,9 +5,9 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
 ## Runtime overview
 
 1. OpenCode initializes plugin hooks (`index.ts`).
-2. Config is resolved from `codex-config.json` + env overrides (`lib/config.ts`).
-3. Auth loader selects a healthy account (`lib/storage.ts`, `lib/rotation.ts`).
-4. `CodexAuthPlugin` wires modular auth/request helpers under `lib/codex-native/` and routes Codex backend requests.
+2. Config is resolved from `codex-config.json` + env overrides through `lib/config.ts` (barrel over `lib/config/*` split modules).
+3. Auth loader selects a healthy account through `lib/storage.ts` + `lib/rotation.ts`, with storage migration/domain helpers in `lib/storage/*`.
+4. `CodexAuthPlugin` wires modular auth/request helpers under `lib/codex-native/` (including split OAuth/request-transform/fetch helpers) and routes Codex backend requests.
 5. Failures (`429`, refresh/auth) trigger cooldown/disable semantics and retry orchestration (`lib/fetch-orchestrator.ts`).
 
 ## Key modules
@@ -18,6 +18,7 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - top-level plugin wiring + hook registration (delegates to focused modules)
 - `lib/codex-native/openai-loader-fetch.ts`
   - OpenAI fetch pipeline (header shaping, request transforms, auth acquisition, retries, response snapshots)
+  - split helper state in `lib/codex-native/openai-loader-fetch-state.ts` and quota scheduling in `lib/codex-native/openai-loader-fetch-quota.ts`
   - periodic quota usage refresh + threshold warnings (`25%`, `20%`, `10%`, `5%`, `2.5%`, `0%`)
   - automatic cooldown/switch trigger when `5h` or `weekly` quota reaches `0%`
 - `lib/codex-native/acquire-auth.ts`
@@ -28,7 +29,9 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - auth-menu quota snapshot refresh + cooldown handling
 - `lib/codex-native/oauth-auth-methods.ts`, `lib/codex-native/oauth-persistence.ts`, `lib/codex-native/oauth-utils.ts`, `lib/codex-native/oauth-server.ts`
   - browser/headless OAuth method flows, token persistence, OAuth primitives, callback server lifecycle
-- `lib/codex-native/request-transform-pipeline.ts`, `lib/codex-native/request-transform.ts`, `lib/codex-native/chat-hooks.ts`, `lib/codex-native/session-messages.ts`
+- `lib/codex-native/oauth-server-debug.ts`, `lib/codex-native/oauth-server-network.ts`, `lib/codex-native/oauth-server-types.ts`
+  - OAuth server diagnostics, loopback binding policy, and lifecycle typing used by `oauth-server.ts`
+- `lib/codex-native/request-transform-pipeline.ts`, `lib/codex-native/request-transform.ts`, `lib/codex-native/request-transform-model.ts`, `lib/codex-native/request-transform-payload.ts`, `lib/codex-native/request-transform-instructions.ts`, `lib/codex-native/chat-hooks.ts`, `lib/codex-native/session-messages.ts`
   - request/body transform pipeline and chat hook behavior (params/headers/compaction)
 - `lib/codex-native/catalog-sync.ts`, `lib/codex-native/catalog-auth.ts`
   - model-catalog bootstrap and refresh wiring
@@ -40,18 +43,19 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - system browser launch for OAuth callback flow
 - `lib/codex-native/session-affinity-state.ts`, `lib/codex-native/rate-limit-snapshots.ts`, `lib/codex-native/request-routing.ts`
   - session affinity persistence, rate-limit snapshot persistence, outbound URL guard/rewrite
-- `lib/storage.ts`
-  - lock-guarded auth store IO, migration normalization, explicit legacy transfer
+- `lib/storage.ts`, `lib/storage/domain-state.ts`, `lib/storage/migration.ts`
+  - lock-guarded auth store IO, migration normalization, domain/account invariants, explicit legacy transfer
 - `lib/rotation.ts`
   - `sticky`, `hybrid`, `round_robin` account selection
 - `lib/fetch-orchestrator.ts`
   - retry/failover control around backend requests
+  - orchestration helper/type splits in `lib/fetch-orchestrator-helpers.ts` + `lib/fetch-orchestrator-types.ts`
   - standardized per-attempt failover reason codes (`initial_attempt`, `retry_same_account_after_429`, `retry_switched_account_after_429`) for snapshot/debug observability
   - failover toasts stay concise for end users; reason-code taxonomy remains available in snapshot/debug metadata
 - `lib/proactive-refresh.ts`
   - optional background refresh with lease/cooldown guards
-- `lib/model-catalog.ts`
-  - dynamic model catalog fetch/cache and provider model shaping
+- `lib/model-catalog.ts`, `lib/model-catalog/shared.ts`, `lib/model-catalog/catalog-fetch.ts`, `lib/model-catalog/provider.ts`, `lib/model-catalog/cache-helpers.ts`
+  - dynamic model catalog fetch/cache and provider model shaping via split internal modules with a stable barrel export
   - account-scoped server cache shards (`codex-auth-models-*.json`, `codex-models-cache-<hash>.json`)
   - shared GitHub catalog cache (`codex-models-cache.json`) + metadata (`codex-models-cache-meta.json`)
 - `lib/codex-native/client-identity.ts`
@@ -79,6 +83,8 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - quota percentage threshold warnings and cooldown triggers
 - `lib/cache-io.ts`, `lib/cache-lock.ts`, `lib/codex-cache-layout.ts`
   - shared cache IO primitives, lock helpers, and cache directory layout
+- `lib/config.ts`, `lib/config/types.ts`, `lib/config/validation.ts`, `lib/config/parse.ts`, `lib/config/io.ts`, `lib/config/resolve.ts`
+  - config typing, parsing, defaults, IO, and getter resolution through a stable top-level barrel
 - `lib/persona-tool.ts`, `lib/personality-skill.ts`
   - persona generation logic and `personality-builder` skill bundle management
 - `lib/identity.ts`
@@ -122,3 +128,18 @@ Fetch behavior is best-effort and uses ETag/304 revalidation plus a TTL to limit
 - Writes are atomic (`tmp` + rename; best-effort `0600`)
 - Legacy import is explicit via transfer action, not implicit during normal reads
 - Existing `codex-accounts.json` remains authoritative even when empty
+
+## Quality architecture
+
+Repository quality is enforced as code, not convention:
+
+- `biome.json`
+  - strict linting/formatting policy for source and tests
+  - typed promise-safety rules (`noFloatingPromises`, `noMisusedPromises`)
+  - focused-test bans (`describe.only`, `it.only`, `fit`, `fdescribe`)
+- `scripts/check-test-mocking.mjs`
+  - boundary-only anti-mock policy with tracked legacy baseline (`scripts/test-mocking-allowlist.json`)
+- `scripts/check-file-size.mjs`
+  - maintainability guardrails via source/test line-count caps with transitional allowlist (`scripts/file-size-allowlist.json`)
+- `scripts/check-coverage-ratchet.mjs`
+  - global coverage floor + touched-file regression protection using `scripts/coverage-ratchet.baseline.json`

@@ -6,7 +6,8 @@ This directory contains user and developer documentation for `opencode-codex-aut
 
 - `docs/index.md` - global docs index + agent fast-start order.
 - `docs/development/README.md` - internal architecture/config/testing index.
-- `docs/plans/` - local plan/progress workspace (if present).
+- `docs/plans/` - local-only plan/progress workspace (gitignored; not canonical repo docs).
+- `docs/research/` - local-only research workspace (gitignored; not canonical repo docs).
 - `docs/DOCUMENTATION.md` - docs structure and maintenance notes.
 
 ## Start here
@@ -43,4 +44,4 @@ This directory contains user and developer documentation for `opencode-codex-aut
 
 ## Local planning and research
 
-`docs/plans/` and `docs/research/` (if present) are local workflow directories and may be managed outside the main repository history.
+`docs/plans/` and `docs/research/` (if present) are local workflow directories and are not repository-maintained canonical documentation.

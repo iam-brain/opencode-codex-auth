@@ -1,6 +1,6 @@
 {
   "name": "@iam-brain/opencode-codex-auth",
-  "version": "1.2.5",
+  "version": "1.2.4",
   "description": "Native Codex auth with multi-account rotation for OpenCode",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -42,7 +42,11 @@
     "typecheck:test": "npm run patch:plugin-dts && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage.enabled true --coverage.provider=v8",
-    "verify": "npm run check:esm-imports && npm run typecheck && npm run typecheck:test && npm run test:coverage && npm run build && npm run check:dist-esm-imports && npm run smoke:cli:dist",
+    "test:anti-mock": "node scripts/check-test-mocking.mjs",
+    "check:file-size": "node scripts/check-file-size.mjs",
+    "check:coverage-ratchet": "node scripts/check-coverage-ratchet.mjs",
+    "check:docs": "node scripts/check-docs-references.mjs",
+    "verify": "npm run check:esm-imports && npm run lint && npm run format:check && npm run typecheck && npm run typecheck:test && npm run test:anti-mock && npm run test:coverage && npm run check:coverage-ratchet && npm run check:file-size && npm run check:docs && npm run build && npm run check:dist-esm-imports && npm run smoke:cli:dist",
     "check:esm-imports": "node scripts/check-esm-import-specifiers.mjs",
     "check:dist-esm-imports": "node scripts/check-dist-esm-import-specifiers.mjs",
     "smoke:cli": "npm run build && npm run smoke:cli:dist",
@@ -56,9 +60,9 @@
     "release:patch": "npm run release -- patch",
     "release:minor": "npm run release -- minor",
     "release:major": "npm run release -- major",
-    "lint": "eslint . --ext .ts",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "lint": "biome lint index.ts lib test bin scripts --error-on-warnings",
+    "format": "biome format --write .",
+    "format:check": "biome format ."
   },
   "files": [
     "dist/bin/",
@@ -78,15 +82,12 @@
     "@opencode-ai/plugin": "^1.2.15"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.0.6",
     "@opencode-ai/plugin": "^1.2.15",
     "@opencode-ai/sdk": "^1.2.2",
     "@types/node": "^20.17.24",
     "@types/proper-lockfile": "^4.1.2",
-    "@typescript-eslint/eslint-plugin": "^8.55.0",
-    "@typescript-eslint/parser": "^8.55.0",
     "@vitest/coverage-v8": "^3.2.4",
-    "eslint": "^9.39.2",
-    "prettier": "^3.8.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },

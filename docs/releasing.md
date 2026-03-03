@@ -4,7 +4,7 @@ This document is the source of truth for cutting and validating releases.
 
 ## Standard release flow
 
-Cut releases from `main` only:
+Cut releases from the repository default branch only (typically `main`):
 
 ```bash
 npm run release:patch
@@ -22,13 +22,13 @@ npm run release -- <patch|minor|major>
 
 `scripts/release.js` enforces and performs the following, in order:
 
-1. Confirms branch is `main`.
+1. Resolves and confirms branch is the repository default branch.
 2. Confirms working tree is clean.
-3. Confirms `HEAD` matches `origin/main`.
+3. Confirms `HEAD` matches `origin/<default-branch>`.
 4. Confirms latest `ci.yml` push run for `HEAD` is green and required jobs succeeded.
 5. Runs `npm run verify`.
 6. Runs `npm version <bump> -m "release: v%s"`.
-7. Pushes `main` plus tags (`git push origin main --follow-tags`).
+7. Pushes default branch plus tags (`git push origin <default-branch> --follow-tags`).
 8. Waits for GitHub Release visibility.
 
 Remote CI gate notes:
@@ -47,8 +47,15 @@ npm run verify
 `verify` runs:
 
 - `npm run check:esm-imports`
+- `npm run lint`
+- `npm run format:check`
 - `npm run typecheck`
-- `npm test`
+- `npm run typecheck:test`
+- `npm run test:anti-mock`
+- `npm run test:coverage`
+- `npm run check:coverage-ratchet`
+- `npm run check:file-size`
+- `npm run check:docs`
 - `npm run build`
 - `npm run check:dist-esm-imports`
 - `npm run smoke:cli:dist`
@@ -56,8 +63,7 @@ npm run verify
 Recommended additional checks:
 
 ```bash
-npm run lint
-npm run format:check
+npm run test
 ```
 
 ## Changelog policy
@@ -77,7 +83,7 @@ GitHub Actions handle verification and publish automation:
   - includes security dependency audit gate
 - `.github/workflows/release.yml`
   - on `v*` tag push, installs dependencies, runs `npm run verify`, publishes to npm with Trusted Publishing, and creates GitHub Release
-  - publish job runs on Node `22.x`, enforces npm `>=11.5.1`, and fails early when GitHub OIDC metadata is unavailable
+  - publish job runs on Node `22.x`, enforces npm `>=11.5.1`, and fails early unless GitHub OIDC metadata + token claims match repository/workflow/environment expectations
 
 ## Manual smoke checklist
 
@@ -102,6 +108,19 @@ Run a quick live pass in OpenCode:
    - environment: `npm-release`
 3. Ensure GitHub Actions are enabled for the repo.
 
+## Trusted publishing preflight contract
+
+`npm-publish` in `.github/workflows/release.yml` validates all of the following before `npm publish`:
+
+1. `GITHUB_REPOSITORY` matches `iam-brain/opencode-codex-auth`.
+2. `GITHUB_WORKFLOW_REF` points at `.github/workflows/release.yml`.
+3. `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are present.
+4. An OIDC token can be minted for `audience=npmjs`.
+5. Decoded OIDC claims match:
+   - repository: `iam-brain/opencode-codex-auth`
+   - workflow: `.github/workflows/release.yml`
+   - environment: `npm-release`
+
 ## OIDC troubleshooting
 
 If release publish fails with `ENEEDAUTH`:
@@ -111,8 +130,9 @@ If release publish fails with `ENEEDAUTH`:
    - workflow `.github/workflows/release.yml`
    - environment `npm-release`
 2. Confirm release publish job still has `id-token: write`.
-3. Confirm publish job runtime is Node `>=22.14` and npm `>=11.5.1`.
-4. Re-run release after fixing mapping/runtime mismatch.
+3. Confirm preflight logs report a successful OIDC claim validation pass.
+4. Confirm publish job runtime is Node `>=22.14` and npm `>=11.5.1`.
+5. Re-run release after fixing mapping/runtime mismatch.
 
 ## Safety rules
 

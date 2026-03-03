@@ -42,4 +42,5 @@ Use this page as the fast entrypoint for humans and agents.
 
 ## Planning and Research
 
-- `docs/plans/` (if present in local workspace)
+- `docs/plans/` (if present in local workspace) - local-only, gitignored, not canonical docs
+- `docs/research/` (if present in local workspace) - local-only, gitignored, not canonical docs
