@@ -64,14 +64,23 @@ function parseTouchedFiles(output) {
     .filter(Boolean)
 }
 
+function isAllZeroRef(value) {
+  return typeof value === "string" && /^[0]+$/.test(value)
+}
+
 function collectTouchedFiles() {
   const rangeCandidates = []
   const explicitRange = process.env.COVERAGE_RATCHET_DIFF_RANGE?.trim()
   if (explicitRange) rangeCandidates.push(explicitRange)
 
-  const baseRef = process.env.COVERAGE_RATCHET_BASE_REF?.trim()
+  const rawBaseRef = process.env.COVERAGE_RATCHET_BASE_REF?.trim()
+  const baseRef = rawBaseRef && !isAllZeroRef(rawBaseRef) ? rawBaseRef : undefined
   const headRef = process.env.COVERAGE_RATCHET_HEAD_REF?.trim() || "HEAD"
   if (baseRef) rangeCandidates.push(`${baseRef}...${headRef}`)
+  const singleCommitBase = runGitCommand(`git rev-parse --verify ${headRef}^`)?.trim()
+  if (singleCommitBase) {
+    rangeCandidates.push(`${singleCommitBase}...${headRef}`)
+  }
 
   rangeCandidates.push("origin/main...HEAD")
 
