@@ -70,14 +70,37 @@ function isAllZeroRef(value) {
 
 function collectTouchedFiles() {
   const rangeCandidates = []
+  const githubRef = process.env.GITHUB_REF?.trim()
+  const isTagPush = typeof githubRef === "string" && githubRef.startsWith("refs/tags/")
   const explicitRange = process.env.COVERAGE_RATCHET_DIFF_RANGE?.trim()
   if (explicitRange) rangeCandidates.push(explicitRange)
 
   const rawBaseRef = process.env.COVERAGE_RATCHET_BASE_REF?.trim()
   const baseRef = rawBaseRef && !isAllZeroRef(rawBaseRef) ? rawBaseRef : undefined
   const headRef = process.env.COVERAGE_RATCHET_HEAD_REF?.trim() || "HEAD"
-  if (baseRef) rangeCandidates.push(`${baseRef}...${headRef}`)
   const singleCommitBase = runGitCommand(`git rev-parse --verify ${headRef}^`)?.trim()
+  if (isTagPush) {
+    // Tag retarget pushes should compare before...after; new tags should compare only the tagged commit.
+    if (baseRef) {
+      rangeCandidates.push(`${baseRef}...${headRef}`)
+    } else if (singleCommitBase) {
+      rangeCandidates.push(`${singleCommitBase}...${headRef}`)
+    }
+
+    for (const range of [...new Set(rangeCandidates)]) {
+      const files = parseTouchedFiles(runGitCommand(`git diff --name-only --diff-filter=ACMRTUXB ${range}`))
+      if (files.length > 0) {
+        return files
+      }
+    }
+
+    return []
+  }
+
+  if (baseRef) {
+    rangeCandidates.push(`${baseRef}...${headRef}`)
+  }
+
   if (singleCommitBase) {
     rangeCandidates.push(`${singleCommitBase}...${headRef}`)
   }
