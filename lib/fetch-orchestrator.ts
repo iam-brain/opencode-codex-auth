@@ -98,9 +98,7 @@ export class FetchOrchestrator {
     )
   }
 
-  private touchSessionKey(sessionKey: string, now: number): boolean {
-    this.pruneSessionKeys(now)
-    const hasSeen = this.state.seenSessionKeys.has(sessionKey)
+  private touchSessionKey(sessionKey: string, now: number, hasSeen: boolean = this.state.seenSessionKeys.has(sessionKey)): boolean {
     if (hasSeen) {
       this.state.seenSessionKeys.delete(sessionKey)
     }
@@ -210,9 +208,10 @@ export class FetchOrchestrator {
     let sessionToastEventKey: string | null = null
     if (sessionKey) {
       const sessionNow = nowFn()
+      const hasSeenBeforePrune = this.state.seenSessionKeys.has(sessionKey)
       this.pruneSessionKeys(sessionNow)
-      const hadSessionHistory = this.state.seenSessionKeys.size > 0 || this.state.lastSessionKey !== null
-      const hasSeen = this.touchSessionKey(sessionKey, sessionNow)
+      const hadSessionHistory = hasSeenBeforePrune || this.state.seenSessionKeys.size > 0 || this.state.lastSessionKey !== null
+      const hasSeen = this.touchSessionKey(sessionKey, sessionNow, hasSeenBeforePrune)
       const previousSessionKey = this.state.lastSessionKey
       if (!hasSeen && previousSessionKey && previousSessionKey !== sessionKey) {
         sessionEvent = "switch"

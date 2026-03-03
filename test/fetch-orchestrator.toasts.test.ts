@@ -82,6 +82,55 @@ describe("FetchOrchestrator toasts and session affinity", () => {
     expect(resumeToasts).toHaveLength(0)
   })
 
+  it("does not emit resume toast after starting a new chat from an existing session and staying on it", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn<(identityKey: string, cooldownUntil: number) => Promise<void>>(async () => {})
+    const showToast = vi.fn<
+      (message: string, variant: "info" | "success" | "warning" | "error", quietMode: boolean) => Promise<void>
+    >(async () => {})
+    const sharedState = createFetchOrchestratorState()
+    sharedState.seenSessionKeys.set("ses_existing", Date.now())
+    sharedState.lastSessionKey = "ses_existing"
+    let nowValue = 10_000
+
+    stubGlobalForTest(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      state: sharedState,
+      now: () => nowValue
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_new_from_existing" },
+      body: JSON.stringify({ prompt_cache_key: "ses_new_from_existing", input: "one" })
+    })
+    nowValue = 40_000
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_new_from_existing" },
+      body: JSON.stringify({ prompt_cache_key: "ses_new_from_existing", input: "two" })
+    })
+
+    const switchedToasts = showToast.mock.calls.filter(
+      (call) => call[0] === "Session switched: user@example.com (plus)"
+    )
+    const resumeToasts = showToast.mock.calls.filter((call) => call[0] === "Resuming chat: user@example.com (plus)")
+    expect(switchedToasts).toHaveLength(1)
+    expect(resumeToasts).toHaveLength(0)
+  })
+
   it("shows a toast when switching to an existing session", async () => {
     const acquireAuth = vi.fn(async () => ({
       access: "a",
@@ -244,6 +293,45 @@ describe("FetchOrchestrator toasts and session affinity", () => {
 
     expect(showToast.mock.calls.some((call) => call[0] === "Session switched: user@example.com (plus)")).toBe(false)
     expect(showToast.mock.calls.some((call) => call[0] === "New chat: user@example.com (plus)")).toBe(true)
+  })
+
+  it("does not classify stale previously-seen sessions as new chat when returning to them", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn<(identityKey: string, cooldownUntil: number) => Promise<void>>(async () => {})
+    const showToast = vi.fn<
+      (message: string, variant: "info" | "success" | "warning" | "error", quietMode: boolean) => Promise<void>
+    >(async () => {})
+    const sharedState = createFetchOrchestratorState()
+    sharedState.seenSessionKeys.set("ses_returning", 1)
+    sharedState.lastSessionKey = "ses_other"
+    const nowValue = 1000 * 60 * 60 * 24
+
+    stubGlobalForTest(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      state: sharedState,
+      now: () => nowValue
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_returning" },
+      body: JSON.stringify({ prompt_cache_key: "ses_returning", input: "resume-existing-chat" })
+    })
+
+    expect(showToast.mock.calls.some((call) => call[0] === "New chat: user@example.com (plus)")).toBe(false)
+    expect(showToast.mock.calls.some((call) => call[0] === "Session switched: user@example.com (plus)")).toBe(true)
   })
 
   it("shows a resume toast when restoring the same active session context", async () => {
