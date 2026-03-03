@@ -1,158 +1,34 @@
 import { computeBackoffMs, parseRetryAfterMs } from "./rate-limit.js"
 import { createSyntheticErrorResponse, formatWaitTime } from "./fatal-errors.js"
+import {
+  DEFAULT_ACCOUNT_SWITCH_TOAST_DEBOUNCE_MS,
+  DEFAULT_RATE_LIMIT_TOAST_DEBOUNCE_MS,
+  DEFAULT_SESSION_TOAST_DEBOUNCE_MS,
+  formatAccountLabel,
+  MAX_SESSION_KEYS,
+  MAX_TOAST_DEDUPE_KEYS,
+  resolveRetryAccountKey,
+  resolveSessionKey,
+  SESSION_KEY_TTL_MS,
+  stripCrossOriginRedirectHeaders,
+  TOAST_DEDUPE_TTL_MS
+} from "./fetch-orchestrator-helpers.js"
+import {
+  createFetchOrchestratorState,
+  type FetchAttemptReasonCode,
+  type FetchOrchestratorDeps,
+  type FetchOrchestratorState
+} from "./fetch-orchestrator-types.js"
 
-export type AccountSelectionTrace = {
-  strategy: string
-  decision: string
-  totalCount: number
-  disabledCount: number
-  cooldownCount: number
-  refreshLeaseCount: number
-  eligibleCount: number
-  attemptedCount?: number
-  selectedIdentityKey?: string
-  selectedIndex?: number
-  attemptKey?: string
-  activeIdentityKey?: string
-  sessionKey?: string
-}
-
-export type AuthData = {
-  access: string
-  accountId?: string
-  identityKey?: string
-  email?: string
-  plan?: string
-  accountLabel?: string
-  selectionTrace?: Partial<AccountSelectionTrace>
-}
-
-export type FetchOrchestratorAuthContext = {
-  sessionKey: string | null
-}
-
-export type FetchOrchestratorState = {
-  lastSessionKey: string | null
-  seenSessionKeys: Map<string, number>
-  lastAccountKey: string | null
-  rateLimitToastShownAt: Map<string, number>
-  toastShownAt: Map<string, number>
-}
-
-export type FetchAttemptReasonCode =
-  | "initial_attempt"
-  | "retry_same_account_after_429"
-  | "retry_switched_account_after_429"
-
-export function createFetchOrchestratorState(): FetchOrchestratorState {
-  return {
-    lastSessionKey: null,
-    seenSessionKeys: new Map<string, number>(),
-    lastAccountKey: null,
-    rateLimitToastShownAt: new Map<string, number>(),
-    toastShownAt: new Map<string, number>()
-  }
-}
-
-export type FetchOrchestratorDeps = {
-  acquireAuth: (context?: FetchOrchestratorAuthContext) => Promise<AuthData>
-  setCooldown: (identityKey: string, cooldownUntil: number) => Promise<void>
-  now?: () => number
-  maxAttempts?: number
-  quietMode?: boolean
-  rateLimitToastDebounceMs?: number
-  state?: FetchOrchestratorState
-  showToast?: (message: string, variant: "info" | "success" | "warning" | "error", quietMode: boolean) => Promise<void>
-  onAttemptRequest?: (input: {
-    attempt: number
-    maxAttempts: number
-    attemptReasonCode: FetchAttemptReasonCode
-    request: Request
-    auth: AuthData
-    sessionKey: string | null
-  }) => Promise<Request | void> | Request | void
-  onAttemptResponse?: (input: {
-    attempt: number
-    maxAttempts: number
-    attemptReasonCode: FetchAttemptReasonCode
-    response: Response
-    auth: AuthData
-    sessionKey: string | null
-  }) => Promise<void> | void
-  onSessionObserved?: (input: {
-    sessionKey: string
-    now: number
-    event: "new" | "resume" | "switch" | "seen"
-  }) => Promise<void> | void
-  validateRedirectUrl?: (url: URL) => void
-  maxRedirects?: number
-}
-
-const SESSION_KEY_TTL_MS = 6 * 60 * 60 * 1000
-const MAX_SESSION_KEYS = 200
-const DEFAULT_RATE_LIMIT_TOAST_DEBOUNCE_MS = 60_000
-const DEFAULT_SESSION_TOAST_DEBOUNCE_MS = 15_000
-const DEFAULT_ACCOUNT_SWITCH_TOAST_DEBOUNCE_MS = 15_000
-const MAX_TOAST_DEDUPE_KEYS = 512
-const TOAST_DEDUPE_TTL_MS = 6 * 60 * 60 * 1000
-const CROSS_ORIGIN_REDIRECT_STRIPPED_HEADERS = new Set([
-  "authorization",
-  "proxy-authorization",
-  "chatgpt-account-id",
-  "session_id",
-  "cookie",
-  "set-cookie"
-])
-
-function normalizeSessionKey(value: unknown): string | null {
-  if (typeof value !== "string") return null
-  const trimmed = value.trim()
-  return trimmed ? trimmed : null
-}
-
-async function resolveSessionKey(request: Request): Promise<string | null> {
-  return normalizeSessionKey(request.headers.get("session_id"))
-}
-
-function formatAccountLabel(auth: AuthData): string {
-  const explicit = auth.accountLabel?.trim()
-  if (explicit) return explicit
-
-  const email = auth.email?.trim()
-  const plan = auth.plan?.trim()
-  const accountId = auth.accountId?.trim()
-  const idSuffix = accountId ? (accountId.length > 6 ? accountId.slice(-6) : accountId) : undefined
-
-  if (email && plan) return `${email} (${plan})`
-  if (email) return email
-  if (idSuffix) return `id:${idSuffix}`
-  return "account"
-}
-
-function resolveRetryAccountKey(auth: AuthData): string | null {
-  const identityKey = auth.identityKey?.trim()
-  if (identityKey) return `identity:${identityKey}`
-
-  const attemptKey = auth.selectionTrace?.attemptKey?.trim()
-  if (attemptKey) return `attempt:${attemptKey}`
-
-  const accountId = auth.accountId?.trim()
-  const email = auth.email?.trim()?.toLowerCase()
-  const plan = auth.plan?.trim()?.toLowerCase()
-  if (accountId && email && plan) {
-    return `tuple:${accountId}|${email}|${plan}`
-  }
-
-  return null
-}
-
-function stripCrossOriginRedirectHeaders(headers: Headers): void {
-  for (const name of [...headers.keys()]) {
-    if (CROSS_ORIGIN_REDIRECT_STRIPPED_HEADERS.has(name.trim().toLowerCase())) {
-      headers.delete(name)
-    }
-  }
-}
+export {
+  createFetchOrchestratorState,
+  type AccountSelectionTrace,
+  type AuthData,
+  type FetchAttemptReasonCode,
+  type FetchOrchestratorAuthContext,
+  type FetchOrchestratorDeps,
+  type FetchOrchestratorState
+} from "./fetch-orchestrator-types.js"
 
 export class FetchOrchestrator {
   private readonly state: FetchOrchestratorState
@@ -214,7 +90,12 @@ export class FetchOrchestrator {
       })
     }
 
-    return createSyntheticErrorResponse("Outbound request redirect handling failed.", 502, "outbound_redirect_error", "request")
+    return createSyntheticErrorResponse(
+      "Outbound request redirect handling failed.",
+      502,
+      "outbound_redirect_error",
+      "request"
+    )
   }
 
   private touchSessionKey(sessionKey: string, now: number): boolean {
@@ -243,7 +124,7 @@ export class FetchOrchestrator {
 
   private enforceSessionKeyLimit(): void {
     while (this.state.seenSessionKeys.size > MAX_SESSION_KEYS) {
-      const oldest = this.state.seenSessionKeys.keys().next().value as string | undefined
+      const oldest = this.state.seenSessionKeys.keys().next().value
       if (!oldest) break
       this.state.seenSessionKeys.delete(oldest)
     }
@@ -285,7 +166,7 @@ export class FetchOrchestrator {
       }
     }
     while (map.size > MAX_TOAST_DEDUPE_KEYS) {
-      const oldest = map.keys().next().value as string | undefined
+      const oldest = map.keys().next().value
       if (!oldest) break
       map.delete(oldest)
     }
@@ -326,6 +207,7 @@ export class FetchOrchestrator {
     const baseRequest = new Request(input, init)
     const sessionKey = await resolveSessionKey(baseRequest)
     let sessionEvent: "new" | "resume" | "switch" | null = null
+    let sessionToastEventKey: string | null = null
     if (sessionKey) {
       const sessionNow = nowFn()
       const hasSeen = this.touchSessionKey(sessionKey, sessionNow)
@@ -337,6 +219,9 @@ export class FetchOrchestrator {
         sessionEvent = "switch"
       }
       this.state.lastSessionKey = sessionKey
+      if (sessionEvent) {
+        sessionToastEventKey = `${sessionEvent}:${sessionKey}`
+      }
       if (this.deps.onSessionObserved) {
         try {
           await this.deps.onSessionObserved({
@@ -371,7 +256,12 @@ export class FetchOrchestrator {
             ? "retry_switched_account_after_429"
             : "retry_same_account_after_429"
 
-      if (sessionEvent && !sessionToastEmitted) {
+      if (
+        sessionEvent &&
+        sessionToastEventKey &&
+        !sessionToastEmitted &&
+        this.state.lastSessionToastEventKey !== sessionToastEventKey
+      ) {
         const message =
           sessionEvent === "new"
             ? `New chat: ${accountLabel}`
@@ -383,6 +273,7 @@ export class FetchOrchestrator {
           debounceMs: DEFAULT_SESSION_TOAST_DEBOUNCE_MS,
           now
         })
+        this.state.lastSessionToastEventKey = sessionToastEventKey
         sessionToastEmitted = true
       }
 
