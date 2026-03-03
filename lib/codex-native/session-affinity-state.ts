@@ -19,21 +19,45 @@ export type SessionAffinityRuntimeState = {
   persistSessionAffinityState: () => void | Promise<void>
 }
 
+type SessionAffinityRuntimeDeps = {
+  defaultSessionAffinityPath: typeof defaultSessionAffinityPath
+  createSessionExistsFn: typeof createSessionExistsFn
+  loadSessionAffinity: typeof loadSessionAffinity
+  pruneSessionAffinitySnapshot: typeof pruneSessionAffinitySnapshot
+  readSessionAffinitySnapshot: typeof readSessionAffinitySnapshot
+  saveSessionAffinity: typeof saveSessionAffinity
+  writeSessionAffinitySnapshot: typeof writeSessionAffinitySnapshot
+}
+
+const DEFAULT_RUNTIME_DEPS: SessionAffinityRuntimeDeps = {
+  defaultSessionAffinityPath,
+  createSessionExistsFn,
+  loadSessionAffinity,
+  pruneSessionAffinitySnapshot,
+  readSessionAffinitySnapshot,
+  saveSessionAffinity,
+  writeSessionAffinitySnapshot
+}
+
 export async function createSessionAffinityRuntimeState(input: {
   authMode: OpenAIAuthMode
   env: NodeJS.ProcessEnv
   missingGraceMs: number
   log?: Logger
+  deps?: Partial<SessionAffinityRuntimeDeps>
 }): Promise<SessionAffinityRuntimeState> {
-  const sessionAffinityPath = defaultSessionAffinityPath(input.env)
-  const loadedSessionAffinity = await loadSessionAffinity(sessionAffinityPath).catch(() => ({
+  const deps = { ...DEFAULT_RUNTIME_DEPS, ...(input.deps ?? {}) }
+  const sessionAffinityPath = deps.defaultSessionAffinityPath(input.env)
+  const loadedSessionAffinity = await deps.loadSessionAffinity(sessionAffinityPath).catch(() => ({
     version: 1 as const
   }))
-  const initialSessionAffinity = readSessionAffinitySnapshot(loadedSessionAffinity, input.authMode)
-  const sessionExists = createSessionExistsFn(input.env)
-  await pruneSessionAffinitySnapshot(initialSessionAffinity, sessionExists, {
-    missingGraceMs: input.missingGraceMs
-  }).catch(() => 0)
+  const initialSessionAffinity = deps.readSessionAffinitySnapshot(loadedSessionAffinity, input.authMode)
+  const sessionExists = deps.createSessionExistsFn(input.env)
+  await deps
+    .pruneSessionAffinitySnapshot(initialSessionAffinity, sessionExists, {
+      missingGraceMs: input.missingGraceMs
+    })
+    .catch(() => 0)
 
   const orchestratorState = createFetchOrchestratorState()
   orchestratorState.seenSessionKeys = initialSessionAffinity.seenSessionKeys
@@ -48,7 +72,7 @@ export async function createSessionAffinityRuntimeState(input: {
   const persistSessionAffinityState = (): Promise<void> => {
     sessionAffinityPersistQueue = sessionAffinityPersistQueue
       .then(async () => {
-        await pruneSessionAffinitySnapshot(
+        await deps.pruneSessionAffinitySnapshot(
           {
             seenSessionKeys: orchestratorState.seenSessionKeys,
             stickyBySessionKey: stickySessionState.bySessionKey,
@@ -59,9 +83,9 @@ export async function createSessionAffinityRuntimeState(input: {
             missingGraceMs: input.missingGraceMs
           }
         )
-        await saveSessionAffinity(
+        await deps.saveSessionAffinity(
           async (current) =>
-            writeSessionAffinitySnapshot(current, input.authMode, {
+            deps.writeSessionAffinitySnapshot(current, input.authMode, {
               seenSessionKeys: orchestratorState.seenSessionKeys,
               stickyBySessionKey: stickySessionState.bySessionKey,
               hybridBySessionKey: hybridSessionState.bySessionKey

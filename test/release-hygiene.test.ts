@@ -26,9 +26,14 @@ describe("release hygiene", () => {
     const verifyScript = String(pkg.scripts?.verify ?? "")
     const verifyOrder = [
       "npm run check:esm-imports",
+      "npm run lint",
+      "npm run format:check",
       "npm run typecheck",
       "npm run typecheck:test",
+      "npm run test:anti-mock",
       "npm run test:coverage",
+      "npm run check:coverage-ratchet",
+      "npm run check:file-size",
       "npm run build",
       "npm run check:dist-esm-imports",
       "npm run smoke:cli:dist"

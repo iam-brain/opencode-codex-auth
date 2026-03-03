@@ -78,7 +78,7 @@ describe("storage corruption", () => {
   it("quarantines structurally invalid JSON root strings", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-corrupt-structure-"))
     const p = path.join(dir, "auth.json")
-    await fs.writeFile(p, "\"oops\"\n", { mode: 0o600 })
+    await fs.writeFile(p, '"oops"\n', { mode: 0o600 })
 
     await expect(loadAuthStorage(p)).rejects.toThrow("Corrupt auth storage JSON")
 

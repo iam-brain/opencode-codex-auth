@@ -26,7 +26,7 @@ describe("remote cache fetch helper", () => {
     expect(result.finalUrl).toBe("https://example.com/a")
 
     const firstCall = fetchImpl.mock.calls[0]
-    const init = firstCall ? (firstCall[1] as RequestInit | undefined) : undefined
+    const init = firstCall ? firstCall[1] : undefined
     expect(init?.redirect).toBe("manual")
     const headers = (init?.headers ?? {}) as Record<string, string>
     expect(headers["cache-control"]).toBe("no-store")

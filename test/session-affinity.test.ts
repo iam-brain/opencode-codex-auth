@@ -46,18 +46,18 @@ describe("session affinity storage", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-session-affinity-"))
     const filePath = path.join(root, "codex-session-affinity.json")
 
-    const seenEntries = Array.from({ length: MAX_SESSION_AFFINITY_ENTRIES + 10 }, (_, index) => [
-      `ses_${index}`,
-      index
-    ] as const)
-    const stickyEntries = Array.from({ length: MAX_SESSION_AFFINITY_ENTRIES + 10 }, (_, index) => [
-      `ses_${index}`,
-      `sticky_${index}`
-    ] as const)
-    const hybridEntries = Array.from({ length: MAX_SESSION_AFFINITY_ENTRIES + 10 }, (_, index) => [
-      `ses_${index}`,
-      `hybrid_${index}`
-    ] as const)
+    const seenEntries = Array.from(
+      { length: MAX_SESSION_AFFINITY_ENTRIES + 10 },
+      (_, index) => [`ses_${index}`, index] as const
+    )
+    const stickyEntries = Array.from(
+      { length: MAX_SESSION_AFFINITY_ENTRIES + 10 },
+      (_, index) => [`ses_${index}`, `sticky_${index}`] as const
+    )
+    const hybridEntries = Array.from(
+      { length: MAX_SESSION_AFFINITY_ENTRIES + 10 },
+      (_, index) => [`ses_${index}`, `hybrid_${index}`] as const
+    )
 
     await saveSessionAffinity(
       async (current) =>
@@ -182,18 +182,15 @@ describe("session affinity storage", () => {
     })
 
     let enteredUpdate = false
-    const pendingWrite = saveSessionAffinity(
-      async (current) => {
-        enteredUpdate = true
-        writeSessionAffinitySnapshot(current, "native", {
-          seenSessionKeys: new Map([["ses_lock", Date.now()]]),
-          stickyBySessionKey: new Map([["ses_lock", "id_lock"]]),
-          hybridBySessionKey: new Map()
-        })
-        return current
-      },
-      filePath
-    )
+    const pendingWrite = saveSessionAffinity(async (current) => {
+      enteredUpdate = true
+      writeSessionAffinitySnapshot(current, "native", {
+        seenSessionKeys: new Map([["ses_lock", Date.now()]]),
+        stickyBySessionKey: new Map([["ses_lock", "id_lock"]]),
+        hybridBySessionKey: new Map()
+      })
+      return current
+    }, filePath)
 
     await Promise.resolve()
     expect(enteredUpdate).toBe(false)

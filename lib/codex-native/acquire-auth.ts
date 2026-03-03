@@ -259,7 +259,8 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
                 access = selected.access
                 accountId = selected.accountId
                 identityKey = selectedIdentityKey
-                const selectionStrategy = lastSelectionTrace?.strategy ?? input.configuredRotationStrategy ?? domain.strategy
+                const selectionStrategy =
+                  lastSelectionTrace?.strategy ?? input.configuredRotationStrategy ?? domain.strategy
                 if (selectionStrategy === "hybrid" || selectionStrategy === "round_robin") {
                   await saveAuthStorage(undefined, (authFile) => {
                     const currentDomain = ensureOpenAIOAuthDomain(authFile, input.authMode)
@@ -288,7 +289,10 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
 
                     const currentNow = Date.now()
                     const previousLastUsed = typeof current.lastUsed === "number" ? current.lastUsed : undefined
-                    if (previousLastUsed === undefined || currentNow - previousLastUsed >= LAST_USED_WRITE_INTERVAL_MS) {
+                    if (
+                      previousLastUsed === undefined ||
+                      currentNow - previousLastUsed >= LAST_USED_WRITE_INTERVAL_MS
+                    ) {
                       current.lastUsed = currentNow
                     }
                   })
@@ -316,7 +320,9 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
                 const leaseUntil = now + AUTH_REFRESH_LEASE_MS
                 await saveAuthStorage(undefined, (authFile) => {
                   const currentDomain = ensureOpenAIOAuthDomain(authFile, input.authMode)
-                  const currentByIdentity = currentDomain.accounts.find((account) => account.identityKey === selectedIdentityKey)
+                  const currentByIdentity = currentDomain.accounts.find(
+                    (account) => account.identityKey === selectedIdentityKey
+                  )
                   const current = currentByIdentity ?? currentDomain.accounts[selectedIndex]
                   if (!current) return
                   const currentIndex = currentDomain.accounts.findIndex((account) => account === current)
@@ -520,8 +526,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
 
       if (sawMissingIdentity) {
         throw new PluginFatalError({
-          message:
-            "Selected OpenAI account is missing identity metadata. Run `opencode auth login` to reauthenticate.",
+          message: "Selected OpenAI account is missing identity metadata. Run `opencode auth login` to reauthenticate.",
           status: 401,
           type: "missing_account_identity",
           param: "accounts"

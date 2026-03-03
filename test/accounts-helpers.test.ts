@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import {
-  buildAuthMenuAccounts,
-  findDomainAccountIndex,
-  reconcileActiveIdentityKey
-} from "../lib/codex-native/accounts"
+import { buildAuthMenuAccounts, findDomainAccountIndex, reconcileActiveIdentityKey } from "../lib/codex-native/accounts"
 import type { OpenAIOAuthDomain } from "../lib/types"
 
 describe("codex-native account helpers", () => {

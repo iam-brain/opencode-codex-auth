@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -14,11 +15,11 @@ import { CODEX_PROMPTS_CACHE_FILE, CODEX_PROMPTS_CACHE_META_FILE } from "../lib/
 
 describe("orchestrator agent installer", () => {
   afterEach(() => {
-    vi.unstubAllGlobals()
+    resetStubbedGlobals()
   })
 
   it("downloads upstream orchestrator prompt and prepends local frontmatter header", async () => {
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(
         async () =>
@@ -62,7 +63,7 @@ describe("orchestrator agent installer", () => {
   })
 
   it("writes orchestrator agent template and preserves existing content by default", async () => {
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(
         async () =>
@@ -91,7 +92,7 @@ describe("orchestrator agent installer", () => {
   })
 
   it("updates existing orchestrator agent when forced", async () => {
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(
         async () =>
@@ -118,7 +119,7 @@ describe("orchestrator agent installer", () => {
   })
 
   it("toggles visibility by renaming enabled/disabled file variants", async () => {
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(
         async () =>
@@ -158,7 +159,7 @@ describe("orchestrator agent installer", () => {
   })
 
   it("applies force refresh while moving disabled->enabled and enabled->disabled", async () => {
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(
         async () =>
@@ -188,7 +189,7 @@ describe("orchestrator agent installer", () => {
   })
 
   it("falls back to bundled full orchestrator prompt when upstream fetch fails", async () => {
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async () => {
         throw new Error("network unavailable")

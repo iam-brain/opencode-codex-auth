@@ -187,7 +187,7 @@ describe("rotation", () => {
 
     expect(selected?.identityKey).toBe("d")
     expect(events.length).toBeGreaterThan(0)
-    const latest = events[events.length - 1]!
+    const latest = events[events.length - 1]
     expect(latest.totalCount).toBe(4)
     expect(latest.disabledCount).toBe(1)
     expect(latest.cooldownCount).toBe(1)

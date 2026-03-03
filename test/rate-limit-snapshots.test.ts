@@ -41,8 +41,8 @@ describe("persistRateLimitSnapshotFromResponse", () => {
   it("persists snapshots under the provided identity key", async () => {
     vi.resetModules()
 
-    const saveSnapshots = vi.fn(async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) =>
-      update({})
+    const saveSnapshots = vi.fn(
+      async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) => update({})
     )
     vi.doMock("../lib/codex-status-storage", () => ({ saveSnapshots }))
 

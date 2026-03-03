@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 type MockAuthFile = {
   openai?: {
@@ -41,7 +42,7 @@ async function loadPluginForAuth(
     ) => {
       const current = structuredClone(authState)
       const next = await update(current)
-      authState = structuredClone((next ?? current) as MockAuthFile)
+      authState = structuredClone(next ?? current)
       return structuredClone(authState)
     }
   )
@@ -71,9 +72,7 @@ async function loadPluginForAuth(
   const listOpenAIOAuthDomains = vi.fn((auth: MockAuthFile) =>
     (["native", "codex"] as const)
       .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(auth, mode) }))
-      .filter((entry): entry is any =>
-        Boolean(entry.domain && Array.isArray(entry.domain.accounts))
-      )
+      .filter((entry): entry is any => Boolean(entry.domain && Array.isArray(entry.domain.accounts)))
   )
 
   vi.doMock("../lib/storage", () => ({
@@ -113,12 +112,12 @@ async function loadPluginForAuth(
 
 describe("codex-native fatal responses", () => {
   afterEach(() => {
-    vi.unstubAllGlobals()
+    resetStubbedGlobals()
     vi.useRealTimers()
   })
 
   it("returns synthetic no-accounts error in conversation response", async () => {
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async () => new Response("ok", { status: 200 }))
     )
@@ -143,7 +142,7 @@ describe("codex-native fatal responses", () => {
 
   it("enables oauth fetch path from plugin storage even when provider auth is api-key mode", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
-    vi.stubGlobal("fetch", fetchImpl)
+    stubGlobalForTest("fetch", fetchImpl)
 
     const { loaded } = await loadPluginForAuth(
       {
@@ -179,7 +178,7 @@ describe("codex-native fatal responses", () => {
 
   it("blocks outbound requests to non-openai hosts before network dispatch", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
-    vi.stubGlobal("fetch", fetchImpl)
+    stubGlobalForTest("fetch", fetchImpl)
 
     const { loaded } = await loadPluginForAuth({
       openai: {
@@ -213,7 +212,7 @@ describe("codex-native fatal responses", () => {
 
   it("blocks credentialed outbound URLs before rewrite/network dispatch", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
-    vi.stubGlobal("fetch", fetchImpl)
+    stubGlobalForTest("fetch", fetchImpl)
 
     const { loaded } = await loadPluginForAuth({
       openai: {
@@ -249,7 +248,7 @@ describe("codex-native fatal responses", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-08T12:00:00.000Z")
     vi.setSystemTime(now)
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async () => new Response("ok", { status: 200 }))
     )
@@ -283,7 +282,7 @@ describe("codex-native fatal responses", () => {
   })
 
   it("returns synthetic invalid-grant guidance for refresh failures", async () => {
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async (url: string | URL | Request) => {
         const requestUrl = url.toString()
@@ -333,7 +332,7 @@ describe("codex-native fatal responses", () => {
   })
 
   it("fails over to another enabled account when one refresh token is invalid_grant", async () => {
-    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
       const requestUrl = url.toString()
       if (requestUrl.includes("/oauth/token")) {
         return new Response(
@@ -349,7 +348,7 @@ describe("codex-native fatal responses", () => {
       }
       return new Response(JSON.stringify({ ok: true }), { status: 200 })
     })
-    vi.stubGlobal("fetch", fetchImpl)
+    stubGlobalForTest("fetch", fetchImpl)
 
     const { loaded } = await loadPluginForAuth({
       openai: {

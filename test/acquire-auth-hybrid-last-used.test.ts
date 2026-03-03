@@ -38,7 +38,7 @@ describe("acquire auth hybrid lastUsed persistence", () => {
       ) => {
         const current = structuredClone(authState)
         const next = await update(current)
-        authState = structuredClone((next ?? current) as Record<string, unknown>)
+        authState = structuredClone(next ?? current)
         return authState
       }
     )

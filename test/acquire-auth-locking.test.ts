@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 afterEach(() => {
-  vi.unstubAllGlobals()
+  resetStubbedGlobals()
 })
 
 describe("acquire auth lock behavior", () => {
@@ -39,7 +40,7 @@ describe("acquire auth lock behavior", () => {
         callCount += 1
         const current = structuredClone(authState)
         const next = await update(current)
-        authState = structuredClone((next ?? current) as Record<string, unknown>)
+        authState = structuredClone(next ?? current)
 
         if (callCount === 1) {
           const domain = ((authState.openai as { native?: { accounts?: Array<Record<string, unknown>> } })?.native ?? {
@@ -76,7 +77,7 @@ describe("acquire auth lock behavior", () => {
       ensureOpenAIOAuthDomain
     }))
 
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async (url: string | URL | Request) => {
         const requestUrl = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url
@@ -156,7 +157,7 @@ describe("acquire auth lock behavior", () => {
         try {
           const current = structuredClone(authState)
           const next = await update(current)
-          authState = structuredClone((next ?? current) as Record<string, unknown>)
+          authState = structuredClone(next ?? current)
           return authState
         } finally {
           inSaveAuthStorage = false
@@ -184,7 +185,7 @@ describe("acquire auth lock behavior", () => {
       ensureOpenAIOAuthDomain
     }))
 
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async (url: string | URL | Request) => {
         const requestUrl = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url
@@ -259,7 +260,7 @@ describe("acquire auth lock behavior", () => {
         const before = JSON.stringify(authState)
         const current = structuredClone(authState)
         const next = await update(current)
-        authState = structuredClone((next ?? current) as Record<string, unknown>)
+        authState = structuredClone(next ?? current)
         const after = JSON.stringify(authState)
         if (before !== after) writes += 1
         return authState
@@ -287,7 +288,7 @@ describe("acquire auth lock behavior", () => {
     }))
 
     const fetchSpy = vi.fn()
-    vi.stubGlobal("fetch", fetchSpy)
+    stubGlobalForTest("fetch", fetchSpy)
 
     const { acquireOpenAIAuth, createAcquireOpenAIAuthInputDefaults } = await import("../lib/codex-native/acquire-auth")
     const defaults = createAcquireOpenAIAuthInputDefaults()
@@ -337,7 +338,7 @@ describe("acquire auth lock behavior", () => {
       ) => {
         const current = structuredClone(authState)
         const next = await update(current)
-        authState = structuredClone((next ?? current) as Record<string, unknown>)
+        authState = structuredClone(next ?? current)
         return authState
       }
     )
@@ -363,7 +364,7 @@ describe("acquire auth lock behavior", () => {
     }))
 
     const fetchSpy = vi.fn()
-    vi.stubGlobal("fetch", fetchSpy)
+    stubGlobalForTest("fetch", fetchSpy)
 
     const { acquireOpenAIAuth, createAcquireOpenAIAuthInputDefaults } = await import("../lib/codex-native/acquire-auth")
     const defaults = createAcquireOpenAIAuthInputDefaults()
@@ -419,7 +420,7 @@ describe("acquire auth lock behavior", () => {
       ) => {
         const current = structuredClone(authState)
         const next = await update(current)
-        return structuredClone((next ?? current) as Record<string, unknown>)
+        return structuredClone(next ?? current)
       }
     )
 
@@ -444,7 +445,7 @@ describe("acquire auth lock behavior", () => {
     }))
 
     const fetchSpy = vi.fn()
-    vi.stubGlobal("fetch", fetchSpy)
+    stubGlobalForTest("fetch", fetchSpy)
 
     const { acquireOpenAIAuth, createAcquireOpenAIAuthInputDefaults } = await import("../lib/codex-native/acquire-auth")
     const defaults = createAcquireOpenAIAuthInputDefaults()
@@ -496,7 +497,7 @@ describe("acquire auth lock behavior", () => {
       ) => {
         const current = structuredClone(authState)
         const next = await update(current)
-        authState = structuredClone((next ?? current) as Record<string, unknown>)
+        authState = structuredClone(next ?? current)
         return authState
       }
     )
@@ -521,7 +522,7 @@ describe("acquire auth lock behavior", () => {
       ensureOpenAIOAuthDomain
     }))
 
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async (url: string | URL | Request) => {
         const requestUrl = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url
@@ -598,7 +599,7 @@ describe("acquire auth lock behavior", () => {
       ) => {
         const current = structuredClone(authState)
         const next = await update(current)
-        authState = structuredClone((next ?? current) as Record<string, unknown>)
+        authState = structuredClone(next ?? current)
         return authState
       }
     )
@@ -624,7 +625,7 @@ describe("acquire auth lock behavior", () => {
     }))
 
     const fetchSpy = vi.fn()
-    vi.stubGlobal("fetch", fetchSpy)
+    stubGlobalForTest("fetch", fetchSpy)
 
     const { acquireOpenAIAuth, createAcquireOpenAIAuthInputDefaults } = await import("../lib/codex-native/acquire-auth")
     const defaults = createAcquireOpenAIAuthInputDefaults()
@@ -691,7 +692,7 @@ describe("acquire auth lock behavior", () => {
         const before = JSON.stringify(authState)
         const current = structuredClone(authState)
         const next = await update(current)
-        authState = structuredClone((next ?? current) as Record<string, unknown>)
+        authState = structuredClone(next ?? current)
         const after = JSON.stringify(authState)
         if (before !== after) writes += 1
         return authState
@@ -719,7 +720,7 @@ describe("acquire auth lock behavior", () => {
     }))
 
     const fetchSpy = vi.fn()
-    vi.stubGlobal("fetch", fetchSpy)
+    stubGlobalForTest("fetch", fetchSpy)
 
     const { acquireOpenAIAuth, createAcquireOpenAIAuthInputDefaults } = await import("../lib/codex-native/acquire-auth")
     const defaults = createAcquireOpenAIAuthInputDefaults()
@@ -737,7 +738,7 @@ describe("acquire auth lock behavior", () => {
     })
     expect(first.access).toBe("at_2")
     expect(
-      ((authState.openai as { native?: { activeIdentityKey?: string } }).native?.activeIdentityKey ?? undefined)
+      (authState.openai as { native?: { activeIdentityKey?: string } }).native?.activeIdentityKey ?? undefined
     ).toBe("acc_2|two@example.com|plus")
 
     const second = await acquireOpenAIAuth({
@@ -753,7 +754,7 @@ describe("acquire auth lock behavior", () => {
     })
     expect(second.access).toBe("at_1")
     expect(
-      ((authState.openai as { native?: { activeIdentityKey?: string } }).native?.activeIdentityKey ?? undefined)
+      (authState.openai as { native?: { activeIdentityKey?: string } }).native?.activeIdentityKey ?? undefined
     ).toBe("acc_1|one@example.com|plus")
     expect(writes).toBe(2)
     expect(fetchSpy).not.toHaveBeenCalled()
@@ -789,7 +790,7 @@ describe("acquire auth lock behavior", () => {
       ) => {
         const current = structuredClone(authState)
         const next = await update(current)
-        return structuredClone((next ?? current) as Record<string, unknown>)
+        return structuredClone(next ?? current)
       }
     )
 
@@ -815,7 +816,7 @@ describe("acquire auth lock behavior", () => {
 
     const debug = vi.fn()
     const fetchSpy = vi.fn()
-    vi.stubGlobal("fetch", fetchSpy)
+    stubGlobalForTest("fetch", fetchSpy)
 
     const { acquireOpenAIAuth, createAcquireOpenAIAuthInputDefaults } = await import("../lib/codex-native/acquire-auth")
     const defaults = createAcquireOpenAIAuthInputDefaults()
@@ -872,7 +873,7 @@ describe("acquire auth lock behavior", () => {
       ) => {
         const current = structuredClone(authState)
         const next = await update(current)
-        return structuredClone((next ?? current) as Record<string, unknown>)
+        return structuredClone(next ?? current)
       }
     )
 
@@ -897,7 +898,7 @@ describe("acquire auth lock behavior", () => {
     }))
 
     const fetchSpy = vi.fn()
-    vi.stubGlobal("fetch", fetchSpy)
+    stubGlobalForTest("fetch", fetchSpy)
 
     const { acquireOpenAIAuth, createAcquireOpenAIAuthInputDefaults } = await import("../lib/codex-native/acquire-auth")
     const defaults = createAcquireOpenAIAuthInputDefaults()

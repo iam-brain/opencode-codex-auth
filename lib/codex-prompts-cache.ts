@@ -1,11 +1,7 @@
 import { fetchRemoteTextBatch, type RemoteTextFetchResult } from "./remote-cache-fetch.js"
 import { readJsonFileBestEffort, writeJsonFileBestEffort } from "./cache-io.js"
 import { withLockedDirectory } from "./cache-lock.js"
-import {
-  codexPromptsCacheMetaPath,
-  codexPromptsCachePath,
-  resolveCodexCacheDir
-} from "./codex-cache-layout.js"
+import { codexPromptsCacheMetaPath, codexPromptsCachePath, resolveCodexCacheDir } from "./codex-cache-layout.js"
 
 export { CODEX_PROMPTS_CACHE_FILE, CODEX_PROMPTS_CACHE_META_FILE } from "./codex-cache-layout.js"
 
@@ -123,11 +119,7 @@ function resolveEtag(result: RemoteTextFetchResult | undefined, existing: string
   return existing
 }
 
-export async function readCachedCodexPrompts(
-  input: {
-    cacheDir?: string
-  } = {}
-): Promise<RefreshResult> {
+export async function readCachedCodexPrompts(input: { cacheDir?: string } = {}): Promise<RefreshResult> {
   const cacheDir = resolveCodexCacheDir(input.cacheDir)
   const cache = await readPromptsCache(cacheDir)
   if (!cache) return {}
@@ -138,12 +130,7 @@ export async function readCachedCodexPrompts(
 }
 
 export async function refreshCachedCodexPrompts(
-  input: {
-    cacheDir?: string
-    now?: () => number
-    fetchImpl?: typeof fetch
-    forceRefresh?: boolean
-  } = {}
+  input: { cacheDir?: string; now?: () => number; fetchImpl?: typeof fetch; forceRefresh?: boolean } = {}
 ): Promise<RefreshResult> {
   const cacheDir = resolveCodexCacheDir(input.cacheDir)
   const now = (input.now ?? Date.now)()

@@ -93,10 +93,7 @@ export async function runOneProactiveRefreshTick(input: {
           const domain = ensureOpenAIOAuthDomain(auth, authMode)
           const account = domain.accounts.find((candidate) => candidate.identityKey === claimedAccount.identityKey)
           if (!account) return
-          if (
-            account.refreshLeaseUntil !== claimedAccount.leaseUntil ||
-            account.refresh !== claimedAccount.refresh
-          ) {
+          if (account.refreshLeaseUntil !== claimedAccount.leaseUntil || account.refresh !== claimedAccount.refresh) {
             staleClaimIdentityKeys.add(claimedAccount.identityKey)
             if (account.refreshLeaseUntil === claimedAccount.leaseUntil) {
               delete account.refreshLeaseUntil
@@ -119,10 +116,7 @@ export async function runOneProactiveRefreshTick(input: {
         const domain = ensureOpenAIOAuthDomain(auth, authMode)
         const account = domain.accounts.find((candidate) => candidate.identityKey === claimedAccount.identityKey)
         if (!account) return
-        if (
-          account.refreshLeaseUntil !== claimedAccount.leaseUntil ||
-          account.refresh !== claimedAccount.refresh
-        ) {
+        if (account.refreshLeaseUntil !== claimedAccount.leaseUntil || account.refresh !== claimedAccount.refresh) {
           staleClaimIdentityKeys.add(claimedAccount.identityKey)
           if (account.refreshLeaseUntil === claimedAccount.leaseUntil) {
             delete account.refreshLeaseUntil

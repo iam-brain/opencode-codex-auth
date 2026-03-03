@@ -104,7 +104,9 @@ export function evaluateQuotaThresholds(input: {
       ? findHighestReachedThresholdIndex(fiveHourLeftPct)
       : previousState.fiveHourThresholdIndex
   const weeklyThresholdIndex =
-    typeof weeklyLeftPct === "number" ? findHighestReachedThresholdIndex(weeklyLeftPct) : previousState.weeklyThresholdIndex
+    typeof weeklyLeftPct === "number"
+      ? findHighestReachedThresholdIndex(weeklyLeftPct)
+      : previousState.weeklyThresholdIndex
 
   const fiveHourWarning = maybeBuildWarning({
     previousIndex: previousState.fiveHourThresholdIndex,

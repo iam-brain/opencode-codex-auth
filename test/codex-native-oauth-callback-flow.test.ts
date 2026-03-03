@@ -1,4 +1,5 @@
 import http from "node:http"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { OAUTH_CALLBACK_ORIGIN, OAUTH_HTTP_TIMEOUT_MS } from "../lib/codex-native/oauth-utils"
@@ -91,7 +92,7 @@ async function loadPluginForOAuthFlow(input: { mode: "native" | "codex"; spoofMo
   )
 
   const getOpenAIOAuthDomain = vi.fn((auth: StorageState, mode: "native" | "codex") => {
-    const openai = auth.openai as Record<string, unknown>
+    const openai = auth.openai
     const existing = openai[mode] as { accounts?: unknown[] } | undefined
     if (existing && Array.isArray(existing.accounts)) return existing
     return undefined
@@ -100,7 +101,7 @@ async function loadPluginForOAuthFlow(input: { mode: "native" | "codex"; spoofMo
   const ensureOpenAIOAuthDomain = vi.fn((auth: StorageState, mode: "native" | "codex") => {
     const existing = getOpenAIOAuthDomain(auth, mode)
     if (existing) return existing
-    const openai = auth.openai as Record<string, unknown>
+    const openai = auth.openai
     const created = { accounts: [] as unknown[] }
     openai[mode] = created
     return created
@@ -148,7 +149,7 @@ async function loadPluginForOAuthFlow(input: { mode: "native" | "codex"; spoofMo
     }
   })
 
-  vi.stubGlobal(
+  stubGlobalForTest(
     "fetch",
     vi.fn(async (inputUrl: RequestInfo | URL) => {
       const url = typeof inputUrl === "string" ? inputUrl : inputUrl.toString()
@@ -182,7 +183,7 @@ describe("codex-native oauth callback flow", () => {
   afterEach(async () => {
     const { __testOnly } = await import("../lib/codex-native")
     __testOnly.stopOAuthServer()
-    vi.unstubAllGlobals()
+    resetStubbedGlobals()
   })
 
   it("persists codex account domain from runtime mode even with debug + native spoof", async () => {
@@ -403,9 +404,7 @@ describe("codex-native oauth callback flow", () => {
     expect(wrongState.statusCode).toBe(400)
     expect(wrongState.body).toContain("Invalid cancel state")
 
-    const callbackResponse = await httpGet(
-      oauthUrl(`/auth/callback?code=test_code&state=${encodeURIComponent(state)}`)
-    )
+    const callbackResponse = await httpGet(oauthUrl(`/auth/callback?code=test_code&state=${encodeURIComponent(state)}`))
     expect(callbackResponse.statusCode).toBe(302)
 
     const result = await flow.callback("")

@@ -23,7 +23,9 @@ describe("paths", () => {
   })
 
   it("ignores relative XDG environment values", () => {
-    expect(defaultOpencodeDataPath({ XDG_DATA_HOME: "relative-data-root" })).toBe(path.join(os.homedir(), ".local", "share"))
+    expect(defaultOpencodeDataPath({ XDG_DATA_HOME: "relative-data-root" })).toBe(
+      path.join(os.homedir(), ".local", "share")
+    )
     expect(defaultOpencodeConfigPath({ XDG_CONFIG_HOME: "relative-config-root" })).toBe(
       path.join(os.homedir(), ".config", "opencode")
     )

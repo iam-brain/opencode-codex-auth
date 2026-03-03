@@ -76,13 +76,13 @@ describe("mode smoke: native vs codex", () => {
 
     const nativeWithHost = structuredClone(withHost)
     const codexWithHost = structuredClone(withHost)
-    await nativeHooks["chat.params"]?.(input, nativeWithHost as any)
-    await codexHooks["chat.params"]?.(input, codexWithHost as any)
+    await nativeHooks["chat.params"]?.(input, nativeWithHost)
+    await codexHooks["chat.params"]?.(input, codexWithHost)
 
     const nativeNoHost = structuredClone(withoutHost)
     const codexNoHost = structuredClone(withoutHost)
-    await nativeHooks["chat.params"]?.(input, nativeNoHost as any)
-    await codexHooks["chat.params"]?.(input, codexNoHost as any)
+    await nativeHooks["chat.params"]?.(input, nativeNoHost)
+    await codexHooks["chat.params"]?.(input, codexNoHost)
 
     expect(nativeWithHost.options.instructions).toBe("OpenCode Host Instructions")
     expect(codexWithHost.options.instructions).toBe("Catalog Codex Instructions")
@@ -123,8 +123,8 @@ describe("mode smoke: native vs codex", () => {
 
     const nativeOut = structuredClone(withHost)
     const codexOut = structuredClone(withHost)
-    await nativeHooks["chat.params"]?.(input, nativeOut as any)
-    await codexHooks["chat.params"]?.(input, codexOut as any)
+    await nativeHooks["chat.params"]?.(input, nativeOut)
+    await codexHooks["chat.params"]?.(input, codexOut)
 
     expect(nativeOut.options.instructions).toBe("OpenCode Host Instructions")
     expect(codexOut.options.instructions).toBe("Catalog Instructions From Model")

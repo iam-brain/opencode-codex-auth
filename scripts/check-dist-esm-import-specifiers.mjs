@@ -20,7 +20,10 @@ while (stack.length > 0) {
     const entryPath = path.join(dir, entry.name)
     if (entry.isDirectory()) {
       stack.push(entryPath)
-    } else if (entry.isFile() && (entryPath.endsWith(".js") || entryPath.endsWith(".mjs") || entryPath.endsWith(".cjs"))) {
+    } else if (
+      entry.isFile() &&
+      (entryPath.endsWith(".js") || entryPath.endsWith(".mjs") || entryPath.endsWith(".cjs"))
+    ) {
       files.push(entryPath)
     }
   }

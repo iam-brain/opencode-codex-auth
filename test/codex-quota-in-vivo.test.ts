@@ -50,10 +50,7 @@ describe("codex quota probe helper (deterministic)", () => {
     })
 
     expect(rows).toHaveLength(2)
-    expect(rows.map((row) => row.identityKey)).toEqual([
-      "acc_1|one@example.com|plus",
-      "acc_4|four@example.com|plus"
-    ])
+    expect(rows.map((row) => row.identityKey)).toEqual(["acc_1|one@example.com|plus", "acc_4|four@example.com|plus"])
     expect(fetchQuotaSnapshotFromBackendImpl).toHaveBeenCalledTimes(2)
     expect(fetchQuotaSnapshotFromBackendImpl).toHaveBeenNthCalledWith(
       1,

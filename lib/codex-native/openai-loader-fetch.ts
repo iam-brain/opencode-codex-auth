@@ -1,18 +1,11 @@
 import { FetchOrchestrator } from "../fetch-orchestrator.js"
-import { saveSnapshots } from "../codex-status-storage.js"
-import { fetchQuotaSnapshotFromBackend } from "../codex-quota-fetch.js"
 import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "../fatal-errors.js"
 import type { Logger } from "../logger.js"
 import type { CodexModelInfo } from "../model-catalog.js"
-import { defaultSnapshotsPath } from "../paths.js"
 import type { RotationStrategy } from "../types.js"
 import type { BehaviorSettings, CodexSpoofMode, PersonalityOption, PromptCacheKeyStrategy } from "../config.js"
 import type { OpenAIAuthMode } from "../types.js"
-import {
-  DEFAULT_QUOTA_THRESHOLD_TRACKER_STATE,
-  evaluateQuotaThresholds,
-  type QuotaThresholdTrackerState
-} from "../quota-threshold-alerts.js"
+import type { QuotaThresholdTrackerState } from "../quota-threshold-alerts.js"
 import { acquireOpenAIAuth } from "./acquire-auth.js"
 import { resolveRequestUserAgent } from "./client-identity.js"
 import { resolveCodexOriginator } from "./originator.js"
@@ -20,26 +13,22 @@ import { buildProjectPromptCacheKey } from "../prompt-cache-key.js"
 import { persistRateLimitSnapshotFromResponse } from "./rate-limit-snapshots.js"
 import { assertAllowedOutboundUrl, rewriteUrl } from "./request-routing.js"
 import { applyRequestTransformPipeline } from "./request-transform-pipeline.js"
-import {
-  type OutboundRequestPayloadTransformResult,
-  transformOutboundRequestPayload,
-} from "./request-transform.js"
+import { type OutboundRequestPayloadTransformResult, transformOutboundRequestPayload } from "./request-transform.js"
 import type { SessionAffinityRuntimeState } from "./session-affinity-state.js"
+import { scheduleQuotaRefresh } from "./openai-loader-fetch-quota.js"
+import {
+  CATALOG_REFRESH_FAILURE_RETRY_MS,
+  CATALOG_REFRESH_TTL_MS,
+  getCatalogSyncState,
+  pruneQuotaState,
+  resolveCatalogScopeKey,
+  stripUnsafeForwardedHeaders,
+  type CatalogSyncState
+} from "./openai-loader-fetch-state.js"
 
 type SnapshotRecorder = {
   captureRequest: (stage: string, request: Request, metadata?: Record<string, unknown>) => Promise<void>
   captureResponse: (stage: string, response: Response, metadata?: Record<string, unknown>) => Promise<void>
-}
-
-const STRIPPED_OUTBOUND_HEADER_NAMES = new Set(["cookie", "set-cookie", "proxy-authorization", "host", "forwarded"])
-
-function stripUnsafeForwardedHeaders(headers: Headers): void {
-  for (const name of [...headers.keys()]) {
-    const lower = name.trim().toLowerCase()
-    if (STRIPPED_OUTBOUND_HEADER_NAMES.has(lower) || lower.startsWith("x-forwarded-")) {
-      headers.delete(name)
-    }
-  }
 }
 
 export type CreateOpenAIFetchHandlerInput = {
@@ -67,105 +56,11 @@ export type CreateOpenAIFetchHandlerInput = {
 }
 
 export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
-  const internalCollaborationAgentHeader = input.internalCollaborationAgentHeader ?? "x-opencode-collaboration-agent-kind"
+  const internalCollaborationAgentHeader =
+    input.internalCollaborationAgentHeader ?? "x-opencode-collaboration-agent-kind"
   const quotaTrackerByIdentity = new Map<string, QuotaThresholdTrackerState>()
   const quotaRefreshAtByIdentity = new Map<string, number>()
-  const catalogSyncByScope = new Map<
-    string,
-    { lastAttemptAt: number; lastFailureAt: number; inFlight: Promise<void> | null }
-  >()
-  const QUOTA_STATE_MAX_ENTRIES = 512
-  const QUOTA_REFRESH_TTL_MS = 60_000
-  const QUOTA_REFRESH_FAILURE_RETRY_MS = 10_000
-  const QUOTA_FETCH_TIMEOUT_MS = 3000
-  const QUOTA_EXHAUSTED_FALLBACK_COOLDOWN_MS = 5 * 60 * 1000
-  const CATALOG_REFRESH_TTL_MS = 60_000
-  const CATALOG_REFRESH_FAILURE_RETRY_MS = 10_000
-  const CATALOG_SCOPE_MAX_ENTRIES = 256
-  const CATALOG_SCOPE_STALE_TTL_MS = 6 * 60 * 60 * 1000
-
-  const normalizeCatalogScopePart = (value: string | undefined): string | undefined => {
-    const trimmed = value?.trim()
-    return trimmed && trimmed.length > 0 ? trimmed : undefined
-  }
-
-  const resolveCatalogScopeKey = (auth: {
-    accountId?: string
-    identityKey?: string
-    email?: string
-    plan?: string
-    selectionTrace?: { attemptKey?: string }
-  }): string => {
-    const identityKey = normalizeCatalogScopePart(auth.identityKey)
-    if (identityKey) return `identity:${identityKey}`
-
-    const accountId = normalizeCatalogScopePart(auth.accountId)
-    const email = normalizeCatalogScopePart(auth.email)?.toLowerCase()
-    const plan = normalizeCatalogScopePart(auth.plan)?.toLowerCase()
-    if (accountId && email && plan) return `tuple:${accountId}|${email}|${plan}`
-
-    const attemptKey = normalizeCatalogScopePart(auth.selectionTrace?.attemptKey)
-    if (attemptKey) return `attempt:${attemptKey}`
-
-    return "anonymous"
-  }
-
-  const pruneCatalogSyncState = (now: number): void => {
-    const staleCutoff = now - CATALOG_SCOPE_STALE_TTL_MS
-    if (catalogSyncByScope.size > 0) {
-      for (const [scopeKey, state] of catalogSyncByScope) {
-        if (state.inFlight === null && state.lastAttemptAt < staleCutoff) {
-          catalogSyncByScope.delete(scopeKey)
-        }
-      }
-    }
-
-    if (catalogSyncByScope.size <= CATALOG_SCOPE_MAX_ENTRIES) return
-
-    for (const [scopeKey, state] of catalogSyncByScope) {
-      if (catalogSyncByScope.size <= CATALOG_SCOPE_MAX_ENTRIES) break
-      if (state.inFlight !== null) continue
-      catalogSyncByScope.delete(scopeKey)
-    }
-  }
-
-  const getCatalogSyncState = (
-    scopeKey: string
-  ): { lastAttemptAt: number; lastFailureAt: number; inFlight: Promise<void> | null } => {
-    pruneCatalogSyncState(Date.now())
-    const existing = catalogSyncByScope.get(scopeKey)
-    if (existing) {
-      catalogSyncByScope.delete(scopeKey)
-      catalogSyncByScope.set(scopeKey, existing)
-      return existing
-    }
-    const next = { lastAttemptAt: 0, lastFailureAt: 0, inFlight: null as Promise<void> | null }
-    catalogSyncByScope.set(scopeKey, next)
-    return next
-  }
-
-  const pruneQuotaState = (now: number): void => {
-    if (quotaRefreshAtByIdentity.size <= QUOTA_STATE_MAX_ENTRIES) return
-
-    const staleKeys: string[] = []
-    for (const [identityKey, nextRefreshAt] of quotaRefreshAtByIdentity) {
-      if (nextRefreshAt < now - QUOTA_REFRESH_TTL_MS) {
-        staleKeys.push(identityKey)
-      }
-    }
-    for (const identityKey of staleKeys) {
-      quotaRefreshAtByIdentity.delete(identityKey)
-      quotaTrackerByIdentity.delete(identityKey)
-      if (quotaRefreshAtByIdentity.size <= QUOTA_STATE_MAX_ENTRIES) return
-    }
-
-    while (quotaRefreshAtByIdentity.size > QUOTA_STATE_MAX_ENTRIES) {
-      const oldest = quotaRefreshAtByIdentity.keys().next().value as string | undefined
-      if (!oldest) break
-      quotaRefreshAtByIdentity.delete(oldest)
-      quotaTrackerByIdentity.delete(oldest)
-    }
-  }
+  const catalogSyncByScope = new Map<string, CatalogSyncState>()
 
   return async (requestInput: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const initialRequestUrl =
@@ -313,7 +208,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         const currentCatalog = input.getCatalogModels()
         const shouldAwaitCatalog = input.spoofMode === "codex" && (!currentCatalog || currentCatalog.length === 0)
         const catalogScopeKey = resolveCatalogScopeKey(auth)
-        const catalogSyncState = getCatalogSyncState(catalogScopeKey)
+        const catalogSyncState = getCatalogSyncState(catalogSyncByScope, catalogScopeKey)
         const refreshRetryMs =
           catalogSyncState.lastFailureAt > 0 ? CATALOG_REFRESH_FAILURE_RETRY_MS : CATALOG_REFRESH_TTL_MS
         const shouldRefreshCatalog =
@@ -358,10 +253,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       quietMode: input.quietMode,
       state: orchestratorState,
       onSessionObserved: async ({ event }) => {
-        if (isSubagentRequest) {
-          return
-        }
-
+        if (isSubagentRequest) return
         if (event === "new" || event === "resume" || event === "switch") {
           await persistSessionAffinityState()
         }
@@ -387,9 +279,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           developerMessagePreservedCount: initialPayloadTransform.developerRoleRemap.preservedCount,
           promptCacheKeyOverridden: initialPayloadTransform.promptCacheKey.changed,
           promptCacheKeyOverrideReason:
-            promptCacheKeyStrategy === "project"
-              ? initialPayloadTransform.promptCacheKey.reason
-              : "default_strategy",
+            promptCacheKeyStrategy === "project" ? initialPayloadTransform.promptCacheKey.reason : "default_strategy",
           ...(input.headerTransformDebug === true && auth.selectionTrace
             ? {
                 selectionStrategy: auth.selectionTrace.strategy,
@@ -485,76 +375,22 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
 
     const identityForQuota = selectedAuthForQuota?.identityKey
     if (identityForQuota && selectedAuthForQuota?.access) {
-      const now = Date.now()
-      pruneQuotaState(now)
-      const nextRefreshAt = quotaRefreshAtByIdentity.get(identityForQuota)
-      if (nextRefreshAt === undefined || now >= nextRefreshAt) {
-        quotaRefreshAtByIdentity.set(identityForQuota, now + QUOTA_REFRESH_TTL_MS)
-        void (async () => {
-          try {
-            const quotaSnapshot = await fetchQuotaSnapshotFromBackend({
-              accessToken: selectedAuthForQuota!.access,
-              accountId: selectedAuthForQuota!.accountId,
-              now,
-              modelFamily: "codex",
-              userAgent: resolveRequestUserAgent(input.spoofMode, resolveCodexOriginator(input.spoofMode)),
-              log: input.log,
-              timeoutMs: QUOTA_FETCH_TIMEOUT_MS
-            })
-
-            if (!quotaSnapshot) {
-              quotaRefreshAtByIdentity.set(identityForQuota, now + QUOTA_REFRESH_FAILURE_RETRY_MS)
-              return
-            }
-
-            await saveSnapshots(defaultSnapshotsPath(), (current) => ({
-              ...current,
-              [identityForQuota]: quotaSnapshot
-            }))
-
-            const previousTracker = quotaTrackerByIdentity.get(identityForQuota) ?? DEFAULT_QUOTA_THRESHOLD_TRACKER_STATE
-            const evaluated = evaluateQuotaThresholds({
-              snapshot: quotaSnapshot,
-              previousState: previousTracker
-            })
-            quotaTrackerByIdentity.set(identityForQuota, evaluated.nextState)
-
-            for (const warning of evaluated.warnings) {
-              await input.showToast(warning.message, "warning", input.quietMode)
-            }
-
-            if (evaluated.exhaustedCrossings.length > 0) {
-              const nowForCooldown = Date.now()
-              const cooldownCandidates = evaluated.exhaustedCrossings
-                .map((crossing) => crossing.resetsAt)
-                .filter(
-                  (value): value is number => typeof value === "number" && Number.isFinite(value) && value > nowForCooldown
-                )
-              const cooldownUntil =
-                cooldownCandidates.length > 0
-                  ? Math.max(...cooldownCandidates)
-                  : nowForCooldown + QUOTA_EXHAUSTED_FALLBACK_COOLDOWN_MS
-              await input.setCooldown(identityForQuota, cooldownUntil)
-
-              if (evaluated.exhaustedCrossings.length === 1) {
-                const only = evaluated.exhaustedCrossings[0]!
-                const label = only.window === "weekly" ? "weekly" : "5h"
-                await input.showToast(`Switching account due to ${label} quota limit`, "warning", input.quietMode)
-              } else {
-                await input.showToast("Switching account due to 5h and weekly quota limits", "warning", input.quietMode)
-              }
-            }
-          } catch (error) {
-            quotaRefreshAtByIdentity.set(identityForQuota, now + QUOTA_REFRESH_FAILURE_RETRY_MS)
-            input.log?.debug("quota refresh during request failed", {
-              identityKey: identityForQuota,
-              error: error instanceof Error ? error.message : String(error)
-            })
-          }
-        })()
-      }
+      pruneQuotaState(quotaRefreshAtByIdentity, quotaTrackerByIdentity, Date.now())
+      scheduleQuotaRefresh({
+        identityForQuota,
+        selectedAuthForQuota: {
+          access: selectedAuthForQuota.access,
+          accountId: selectedAuthForQuota.accountId
+        },
+        spoofMode: input.spoofMode,
+        log: input.log,
+        quietMode: input.quietMode,
+        quotaRefreshAtByIdentity,
+        quotaTrackerByIdentity,
+        setCooldown: input.setCooldown,
+        showToast: input.showToast
+      })
     }
-
     return response
   }
 }

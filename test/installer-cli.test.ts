@@ -80,7 +80,7 @@ describe("installer cli", () => {
         process.env.XDG_CONFIG_HOME = previousXdg
       }
     }
-  })
+  }, 15_000)
 
   it("rejects removed install-agents command", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-"))

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -32,7 +33,7 @@ async function withIsolatedHome<T>(fn: () => Promise<T>): Promise<T> {
 
 describe("codex-native model allowlist", () => {
   afterEach(() => {
-    vi.unstubAllGlobals()
+    resetStubbedGlobals()
   })
 
   it("adds codex models from fallback set and filters unrelated models", async () => {
@@ -121,7 +122,7 @@ describe("codex-native model allowlist", () => {
         shouldOfferLegacyTransfer: vi.fn(async () => false)
       }))
 
-      vi.stubGlobal(
+      stubGlobalForTest(
         "fetch",
         vi.fn(async (url: string | URL | Request) => {
           if (url.toString().includes("/codex/models")) {

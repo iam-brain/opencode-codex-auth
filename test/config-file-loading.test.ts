@@ -1,0 +1,307 @@
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+
+import { describe, expect, it, vi } from "vitest"
+
+import {
+  DEFAULT_CODEX_CONFIG,
+  ensureDefaultConfigFile,
+  loadConfigFile,
+  parseConfigJsonWithComments
+} from "../lib/config"
+
+describe("config file loading", () => {
+  it("loads JSON config from explicit path env", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        quiet: true,
+        refreshAhead: {
+          enabled: true,
+          bufferMs: 45_000
+        },
+        runtime: {
+          mode: "codex",
+          rotationStrategy: "hybrid",
+          promptCacheKeyStrategy: "project",
+          sanitizeInputs: true,
+          developerMessagesToUser: true,
+          codexCompactionOverride: true,
+          headerSnapshots: true,
+          headerSnapshotBodies: true,
+          headerTransformDebug: true,
+          pidOffset: true,
+          collaborationProfile: true,
+          orchestratorSubagents: true
+        },
+        global: {
+          thinkingSummaries: true,
+          personality: "friendly",
+          verbosityEnabled: true,
+          verbosity: "high"
+        },
+        perModel: {
+          "gpt-5.3-codex": {
+            personality: "pirate",
+            thinkingSummaries: false,
+            verbosityEnabled: false,
+            verbosity: "default",
+            variants: {
+              high: { personality: "strict", thinkingSummaries: true, verbosityEnabled: true, verbosity: "medium" }
+            }
+          }
+        }
+      }),
+      "utf8"
+    )
+
+    const loaded = loadConfigFile({
+      env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath }
+    })
+
+    expect(loaded.quietMode).toBe(true)
+    expect(loaded.proactiveRefresh).toBe(true)
+    expect(loaded.proactiveRefreshBufferMs).toBe(45_000)
+    expect(loaded.spoofMode).toBe("codex")
+    expect(loaded.compatInputSanitizer).toBe(true)
+    expect(loaded.remapDeveloperMessagesToUser).toBe(true)
+    expect(loaded.codexCompactionOverride).toBe(true)
+    expect(loaded.headerSnapshots).toBe(true)
+    expect(loaded.headerSnapshotBodies).toBe(true)
+    expect(loaded.headerTransformDebug).toBe(true)
+    expect(loaded.pidOffsetEnabled).toBe(true)
+    expect(loaded.collaborationProfileEnabled).toBe(true)
+    expect(loaded.orchestratorSubagentsEnabled).toBe(true)
+    expect(loaded.rotationStrategy).toBe("hybrid")
+    expect(loaded.promptCacheKeyStrategy).toBe("project")
+    expect(loaded.mode).toBe("codex")
+    expect(loaded.behaviorSettings?.global?.thinkingSummaries).toBe(true)
+    expect(loaded.behaviorSettings?.global?.verbosityEnabled).toBe(true)
+    expect(loaded.behaviorSettings?.global?.verbosity).toBe("high")
+    expect(loaded.behaviorSettings?.global?.personality).toBe("friendly")
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.personality).toBe("pirate")
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.thinkingSummaries).toBe(false)
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.verbosityEnabled).toBe(false)
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.verbosity).toBe("default")
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.personality).toBe("strict")
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.thinkingSummaries).toBe(true)
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.verbosityEnabled).toBe(true)
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.verbosity).toBe("medium")
+    expect(loaded.personality).toBe("friendly")
+  })
+
+  it("ignores top-level mode field in config file", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(filePath, JSON.stringify({ mode: "codex" }), "utf8")
+
+    const loaded = loadConfigFile({
+      env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath }
+    })
+
+    expect(loaded.mode).toBeUndefined()
+    expect(loaded.spoofMode).toBeUndefined()
+  })
+
+  it("accepts runtime.mode field in config file", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        runtime: { mode: "codex" }
+      }),
+      "utf8"
+    )
+
+    const loaded = loadConfigFile({
+      env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath }
+    })
+
+    expect(loaded.mode).toBe("codex")
+    expect(loaded.spoofMode).toBe("codex")
+  })
+
+  it("ignores unsupported runtime mode field in config file and falls back to defaults", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        runtime: { mode: "collab" }
+      }),
+      "utf8"
+    )
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const loaded = loadConfigFile({
+        env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath }
+      })
+      expect(loaded).toEqual({})
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid codex-config"))
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it("loads codex-config.json from XDG config home", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const configDir = path.join(root, "opencode")
+    await fs.mkdir(configDir, { recursive: true })
+    const filePath = path.join(configDir, "codex-config.json")
+    await fs.writeFile(filePath, JSON.stringify({ quiet: true }), "utf8")
+
+    const loaded = loadConfigFile({ env: { XDG_CONFIG_HOME: root } })
+    expect(loaded.quietMode).toBe(true)
+  })
+
+  it("ignores legacy top-level personality/customSettings keys in file config", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        personality: "friendly",
+        customSettings: {
+          thinkingSummaries: true,
+          options: { personality: "friendly" }
+        }
+      }),
+      "utf8"
+    )
+
+    const loaded = loadConfigFile({ env: { OPENCODE_OPENAI_MULTI_CONFIG_PATH: filePath } })
+    expect(loaded.personality).toBeUndefined()
+    expect(loaded.behaviorSettings).toBeUndefined()
+  })
+
+  it("creates default codex config when missing", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const result = await ensureDefaultConfigFile({ env: { XDG_CONFIG_HOME: root } })
+    const raw = await fs.readFile(result.filePath, "utf8")
+    const written = parseConfigJsonWithComments(raw)
+
+    expect(result.created).toBe(true)
+    expect(raw).toContain('// default: "native"')
+    expect(raw).toContain('// default: "sticky"')
+    expect(raw).toContain("// Thinking summaries behavior:")
+    expect(raw).toContain("// Text verbosity behavior:")
+    expect(written).toEqual(DEFAULT_CODEX_CONFIG)
+  })
+
+  it("does not overwrite existing codex config by default", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const configDir = path.join(root, "opencode")
+    const filePath = path.join(configDir, "codex-config.json")
+    await fs.mkdir(configDir, { recursive: true })
+    await fs.writeFile(filePath, JSON.stringify({ debug: true }), "utf8")
+
+    const result = await ensureDefaultConfigFile({ env: { XDG_CONFIG_HOME: root } })
+    const written = JSON.parse(await fs.readFile(filePath, "utf8")) as unknown
+
+    expect(result.created).toBe(false)
+    expect(written).toEqual({ debug: true })
+  })
+
+  it("overwrites codex config when requested", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const configDir = path.join(root, "opencode")
+    const filePath = path.join(configDir, "codex-config.json")
+    await fs.mkdir(configDir, { recursive: true })
+    await fs.writeFile(filePath, JSON.stringify({ debug: true }), "utf8")
+
+    const result = await ensureDefaultConfigFile({
+      env: { XDG_CONFIG_HOME: root },
+      overwrite: true
+    })
+    const raw = await fs.readFile(filePath, "utf8")
+    const written = parseConfigJsonWithComments(raw)
+
+    expect(result.created).toBe(true)
+    expect(raw).toContain("// Optional model-specific overrides.")
+    expect(written).toEqual(DEFAULT_CODEX_CONFIG)
+  })
+
+  it("enforces 0600 mode when overwriting codex config", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const configDir = path.join(root, "opencode")
+    const filePath = path.join(configDir, "codex-config.json")
+    await fs.mkdir(configDir, { recursive: true })
+    await fs.writeFile(filePath, JSON.stringify({ debug: true }), { encoding: "utf8", mode: 0o644 })
+    await fs.chmod(filePath, 0o644)
+
+    await ensureDefaultConfigFile({
+      env: { XDG_CONFIG_HOME: root },
+      overwrite: true
+    })
+
+    const mode = (await fs.stat(filePath)).mode & 0o777
+    if (process.platform !== "win32") {
+      expect(mode).toBe(0o600)
+    }
+  })
+
+  it("loads config JSON with line and block comments", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(
+      filePath,
+      `{
+        // line comment
+        "quiet": true,
+        /* block comment */
+        "runtime": { "mode": "codex" }
+      }
+      `,
+      "utf8"
+    )
+
+    const loaded = loadConfigFile({ filePath })
+    expect(loaded.quietMode).toBe(true)
+    expect(loaded.mode).toBe("codex")
+    expect(loaded.spoofMode).toBe("codex")
+  })
+
+  it("ignores config file when known fields have invalid types", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        quiet: true,
+        runtime: {
+          rotationStrategy: 123
+        }
+      }),
+      "utf8"
+    )
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const loaded = loadConfigFile({ filePath })
+      expect(loaded).toEqual({})
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid codex-config"))
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it("warns and falls back when codex-config.json cannot be parsed", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const filePath = path.join(root, "codex-config.json")
+    await fs.writeFile(filePath, "{ invalid json", "utf8")
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const loaded = loadConfigFile({ filePath })
+      expect(loaded).toEqual({})
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to read codex-config"))
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+})

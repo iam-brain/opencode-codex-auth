@@ -1,156 +1,18 @@
 import http from "node:http"
 import path from "node:path"
-import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs"
 
 import type { OpenAIAuthMode } from "../types.js"
-import { isFsErrorCode } from "../cache-io.js"
 import { defaultCodexPluginLogsPath } from "../paths.js"
+import { appendDebugLine, resolveDebugLogMaxBytes, sanitizeDebugMeta } from "./oauth-server-debug.js"
+import {
+  isLoopbackRemoteAddress,
+  resolveListenHosts,
+  rewriteCallbackUriHost,
+  shouldRetryListenWithFallback
+} from "./oauth-server-network.js"
+import type { OAuthServerControllerInput, OAuthServerStopReason, PendingOAuth } from "./oauth-server-types.js"
 
-type OAuthServerStopReason = "success" | "error" | "other"
-
-type OAuthServerControllerInput<TPkce, TTokens> = {
-  port: number
-  loopbackHost: string
-  callbackOrigin: string
-  callbackUri: string
-  callbackPath: string
-  callbackTimeoutMs: number
-  debugLogDir?: string
-  debugLogFile?: string
-  buildOAuthErrorHtml: (error: string) => string
-  buildOAuthSuccessHtml: (mode: "native" | "codex") => string
-  composeCodexSuccessRedirectUrl: (tokens: TTokens) => string
-  exchangeCodeForTokens: (code: string, redirectUri: string, pkce: TPkce) => Promise<TTokens>
-}
-
-type PendingOAuth<TPkce, TTokens> = {
-  pkce: TPkce
-  state: string
-  authMode: OpenAIAuthMode
-  resolve: (tokens: TTokens) => void
-  reject: (error: Error) => void
-}
-
-const DEFAULT_DEBUG_LOG_MAX_BYTES = 1_000_000
-const REDACTED = "[redacted]"
-const REDACTED_DEBUG_META_KEY_FRAGMENTS = [
-  "token",
-  "secret",
-  "password",
-  "authorization",
-  "cookie",
-  "id_token",
-  "refresh_token",
-  "access_token",
-  "authorization_code",
-  "auth_code",
-  "code_verifier",
-  "pkce",
-  "verifier"
-]
-
-function shouldRedactDebugMetaKey(key: string): boolean {
-  const lower = key.trim().toLowerCase()
-  if (!lower) return false
-  return REDACTED_DEBUG_META_KEY_FRAGMENTS.some((fragment) => lower.includes(fragment))
-}
-
-function sanitizeDebugMeta(value: unknown): unknown {
-  if (typeof value === "string") {
-    return value
-      .replace(
-        /\b(access_token|refresh_token|id_token|authorization_code|auth_code|code_verifier|pkce_verifier)=([^\s&]+)/gi,
-        `$1=${REDACTED}`
-      )
-      .replace(
-        /"(access_token|refresh_token|id_token|authorization_code|auth_code|code_verifier|pkce_verifier)"\s*:\s*"[^"]*"/gi,
-        `"$1":"${REDACTED}"`
-      )
-      .replace(
-        /([?&])(code|state|access_token|refresh_token|id_token|code_verifier|pkce_verifier)=([^&]+)/gi,
-        (_match, prefix, key) => {
-          return `${prefix}${key}=${REDACTED}`
-        }
-      )
-  }
-  if (Array.isArray(value)) return value.map((item) => sanitizeDebugMeta(item))
-  if (!value || typeof value !== "object") return value
-
-  const out: Record<string, unknown> = {}
-  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    out[key] = shouldRedactDebugMetaKey(key) ? REDACTED : sanitizeDebugMeta(entry)
-  }
-  return out
-}
-
-function resolveDebugLogMaxBytes(): number {
-  const raw = process.env.CODEX_AUTH_DEBUG_MAX_BYTES
-  if (!raw) return DEFAULT_DEBUG_LOG_MAX_BYTES
-  const parsed = Number(raw)
-  if (!Number.isFinite(parsed)) return DEFAULT_DEBUG_LOG_MAX_BYTES
-  return Math.max(16_384, Math.floor(parsed))
-}
-
-function rotateDebugLogIfNeeded(debugLogFile: string, maxBytes: number): void {
-  try {
-    const stat = statSync(debugLogFile)
-    if (stat.size < maxBytes) return
-    const rotatedPath = `${debugLogFile}.1`
-    try {
-      unlinkSync(rotatedPath)
-    } catch (error) {
-      if (!isFsErrorCode(error, "ENOENT")) {
-        // ignore missing previous rotation file
-      }
-      // ignore missing previous rotation file
-    }
-    renameSync(debugLogFile, rotatedPath)
-  } catch (error) {
-    if (!isFsErrorCode(error, "ENOENT")) {
-      // ignore when file does not exist or cannot be inspected
-    }
-    // ignore when file does not exist or cannot be inspected
-  }
-}
-
-export function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
-  if (!remoteAddress) return false
-  const normalized = remoteAddress.split("%")[0]?.toLowerCase()
-  if (!normalized) return false
-  if (normalized === "::1") return true
-  if (normalized.startsWith("127.")) return true
-  if (normalized.startsWith("::ffff:127.")) return true
-  return false
-}
-
-function resolveListenHosts(loopbackHost: string): string[] {
-  const normalized = loopbackHost.trim().toLowerCase()
-  if (normalized === "localhost") {
-    return ["localhost", "127.0.0.1", "::1"]
-  }
-  return [loopbackHost]
-}
-
-function shouldRetryListenWithFallback(error: unknown): boolean {
-  return (
-    isFsErrorCode(error, "EADDRNOTAVAIL") ||
-    isFsErrorCode(error, "EAFNOSUPPORT") ||
-    isFsErrorCode(error, "ENOTFOUND")
-  )
-}
-
-function rewriteCallbackUriHost(callbackUri: string, host: string): string {
-  try {
-    const url = new URL(callbackUri)
-    url.hostname = host
-    return url.toString()
-  } catch (error) {
-    if (error instanceof Error) {
-      // fallback to configured callback URI when URL parsing fails
-    }
-    return callbackUri
-  }
-}
+export { isLoopbackRemoteAddress } from "./oauth-server-network.js"
 
 export function createOAuthServerController<TPkce, TTokens>(
   input: OAuthServerControllerInput<TPkce, TTokens>
@@ -195,17 +57,12 @@ export function createOAuthServerController<TPkce, TTokens>(
       }
       // best effort stderr logging
     }
-    try {
-      mkdirSync(debugLogDir, { recursive: true, mode: 0o700 })
-      rotateDebugLogIfNeeded(debugLogFile, debugLogMaxBytes)
-      appendFileSync(debugLogFile, `${line}\n`, { encoding: "utf8", mode: 0o600 })
-      chmodSync(debugLogFile, 0o600)
-    } catch (error) {
-      if (error instanceof Error) {
-        // best effort file logging
-      }
-      // best effort file logging
-    }
+    appendDebugLine({
+      debugLogDir,
+      debugLogFile,
+      debugLogMaxBytes,
+      line
+    })
   }
 
   function clearCloseTimer(): void {
@@ -364,7 +221,7 @@ export function createOAuthServerController<TPkce, TTokens>(
         res.statusCode = 404
         setResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
         res.end("Not found")
-      } catch (error) {
+      } catch (_error) {
         res.statusCode = 500
         setResponseHeaders(res, { contentType: "text/plain; charset=utf-8" })
         res.end("Server error")
@@ -413,7 +270,7 @@ export function createOAuthServerController<TPkce, TTokens>(
       }
 
       if (!boundHost) {
-        throw (lastListenError ?? new Error("Failed to bind OAuth callback server"))
+        throw lastListenError ?? new Error("Failed to bind OAuth callback server")
       }
 
       emitDebug("server_started", { port: input.port, host: boundHost, redirectUri: activeRedirectUri })

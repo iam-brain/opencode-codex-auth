@@ -39,7 +39,9 @@ describe("proactive refresh lease ownership", () => {
       refresh: async () => {
         await saveAuthStorage(authPath, (auth) => {
           const domain = ensureOpenAIOAuthDomain(auth, "native")
-          const target = domain.accounts.find((account: AccountRecord) => account.identityKey === "acc|one@example.com|plus")
+          const target = domain.accounts.find(
+            (account: AccountRecord) => account.identityKey === "acc|one@example.com|plus"
+          )
           if (target) {
             target.refresh = "rt_newer"
           }
@@ -95,7 +97,9 @@ describe("proactive refresh lease ownership", () => {
       refresh: async () => {
         await saveAuthStorage(authPath, (auth) => {
           const domain = ensureOpenAIOAuthDomain(auth, "native")
-          const target = domain.accounts.find((account: AccountRecord) => account.identityKey === "acc|one@example.com|plus")
+          const target = domain.accounts.find(
+            (account: AccountRecord) => account.identityKey === "acc|one@example.com|plus"
+          )
           if (target) {
             target.refresh = "rt_newer"
           }

@@ -13,13 +13,13 @@ type AcquireAuthModule = typeof import("../lib/codex-native/acquire-auth.js")
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b)
   const mid = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
 }
 
 function p95(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b)
   const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))
-  return sorted[idx]!
+  return sorted[idx]
 }
 
 function fmt(v: number): number {
@@ -39,7 +39,10 @@ function buildPayload() {
       {
         type: "message",
         role: "assistant",
-        content: [{ type: "reasoning_summary", text: "remove" }, { type: "output_text", text: "keep" }]
+        content: [
+          { type: "reasoning_summary", text: "remove" },
+          { type: "output_text", text: "keep" }
+        ]
       },
       {
         type: "message",
@@ -103,7 +106,10 @@ async function seedAuthStore(xdgConfigHome: string): Promise<string> {
   return filePath
 }
 
-async function benchmarkPayloadTransforms(root: string, iterations: number): Promise<{
+async function benchmarkPayloadTransforms(
+  root: string,
+  iterations: number
+): Promise<{
   legacy: { medianMs: number; p95Ms: number }
   singlePass?: { medianMs: number; p95Ms: number }
 }> {
@@ -159,7 +165,10 @@ async function benchmarkPayloadTransforms(root: string, iterations: number): Pro
   }
 }
 
-async function benchmarkAcquireAuthNoop(root: string, iterations: number): Promise<{
+async function benchmarkAcquireAuthNoop(
+  root: string,
+  iterations: number
+): Promise<{
   medianMs: number
   p95Ms: number
   fileWritesDetected: number
@@ -224,7 +233,7 @@ async function benchmarkQuotaBlocking(root: string): Promise<{ latencyMs: number
 
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input: string | URL | Request) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
     if (url.includes("/wham/usage")) {
       await new Promise((resolve) => setTimeout(resolve, 120))
       return new Response(
@@ -371,8 +380,7 @@ async function run(): Promise<void> {
           transformMedianGainPct: transformGainPct,
           acquireAuthMedianGainPct: acquireGainPct,
           quotaLatencyGainPct,
-          acquireAuthWriteReduction:
-            baseline.acquireAuth.fileWritesDetected - optimized.acquireAuth.fileWritesDetected
+          acquireAuthWriteReduction: baseline.acquireAuth.fileWritesDetected - optimized.acquireAuth.fileWritesDetected
         }
       },
       null,

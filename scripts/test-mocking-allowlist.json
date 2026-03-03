@@ -1,0 +1,140 @@
+{
+  "include": ["test"],
+  "files": {
+    "test/acquire-auth-hybrid-last-used.test.ts": {
+      "doMock": 1,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/acquire-auth-locking.test.ts": {
+      "doMock": 10,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/auth-menu-flow.integration.test.ts": {
+      "doMock": 1,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/auth-menu-quotas.test.ts": {
+      "doMock": 11,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/auth-menu-runner-delete-all.test.ts": {
+      "doMock": 1,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/auth-menu-runner-scopes.test.ts": {
+      "doMock": 2,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/catalog-auth.test.ts": {
+      "doMock": 2,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/catalog-sync.test.ts": {
+      "doMock": 2,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/codex-native-auth-menu-wiring.test.ts": {
+      "doMock": 7,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/codex-native-compat-sanitizer.test.ts": {
+      "doMock": 2,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/codex-native-fatal-response.test.ts": {
+      "doMock": 2,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/codex-native-oauth-callback-flow.test.ts": {
+      "doMock": 2,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/codex-native-oauth-headless.test.ts": {
+      "doMock": 1,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/codex-native-session-affinity.test.ts": {
+      "doMock": 4,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/codex-native-snapshots.test.ts": {
+      "doMock": 12,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/codex-native-toast-binding.test.ts": {
+      "doMock": 2,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/codex-status-tool-secrets.test.ts": {
+      "doMock": 1,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/helpers/mock-policy.ts": {
+      "doMock": 0,
+      "mock": 0,
+      "stubGlobal": 1
+    },
+    "test/models-gpt-5.3-codex.test.ts": {
+      "doMock": 1,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/openai-loader-fetch.prompt-cache-key.catalog-refresh.test.ts": {
+      "doMock": 4,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/openai-loader-fetch.prompt-cache-key.core-behavior.test.ts": {
+      "doMock": 4,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/openai-loader-fetch.prompt-cache-key.header-forwarding.test.ts": {
+      "doMock": 5,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/openai-loader-fetch.prompt-cache-key.project-and-quota.test.ts": {
+      "doMock": 3,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/openai-loader-fetch.prompt-cache-key.quota-retries.test.ts": {
+      "doMock": 2,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/rate-limit-snapshots.test.ts": {
+      "doMock": 4,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/request-transform-pipeline.test.ts": {
+      "doMock": 2,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/storage.test.ts": {
+      "doMock": 1,
+      "mock": 0,
+      "stubGlobal": 0
+    }
+  }
+}

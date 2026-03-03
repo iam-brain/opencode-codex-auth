@@ -64,7 +64,7 @@ export async function quarantineFile(input: {
 
     const excess = files.length - keep
     for (let i = 0; i < excess; i++) {
-      const fp = path.join(input.quarantineDir, files[i]!)
+      const fp = path.join(input.quarantineDir, files[i])
       try {
         await fs.unlink(fp)
       } catch (error) {

@@ -52,8 +52,7 @@ describe("request snapshots", () => {
         Authorization: "Bearer super-secret-token",
         "Content-Type": "application/x-www-form-urlencoded"
       },
-      body:
-        "access_token=abc123&refresh_token=def456&idToken=ghi789&prompt_cache_key=ses_snap_2&session_id=ses_2&chatgpt_account_id=acc_2"
+      body: "access_token=abc123&refresh_token=def456&idToken=ghi789&prompt_cache_key=ses_snap_2&session_id=ses_2&chatgpt_account_id=acc_2"
     })
 
     await snapshots.captureRequest("outbound-attempt", request, { attempt: 2 })
@@ -309,7 +308,7 @@ describe("request snapshots", () => {
 
     await snapshots.captureRequest("outbound-attempt", request, {
       error:
-        "authorization: Bearer top-secret access_token=abc refresh_token=def apiKey=xyz clientSecret=secret \"authorizationCode\":\"abc\""
+        'authorization: Bearer top-secret access_token=abc refresh_token=def apiKey=xyz clientSecret=secret "authorizationCode":"abc"'
     })
 
     const files = await fs.readdir(root)

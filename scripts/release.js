@@ -39,7 +39,8 @@ if (!VALID_BUMPS.has(bump)) {
 
 function run(command, args, opts = {}) {
   const capture = opts.capture === true
-  const resolvedCommand = process.platform === "win32" && (command === "npm" || command === "npx") ? `${command}.cmd` : command
+  const resolvedCommand =
+    process.platform === "win32" && (command === "npm" || command === "npx") ? `${command}.cmd` : command
   const result = spawnSync(resolvedCommand, args, {
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit"
@@ -479,7 +480,9 @@ try {
           rollbackFailedRelease(releaseAttemptState.defaultBranch, releaseAttemptState.tag)
         }
       } else {
-        console.error(`Skipping auto-rollback for ${releaseAttemptState.tag}: failure is not a release-workflow failure.`)
+        console.error(
+          `Skipping auto-rollback for ${releaseAttemptState.tag}: failure is not a release-workflow failure.`
+        )
       }
     } catch (rollbackError) {
       const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : String(rollbackError)

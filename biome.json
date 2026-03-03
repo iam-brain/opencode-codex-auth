@@ -1,0 +1,90 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.5/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!!**/dist",
+      "!!**/node_modules",
+      "!!**/.npm-cache",
+      "!!**/.worktrees",
+      "!!**/coverage",
+      "!!package-lock.json"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "lineWidth": 120
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": false
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "jsxQuoteStyle": "double",
+      "trailingCommas": "none",
+      "semicolons": "asNeeded"
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["index.ts", "lib/**/*.ts", "bin/**/*.ts", "scripts/**/*.ts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "error"
+          },
+          "nursery": {
+            "noFloatingPromises": "error",
+            "noMisusedPromises": "error"
+          },
+          "style": {
+            "useImportType": "error"
+          },
+          "suspicious": {
+            "noExplicitAny": "error",
+            "noFocusedTests": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["test/**/*.ts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "error"
+          },
+          "nursery": {
+            "noFloatingPromises": "error",
+            "noMisusedPromises": "error"
+          },
+          "style": {
+            "useImportType": "error"
+          },
+          "suspicious": {
+            "noExplicitAny": "off",
+            "noFocusedTests": "error"
+          }
+        }
+      }
+    }
+  ],
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}

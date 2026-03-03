@@ -164,14 +164,11 @@ export async function handleChatParamsHook(input: {
   if (!profile.enabled || !profile.kind) return
 
   if (profile.instructionPreset === "plan") {
-    const replacedPlan = replaceCodexToolCallsForOpenCode(getCodexPlanModeInstructions()) ?? getCodexPlanModeInstructions()
-    input.output.options.instructions = mergeInstructions(
-      asString(input.output.options.instructions),
-      replacedPlan
-    )
+    const replacedPlan =
+      replaceCodexToolCallsForOpenCode(getCodexPlanModeInstructions()) ?? getCodexPlanModeInstructions()
+    input.output.options.instructions = mergeInstructions(asString(input.output.options.instructions), replacedPlan)
     return
   }
-
 }
 
 export async function handleChatHeadersHook(input: {

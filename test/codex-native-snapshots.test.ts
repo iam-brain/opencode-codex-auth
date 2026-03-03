@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 afterEach(() => {
-  vi.unstubAllGlobals()
+  resetStubbedGlobals()
 })
 
 describe("codex-native snapshots", () => {
@@ -57,9 +58,7 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is any =>
-          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
-        )
+        .filter((entry): entry is any => Boolean(entry.domain && Array.isArray(entry.domain.accounts)))
     )
     const saveSnapshots = vi.fn(
       async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) => {
@@ -81,7 +80,7 @@ describe("codex-native snapshots", () => {
       saveSnapshots
     }))
 
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async () => {
         return new Response("ok", {
@@ -172,9 +171,7 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is any =>
-          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
-        )
+        .filter((entry): entry is any => Boolean(entry.domain && Array.isArray(entry.domain.accounts)))
     )
 
     vi.doMock("../lib/storage", () => ({
@@ -196,7 +193,7 @@ describe("codex-native snapshots", () => {
     let capturedUserAgent = ""
     let capturedOriginator = ""
     let capturedSessionId = ""
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const request = input as Request
@@ -294,9 +291,7 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is any =>
-          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
-        )
+        .filter((entry): entry is any => Boolean(entry.domain && Array.isArray(entry.domain.accounts)))
     )
 
     vi.doMock("../lib/storage", () => ({
@@ -318,7 +313,7 @@ describe("codex-native snapshots", () => {
     let capturedUserAgent = ""
     let capturedOriginator = ""
     let capturedSessionId = ""
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const request = input as Request
@@ -415,9 +410,7 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is any =>
-          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
-        )
+        .filter((entry): entry is any => Boolean(entry.domain && Array.isArray(entry.domain.accounts)))
     )
 
     vi.doMock("../lib/storage", () => ({
@@ -436,9 +429,9 @@ describe("codex-native snapshots", () => {
       )
     }))
 
-    const captureRequest = vi.fn<
-      (stage: string, request: Request, meta?: Record<string, unknown>) => Promise<void>
-    >(async () => {})
+    const captureRequest = vi.fn<(stage: string, request: Request, meta?: Record<string, unknown>) => Promise<void>>(
+      async () => {}
+    )
     const captureResponse = vi.fn(async () => {})
     const createRequestSnapshots = vi.fn(() => ({
       captureRequest,
@@ -449,7 +442,7 @@ describe("codex-native snapshots", () => {
     }))
 
     let seenInternalHeader = ""
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const request = input as Request
@@ -556,9 +549,7 @@ describe("codex-native snapshots", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is any =>
-          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
-        )
+        .filter((entry): entry is any => Boolean(entry.domain && Array.isArray(entry.domain.accounts)))
     )
 
     vi.doMock("../lib/storage", () => ({
@@ -577,9 +568,9 @@ describe("codex-native snapshots", () => {
       )
     }))
 
-    const captureRequest = vi.fn<
-      (stage: string, request: Request, meta?: Record<string, unknown>) => Promise<void>
-    >(async () => {})
+    const captureRequest = vi.fn<(stage: string, request: Request, meta?: Record<string, unknown>) => Promise<void>>(
+      async () => {}
+    )
     const captureResponse = vi.fn(async () => {})
     const createRequestSnapshots = vi.fn(() => ({
       captureRequest,
@@ -590,7 +581,7 @@ describe("codex-native snapshots", () => {
     }))
 
     let outboundRoles: string[] = []
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const request = input as Request

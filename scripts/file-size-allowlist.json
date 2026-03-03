@@ -1,0 +1,20 @@
+{
+  "sourceCap": 400,
+  "testCap": 500,
+  "sourceAllowlist": {
+    "lib/codex-native.ts": 417,
+    "lib/codex-native/acquire-auth.ts": 582,
+    "lib/codex-native/client-identity.ts": 434,
+    "lib/persona-tool.ts": 450,
+    "lib/request-snapshots.ts": 473,
+    "lib/ui/auth-menu.ts": 408,
+    "scripts/release.js": 495
+  },
+  "testAllowlist": {
+    "test/acquire-auth-locking.test.ts": 935,
+    "test/codex-native-auth-menu-wiring.test.ts": 1135,
+    "test/codex-native-snapshots.test.ts": 670,
+    "test/codex-native-spoof-mode.test.ts": 1278,
+    "test/storage.test.ts": 851
+  }
+}

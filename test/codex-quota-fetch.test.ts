@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 import { fetchQuotaSnapshotFromBackend } from "../lib/codex-quota-fetch"
 
 describe("codex quota fetch", () => {
   afterEach(() => {
-    vi.unstubAllGlobals()
+    resetStubbedGlobals()
   })
 
   it("parses wham usage response into requests/tokens limits", async () => {
@@ -33,7 +34,7 @@ describe("codex quota fetch", () => {
           { status: 200 }
         )
     )
-    vi.stubGlobal("fetch", fetchMock)
+    stubGlobalForTest("fetch", fetchMock)
 
     const snapshot = await fetchQuotaSnapshotFromBackend({
       accessToken: "ey.a.jwt",
@@ -72,7 +73,7 @@ describe("codex quota fetch", () => {
           { status: 200 }
         )
     )
-    vi.stubGlobal("fetch", fetchMock)
+    stubGlobalForTest("fetch", fetchMock)
 
     const snapshot = await fetchQuotaSnapshotFromBackend({
       accessToken: "ey.a.jwt",
@@ -103,7 +104,7 @@ describe("codex quota fetch", () => {
           { status: 200 }
         )
     )
-    vi.stubGlobal("fetch", fetchMock)
+    stubGlobalForTest("fetch", fetchMock)
 
     await fetchQuotaSnapshotFromBackend({
       accessToken: "ey.a.jwt",
@@ -134,7 +135,7 @@ describe("codex quota fetch", () => {
           { status: 200 }
         )
     )
-    vi.stubGlobal("fetch", fetchMock)
+    stubGlobalForTest("fetch", fetchMock)
 
     await fetchQuotaSnapshotFromBackend({
       accessToken: "ey.a.jwt",
@@ -153,7 +154,7 @@ describe("codex quota fetch", () => {
     const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
       async (_url: string | URL | Request, _init?: RequestInit) => new Response("{}", { status: 500 })
     )
-    vi.stubGlobal("fetch", fetchMock)
+    stubGlobalForTest("fetch", fetchMock)
 
     const snapshot = await fetchQuotaSnapshotFromBackend({
       accessToken: "ey.a.jwt",

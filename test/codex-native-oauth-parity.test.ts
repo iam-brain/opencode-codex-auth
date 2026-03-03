@@ -3,9 +3,10 @@ import { __testOnly } from "../lib/codex-native"
 import { createHeadlessOAuthAuthorize } from "../lib/codex-native/oauth-auth-methods"
 import { OAUTH_CALLBACK_URI } from "../lib/codex-native/oauth-utils"
 import { fetchWithTimeout } from "../lib/codex-native/oauth-utils"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 afterEach(() => {
-  vi.unstubAllGlobals()
+  resetStubbedGlobals()
 })
 
 describe("codex-native oauth parity", () => {
@@ -74,7 +75,7 @@ describe("codex-native oauth parity", () => {
       }
       throw new Error(`unexpected fetch URL in test: ${url}`)
     })
-    vi.stubGlobal("fetch", fetchMock)
+    stubGlobalForTest("fetch", fetchMock)
 
     const authorize = createHeadlessOAuthAuthorize({
       spoofMode: "native",
@@ -83,7 +84,7 @@ describe("codex-native oauth parity", () => {
 
     await authorize()
 
-    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined
+    const init = fetchMock.mock.calls[0]?.[1]
     const headers = (init?.headers ?? {}) as Record<string, string>
     expect(headers["User-Agent"]).toMatch(/^opencode\/\d+\.\d+\.\d+$/)
   })
@@ -92,11 +93,11 @@ describe("codex-native oauth parity", () => {
     const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
       async () => new Response("ok", { status: 200 })
     )
-    vi.stubGlobal("fetch", fetchMock)
+    stubGlobalForTest("fetch", fetchMock)
 
     await fetchWithTimeout("https://auth.openai.com/oauth/token", { method: "POST" }, 1000)
 
-    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined
+    const init = fetchMock.mock.calls[0]?.[1]
     expect(init?.redirect).toBe("error")
   })
 })

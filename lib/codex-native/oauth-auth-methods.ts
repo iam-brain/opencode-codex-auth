@@ -306,10 +306,15 @@ export function createHeadlessOAuthAuthorize(deps: HeadlessAuthorizeDeps) {
               if (code === "slow_down") {
                 pollIntervalMs = Math.min(pollIntervalMs + interval, 30_000)
               }
-            } catch (error) {
+            } catch (_error) {
               return { type: "failed" }
             }
-          } else if (response.status === 403 || response.status === 404 || response.status === 429 || response.status >= 500) {
+          } else if (
+            response.status === 403 ||
+            response.status === 404 ||
+            response.status === 429 ||
+            response.status >= 500
+          ) {
             // recoverable poll result; continue until timeout
           } else {
             return { type: "failed" }

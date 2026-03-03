@@ -1,0 +1,598 @@
+{
+  "total": {
+    "lines": 84.78,
+    "branches": 78.79,
+    "functions": 94.81,
+    "statements": 84.78
+  },
+  "files": {
+    "index.ts": {
+      "lines": 8.33,
+      "branches": 100,
+      "functions": 0,
+      "statements": 8.33
+    },
+    "lib/account-auth-types.ts": {
+      "lines": 100,
+      "branches": 70,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/accounts-tools.ts": {
+      "lines": 93.75,
+      "branches": 85.82,
+      "functions": 93.33,
+      "statements": 93.75
+    },
+    "lib/auth-messages.ts": {
+      "lines": 85.71,
+      "branches": 50,
+      "functions": 75,
+      "statements": 85.71
+    },
+    "lib/cache-io.ts": {
+      "lines": 79.01,
+      "branches": 89.65,
+      "functions": 81.25,
+      "statements": 79.01
+    },
+    "lib/cache-lock.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/claims.ts": {
+      "lines": 83.87,
+      "branches": 80,
+      "functions": 100,
+      "statements": 83.87
+    },
+    "lib/codex-cache-layout.ts": {
+      "lines": 100,
+      "branches": 95.45,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-native.ts": {
+      "lines": 96.2,
+      "branches": 88.13,
+      "functions": 92,
+      "statements": 96.2
+    },
+    "lib/codex-native/accounts.ts": {
+      "lines": 92.09,
+      "branches": 81.63,
+      "functions": 100,
+      "statements": 92.09
+    },
+    "lib/codex-native/acquire-auth.ts": {
+      "lines": 76.37,
+      "branches": 67.34,
+      "functions": 100,
+      "statements": 76.37
+    },
+    "lib/codex-native/auth-menu-flow.ts": {
+      "lines": 80.98,
+      "branches": 42.1,
+      "functions": 87.5,
+      "statements": 80.98
+    },
+    "lib/codex-native/auth-menu-quotas.ts": {
+      "lines": 86.85,
+      "branches": 73.68,
+      "functions": 83.33,
+      "statements": 86.85
+    },
+    "lib/codex-native/browser.ts": {
+      "lines": 63.76,
+      "branches": 65.21,
+      "functions": 100,
+      "statements": 63.76
+    },
+    "lib/codex-native/catalog-auth.ts": {
+      "lines": 89.47,
+      "branches": 92.3,
+      "functions": 100,
+      "statements": 89.47
+    },
+    "lib/codex-native/catalog-sync.ts": {
+      "lines": 100,
+      "branches": 81.81,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-native/chat-hooks.ts": {
+      "lines": 95.29,
+      "branches": 84.04,
+      "functions": 100,
+      "statements": 95.29
+    },
+    "lib/codex-native/client-identity.ts": {
+      "lines": 67.86,
+      "branches": 66.9,
+      "functions": 91.3,
+      "statements": 67.86
+    },
+    "lib/codex-native/collaboration.ts": {
+      "lines": 95.05,
+      "branches": 82.35,
+      "functions": 100,
+      "statements": 95.05
+    },
+    "lib/codex-native/oauth-auth-methods.ts": {
+      "lines": 68.48,
+      "branches": 65.85,
+      "functions": 75,
+      "statements": 68.48
+    },
+    "lib/codex-native/oauth-persistence.ts": {
+      "lines": 100,
+      "branches": 66.66,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-native/oauth-server-debug.ts": {
+      "lines": 79.06,
+      "branches": 77.77,
+      "functions": 100,
+      "statements": 79.06
+    },
+    "lib/codex-native/oauth-server-network.ts": {
+      "lines": 71.87,
+      "branches": 81.25,
+      "functions": 75,
+      "statements": 71.87
+    },
+    "lib/codex-native/oauth-server-types.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-native/oauth-server.ts": {
+      "lines": 76.41,
+      "branches": 71.01,
+      "functions": 93.75,
+      "statements": 76.41
+    },
+    "lib/codex-native/oauth-utils.ts": {
+      "lines": 92.66,
+      "branches": 70.73,
+      "functions": 94.44,
+      "statements": 92.66
+    },
+    "lib/codex-native/openai-loader-fetch-quota.ts": {
+      "lines": 87.67,
+      "branches": 82.35,
+      "functions": 100,
+      "statements": 87.67
+    },
+    "lib/codex-native/openai-loader-fetch-state.ts": {
+      "lines": 69.66,
+      "branches": 73.52,
+      "functions": 100,
+      "statements": 69.66
+    },
+    "lib/codex-native/openai-loader-fetch.ts": {
+      "lines": 90.74,
+      "branches": 86.31,
+      "functions": 83.33,
+      "statements": 90.74
+    },
+    "lib/codex-native/originator.ts": {
+      "lines": 100,
+      "branches": 95.65,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-native/rate-limit-snapshots.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-native/request-routing.ts": {
+      "lines": 98.46,
+      "branches": 88.46,
+      "functions": 100,
+      "statements": 98.46
+    },
+    "lib/codex-native/request-transform-instructions.ts": {
+      "lines": 93,
+      "branches": 75.86,
+      "functions": 100,
+      "statements": 93
+    },
+    "lib/codex-native/request-transform-model.ts": {
+      "lines": 92.07,
+      "branches": 86.86,
+      "functions": 100,
+      "statements": 92.07
+    },
+    "lib/codex-native/request-transform-payload-helpers.ts": {
+      "lines": 95.59,
+      "branches": 85.89,
+      "functions": 100,
+      "statements": 95.59
+    },
+    "lib/codex-native/request-transform-payload.ts": {
+      "lines": 65.75,
+      "branches": 83.33,
+      "functions": 100,
+      "statements": 65.75
+    },
+    "lib/codex-native/request-transform-pipeline.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-native/request-transform-shared.ts": {
+      "lines": 80,
+      "branches": 70.58,
+      "functions": 100,
+      "statements": 80
+    },
+    "lib/codex-native/request-transform.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-native/session-affinity-state.ts": {
+      "lines": 98.7,
+      "branches": 87.5,
+      "functions": 100,
+      "statements": 98.7
+    },
+    "lib/codex-native/session-messages.ts": {
+      "lines": 100,
+      "branches": 81.25,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-prompts-cache.ts": {
+      "lines": 98.94,
+      "branches": 87.75,
+      "functions": 100,
+      "statements": 98.94
+    },
+    "lib/codex-quota-fetch.ts": {
+      "lines": 80.89,
+      "branches": 71.08,
+      "functions": 100,
+      "statements": 80.89
+    },
+    "lib/codex-status-storage.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-status-tool.ts": {
+      "lines": 95.12,
+      "branches": 50,
+      "functions": 100,
+      "statements": 95.12
+    },
+    "lib/codex-status-ui.ts": {
+      "lines": 88.82,
+      "branches": 77.65,
+      "functions": 100,
+      "statements": 88.82
+    },
+    "lib/codex-status.ts": {
+      "lines": 91.11,
+      "branches": 81.39,
+      "functions": 100,
+      "statements": 91.11
+    },
+    "lib/compat-sanitizer.ts": {
+      "lines": 94.94,
+      "branches": 91.11,
+      "functions": 100,
+      "statements": 94.94
+    },
+    "lib/config-dir-gitignore.ts": {
+      "lines": 100,
+      "branches": 93.75,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/config.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/config/io.ts": {
+      "lines": 91.93,
+      "branches": 72.72,
+      "functions": 100,
+      "statements": 91.93
+    },
+    "lib/config/parse.ts": {
+      "lines": 88.88,
+      "branches": 80.73,
+      "functions": 100,
+      "statements": 88.88
+    },
+    "lib/config/resolve.ts": {
+      "lines": 99.34,
+      "branches": 96.38,
+      "functions": 100,
+      "statements": 99.34
+    },
+    "lib/config/types.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/config/validation.ts": {
+      "lines": 61.53,
+      "branches": 55.31,
+      "functions": 100,
+      "statements": 61.53
+    },
+    "lib/fatal-errors.ts": {
+      "lines": 100,
+      "branches": 81.81,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/fetch-orchestrator-helpers.ts": {
+      "lines": 92.72,
+      "branches": 68.88,
+      "functions": 100,
+      "statements": 92.72
+    },
+    "lib/fetch-orchestrator-types.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/fetch-orchestrator.ts": {
+      "lines": 87.57,
+      "branches": 87.87,
+      "functions": 100,
+      "statements": 87.57
+    },
+    "lib/identity.ts": {
+      "lines": 100,
+      "branches": 93.61,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/installer-cli.ts": {
+      "lines": 90.9,
+      "branches": 78.04,
+      "functions": 60,
+      "statements": 90.9
+    },
+    "lib/logger.ts": {
+      "lines": 56.66,
+      "branches": 62.5,
+      "functions": 57.14,
+      "statements": 56.66
+    },
+    "lib/model-catalog.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/model-catalog/cache-helpers.ts": {
+      "lines": 88.94,
+      "branches": 71.42,
+      "functions": 100,
+      "statements": 88.94
+    },
+    "lib/model-catalog/catalog-fetch.ts": {
+      "lines": 94.73,
+      "branches": 88.57,
+      "functions": 100,
+      "statements": 94.73
+    },
+    "lib/model-catalog/provider.ts": {
+      "lines": 95.54,
+      "branches": 93.91,
+      "functions": 100,
+      "statements": 95.54
+    },
+    "lib/model-catalog/shared.ts": {
+      "lines": 84.13,
+      "branches": 60,
+      "functions": 100,
+      "statements": 84.13
+    },
+    "lib/oauth-pages.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/opencode-install.ts": {
+      "lines": 92.1,
+      "branches": 80.76,
+      "functions": 100,
+      "statements": 92.1
+    },
+    "lib/orchestrator-agent.ts": {
+      "lines": 84.81,
+      "branches": 79.41,
+      "functions": 100,
+      "statements": 84.81
+    },
+    "lib/paths.ts": {
+      "lines": 97.36,
+      "branches": 96.96,
+      "functions": 100,
+      "statements": 97.36
+    },
+    "lib/persona-tool-cli.ts": {
+      "lines": 67.15,
+      "branches": 47.61,
+      "functions": 50,
+      "statements": 67.15
+    },
+    "lib/persona-tool.ts": {
+      "lines": 89.74,
+      "branches": 79.22,
+      "functions": 100,
+      "statements": 89.74
+    },
+    "lib/personalities.ts": {
+      "lines": 92.64,
+      "branches": 84.84,
+      "functions": 100,
+      "statements": 92.64
+    },
+    "lib/personality-command.ts": {
+      "lines": 89.74,
+      "branches": 83.33,
+      "functions": 100,
+      "statements": 89.74
+    },
+    "lib/personality-create.ts": {
+      "lines": 94.68,
+      "branches": 59.09,
+      "functions": 100,
+      "statements": 94.68
+    },
+    "lib/personality-skill.ts": {
+      "lines": 96.49,
+      "branches": 92.85,
+      "functions": 100,
+      "statements": 96.49
+    },
+    "lib/proactive-refresh.ts": {
+      "lines": 93.12,
+      "branches": 78.57,
+      "functions": 100,
+      "statements": 93.12
+    },
+    "lib/prompt-cache-key.ts": {
+      "lines": 100,
+      "branches": 66.66,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/quarantine.ts": {
+      "lines": 73.01,
+      "branches": 56.25,
+      "functions": 100,
+      "statements": 73.01
+    },
+    "lib/quota-threshold-alerts.ts": {
+      "lines": 97.02,
+      "branches": 74.19,
+      "functions": 100,
+      "statements": 97.02
+    },
+    "lib/rate-limit.ts": {
+      "lines": 100,
+      "branches": 94.44,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/refresh-queue.ts": {
+      "lines": 96.96,
+      "branches": 92.3,
+      "functions": 100,
+      "statements": 96.96
+    },
+    "lib/remote-cache-fetch.ts": {
+      "lines": 84.31,
+      "branches": 82.53,
+      "functions": 100,
+      "statements": 84.31
+    },
+    "lib/request-snapshots.ts": {
+      "lines": 90.82,
+      "branches": 81.19,
+      "functions": 100,
+      "statements": 90.82
+    },
+    "lib/rotation.ts": {
+      "lines": 97.52,
+      "branches": 80.48,
+      "functions": 100,
+      "statements": 97.52
+    },
+    "lib/session-affinity.ts": {
+      "lines": 94.76,
+      "branches": 82.71,
+      "functions": 100,
+      "statements": 94.76
+    },
+    "lib/storage.ts": {
+      "lines": 86.19,
+      "branches": 89.02,
+      "functions": 88.88,
+      "statements": 86.19
+    },
+    "lib/storage/domain-state.ts": {
+      "lines": 85.98,
+      "branches": 81.73,
+      "functions": 100,
+      "statements": 85.98
+    },
+    "lib/storage/migration.ts": {
+      "lines": 88.23,
+      "branches": 77.06,
+      "functions": 100,
+      "statements": 88.23
+    },
+    "lib/toast.ts": {
+      "lines": 66.66,
+      "branches": 64.7,
+      "functions": 83.33,
+      "statements": 66.66
+    },
+    "lib/types.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/ui/auth-menu-runner.ts": {
+      "lines": 82.43,
+      "branches": 68.75,
+      "functions": 100,
+      "statements": 82.43
+    },
+    "lib/ui/auth-menu.ts": {
+      "lines": 61.46,
+      "branches": 75.92,
+      "functions": 73.68,
+      "statements": 61.46
+    },
+    "lib/ui/tty/ansi.ts": {
+      "lines": 86.66,
+      "branches": 87.5,
+      "functions": 100,
+      "statements": 86.66
+    },
+    "lib/ui/tty/confirm.ts": {
+      "lines": 78.94,
+      "branches": 33.33,
+      "functions": 100,
+      "statements": 78.94
+    },
+    "lib/ui/tty/select.ts": {
+      "lines": 68.07,
+      "branches": 38.46,
+      "functions": 83.33,
+      "statements": 68.07
+    },
+    "lib/util.ts": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100,
+      "statements": 100
+    }
+  }
+}

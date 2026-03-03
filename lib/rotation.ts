@@ -186,7 +186,7 @@ function assignSessionAccount(
   state.bySessionKey.set(sessionKey, selected.identityKey)
   const maxEntries = Math.max(1, Math.floor(state.maxEntries ?? DEFAULT_SESSION_ASSIGNMENT_MAX))
   while (state.bySessionKey.size > maxEntries) {
-    const oldest = state.bySessionKey.keys().next().value as string | undefined
+    const oldest = state.bySessionKey.keys().next().value
     if (!oldest) break
     state.bySessionKey.delete(oldest)
   }

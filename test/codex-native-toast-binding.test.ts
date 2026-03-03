@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 type MockAuthFile = {
   openai: {
@@ -31,7 +32,7 @@ async function loadFetchForToast(input: { authFile: MockAuthFile; tui: Record<st
     ) => {
       const current = structuredClone(input.authFile)
       const next = await update(current)
-      return (next ?? current) as MockAuthFile
+      return next ?? current
     }
   )
   const setAccountCooldown = vi.fn(async () => {})
@@ -59,9 +60,7 @@ async function loadFetchForToast(input: { authFile: MockAuthFile; tui: Record<st
   const listOpenAIOAuthDomains = vi.fn((auth: MockAuthFile) =>
     (["native", "codex"] as const)
       .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(auth, mode) }))
-      .filter((entry): entry is any =>
-        Boolean(entry.domain && Array.isArray(entry.domain.accounts))
-      )
+      .filter((entry): entry is any => Boolean(entry.domain && Array.isArray(entry.domain.accounts)))
   )
 
   vi.doMock("../lib/storage", () => ({
@@ -95,7 +94,7 @@ async function loadFetchForToast(input: { authFile: MockAuthFile; tui: Record<st
 
 describe("codex-native toast binding", () => {
   afterEach(() => {
-    vi.unstubAllGlobals()
+    resetStubbedGlobals()
   })
 
   it("calls tui.showToast with bound context (no this._client errors)", async () => {
@@ -109,7 +108,7 @@ describe("codex-native toast binding", () => {
       }
     }
 
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
     )

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 type MockAuthFile = {
   openai?: {
@@ -36,7 +37,7 @@ async function loadPluginForAuth(authFile: MockAuthFile, pluginOpts?: PluginOpts
     ) => {
       const current = structuredClone(authFile)
       const next = await update(current)
-      return (next ?? current) as MockAuthFile
+      return next ?? current
     }
   )
   const setAccountCooldown = vi.fn(async () => {})
@@ -65,9 +66,7 @@ async function loadPluginForAuth(authFile: MockAuthFile, pluginOpts?: PluginOpts
   const listOpenAIOAuthDomains = vi.fn((auth: MockAuthFile) =>
     (["native", "codex"] as const)
       .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(auth, mode) }))
-      .filter((entry): entry is any =>
-        Boolean(entry.domain && Array.isArray(entry.domain.accounts))
-      )
+      .filter((entry): entry is any => Boolean(entry.domain && Array.isArray(entry.domain.accounts)))
   )
 
   vi.doMock("../lib/storage", () => ({
@@ -101,12 +100,12 @@ async function loadPluginForAuth(authFile: MockAuthFile, pluginOpts?: PluginOpts
 
 describe("codex-native compat input sanitizer wiring", () => {
   afterEach(() => {
-    vi.unstubAllGlobals()
+    resetStubbedGlobals()
   })
 
   it("sanitizes malformed input items when enabled", async () => {
     let capturedBody: Record<string, unknown> | undefined
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
         const req = input instanceof Request ? input : new Request(input)
@@ -161,7 +160,7 @@ describe("codex-native compat input sanitizer wiring", () => {
 
   it("preserves input items when sanitizer is disabled", async () => {
     let capturedBody: Record<string, unknown> | undefined
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
         const req = input instanceof Request ? input : new Request(input)

@@ -86,7 +86,9 @@ function hydrateOpenAIForTooling(openai: OpenAIMultiOauthAuth): OpenAIMultiOauth
     return hydrated
   }
 
-  hydrated.activeIdentityKey = hydrated.accounts.find((account) => account.enabled !== false && account.identityKey)?.identityKey
+  hydrated.activeIdentityKey = hydrated.accounts.find(
+    (account) => account.enabled !== false && account.identityKey
+  )?.identityKey
   return hydrated
 }
 
@@ -99,11 +101,7 @@ function normalizeAccountId(value: string | undefined): string {
 }
 
 function hasStrictTuple(account: AccountRecord): boolean {
-  return Boolean(
-    normalizeAccountId(account.accountId) &&
-      normalizeValue(account.email) &&
-      normalizeValue(account.plan)
-  )
+  return Boolean(normalizeAccountId(account.accountId) && normalizeValue(account.email) && normalizeValue(account.plan))
 }
 
 function findUniqueDomainMatchIndex(domainAccounts: AccountRecord[], target: AccountRecord): number {
@@ -111,7 +109,7 @@ function findUniqueDomainMatchIndex(domainAccounts: AccountRecord[], target: Acc
     const identityMatches = domainAccounts
       .map((account, index) => ({ account, index }))
       .filter(({ account }) => account.identityKey === target.identityKey)
-    if (identityMatches.length === 1) return identityMatches[0]!.index
+    if (identityMatches.length === 1) return identityMatches[0].index
     if (identityMatches.length > 1) return -1
   }
 
@@ -125,7 +123,7 @@ function findUniqueDomainMatchIndex(domainAccounts: AccountRecord[], target: Acc
           normalizeValue(account.plan) === normalizeValue(target.plan)
         )
       })
-    if (tupleMatches.length === 1) return tupleMatches[0]!.index
+    if (tupleMatches.length === 1) return tupleMatches[0].index
     return -1
   }
 
@@ -134,7 +132,7 @@ function findUniqueDomainMatchIndex(domainAccounts: AccountRecord[], target: Acc
   const refreshMatches = domainAccounts
     .map((account, index) => ({ account, index }))
     .filter(({ account }) => account.refresh?.trim() === targetRefresh)
-  if (refreshMatches.length === 1) return refreshMatches[0]!.index
+  if (refreshMatches.length === 1) return refreshMatches[0].index
   return -1
 }
 

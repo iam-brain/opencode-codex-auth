@@ -6,17 +6,6 @@ import { describe, expect, it } from "vitest"
 
 import { CodexAuthPlugin } from "../lib/codex-native"
 
-type HookInput = {
-  sessionID: string
-  model: {
-    providerID: string
-    capabilities?: {
-      toolcall?: boolean
-    }
-    options?: Record<string, unknown>
-  }
-}
-
 async function withArgv<T>(argv: string[], run: () => Promise<T>): Promise<T> {
   const previous = process.argv.slice()
   process.argv = argv

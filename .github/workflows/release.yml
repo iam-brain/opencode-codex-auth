@@ -208,6 +208,69 @@ jobs:
             echo "Verify workflow permissions include id-token: write and environment ${EXPECTED_ENVIRONMENT} is correctly configured." >&2
             exit 1
           fi
+          if [[ "${ACTIONS_ID_TOKEN_REQUEST_URL}" == *"?"* ]]; then
+            OIDC_URL="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npmjs"
+          else
+            OIDC_URL="${ACTIONS_ID_TOKEN_REQUEST_URL}?audience=npmjs"
+          fi
+          OIDC_RESPONSE="$(curl --fail --silent --show-error --location \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${OIDC_URL}")"
+          OIDC_TOKEN="$(printf '%s' "${OIDC_RESPONSE}" | node - <<'NODE'
+          const fs = require("node:fs")
+          const raw = fs.readFileSync(0, "utf8")
+          const parsed = JSON.parse(raw || "{}")
+          const token = typeof parsed.value === "string" ? parsed.value : typeof parsed.token === "string" ? parsed.token : ""
+          process.stdout.write(token)
+          NODE
+          )"
+          if [ -z "${OIDC_TOKEN}" ]; then
+            echo "GitHub OIDC token response did not include a token value." >&2
+            exit 1
+          fi
+          EXPECTED_REPO="${EXPECTED_REPO}" \
+          EXPECTED_WORKFLOW_FILE="${EXPECTED_WORKFLOW_FILE}" \
+          EXPECTED_ENVIRONMENT="${EXPECTED_ENVIRONMENT}" \
+          OIDC_TOKEN="${OIDC_TOKEN}" \
+            node - <<'NODE'
+          const expectedRepo = process.env.EXPECTED_REPO || ""
+          const expectedWorkflowFile = process.env.EXPECTED_WORKFLOW_FILE || ""
+          const expectedEnvironment = process.env.EXPECTED_ENVIRONMENT || ""
+          const token = process.env.OIDC_TOKEN || ""
+          const segment = token.split(".")[1]
+          if (!segment) {
+            console.error("Unable to parse GitHub OIDC token payload.")
+            process.exit(1)
+          }
+          const padLength = (4 - (segment.length % 4)) % 4
+          const normalized = `${segment.replace(/-/g, "+").replace(/_/g, "/")}${"=".repeat(padLength)}`
+          const payload = JSON.parse(Buffer.from(normalized, "base64").toString("utf8"))
+          const repository = String(payload.repository || "")
+          const workflowRef = String(payload.job_workflow_ref || payload.workflow_ref || "")
+          const environment = String(payload.environment || "")
+
+          const errors = []
+          if (repository !== expectedRepo) {
+            errors.push(`OIDC claim repository mismatch: ${repository || "<missing>"} (expected ${expectedRepo})`)
+          }
+          const workflowPrefix = `${expectedRepo}/${expectedWorkflowFile}@`
+          if (!workflowRef.startsWith(workflowPrefix)) {
+            errors.push(
+              `OIDC claim workflow mismatch: ${workflowRef || "<missing>"} (expected prefix ${workflowPrefix})`
+            )
+          }
+          if (environment !== expectedEnvironment) {
+            errors.push(
+              `OIDC claim environment mismatch: ${environment || "<missing>"} (expected ${expectedEnvironment})`
+            )
+          }
+          if (errors.length > 0) {
+            for (const error of errors) {
+              console.error(error)
+            }
+            process.exit(1)
+          }
+          NODE
           echo "OIDC preflight passed for ${EXPECTED_REPO} (${EXPECTED_WORKFLOW_FILE}, environment ${EXPECTED_ENVIRONMENT})."
       - name: Download release artifact
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4

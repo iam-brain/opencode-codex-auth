@@ -141,7 +141,7 @@ describe("codex-native oauth callback page branding", () => {
     result.runAllTimers()
 
     expect(result.replaceCalls).toHaveLength(1)
-    const redirectUrl = new URL(result.replaceCalls[0]!)
+    const redirectUrl = new URL(result.replaceCalls[0])
     expect(redirectUrl.origin).toBe("https://platform.api.openai.org")
     expect(redirectUrl.pathname).toBe("/org-setup")
     expect(redirectUrl.searchParams.get("p")).toBe("plus")
@@ -154,7 +154,7 @@ describe("codex-native oauth callback page branding", () => {
     result.runAllTimers()
 
     expect(result.replaceCalls).toHaveLength(1)
-    const redirectUrl = new URL(result.replaceCalls[0]!)
+    const redirectUrl = new URL(result.replaceCalls[0])
     expect(redirectUrl.origin).toBe("https://platform.openai.com")
     expect(redirectUrl.pathname).toBe("/org-setup")
   })

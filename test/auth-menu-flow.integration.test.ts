@@ -59,12 +59,17 @@ describe("auth-menu flow integration", () => {
       "utf8"
     )
 
-    const runAuthMenuOnce = vi.fn(async (input: { accounts: Array<unknown>; handlers: { onToggleAccount: (account: unknown) => Promise<void> } }) => {
-      const account = input.accounts[0]
-      expect(account).toBeDefined()
-      await input.handlers.onToggleAccount(account)
-      return "exit" as const
-    })
+    const runAuthMenuOnce = vi.fn(
+      async (input: {
+        accounts: Array<unknown>
+        handlers: { onToggleAccount: (account: unknown) => Promise<void> }
+      }) => {
+        const account = input.accounts[0]
+        expect(account).toBeDefined()
+        await input.handlers.onToggleAccount(account)
+        return "exit" as const
+      }
+    )
 
     vi.doMock("../lib/ui/auth-menu-runner", () => ({
       runAuthMenuOnce

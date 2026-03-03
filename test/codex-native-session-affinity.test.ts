@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 afterEach(() => {
-  vi.unstubAllGlobals()
+  resetStubbedGlobals()
 })
 
 describe("codex-native session affinity persistence", () => {
@@ -59,9 +60,7 @@ describe("codex-native session affinity persistence", () => {
     const listOpenAIOAuthDomains = vi.fn((current: Record<string, unknown>) =>
       (["native", "codex"] as const)
         .map((mode) => ({ mode, domain: getOpenAIOAuthDomain(current, mode) }))
-        .filter((entry): entry is any =>
-          Boolean(entry.domain && Array.isArray(entry.domain.accounts))
-        )
+        .filter((entry): entry is any => Boolean(entry.domain && Array.isArray(entry.domain.accounts)))
     )
 
     const saveSessionAffinity = vi.fn(async (_update: unknown, _filePath: string) => ({ version: 1 }))
@@ -103,7 +102,7 @@ describe("codex-native session affinity persistence", () => {
       pruneSessionAffinitySnapshot
     }))
 
-    vi.stubGlobal(
+    stubGlobalForTest(
       "fetch",
       vi.fn(async () => new Response("ok", { status: 200 }))
     )
