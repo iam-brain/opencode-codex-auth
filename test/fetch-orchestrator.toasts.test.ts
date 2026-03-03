@@ -39,6 +39,49 @@ describe("FetchOrchestrator toasts and session affinity", () => {
     expect(showToast).toHaveBeenCalledWith("New chat: user@example.com (plus)", "info", false)
   })
 
+  it("does not emit resume toast when staying on the same newly started chat", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn<(identityKey: string, cooldownUntil: number) => Promise<void>>(async () => {})
+    const showToast = vi.fn<
+      (message: string, variant: "info" | "success" | "warning" | "error", quietMode: boolean) => Promise<void>
+    >(async () => {})
+    let nowValue = 10_000
+
+    stubGlobalForTest(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      now: () => nowValue
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_same_after_new" },
+      body: JSON.stringify({ prompt_cache_key: "ses_same_after_new", input: "one" })
+    })
+    nowValue = 40_000
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_same_after_new" },
+      body: JSON.stringify({ prompt_cache_key: "ses_same_after_new", input: "two" })
+    })
+
+    const newToasts = showToast.mock.calls.filter((call) => call[0] === "New chat: user@example.com (plus)")
+    const resumeToasts = showToast.mock.calls.filter((call) => call[0] === "Resuming chat: user@example.com (plus)")
+    expect(newToasts).toHaveLength(1)
+    expect(resumeToasts).toHaveLength(0)
+  })
+
   it("shows a toast when switching to an existing session", async () => {
     const acquireAuth = vi.fn(async () => ({
       access: "a",
@@ -83,6 +126,46 @@ describe("FetchOrchestrator toasts and session affinity", () => {
         (call) => call[0] === "Session switched: user@example.com (plus)" && call[1] === "info" && call[2] === false
       )
     ).toBe(true)
+  })
+
+  it("treats unseen session changes as switch (not new chat)", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn<(identityKey: string, cooldownUntil: number) => Promise<void>>(async () => {})
+    const showToast = vi.fn<
+      (message: string, variant: "info" | "success" | "warning" | "error", quietMode: boolean) => Promise<void>
+    >(async () => {})
+
+    stubGlobalForTest(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_seen_a" },
+      body: JSON.stringify({ prompt_cache_key: "ses_seen_a", input: "one" })
+    })
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_seen_b" },
+      body: JSON.stringify({ prompt_cache_key: "ses_seen_b", input: "two" })
+    })
+
+    const newToasts = showToast.mock.calls.filter((call) => call[0] === "New chat: user@example.com (plus)")
+    const switchedToasts = showToast.mock.calls.filter((call) => call[0] === "Session switched: user@example.com (plus)")
+    expect(newToasts).toHaveLength(1)
+    expect(switchedToasts).toHaveLength(1)
   })
 
   it("shows a resume toast when restoring the same active session context", async () => {
@@ -204,6 +287,11 @@ describe("FetchOrchestrator toasts and session affinity", () => {
       method: "POST",
       headers: { "content-type": "application/json", session_id: "ses_seen_1" },
       body: JSON.stringify({ prompt_cache_key: "ses_seen_1", input: "continue" })
+    })
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_seen_1" },
+      body: JSON.stringify({ prompt_cache_key: "ses_seen_1", input: "continue-again" })
     })
 
     expect(showToast.mock.calls.some((call) => call[0] === "Resuming chat: user@example.com (plus)")).toBe(false)

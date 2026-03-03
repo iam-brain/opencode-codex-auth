@@ -211,11 +211,14 @@ export class FetchOrchestrator {
     if (sessionKey) {
       const sessionNow = nowFn()
       const hasSeen = this.touchSessionKey(sessionKey, sessionNow)
-      if (!hasSeen) {
+      const previousSessionKey = this.state.lastSessionKey
+      if (!hasSeen && previousSessionKey && previousSessionKey !== sessionKey) {
+        sessionEvent = "switch"
+      } else if (!hasSeen) {
         sessionEvent = "new"
-      } else if (this.state.lastSessionKey === sessionKey) {
+      } else if (previousSessionKey === sessionKey) {
         sessionEvent = "resume"
-      } else if (this.state.lastSessionKey && this.state.lastSessionKey !== sessionKey) {
+      } else if (previousSessionKey && previousSessionKey !== sessionKey) {
         sessionEvent = "switch"
       }
       this.state.lastSessionKey = sessionKey
@@ -256,8 +259,11 @@ export class FetchOrchestrator {
             ? "retry_switched_account_after_429"
             : "retry_same_account_after_429"
 
+      const allowResumeToast =
+        sessionEvent !== "resume" || (this.state.lastSessionToastEventKey === null && this.state.lastAccountKey === null)
       if (
         sessionEvent &&
+        allowResumeToast &&
         sessionToastEventKey &&
         !sessionToastEmitted &&
         this.state.lastSessionToastEventKey !== sessionToastEventKey
