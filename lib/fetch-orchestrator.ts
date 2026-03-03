@@ -210,9 +210,13 @@ export class FetchOrchestrator {
     let sessionToastEventKey: string | null = null
     if (sessionKey) {
       const sessionNow = nowFn()
+      this.pruneSessionKeys(sessionNow)
+      const hadSessionHistory = this.state.seenSessionKeys.size > 0 || this.state.lastSessionKey !== null
       const hasSeen = this.touchSessionKey(sessionKey, sessionNow)
       const previousSessionKey = this.state.lastSessionKey
       if (!hasSeen && previousSessionKey && previousSessionKey !== sessionKey) {
+        sessionEvent = "switch"
+      } else if (!hasSeen && previousSessionKey === null && hadSessionHistory) {
         sessionEvent = "switch"
       } else if (!hasSeen) {
         sessionEvent = "new"
@@ -260,7 +264,8 @@ export class FetchOrchestrator {
             : "retry_same_account_after_429"
 
       const allowResumeToast =
-        sessionEvent !== "resume" || (this.state.lastSessionToastEventKey === null && this.state.lastAccountKey === null)
+        sessionEvent !== "resume" ||
+        (this.state.lastSessionToastEventKey === null && this.state.lastAccountKey === null)
       if (
         sessionEvent &&
         allowResumeToast &&

@@ -163,9 +163,87 @@ describe("FetchOrchestrator toasts and session affinity", () => {
     })
 
     const newToasts = showToast.mock.calls.filter((call) => call[0] === "New chat: user@example.com (plus)")
-    const switchedToasts = showToast.mock.calls.filter((call) => call[0] === "Session switched: user@example.com (plus)")
+    const switchedToasts = showToast.mock.calls.filter(
+      (call) => call[0] === "Session switched: user@example.com (plus)"
+    )
     expect(newToasts).toHaveLength(1)
     expect(switchedToasts).toHaveLength(1)
+  })
+
+  it("treats unseen sessions as switch when prior session history exists", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn<(identityKey: string, cooldownUntil: number) => Promise<void>>(async () => {})
+    const showToast = vi.fn<
+      (message: string, variant: "info" | "success" | "warning" | "error", quietMode: boolean) => Promise<void>
+    >(async () => {})
+    const sharedState = createFetchOrchestratorState()
+    sharedState.seenSessionKeys.set("ses_known_1", Date.now())
+    sharedState.lastSessionKey = null
+
+    stubGlobalForTest(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      state: sharedState
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_known_2" },
+      body: JSON.stringify({ prompt_cache_key: "ses_known_2", input: "resume-existing-chat" })
+    })
+
+    expect(showToast.mock.calls.some((call) => call[0] === "New chat: user@example.com (plus)")).toBe(false)
+    expect(showToast.mock.calls.some((call) => call[0] === "Session switched: user@example.com (plus)")).toBe(true)
+  })
+
+  it("treats unseen sessions as new when only stale session history exists", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "a",
+      identityKey: "id1",
+      accountId: "acc1",
+      accountLabel: "user@example.com (plus)"
+    }))
+    const setCooldown = vi.fn<(identityKey: string, cooldownUntil: number) => Promise<void>>(async () => {})
+    const showToast = vi.fn<
+      (message: string, variant: "info" | "success" | "warning" | "error", quietMode: boolean) => Promise<void>
+    >(async () => {})
+    const sharedState = createFetchOrchestratorState()
+    sharedState.seenSessionKeys.set("ses_stale_1", 1)
+    sharedState.lastSessionKey = null
+    const nowValue = 1000 * 60 * 60 * 24
+
+    stubGlobalForTest(
+      "fetch",
+      vi.fn(async () => new Response("OK", { status: 200 }))
+    )
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      showToast,
+      state: sharedState,
+      now: () => nowValue
+    })
+
+    await orch.execute("https://api.com", {
+      method: "POST",
+      headers: { "content-type": "application/json", session_id: "ses_fresh_1" },
+      body: JSON.stringify({ prompt_cache_key: "ses_fresh_1", input: "new-after-stale" })
+    })
+
+    expect(showToast.mock.calls.some((call) => call[0] === "Session switched: user@example.com (plus)")).toBe(false)
+    expect(showToast.mock.calls.some((call) => call[0] === "New chat: user@example.com (plus)")).toBe(true)
   })
 
   it("shows a resume toast when restoring the same active session context", async () => {

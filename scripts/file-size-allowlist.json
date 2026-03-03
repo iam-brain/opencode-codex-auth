@@ -5,6 +5,7 @@
     "lib/codex-native.ts": 417,
     "lib/codex-native/acquire-auth.ts": 582,
     "lib/codex-native/client-identity.ts": 434,
+    "lib/fetch-orchestrator.ts": 408,
     "lib/persona-tool.ts": 450,
     "lib/request-snapshots.ts": 473,
     "lib/ui/auth-menu.ts": 408,
@@ -15,6 +16,7 @@
     "test/codex-native-auth-menu-wiring.test.ts": 1135,
     "test/codex-native-snapshots.test.ts": 670,
     "test/codex-native-spoof-mode.test.ts": 1278,
+    "test/fetch-orchestrator.toasts.test.ts": 614,
     "test/storage.test.ts": 851
   }
 }
