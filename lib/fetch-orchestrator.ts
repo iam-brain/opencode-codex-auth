@@ -98,7 +98,11 @@ export class FetchOrchestrator {
     )
   }
 
-  private touchSessionKey(sessionKey: string, now: number, hasSeen: boolean = this.state.seenSessionKeys.has(sessionKey)): boolean {
+  private touchSessionKey(
+    sessionKey: string,
+    now: number,
+    hasSeen: boolean = this.state.seenSessionKeys.has(sessionKey)
+  ): boolean {
     if (hasSeen) {
       this.state.seenSessionKeys.delete(sessionKey)
     }
@@ -210,7 +214,8 @@ export class FetchOrchestrator {
       const sessionNow = nowFn()
       const hasSeenBeforePrune = this.state.seenSessionKeys.has(sessionKey)
       this.pruneSessionKeys(sessionNow)
-      const hadSessionHistory = hasSeenBeforePrune || this.state.seenSessionKeys.size > 0 || this.state.lastSessionKey !== null
+      const hadSessionHistory =
+        hasSeenBeforePrune || this.state.seenSessionKeys.size > 0 || this.state.lastSessionKey !== null
       const hasSeen = this.touchSessionKey(sessionKey, sessionNow, hasSeenBeforePrune)
       const previousSessionKey = this.state.lastSessionKey
       if (!hasSeen && previousSessionKey && previousSessionKey !== sessionKey) {
