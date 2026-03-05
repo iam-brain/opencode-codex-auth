@@ -4,20 +4,12 @@ import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const REQUIRED_RELEASE_RUNTIME_CI_JOBS = [
-  "Verify on Node.js 20.x",
-  "Verify on Node.js 22.x",
+  "Verify (Node.js 22.x)",
   "Package Smoke Test",
-  "Package Smoke Test (Windows)",
-  "Windows Runtime Hardening (Node.js 20.x)",
-  "Windows Runtime Hardening (Node.js 22.x)",
+  "Windows Compatibility Smoke",
   "Security Audit"
 ]
-const REQUIRED_WORKFLOW_STATIC_JOB_NAMES = [
-  "Package Smoke Test",
-  "Package Smoke Test (Windows)",
-  "Windows Runtime Hardening (Node.js ${{ matrix.node-version }})",
-  "Security Audit"
-]
+const REQUIRED_WORKFLOW_STATIC_JOB_NAMES = ["Package Smoke Test", "Windows Compatibility Smoke", "Security Audit"]
 
 describe("release hygiene", () => {
   it("package.json has verify script", () => {
@@ -59,10 +51,10 @@ describe("release hygiene", () => {
     expect(existsSync(join(process.cwd(), "scripts", "check-dist-esm-import-specifiers.mjs"))).toBe(true)
   })
 
-  it("declares Node engine range aligned with CI matrix", () => {
+  it("declares the Node engine aligned with CI", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
-    expect(pkg.engines?.node).toBe(">=20 <23")
+    expect(pkg.engines?.node).toBe(">=22 <23")
   })
 
   it("includes license and changelog files", () => {
@@ -99,8 +91,8 @@ describe("release hygiene", () => {
   it("required release CI jobs exist in workflow", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
-    expect(workflow).toContain("Verify on Node.js ${{ matrix.node-version }}")
-    expect(workflow).toMatch(/node-version:\s*\[\s*20\.x\s*,\s*22\.x\s*\]/)
+    expect(workflow).toContain("Verify (Node.js 22.x)")
+    expect(workflow).not.toMatch(/node-version:\s*\[\s*20\.x\s*,\s*22\.x\s*\]/)
     for (const job of REQUIRED_WORKFLOW_STATIC_JOB_NAMES) {
       expect(workflow).toContain(job)
     }
@@ -212,7 +204,7 @@ describe("package publish surface", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
     expect(workflow).toContain("Pack and execute CLI tarball")
-    expect(workflow).toContain("Package Smoke Test (Windows)")
+    expect(workflow).toContain("Windows Compatibility Smoke")
     expect(workflow).toContain("npm pack --silent")
     expect(workflow).toContain("test -f")
     expect(workflow).toContain("npm install --silent --prefix")

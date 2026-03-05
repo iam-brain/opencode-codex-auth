@@ -105,6 +105,10 @@
         "verbosity": {
           "type": "string",
           "enum": ["default", "low", "medium", "high"]
+        },
+        "serviceTier": {
+          "type": "string",
+          "enum": ["default", "priority", "flex"]
         }
       }
     },
@@ -129,6 +133,10 @@
             "verbosity": {
               "type": "string",
               "enum": ["default", "low", "medium", "high"]
+            },
+            "serviceTier": {
+              "type": "string",
+              "enum": ["default", "priority", "flex"]
             },
             "variants": {
               "type": "object",

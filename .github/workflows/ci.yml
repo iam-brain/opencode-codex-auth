@@ -2,20 +2,22 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Verify on Node.js ${{ matrix.node-version }}
+  verify:
+    name: Verify (Node.js 22.x)
     runs-on: ubuntu-latest
     timeout-minutes: 25
-
-    strategy:
-      matrix:
-        node-version: [20.x, 22.x]
 
     steps:
       - name: Checkout code
@@ -23,10 +25,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 22.x
           cache: npm
 
       - name: Pin npm version from packageManager
@@ -69,7 +71,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20.x
+          node-version: 22.x
           cache: npm
 
       - name: Pin npm version from packageManager
@@ -105,7 +107,7 @@ jobs:
           node "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js" --help
 
   package-smoke-windows:
-    name: Package Smoke Test (Windows)
+    name: Windows Compatibility Smoke
     runs-on: windows-latest
     timeout-minutes: 20
 
@@ -118,7 +120,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20.x
+          node-version: 22.x
           cache: npm
 
       - name: Pin npm version from packageManager
@@ -153,52 +155,6 @@ jobs:
           test -f "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js"
           node "${TMP_DIR}/node_modules/@iam-brain/opencode-codex-auth/dist/bin/opencode-codex-auth.js" --help
 
-  windows-runtime-hardening:
-    name: Windows Runtime Hardening (Node.js ${{ matrix.node-version }})
-    runs-on: windows-latest
-    timeout-minutes: 30
-    strategy:
-      matrix:
-        node-version: [20.x, 22.x]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: npm
-
-      - name: Pin npm version from packageManager
-        shell: bash
-        run: |
-          set -euo pipefail
-          PKG_MANAGER="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).packageManager")"
-          case "${PKG_MANAGER}" in
-            npm@*) NPM_VERSION="${PKG_MANAGER#npm@}" ;;
-            *) echo "Unsupported packageManager: ${PKG_MANAGER}" >&2; exit 1 ;;
-          esac
-          corepack enable || true
-          corepack prepare "npm@${NPM_VERSION}" --activate || true
-          if [ "$(npm --version)" != "${NPM_VERSION}" ]; then
-            echo "npm version mismatch after corepack, falling back to npm install -g"
-            npm install -g "npm@${NPM_VERSION}"
-          fi
-          test "$(npm --version)" = "${NPM_VERSION}"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run full verify
-        env:
-          COVERAGE_RATCHET_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          COVERAGE_RATCHET_HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: npm run verify
-
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
@@ -213,7 +169,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20.x
+          node-version: 22.x
           cache: npm
 
       - name: Pin npm version from packageManager

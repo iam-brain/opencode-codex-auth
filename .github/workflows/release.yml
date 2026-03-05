@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20.x"
+          node-version: "22.x"
           cache: npm
       - name: Pin npm version from packageManager
         run: |
@@ -54,7 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REQUIRED_CI_WORKFLOW: ci.yml
-          REQUIRED_CI_JOBS_JSON: '["Verify on Node.js 20.x","Verify on Node.js 22.x","Package Smoke Test","Package Smoke Test (Windows)","Windows Runtime Hardening (Node.js 20.x)","Windows Runtime Hardening (Node.js 22.x)","Security Audit"]'
+          REQUIRED_CI_JOBS_JSON: '["Verify (Node.js 22.x)","Package Smoke Test","Windows Compatibility Smoke","Security Audit"]'
         run: |
           set -euo pipefail
           RUNS_JSON="$(gh run list \

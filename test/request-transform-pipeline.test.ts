@@ -70,7 +70,7 @@ describe("request transform pipeline", () => {
     expect(result.developerRoleRemap.reason).toBe("disabled")
   })
 
-  it("injects service_tier priority only for gpt-5.4 requests and preserves 1M-context fields", async () => {
+  it("defers service_tier mutation to the payload transform stage", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -100,13 +100,14 @@ describe("request transform pipeline", () => {
       model_auto_compact_token_limit?: number
     }
 
-    expect(result.serviceTierOverride.changed).toBe(true)
-    expect(body.service_tier).toBe("priority")
+    expect(result.serviceTierOverride.changed).toBe(false)
+    expect(result.serviceTierOverride.reason).toBe("deferred_to_payload_transform")
+    expect(body.service_tier).toBeUndefined()
     expect(body.model_context_window).toBe(1_000_000)
     expect(body.model_auto_compact_token_limit).toBe(900_000)
   })
 
-  it("preserves explicit request-body service_tier", async () => {
+  it("leaves explicit request-body service_tier untouched in the pipeline stage", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -131,11 +132,11 @@ describe("request transform pipeline", () => {
 
     const body = JSON.parse(await result.request.text()) as { service_tier?: string }
     expect(result.serviceTierOverride.changed).toBe(false)
-    expect(result.serviceTierOverride.reason).toBe("preserved")
+    expect(result.serviceTierOverride.reason).toBe("deferred_to_payload_transform")
     expect(body.service_tier).toBe("flex")
   })
 
-  it("suppresses priority on non-gpt-5.4 models but passes flex through", async () => {
+  it("keeps service-tier handling deferred regardless of configured model support", async () => {
     const priorityRequest = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -172,9 +173,10 @@ describe("request transform pipeline", () => {
     const flexBody = JSON.parse(await flexResult.request.text()) as { service_tier?: string }
 
     expect(priorityResult.serviceTierOverride.changed).toBe(false)
-    expect(priorityResult.serviceTierOverride.reason).toBe("unsupported_model")
+    expect(priorityResult.serviceTierOverride.reason).toBe("deferred_to_payload_transform")
     expect(priorityBody.service_tier).toBeUndefined()
-    expect(flexResult.serviceTierOverride.changed).toBe(true)
-    expect(flexBody.service_tier).toBe("flex")
+    expect(flexResult.serviceTierOverride.changed).toBe(false)
+    expect(flexResult.serviceTierOverride.reason).toBe("deferred_to_payload_transform")
+    expect(flexBody.service_tier).toBeUndefined()
   })
 })
