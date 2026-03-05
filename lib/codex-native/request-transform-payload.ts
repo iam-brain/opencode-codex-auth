@@ -1,6 +1,7 @@
 import type { BehaviorSettings } from "../config.js"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer.js"
 import { isRecord } from "../util.js"
+import { applyGpt54LongContextClampsToPayload } from "./request-transform-gpt54-limits.js"
 import { getModelLookupCandidates } from "./request-transform-model.js"
 import { getRequestBodyVariantCandidates, resolveServiceTierForModel } from "./request-transform-model-service-tier.js"
 import { asString } from "./request-transform-shared.js"
@@ -21,6 +22,7 @@ type OutboundRequestPayloadTransformInput = {
   remapDeveloperMessagesToUserEnabled: boolean
   compatInputSanitizerEnabled: boolean
   promptCacheKeyOverrideEnabled: boolean
+  gpt54LongContextClampEnabled?: boolean
   promptCacheKeyOverride?: string
   behaviorSettings?: BehaviorSettings
 }
@@ -51,7 +53,8 @@ export async function sanitizeOutboundRequestIfNeeded(
     stripReasoningReplayEnabled: false,
     remapDeveloperMessagesToUserEnabled: false,
     compatInputSanitizerEnabled: enabled,
-    promptCacheKeyOverrideEnabled: false
+    promptCacheKeyOverrideEnabled: false,
+    gpt54LongContextClampEnabled: false
   })
   return {
     request: transformed.request,
@@ -208,8 +211,10 @@ export async function transformOutboundRequestPayload(
     : disabledCompatSanitizer
 
   const finalPayload = compatSanitizedPayload?.payload ?? payload
+  const gpt54LongContextClampChanged =
+    input.gpt54LongContextClampEnabled !== false ? applyGpt54LongContextClampsToPayload(finalPayload) : false
   const serviceTier = applyServiceTierOverrideToPayload(finalPayload, input.behaviorSettings)
-  changed = changed || compatSanitizer.changed || serviceTier.changed
+  changed = changed || compatSanitizer.changed || gpt54LongContextClampChanged || serviceTier.changed
 
   if (!changed) {
     return {
@@ -251,6 +256,7 @@ export async function applyServiceTierOverrideToRequest(input: {
     remapDeveloperMessagesToUserEnabled: false,
     compatInputSanitizerEnabled: false,
     promptCacheKeyOverrideEnabled: false,
+    gpt54LongContextClampEnabled: false,
     behaviorSettings: input.behaviorSettings
   })
   return {
@@ -272,6 +278,7 @@ export async function applyPromptCacheKeyOverrideToRequest(input: {
     remapDeveloperMessagesToUserEnabled: false,
     compatInputSanitizerEnabled: false,
     promptCacheKeyOverrideEnabled: input.enabled,
+    gpt54LongContextClampEnabled: false,
     promptCacheKeyOverride: input.promptCacheKey
   })
   return {
@@ -293,7 +300,8 @@ export async function remapDeveloperMessagesToUserOnRequest(input: { request: Re
     stripReasoningReplayEnabled: false,
     remapDeveloperMessagesToUserEnabled: input.enabled,
     compatInputSanitizerEnabled: false,
-    promptCacheKeyOverrideEnabled: false
+    promptCacheKeyOverrideEnabled: false,
+    gpt54LongContextClampEnabled: false
   })
   return {
     request: transformed.request,
@@ -316,7 +324,8 @@ export async function stripReasoningReplayFromRequest(input: { request: Request;
     stripReasoningReplayEnabled: input.enabled,
     remapDeveloperMessagesToUserEnabled: false,
     compatInputSanitizerEnabled: false,
-    promptCacheKeyOverrideEnabled: false
+    promptCacheKeyOverrideEnabled: false,
+    gpt54LongContextClampEnabled: false
   })
   return {
     request: transformed.request,

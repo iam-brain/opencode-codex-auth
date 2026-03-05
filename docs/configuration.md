@@ -186,10 +186,15 @@ Precedence for `personality`, `thinkingSummaries`, verbosity, and `serviceTier` 
 - Fast mode is configured with `serviceTier: "priority"`.
 - The plugin preserves an explicit request-body `service_tier` if your host already sets one.
 - `serviceTier: "priority"` is intentionally gated to `gpt-5.4*` requests and is omitted for other models instead of failing the request.
-- The plugin preserves request-level `model_context_window` and `model_auto_compact_token_limit` fields through all payload rewrites.
-- That means GPT-5.4's experimental 1M context flow can be driven by your OpenCode/request config without a plugin-side compatibility shim.
+- The plugin preserves request-level `model_context_window`, `model_auto_compact_token_limit`, and `max_output_tokens` fields through all payload rewrites.
+- For `gpt-5.4*`, the plugin clamps those request-level overrides to the currently documented GPT-5.4 long-context limits before sending the request:
+  - `model_context_window <= 1,050,000`
+  - `model_auto_compact_token_limit <= min(922,000, model_context_window - 128,000)`
+  - `max_output_tokens <= 128,000`
+- The `922,000` auto-compact ceiling is the full-window practical safe-input cap derived from the published `1,050,000` total context budget minus the published `128,000` max output budget.
+- If you request a smaller `model_context_window`, the plugin also preserves the same output headroom by clamping `model_auto_compact_token_limit` to `model_context_window - 128,000`.
 - The live Codex catalog currently still reports `context_window: 272000` for `gpt-5.4`, so any larger `model_context_window` value is an explicit request override rather than a catalog default.
-- Requests above the standard 272K context window count at 2x normal usage, matching OpenAI's GPT-5.4 Codex guidance.
+- OpenAI's current GPT-5.4 guidance says prompts above the standard `272,000` input window are billed at higher long-context rates.
 
 ## Personality system
 

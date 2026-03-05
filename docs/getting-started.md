@@ -114,13 +114,16 @@ If your host/request already sets `service_tier`, the plugin leaves it alone.
 ## 5b) Optional: try GPT-5.4 1M context
 
 GPT-5.4 in Codex exposes experimental long-context support via request-level `model_context_window` and `model_auto_compact_token_limit`.
-Those are not plugin config keys; they come from your OpenCode/request configuration, and the plugin preserves them unchanged when rewriting request bodies.
+Those are not plugin config keys; they come from your OpenCode/request configuration, and the plugin preserves them through request rewriting while clamping them to the currently documented GPT-5.4 long-context limits.
 
 Notes:
 
 - The live Codex catalog still advertises a standard `272000` context window for `gpt-5.4`.
 - Larger `model_context_window` values are explicit request overrides.
-- Requests above the standard 272K window count at 2x normal usage.
+- The plugin clamps `model_context_window` to `1,050,000`, `model_auto_compact_token_limit` to `min(922,000, model_context_window - 128,000)`, and `max_output_tokens` to `128,000` when they are set on `gpt-5.4*` requests.
+- The `922,000` ceiling is the full-window practical safe-input budget derived from the documented `1,050,000` total context window minus the documented `128,000` max output budget.
+- If you request a smaller `model_context_window`, the plugin preserves the same output headroom by clamping `model_auto_compact_token_limit` to `model_context_window - 128,000`.
+- OpenAI's current GPT-5.4 guidance says prompts above the standard `272,000` input window are billed at higher long-context rates.
 
 ## 6) Create a custom personality (optional)
 
