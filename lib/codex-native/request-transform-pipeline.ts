@@ -1,10 +1,11 @@
 import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config.js"
 import type { CodexModelInfo } from "../model-catalog.js"
-import { applyCatalogInstructionOverrideToRequest } from "./request-transform.js"
+import { applyCatalogInstructionOverrideToRequest, type ServiceTierTransformResult } from "./request-transform.js"
 
 export type RequestTransformPipelineResult = {
   request: Request
   instructionOverride: Awaited<ReturnType<typeof applyCatalogInstructionOverrideToRequest>>
+  serviceTierOverride: ServiceTierTransformResult
   developerRoleRemap: {
     request: Request
     changed: boolean
@@ -36,6 +37,11 @@ export async function applyRequestTransformPipeline(input: {
     replaceCodexToolCalls: input.replaceCodexToolCalls
   })
   const request = instructionOverride.request
+  const serviceTierOverride: ServiceTierTransformResult = {
+    request,
+    changed: false,
+    reason: "deferred_to_payload_transform"
+  }
   const developerRoleRemap = {
     request,
     changed: false,
@@ -48,6 +54,7 @@ export async function applyRequestTransformPipeline(input: {
   return {
     request,
     instructionOverride,
+    serviceTierOverride,
     developerRoleRemap,
     subagentHeader: subagentHeader || undefined,
     isSubagentRequest: Boolean(subagentHeader)

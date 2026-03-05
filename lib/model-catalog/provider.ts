@@ -17,6 +17,7 @@ const STALE_BRIDGE_MARKERS = [
   /functions\.(read|exec_command|write_stdin|apply_patch|edit|grep|glob|list)\b/i,
   /recipient_name\s*[:=]/i
 ]
+const BASELINE_PROVIDER_MODEL_SLUG_REGEX = /^gpt-(5(?:[.-].+)?|oss-(?:120b|20b))$/i
 
 function cloneModelTemplate(template: Record<string, unknown>, slug: string): Record<string, unknown> {
   const cloned = { ...template }
@@ -46,8 +47,17 @@ function formatModelDisplayNameFromSlug(slug: string): string {
   return words.join(" ")
 }
 
-function setModelIdentityFields(model: Record<string, unknown>, slug: string): void {
-  const display = formatModelDisplayNameFromSlug(slug)
+function resolveDisplayName(slug: string, catalogDisplayName?: string | null): string {
+  const trimmed = catalogDisplayName?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : formatModelDisplayNameFromSlug(slug)
+}
+
+function setModelIdentityFields(
+  model: Record<string, unknown>,
+  slug: string,
+  catalogDisplayName?: string | null
+): void {
+  const display = resolveDisplayName(slug, catalogDisplayName)
 
   for (const key of ["id", "slug", "model"]) {
     model[key] = slug
@@ -131,7 +141,7 @@ export function resolveInstructionsForModel(
   return normalizeSafeInstructions(rendered) ?? safeBase
 }
 
-function resolveAllowedSlugs(catalogModels: CodexModelInfo[] | undefined, fallback: string[]): string[] {
+function resolveAllowedSlugs(catalogModels: CodexModelInfo[] | undefined, fallback: readonly string[]): string[] {
   const preferred = (catalogModels ?? []).map((model) => model.slug).filter((slug) => slug.length > 0)
   if (preferred.length > 0) {
     return Array.from(new Set(preferred)).sort(compareModelSlugs)
@@ -139,10 +149,22 @@ function resolveAllowedSlugs(catalogModels: CodexModelInfo[] | undefined, fallba
   return Array.from(new Set(fallback.map((slug) => slug.trim().toLowerCase()).filter(Boolean))).sort(compareModelSlugs)
 }
 
+function resolveAllowedSlugsFromBaselineProvider(
+  providerModels: Record<string, Record<string, unknown>>,
+  fallback: readonly string[]
+): string[] {
+  const providerBaseline = Object.keys(providerModels)
+    .map((slug) => slug.trim().toLowerCase())
+    .filter((slug) => BASELINE_PROVIDER_MODEL_SLUG_REGEX.test(slug))
+  return Array.from(
+    new Set([...fallback.map((slug) => slug.trim().toLowerCase()), ...providerBaseline].filter(Boolean))
+  ).sort(compareModelSlugs)
+}
+
 function resolveTemplateSource(
   providerModels: Record<string, Record<string, unknown>>
 ): Record<string, unknown> | undefined {
-  for (const candidate of ["gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex", "gpt-5.2"]) {
+  for (const candidate of ["gpt-5.4", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex", "gpt-5.2"]) {
     const found = providerModels[candidate]
     if (found) return found
   }
@@ -208,6 +230,10 @@ export function getRuntimeDefaultsForModel(model: CodexModelInfo | undefined): C
     if (next) out.reasoningSummaryFormat = next
   }
 
+  if (typeof model.supports_parallel_tool_calls === "boolean") {
+    out.supportsParallelToolCalls = model.supports_parallel_tool_calls
+  }
+
   if (typeof model.support_verbosity === "boolean") {
     out.supportsVerbosity = model.support_verbosity
   }
@@ -229,7 +255,10 @@ export function getRuntimeDefaultsForSlug(
 }
 
 export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput): void {
-  const allowedSlugs = resolveAllowedSlugs(input.catalogModels, input.fallbackModels)
+  const allowedSlugs =
+    input.catalogModels && input.catalogModels.length > 0
+      ? resolveAllowedSlugs(input.catalogModels, input.fallbackModels)
+      : resolveAllowedSlugsFromBaselineProvider(input.providerModels, input.fallbackModels)
   const allowed = new Set(allowedSlugs)
   const bySlug = new Map((input.catalogModels ?? []).map((model) => [model.slug, model]))
 
@@ -243,8 +272,10 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
         input.providerModels[slug] = { id: slug, model: slug }
       }
     } else {
-      setModelIdentityFields(input.providerModels[slug], slug)
+      setModelIdentityFields(input.providerModels[slug], slug, bySlug.get(slug)?.display_name)
     }
+
+    setModelIdentityFields(input.providerModels[slug], slug, bySlug.get(slug)?.display_name)
 
     const catalogModel = bySlug.get(slug)
     const options = ensureModelOptions(input.providerModels[slug])
@@ -277,7 +308,18 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
     }
   }
 
-  const orderedModelIds = Object.keys(input.providerModels).sort((a, b) => b.localeCompare(a))
+  const orderedModelIds = Object.keys(input.providerModels).sort((a, b) => {
+    const aPriority = bySlug.get(a)?.priority
+    const bPriority = bySlug.get(b)?.priority
+    const normalizedAPriority =
+      typeof aPriority === "number" && Number.isFinite(aPriority) ? aPriority : Number.POSITIVE_INFINITY
+    const normalizedBPriority =
+      typeof bPriority === "number" && Number.isFinite(bPriority) ? bPriority : Number.POSITIVE_INFINITY
+    if (normalizedAPriority !== normalizedBPriority) {
+      return normalizedAPriority - normalizedBPriority
+    }
+    return compareModelSlugs(b, a)
+  })
   if (orderedModelIds.length > 1) {
     const orderedEntries = orderedModelIds.map((modelId) => [modelId, input.providerModels[modelId]] as const)
     for (const modelId of Object.keys(input.providerModels)) {

@@ -18,7 +18,7 @@ export async function initializeCatalogSync(input: {
   rotationStrategy?: RotationStrategy
   resolveCatalogHeaders: () => CatalogHeaders
   providerModels: Record<string, Record<string, unknown>>
-  fallbackModels: string[]
+  fallbackModels: readonly string[]
   personality?: PersonalityOption
   log?: Logger
   getLastCatalogModels: () => CodexModelInfo[] | undefined

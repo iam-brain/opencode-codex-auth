@@ -8,12 +8,9 @@ const bump = process.argv[2] ?? "patch"
 const REQUIRED_CI_WORKFLOW = "ci.yml"
 const RELEASE_WORKFLOW = "release.yml"
 const REQUIRED_CI_JOBS = [
-  "Verify on Node.js 20.x",
-  "Verify on Node.js 22.x",
+  "Verify (Node.js 22.x)",
   "Package Smoke Test",
-  "Package Smoke Test (Windows)",
-  "Windows Runtime Hardening (Node.js 20.x)",
-  "Windows Runtime Hardening (Node.js 22.x)",
+  "Windows Compatibility Smoke",
   "Security Audit"
 ]
 const REMOTE_CI_BYPASS_ENV = "RELEASE_SKIP_REMOTE_CI_GATE"

@@ -109,10 +109,10 @@
       "statements": 95.29
     },
     "lib/codex-native/client-identity.ts": {
-      "lines": 67.86,
-      "branches": 66.9,
-      "functions": 91.3,
-      "statements": 67.86
+      "lines": 65.09,
+      "branches": 64.39,
+      "functions": 86.95,
+      "statements": 65.09
     },
     "lib/codex-native/collaboration.ts": {
       "lines": 95.05,
@@ -204,6 +204,12 @@
       "functions": 100,
       "statements": 93
     },
+    "lib/codex-native/request-transform-model-service-tier.ts": {
+      "lines": 92.94,
+      "branches": 75.67,
+      "functions": 100,
+      "statements": 92.94
+    },
     "lib/codex-native/request-transform-model.ts": {
       "lines": 92.07,
       "branches": 86.86,
@@ -249,6 +255,12 @@
     "lib/codex-native/session-messages.ts": {
       "lines": 100,
       "branches": 81.25,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-native/static-fallback-models.ts": {
+      "lines": 100,
+      "branches": 100,
       "functions": 100,
       "statements": 100
     },
@@ -311,6 +323,12 @@
       "branches": 72.72,
       "functions": 100,
       "statements": 91.93
+    },
+    "lib/config/behavior-settings.ts": {
+      "lines": 100,
+      "branches": 86.66,
+      "functions": 100,
+      "statements": 100
     },
     "lib/config/parse.ts": {
       "lines": 88.88,

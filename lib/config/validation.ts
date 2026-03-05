@@ -56,6 +56,17 @@ function validateModelBehaviorShape(value: unknown, pathPrefix: string, issues: 
       })
     }
   }
+  if ("serviceTier" in value) {
+    const serviceTier = value.serviceTier
+    const normalized = typeof serviceTier === "string" ? serviceTier.trim().toLowerCase() : ""
+    if (!(normalized === "default" || normalized === "priority" || normalized === "flex")) {
+      pushValidationIssue(issues, {
+        path: `${pathPrefix}.serviceTier`,
+        expected: '"default" | "priority" | "flex"',
+        actual: serviceTier
+      })
+    }
+  }
 }
 
 export function validateConfigFileObject(raw: unknown): ConfigValidationResult {

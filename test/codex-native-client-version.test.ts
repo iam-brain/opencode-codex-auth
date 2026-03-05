@@ -19,10 +19,10 @@ describe("codex client version resolution", () => {
     expect(__testOnly.resolveCodexClientVersion(cacheFile)).toBe("0.98.0")
   })
 
-  it("falls back to 0.97.0 when cache file is missing", async () => {
+  it("falls back to 0.111.0 when cache file is missing", async () => {
     const dir = await makeTmpDir()
     const cacheFile = path.join(dir, "missing.json")
-    expect(__testOnly.resolveCodexClientVersion(cacheFile)).toBe("0.97.0")
+    expect(__testOnly.resolveCodexClientVersion(cacheFile)).toBe("0.111.0")
   })
 
   it("refreshes stale cache from GitHub release tag", async () => {

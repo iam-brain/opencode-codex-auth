@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import type { BehaviorSettings } from "../lib/config.js"
 import {
   applyPromptCacheKeyOverrideToRequest,
   remapDeveloperMessagesToUserOnRequest,
@@ -264,6 +265,12 @@ describe("codex reasoning replay stripping", () => {
 })
 
 describe("request transform aggregation", () => {
+  const priorityBehaviorSettings: BehaviorSettings = {
+    global: {
+      serviceTier: "priority"
+    }
+  }
+
   it("applies replay stripping, remap, prompt key override, and compat sanitization in one parse", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
@@ -294,7 +301,8 @@ describe("request transform aggregation", () => {
       remapDeveloperMessagesToUserEnabled: true,
       compatInputSanitizerEnabled: true,
       promptCacheKeyOverrideEnabled: true,
-      promptCacheKeyOverride: "pk_project"
+      promptCacheKeyOverride: "pk_project",
+      behaviorSettings: priorityBehaviorSettings
     })
 
     expect(transformed.changed).toBe(true)
@@ -304,6 +312,8 @@ describe("request transform aggregation", () => {
     expect(transformed.developerRoleRemap.remappedCount).toBe(1)
     expect(transformed.promptCacheKey.reason).toBe("set")
     expect(transformed.compatSanitizer.changed).toBe(false)
+    expect(transformed.serviceTier.changed).toBe(false)
+    expect(transformed.serviceTier.reason).toBe("unsupported_model")
 
     const body = JSON.parse(await transformed.request.text()) as {
       input: Array<{ role?: string; content?: Array<{ type?: string; text?: string }> }>
@@ -331,7 +341,8 @@ describe("request transform aggregation", () => {
       remapDeveloperMessagesToUserEnabled: true,
       compatInputSanitizerEnabled: true,
       promptCacheKeyOverrideEnabled: true,
-      promptCacheKeyOverride: "pk_project"
+      promptCacheKeyOverride: "pk_project",
+      behaviorSettings: priorityBehaviorSettings
     })
 
     const body = JSON.parse(await aggregated.request.text()) as {
@@ -351,6 +362,90 @@ describe("request transform aggregation", () => {
     expect(aggregated.developerRoleRemap.reason).toBe("no_developer_messages")
     expect(aggregated.promptCacheKey.reason).toBe("set")
     expect(aggregated.compatSanitizer.changed).toBe(false)
+    expect(aggregated.serviceTier.changed).toBe(false)
+    expect(aggregated.serviceTier.reason).toBe("unsupported_model")
+  })
+
+  it("injects service_tier priority for gpt-5.4 while preserving 1M-context fields in the shared payload pass", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.4",
+        model_context_window: 1_000_000,
+        model_auto_compact_token_limit: 900_000,
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      behaviorSettings: priorityBehaviorSettings
+    })
+
+    const body = JSON.parse(await transformed.request.text()) as {
+      service_tier?: string
+      model_context_window?: number
+      model_auto_compact_token_limit?: number
+    }
+
+    expect(transformed.changed).toBe(true)
+    expect(transformed.serviceTier.changed).toBe(true)
+    expect(transformed.serviceTier.reason).toBe("updated")
+    expect(body.service_tier).toBe("priority")
+    expect(body.model_context_window).toBe(1_000_000)
+    expect(body.model_auto_compact_token_limit).toBe(900_000)
+  })
+
+  it("preserves explicit request-body service_tier and passes flex through", async () => {
+    const preservedRequest = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.4",
+        service_tier: "flex",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+    const flexRequest = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const preserved = await transformOutboundRequestPayload({
+      request: preservedRequest,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      behaviorSettings: priorityBehaviorSettings
+    })
+    const flex = await transformOutboundRequestPayload({
+      request: flexRequest,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      behaviorSettings: { global: { serviceTier: "flex" } }
+    })
+
+    const preservedBody = JSON.parse(await preserved.request.text()) as { service_tier?: string }
+    const flexBody = JSON.parse(await flex.request.text()) as { service_tier?: string }
+
+    expect(preserved.serviceTier.changed).toBe(false)
+    expect(preserved.serviceTier.reason).toBe("preserved")
+    expect(preservedBody.service_tier).toBe("flex")
+    expect(flex.serviceTier.changed).toBe(true)
+    expect(flex.serviceTier.reason).toBe("updated")
+    expect(flexBody.service_tier).toBe("flex")
   })
 })
 

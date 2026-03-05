@@ -8,29 +8,9 @@ import {
   getModelLookupCandidates,
   resolvePersonalityForModel
 } from "./request-transform-model.js"
+import { getRequestBodyVariantCandidates } from "./request-transform-model-service-tier.js"
 import { rebuildRequestWithJsonBody } from "./request-transform-payload-helpers.js"
-import { asString, EFFORT_SUFFIX_REGEX } from "./request-transform-shared.js"
-
-function getVariantCandidatesFromBody(input: { body: Record<string, unknown>; modelSlug: string }): string[] {
-  const out: string[] = []
-  const seen = new Set<string>()
-  const add = (value: string | undefined) => {
-    const trimmed = value?.trim().toLowerCase()
-    if (!trimmed) return
-    if (seen.has(trimmed)) return
-    seen.add(trimmed)
-    out.push(trimmed)
-  }
-
-  const reasoning = isRecord(input.body.reasoning) ? input.body.reasoning : undefined
-  add(asString(reasoning?.effort))
-
-  const normalizedSlug = input.modelSlug.trim().toLowerCase()
-  const suffix = normalizedSlug.match(EFFORT_SUFFIX_REGEX)?.[1]
-  add(suffix)
-
-  return out
-}
+import { asString } from "./request-transform-shared.js"
 
 const COLLABORATION_INSTRUCTION_MARKERS = [
   "# Plan Mode",
@@ -89,7 +69,7 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
     id: modelSlugRaw,
     api: { id: modelSlugRaw }
   })
-  const variantCandidates = getVariantCandidatesFromBody({
+  const variantCandidates = getRequestBodyVariantCandidates({
     body: payload,
     modelSlug: modelSlugRaw
   })

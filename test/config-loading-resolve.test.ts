@@ -292,4 +292,54 @@ describe("config loading", () => {
     expect(getBehaviorSettings(cfg)?.global?.verbosityEnabled).toBe(false)
     expect(getBehaviorSettings(cfg)?.global?.verbosity).toBe("low")
   })
+
+  it("parses service tier override from env", () => {
+    const cfg = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_SERVICE_TIER: "priority"
+      }
+    })
+
+    expect(getBehaviorSettings(cfg)?.global?.serviceTier).toBe("priority")
+  })
+
+  it("lets env service tier override file behavior settings", () => {
+    const cfg = resolveConfig({
+      env: {
+        OPENCODE_OPENAI_MULTI_SERVICE_TIER: "priority"
+      },
+      file: {
+        behaviorSettings: {
+          global: {
+            serviceTier: "flex"
+          }
+        }
+      }
+    })
+
+    expect(getBehaviorSettings(cfg)?.global?.serviceTier).toBe("priority")
+  })
+
+  it("keeps per-model and variant service tier overrides from file config", () => {
+    const cfg = resolveConfig({
+      env: {},
+      file: {
+        behaviorSettings: {
+          perModel: {
+            "gpt-5.4": {
+              serviceTier: "priority",
+              variants: {
+                high: {
+                  serviceTier: "flex"
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+
+    expect(getBehaviorSettings(cfg)?.perModel?.["gpt-5.4"]?.serviceTier).toBe("priority")
+    expect(getBehaviorSettings(cfg)?.perModel?.["gpt-5.4"]?.variants?.high?.serviceTier).toBe("flex")
+  })
 })

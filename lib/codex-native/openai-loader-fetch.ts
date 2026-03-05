@@ -25,12 +25,10 @@ import {
   stripUnsafeForwardedHeaders,
   type CatalogSyncState
 } from "./openai-loader-fetch-state.js"
-
 type SnapshotRecorder = {
   captureRequest: (stage: string, request: Request, metadata?: Record<string, unknown>) => Promise<void>
   captureResponse: (stage: string, response: Response, metadata?: Record<string, unknown>) => Promise<void>
 }
-
 export type CreateOpenAIFetchHandlerInput = {
   authMode: OpenAIAuthMode
   spoofMode: CodexSpoofMode
@@ -144,7 +142,6 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
 
     let selectedIdentityKey: string | undefined
     let selectedAuthForQuota: { access: string; accountId?: string; identityKey?: string } | undefined
-
     const promptCacheKeyStrategy = input.promptCacheKeyStrategy ?? "default"
     const promptCacheKeyOverride =
       promptCacheKeyStrategy === "project"
@@ -160,7 +157,8 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
       compatInputSanitizerEnabled: input.compatInputSanitizerEnabled,
       promptCacheKeyOverrideEnabled: promptCacheKeyStrategy === "project",
-      promptCacheKeyOverride
+      promptCacheKeyOverride,
+      behaviorSettings: input.behaviorSettings
     })
     outbound = initialPayloadTransform.request
 
@@ -169,6 +167,11 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         spoofMode: input.spoofMode,
         instructionsOverridden: transformed.instructionOverride.changed,
         instructionOverrideReason: transformed.instructionOverride.reason,
+        serviceTierOverridden: initialPayloadTransform.serviceTier.changed,
+        serviceTierOverrideReason: initialPayloadTransform.serviceTier.reason,
+        ...(initialPayloadTransform.serviceTier.serviceTier
+          ? { serviceTier: initialPayloadTransform.serviceTier.serviceTier }
+          : {}),
         developerMessagesRemapped: initialPayloadTransform.developerRoleRemap.changed,
         developerMessageRemapReason: initialPayloadTransform.developerRoleRemap.reason,
         developerMessageRemapCount: initialPayloadTransform.developerRoleRemap.remappedCount,

@@ -135,6 +135,10 @@ Mode-derived runtime defaults when omitted:
 
 ### Model behavior
 
+- Current live Codex catalog shape is the source of truth for model availability.
+- As of March 5, 2026, the live `/backend-api/codex/models` payload includes `gpt-5.4`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, and older GPT-5 Codex variants.
+- Actual availability still depends on the authenticated account's live catalog and plan entitlements.
+
 - `global.personality: string`
   - Personality key applied to all models unless overridden.
 - `global.thinkingSummaries: boolean`
@@ -143,6 +147,11 @@ Mode-derived runtime defaults when omitted:
   - Enables/disables `textVerbosity` injection globally (`true` default).
 - `global.verbosity: "default" | "low" | "medium" | "high"`
   - Verbosity preference (`"default"` uses each model catalog default).
+- `global.serviceTier: "default" | "priority" | "flex"`
+  - Global service tier preference.
+  - `"priority"` maps to request-body `service_tier: "priority"` only for `gpt-5.4*`.
+  - `"flex"` passes through `service_tier: "flex"`.
+  - `"default"` or omission leaves `service_tier` unset unless the request body already sets it.
 - `perModel.<model>.personality: string`
   - Model-specific personality override.
 - `perModel.<model>.thinkingSummaries: boolean`
@@ -151,6 +160,8 @@ Mode-derived runtime defaults when omitted:
   - Model-specific enable/disable for `textVerbosity`.
 - `perModel.<model>.verbosity: "default" | "low" | "medium" | "high"`
   - Model-specific verbosity setting.
+- `perModel.<model>.serviceTier: "default" | "priority" | "flex"`
+  - Model-specific service tier override.
 - `perModel.<model>.variants.<variant>.personality: string`
   - Variant-level personality override.
 - `perModel.<model>.variants.<variant>.thinkingSummaries: boolean`
@@ -159,14 +170,26 @@ Mode-derived runtime defaults when omitted:
   - Variant-level enable/disable for `textVerbosity`.
 - `perModel.<model>.variants.<variant>.verbosity: "default" | "low" | "medium" | "high"`
   - Variant-level verbosity setting.
+- `perModel.<model>.variants.<variant>.serviceTier: "default" | "priority" | "flex"`
+  - Variant-level service tier override.
 
 If a model reports `supportsVerbosity=false` in catalog/runtime defaults, verbosity overrides are ignored.
 
-Precedence for `personality`, `thinkingSummaries`, and verbosity settings:
+Precedence for `personality`, `thinkingSummaries`, verbosity, and `serviceTier` settings:
 
 1. `perModel.<model>.variants.<variant>`
 2. `perModel.<model>`
 3. `global`
+
+### GPT-5.4 fast mode and long context
+
+- Fast mode is configured with `serviceTier: "priority"`.
+- The plugin preserves an explicit request-body `service_tier` if your host already sets one.
+- `serviceTier: "priority"` is intentionally gated to `gpt-5.4*` requests and is omitted for other models instead of failing the request.
+- The plugin preserves request-level `model_context_window` and `model_auto_compact_token_limit` fields through all payload rewrites.
+- That means GPT-5.4's experimental 1M context flow can be driven by your OpenCode/request config without a plugin-side compatibility shim.
+- The live Codex catalog currently still reports `context_window: 272000` for `gpt-5.4`, so any larger `model_context_window` value is an explicit request override rather than a catalog default.
+- Requests above the standard 272K context window count at 2x normal usage, matching OpenAI's GPT-5.4 Codex guidance.
 
 ## Personality system
 
@@ -244,6 +267,7 @@ Advanced path:
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_VERBOSITY`: `default|low|medium|high`.
+- `OPENCODE_OPENAI_MULTI_SERVICE_TIER`: `default|priority|flex`.
 - `OPENCODE_OPENAI_MULTI_COMPAT_INPUT_SANITIZER`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE`: `1|0|true|false`.

@@ -1,5 +1,8 @@
+import type { BehaviorSettings } from "../config.js"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer.js"
 import { isRecord } from "../util.js"
+import { getModelLookupCandidates } from "./request-transform-model.js"
+import { getRequestBodyVariantCandidates, resolveServiceTierForModel } from "./request-transform-model-service-tier.js"
 import { asString } from "./request-transform-shared.js"
 import {
   type CompatSanitizerTransformResult,
@@ -19,6 +22,7 @@ type OutboundRequestPayloadTransformInput = {
   compatInputSanitizerEnabled: boolean
   promptCacheKeyOverrideEnabled: boolean
   promptCacheKeyOverride?: string
+  behaviorSettings?: BehaviorSettings
 }
 
 export type OutboundRequestPayloadTransformResult = {
@@ -28,6 +32,14 @@ export type OutboundRequestPayloadTransformResult = {
   developerRoleRemap: DeveloperRoleRemapTransformResult
   promptCacheKey: PromptCacheKeyTransformResult
   compatSanitizer: CompatSanitizerTransformResult
+  serviceTier: ServiceTierTransformResult
+}
+
+export type ServiceTierTransformResult = {
+  request: Request
+  changed: boolean
+  reason: string
+  serviceTier?: string
 }
 
 export async function sanitizeOutboundRequestIfNeeded(
@@ -70,6 +82,11 @@ export async function transformOutboundRequestPayload(
     changed: false,
     reason: "disabled"
   }
+  const disabledServiceTier: ServiceTierTransformResult = {
+    request: input.request,
+    changed: false,
+    reason: "disabled"
+  }
 
   const method = input.request.method.toUpperCase()
   if (method !== "POST") {
@@ -85,7 +102,8 @@ export async function transformOutboundRequestPayload(
         : disabledPromptCacheKey,
       compatSanitizer: input.compatInputSanitizerEnabled
         ? { ...disabledCompatSanitizer, reason: "non_post" }
-        : disabledCompatSanitizer
+        : disabledCompatSanitizer,
+      serviceTier: input.behaviorSettings ? { ...disabledServiceTier, reason: "non_post" } : disabledServiceTier
     }
   }
 
@@ -105,7 +123,8 @@ export async function transformOutboundRequestPayload(
         : disabledPromptCacheKey,
       compatSanitizer: input.compatInputSanitizerEnabled
         ? { ...disabledCompatSanitizer, reason: "invalid_json" }
-        : disabledCompatSanitizer
+        : disabledCompatSanitizer,
+      serviceTier: input.behaviorSettings ? { ...disabledServiceTier, reason: "invalid_json" } : disabledServiceTier
     }
   }
 
@@ -122,7 +141,8 @@ export async function transformOutboundRequestPayload(
         : disabledPromptCacheKey,
       compatSanitizer: input.compatInputSanitizerEnabled
         ? { ...disabledCompatSanitizer, reason: "empty_body" }
-        : disabledCompatSanitizer
+        : disabledCompatSanitizer,
+      serviceTier: input.behaviorSettings ? { ...disabledServiceTier, reason: "empty_body" } : disabledServiceTier
     }
   }
 
@@ -142,7 +162,8 @@ export async function transformOutboundRequestPayload(
         : disabledPromptCacheKey,
       compatSanitizer: input.compatInputSanitizerEnabled
         ? { ...disabledCompatSanitizer, reason: "invalid_json" }
-        : disabledCompatSanitizer
+        : disabledCompatSanitizer,
+      serviceTier: input.behaviorSettings ? { ...disabledServiceTier, reason: "invalid_json" } : disabledServiceTier
     }
   }
 
@@ -159,7 +180,8 @@ export async function transformOutboundRequestPayload(
         : disabledPromptCacheKey,
       compatSanitizer: input.compatInputSanitizerEnabled
         ? { ...disabledCompatSanitizer, reason: "non_object_body" }
-        : disabledCompatSanitizer
+        : disabledCompatSanitizer,
+      serviceTier: input.behaviorSettings ? { ...disabledServiceTier, reason: "non_object_body" } : disabledServiceTier
     }
   }
 
@@ -186,7 +208,8 @@ export async function transformOutboundRequestPayload(
     : disabledCompatSanitizer
 
   const finalPayload = compatSanitizedPayload?.payload ?? payload
-  changed = changed || compatSanitizer.changed
+  const serviceTier = applyServiceTierOverrideToPayload(finalPayload, input.behaviorSettings)
+  changed = changed || compatSanitizer.changed || serviceTier.changed
 
   if (!changed) {
     return {
@@ -195,7 +218,8 @@ export async function transformOutboundRequestPayload(
       replay,
       developerRoleRemap,
       promptCacheKey,
-      compatSanitizer
+      compatSanitizer,
+      serviceTier: { ...serviceTier, request: input.request }
     }
   }
 
@@ -205,7 +229,35 @@ export async function transformOutboundRequestPayload(
     replay,
     developerRoleRemap,
     promptCacheKey,
-    compatSanitizer
+    compatSanitizer,
+    serviceTier: {
+      ...serviceTier,
+      request: input.request
+    }
+  }
+}
+
+export async function applyServiceTierOverrideToRequest(input: {
+  request: Request
+  behaviorSettings?: BehaviorSettings
+}): Promise<ServiceTierTransformResult> {
+  if (!input.behaviorSettings) {
+    return { request: input.request, changed: false, reason: "disabled" }
+  }
+
+  const transformed = await transformOutboundRequestPayload({
+    request: input.request,
+    stripReasoningReplayEnabled: false,
+    remapDeveloperMessagesToUserEnabled: false,
+    compatInputSanitizerEnabled: false,
+    promptCacheKeyOverrideEnabled: false,
+    behaviorSettings: input.behaviorSettings
+  })
+  return {
+    request: transformed.request,
+    changed: transformed.serviceTier.changed,
+    reason: transformed.serviceTier.reason,
+    serviceTier: transformed.serviceTier.serviceTier
   }
 }
 
@@ -273,4 +325,60 @@ export async function stripReasoningReplayFromRequest(input: { request: Request;
     removedPartCount: transformed.replay.removedPartCount,
     removedFieldCount: transformed.replay.removedFieldCount
   }
+}
+
+function applyServiceTierOverrideToPayload(
+  payload: Record<string, unknown>,
+  behaviorSettings: BehaviorSettings | undefined
+): Omit<ServiceTierTransformResult, "request"> {
+  if (!behaviorSettings) {
+    return { changed: false, reason: "disabled" }
+  }
+
+  const currentServiceTier = asString(payload.service_tier)
+  if (currentServiceTier) {
+    return {
+      changed: false,
+      reason: "preserved",
+      serviceTier: currentServiceTier
+    }
+  }
+
+  const modelSlug = asString(payload.model)
+  if (!modelSlug) {
+    return { changed: false, reason: "missing_model" }
+  }
+
+  const modelCandidates = getModelLookupCandidates({
+    id: modelSlug,
+    api: { id: modelSlug }
+  })
+  const variantCandidates = getRequestBodyVariantCandidates({
+    body: payload,
+    modelSlug
+  })
+  const resolvedServiceTier = resolveServiceTierForModel({
+    behaviorSettings,
+    modelCandidates,
+    variantCandidates
+  })
+
+  if (!resolvedServiceTier || resolvedServiceTier === "default") {
+    return { changed: false, reason: "not_configured" }
+  }
+
+  if (resolvedServiceTier === "priority" && !supportsPriorityServiceTierModel(modelCandidates)) {
+    return { changed: false, reason: "unsupported_model" }
+  }
+
+  payload.service_tier = resolvedServiceTier
+  return {
+    changed: true,
+    reason: "updated",
+    serviceTier: resolvedServiceTier
+  }
+}
+
+function supportsPriorityServiceTierModel(modelCandidates: string[]): boolean {
+  return modelCandidates.some((candidate) => candidate.trim().toLowerCase().startsWith("gpt-5.4"))
 }

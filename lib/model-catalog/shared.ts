@@ -19,6 +19,8 @@ type ModelReasoningLevel = {
 
 export type CodexModelInfo = {
   slug: string
+  display_name?: string | null
+  priority?: number | null
   model_messages?: ModelMessages | null
   base_instructions?: string | null
   apply_patch_tool_type?: string | null
@@ -26,6 +28,7 @@ export type CodexModelInfo = {
   default_reasoning_level?: string | null
   supports_reasoning_summaries?: boolean | null
   reasoning_summary_format?: string | null
+  supports_parallel_tool_calls?: boolean | null
   support_verbosity?: boolean | null
   default_verbosity?: string | null
 }
@@ -46,6 +49,7 @@ export type CodexModelRuntimeDefaults = {
   supportedReasoningEfforts?: Array<"none" | "minimal" | "low" | "medium" | "high" | "xhigh">
   supportsReasoningSummaries?: boolean
   reasoningSummaryFormat?: string
+  supportsParallelToolCalls?: boolean
   supportsVerbosity?: boolean
   defaultVerbosity?: "low" | "medium" | "high"
 }
@@ -81,13 +85,13 @@ export type GetCodexModelCatalogInput = {
 export type ApplyCodexCatalogInput = {
   providerModels: Record<string, Record<string, unknown>>
   catalogModels?: CodexModelInfo[]
-  fallbackModels: string[]
+  fallbackModels: readonly string[]
   personality?: PersonalityOption
 }
 
 export const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
 export const CODEX_GITHUB_MODELS_URL_PREFIX = "https://raw.githubusercontent.com/openai/codex"
-export const DEFAULT_CLIENT_VERSION = "0.97.0"
+export const DEFAULT_CLIENT_VERSION = "0.111.0"
 export const CACHE_TTL_MS = 15 * 60 * 1000
 export const FETCH_TIMEOUT_MS = 5000
 export const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
@@ -160,6 +164,8 @@ export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
     if (!slug) continue
     deduped.set(slug, {
       slug,
+      display_name: typeof item.display_name === "string" ? item.display_name : null,
+      priority: typeof item.priority === "number" && Number.isFinite(item.priority) ? item.priority : null,
       model_messages: isRecord(item.model_messages)
         ? {
             instructions_template:
@@ -199,6 +205,8 @@ export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
         typeof item.supports_reasoning_summaries === "boolean" ? item.supports_reasoning_summaries : null,
       reasoning_summary_format:
         typeof item.reasoning_summary_format === "string" ? item.reasoning_summary_format : null,
+      supports_parallel_tool_calls:
+        typeof item.supports_parallel_tool_calls === "boolean" ? item.supports_parallel_tool_calls : null,
       support_verbosity: typeof item.support_verbosity === "boolean" ? item.support_verbosity : null,
       default_verbosity: typeof item.default_verbosity === "string" ? item.default_verbosity : null
     })

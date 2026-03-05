@@ -4,7 +4,7 @@ This guide covers install, login, migration transfer, and first verification.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22.x
 - OpenCode installed and working
 
 ## 1) Install the plugin
@@ -90,10 +90,37 @@ Import sources:
 ## 5) Verify with a real run
 
 ```bash
-opencode run "say hi" --model=openai/gpt-5
+opencode run "say hi" --model=openai/gpt-5.4
 ```
 
 If that model is not available on your account, pick any available `openai/*` model.
+The plugin now tracks the live Codex catalog, so exact GPT-5-family availability still depends on your account's current entitlements.
+
+## 5a) Optional: enable GPT-5.4 fast mode
+
+Add a `serviceTier` override in `codex-config.json`:
+
+```json
+{
+  "global": {
+    "serviceTier": "priority"
+  }
+}
+```
+
+This maps to request-body `service_tier: "priority"` for `gpt-5.4*` only.
+If your host/request already sets `service_tier`, the plugin leaves it alone.
+
+## 5b) Optional: try GPT-5.4 1M context
+
+GPT-5.4 in Codex exposes experimental long-context support via request-level `model_context_window` and `model_auto_compact_token_limit`.
+Those are not plugin config keys; they come from your OpenCode/request configuration, and the plugin preserves them unchanged when rewriting request bodies.
+
+Notes:
+
+- The live Codex catalog still advertises a standard `272000` context window for `gpt-5.4`.
+- Larger `model_context_window` values are explicit request overrides.
+- Requests above the standard 272K window count at 2x normal usage.
 
 ## 6) Create a custom personality (optional)
 

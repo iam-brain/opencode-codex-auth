@@ -76,15 +76,15 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=20 <23"
+    "node": ">=22 <23"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": "^1.2.15"
+    "@opencode-ai/plugin": "^1.2.18"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.6",
-    "@opencode-ai/plugin": "^1.2.15",
-    "@opencode-ai/sdk": "^1.2.2",
+    "@opencode-ai/plugin": "^1.2.18",
+    "@opencode-ai/sdk": "^1.2.18",
     "@types/node": "^20.17.24",
     "@types/proper-lockfile": "^4.1.2",
     "@vitest/coverage-v8": "^3.2.4",

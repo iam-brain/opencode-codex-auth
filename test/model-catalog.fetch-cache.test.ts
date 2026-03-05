@@ -16,11 +16,11 @@ describe("model catalog fetch and primary cache", () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
       expect(endpoint).toContain("/backend-api/codex/models")
-      expect(endpoint).toContain("client_version=0.97.0")
+      expect(endpoint).toContain("client_version=0.111.0")
       const headers = init?.headers as Record<string, string>
       expect(headers.authorization).toBe("Bearer at")
       expect(headers["chatgpt-account-id"]).toBe("acc_123")
-      expect(headers.version).toBe("0.97.0")
+      expect(headers.version).toBe("0.111.0")
 
       return new Response(
         JSON.stringify({

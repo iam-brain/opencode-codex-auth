@@ -7,10 +7,14 @@ describe("config validation", () => {
     const result = validateConfigFileObject({
       runtime: {
         promptCacheKeyStrategy: "bad"
+      },
+      global: {
+        serviceTier: "turbo"
       }
     })
 
     expect(result.valid).toBe(false)
     expect(result.issues[0]).toContain("runtime.promptCacheKeyStrategy")
+    expect(result.issues[1]).toContain("global.serviceTier")
   })
 })
