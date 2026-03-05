@@ -204,6 +204,12 @@
       "functions": 100,
       "statements": 93
     },
+    "lib/codex-native/request-transform-gpt54-limits.ts": {
+      "lines": 100,
+      "branches": 95.65,
+      "functions": 100,
+      "statements": 100
+    },
     "lib/codex-native/request-transform-model-service-tier.ts": {
       "lines": 92.94,
       "branches": 75.67,
