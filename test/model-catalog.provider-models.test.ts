@@ -125,6 +125,22 @@ describe("model catalog provider model mapping", () => {
     expect(Object.keys(providerModels)).toEqual(["gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-mini"])
   })
 
+  it("keeps newer-first fallback ordering when catalog priorities are absent", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.2-codex": { id: "gpt-5.2-codex" },
+      "gpt-5.1-codex-mini": { id: "gpt-5.1-codex-mini" },
+      "gpt-5.3-codex": { id: "gpt-5.3-codex" }
+    }
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [{ slug: "gpt-5.2-codex" }, { slug: "gpt-5.1-codex-mini" }, { slug: "gpt-5.3-codex" }],
+      fallbackModels: []
+    })
+
+    expect(Object.keys(providerModels)).toEqual(["gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-mini"])
+  })
+
   it("keeps GPT-5.4 from the OpenCode baseline surface when no live catalog is available", () => {
     const providerModels: Record<string, Record<string, unknown>> = {
       "gpt-5.4": { id: "gpt-5.4", name: "GPT-5.4" },

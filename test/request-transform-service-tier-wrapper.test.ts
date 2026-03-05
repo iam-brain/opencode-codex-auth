@@ -62,4 +62,31 @@ describe("request transform service tier wrapper", () => {
     expect(transformed.serviceTier).toBe("priority")
     expect(body.service_tier).toBe("priority")
   })
+
+  it("treats provider-prefixed GPT-5.4 ids as fast-mode eligible", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "openai/gpt-5.4",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const transformed = await applyServiceTierOverrideToRequest({
+      request,
+      behaviorSettings: {
+        global: {
+          serviceTier: "priority"
+        }
+      }
+    })
+
+    const body = JSON.parse(await transformed.request.text()) as { service_tier?: string }
+
+    expect(transformed.changed).toBe(true)
+    expect(transformed.reason).toBe("updated")
+    expect(transformed.serviceTier).toBe("priority")
+    expect(body.service_tier).toBe("priority")
+  })
 })

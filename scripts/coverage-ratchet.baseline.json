@@ -205,10 +205,10 @@
       "statements": 93
     },
     "lib/codex-native/request-transform-model-service-tier.ts": {
-      "lines": 57.14,
-      "branches": 53.33,
-      "functions": 83.33,
-      "statements": 57.14
+      "lines": 92.94,
+      "branches": 75.67,
+      "functions": 100,
+      "statements": 92.94
     },
     "lib/codex-native/request-transform-model.ts": {
       "lines": 92.07,

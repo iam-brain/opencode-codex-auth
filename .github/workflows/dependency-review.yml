@@ -12,18 +12,79 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
       - name: Review dependency changes
-        id: review
-        continue-on-error: true
-        uses: actions/dependency-review-action@05fe4576374b728f0c523d6a13d64c25081e0803 # v4.8.3
-        with:
-          fail-on-severity: high
-
-      - name: Note unsupported dependency review
-        if: steps.review.outcome == 'failure'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          echo "Dependency review is unsupported until GitHub Dependency Graph is enabled for this repository."
-          echo "Enable it at: https://github.com/${GITHUB_REPOSITORY}/settings/security_analysis"
+          set -euo pipefail
+
+          API_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/dependency-graph/compare/${BASE_SHA}...${HEAD_SHA}"
+          RESPONSE_PATH="${RUNNER_TEMP}/dependency-review.json"
+
+          HTTP_STATUS="$(
+            curl --silent --show-error --location \
+              --output "${RESPONSE_PATH}" \
+              --write-out "%{http_code}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "${API_URL}"
+          )"
+
+          case "${HTTP_STATUS}" in
+            200)
+              ;;
+            403|404)
+              echo "Dependency review is unsupported until GitHub Dependency Graph is enabled for this repository."
+              echo "Enable it at: https://github.com/${GITHUB_REPOSITORY}/settings/security_analysis"
+              exit 0
+              ;;
+            *)
+              echo "Dependency review request failed with HTTP ${HTTP_STATUS}." >&2
+              cat "${RESPONSE_PATH}" >&2
+              exit 1
+              ;;
+          esac
+
+          RESPONSE_PATH="${RESPONSE_PATH}" node <<'EOF'
+          const fs = require("node:fs")
+
+          const severityRank = new Map([
+            ["critical", 4],
+            ["high", 3],
+            ["moderate", 2],
+            ["medium", 2],
+            ["low", 1]
+          ])
+
+          const payload = JSON.parse(fs.readFileSync(process.env.RESPONSE_PATH, "utf8"))
+          const vulnerabilities = []
+
+          for (const change of Array.isArray(payload) ? payload : []) {
+            for (const vulnerability of Array.isArray(change.vulnerabilities) ? change.vulnerabilities : []) {
+              const severity = String(vulnerability.severity ?? "").toLowerCase()
+              if ((severityRank.get(severity) ?? 0) < severityRank.get("high")) continue
+              vulnerabilities.push({
+                severity,
+                name: change.name ?? "unknown-package",
+                manifest: change.manifest ?? "unknown-manifest",
+                summary: vulnerability.advisory_ghsa_id ?? vulnerability.advisory_summary ?? "unspecified advisory"
+              })
+            }
+          }
+
+          if (vulnerabilities.length === 0) {
+            console.log("Dependency review OK. No high-severity dependency changes found.")
+            process.exit(0)
+          }
+
+          console.error("High-severity dependency changes detected:")
+          for (const vulnerability of vulnerabilities) {
+            console.error(
+              `- ${vulnerability.severity}: ${vulnerability.name} in ${vulnerability.manifest} (${vulnerability.summary})`
+            )
+          }
+          process.exit(1)
+          EOF

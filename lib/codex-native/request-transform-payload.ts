@@ -367,7 +367,7 @@ function applyServiceTierOverrideToPayload(
     return { changed: false, reason: "not_configured" }
   }
 
-  if (resolvedServiceTier === "priority" && !modelSlug.trim().toLowerCase().startsWith("gpt-5.4")) {
+  if (resolvedServiceTier === "priority" && !supportsPriorityServiceTierModel(modelCandidates)) {
     return { changed: false, reason: "unsupported_model" }
   }
 
@@ -377,4 +377,8 @@ function applyServiceTierOverrideToPayload(
     reason: "updated",
     serviceTier: resolvedServiceTier
   }
+}
+
+function supportsPriorityServiceTierModel(modelCandidates: string[]): boolean {
+  return modelCandidates.some((candidate) => candidate.trim().toLowerCase().startsWith("gpt-5.4"))
 }

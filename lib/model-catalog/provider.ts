@@ -318,7 +318,7 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
     if (normalizedAPriority !== normalizedBPriority) {
       return normalizedAPriority - normalizedBPriority
     }
-    return compareModelSlugs(a, b)
+    return compareModelSlugs(b, a)
   })
   if (orderedModelIds.length > 1) {
     const orderedEntries = orderedModelIds.map((modelId) => [modelId, input.providerModels[modelId]] as const)
