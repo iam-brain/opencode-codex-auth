@@ -23,6 +23,7 @@ type ModelRuntimeDefaults = {
   defaultReasoningEffort?: string
   supportsReasoningSummaries?: boolean
   reasoningSummaryFormat?: string
+  supportsParallelToolCalls?: boolean
   defaultVerbosity?: "low" | "medium" | "high"
   supportsVerbosity?: boolean
 }
@@ -36,6 +37,8 @@ function readModelRuntimeDefaults(options: Record<string, unknown>): ModelRuntim
     supportsReasoningSummaries:
       typeof raw.supportsReasoningSummaries === "boolean" ? raw.supportsReasoningSummaries : undefined,
     reasoningSummaryFormat: asString(raw.reasoningSummaryFormat),
+    supportsParallelToolCalls:
+      typeof raw.supportsParallelToolCalls === "boolean" ? raw.supportsParallelToolCalls : undefined,
     defaultVerbosity:
       raw.defaultVerbosity === "low" || raw.defaultVerbosity === "medium" || raw.defaultVerbosity === "high"
         ? raw.defaultVerbosity
@@ -337,8 +340,12 @@ export function applyCodexRuntimeDefaultsToParams(input: {
     options.applyPatchToolType = defaults.applyPatchToolType
   }
 
-  if (typeof options.parallelToolCalls !== "boolean" && input.modelToolCallCapable !== undefined) {
-    options.parallelToolCalls = input.modelToolCallCapable
+  if (typeof options.parallelToolCalls !== "boolean") {
+    if (defaults.supportsParallelToolCalls !== undefined) {
+      options.parallelToolCalls = defaults.supportsParallelToolCalls
+    } else if (input.modelToolCallCapable !== undefined) {
+      options.parallelToolCalls = input.modelToolCallCapable
+    }
   }
 
   const shouldIncludeReasoning =

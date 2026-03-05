@@ -4,23 +4,25 @@ Track the OpenCode and Codex releases this plugin is aligned to, and how to keep
 
 ## Current baseline
 
-- OpenCode release: `v1.2.2`
+- OpenCode release: `v1.2.18`
 - Upstream repo: `https://github.com/anomalyco/opencode`
-- Baseline tag commit: `3b6b3e6fc8a8a4da5798c9f00027e954263a483e`
-- Upstream HEAD inspected: `67c985ce82b3a0ef3b22bef435f58884a3aab990`
+- Baseline tag commit: tracked in `docs/development/upstream-watch.json`
+- Upstream HEAD inspected: GitHub latest release/tag via `npm run check:upstream`
 - Native Codex reference file: `packages/opencode/src/plugin/codex.ts`
 - Codex upstream repo: `https://github.com/openai/codex`
-- Codex upstream release track: `rust-v0.101.0`
+- Codex upstream release track: `rust-v0.111.0`
 - Local dependency target:
-  - `@opencode-ai/plugin`: `^1.2.2`
-  - `@opencode-ai/sdk`: `^1.2.2`
+  - `@opencode-ai/plugin`: `^1.2.18`
+  - `@opencode-ai/sdk`: `^1.2.18`
 
-## Latest parity audit (2026-02-14)
+## Latest parity audit (2026-03-05)
 
 - Verified OAuth constants and authorize URL semantics against upstream `codex.ts`.
 - Verified native callback URI now uses `http://localhost:1455/auth/callback`.
 - Verified native headless device-auth requests use `User-Agent: opencode/<version>`.
 - Verified request routing parity for `/v1/responses` and `/chat/completions` to Codex responses endpoint.
+- Verified live Codex model payload now includes `gpt-5.4`, `gpt-5.3-codex-spark`, `display_name`, `priority`, and `supports_parallel_tool_calls`.
+- Verified GPT-5.4 fast mode is represented by request-body `service_tier: "priority"`.
 - Parity tests live in `test/codex-native-oauth-parity.test.ts`.
 
 ## Sync checklist

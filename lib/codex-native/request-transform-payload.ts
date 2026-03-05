@@ -1,5 +1,8 @@
+import type { BehaviorSettings } from "../config.js"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer.js"
 import { isRecord } from "../util.js"
+import { getModelLookupCandidates } from "./request-transform-model.js"
+import { getRequestBodyVariantCandidates, resolveServiceTierForModel } from "./request-transform-model-service-tier.js"
 import { asString } from "./request-transform-shared.js"
 import {
   type CompatSanitizerTransformResult,
@@ -30,6 +33,13 @@ export type OutboundRequestPayloadTransformResult = {
   compatSanitizer: CompatSanitizerTransformResult
 }
 
+export type ServiceTierTransformResult = {
+  request: Request
+  changed: boolean
+  reason: string
+  serviceTier?: string
+}
+
 export async function sanitizeOutboundRequestIfNeeded(
   request: Request,
   enabled: boolean
@@ -44,6 +54,75 @@ export async function sanitizeOutboundRequestIfNeeded(
   return {
     request: transformed.request,
     changed: transformed.compatSanitizer.changed
+  }
+}
+
+export async function applyServiceTierOverrideToRequest(input: {
+  request: Request
+  behaviorSettings?: BehaviorSettings
+}): Promise<ServiceTierTransformResult> {
+  const method = input.request.method.toUpperCase()
+  if (method !== "POST") {
+    return { request: input.request, changed: false, reason: "non_post" }
+  }
+
+  let payload: unknown
+  try {
+    const raw = await input.request.clone().text()
+    if (!raw) return { request: input.request, changed: false, reason: "empty_body" }
+    payload = JSON.parse(raw)
+  } catch {
+    return { request: input.request, changed: false, reason: "invalid_json" }
+  }
+
+  if (!isRecord(payload)) {
+    return { request: input.request, changed: false, reason: "non_object_body" }
+  }
+
+  const currentServiceTier = asString(payload.service_tier)
+  if (currentServiceTier) {
+    return {
+      request: input.request,
+      changed: false,
+      reason: "preserved",
+      serviceTier: currentServiceTier
+    }
+  }
+
+  const modelSlug = asString(payload.model)
+  if (!modelSlug) {
+    return { request: input.request, changed: false, reason: "missing_model" }
+  }
+
+  const modelCandidates = getModelLookupCandidates({
+    id: modelSlug,
+    api: { id: modelSlug }
+  })
+  const variantCandidates = getRequestBodyVariantCandidates({
+    body: payload,
+    modelSlug
+  })
+  const resolvedServiceTier = resolveServiceTierForModel({
+    behaviorSettings: input.behaviorSettings,
+    modelCandidates,
+    variantCandidates
+  })
+
+  if (!resolvedServiceTier || resolvedServiceTier === "default") {
+    return { request: input.request, changed: false, reason: "not_configured" }
+  }
+
+  const normalizedModelSlug = modelSlug.trim().toLowerCase()
+  if (resolvedServiceTier === "priority" && !normalizedModelSlug.startsWith("gpt-5.4")) {
+    return { request: input.request, changed: false, reason: "unsupported_model" }
+  }
+
+  payload.service_tier = resolvedServiceTier
+  return {
+    request: rebuildRequestWithJsonBody(input.request, payload),
+    changed: true,
+    reason: "updated",
+    serviceTier: resolvedServiceTier
   }
 }
 

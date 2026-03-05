@@ -1,5 +1,6 @@
 import type { RotationStrategy } from "../types.js"
 import { isRecord } from "../util.js"
+import { cloneBehaviorSettings } from "./behavior-settings.js"
 import type {
   BehaviorSettings,
   CodexSpoofMode,
@@ -9,6 +10,7 @@ import type {
   PluginConfig,
   PluginRuntimeMode,
   PromptCacheKeyStrategy,
+  ServiceTierOption,
   VerbosityOption
 } from "./types.js"
 export function parseEnvBoolean(value: string | undefined): boolean | undefined {
@@ -138,11 +140,20 @@ export function normalizeVerbosityOption(value: unknown): VerbosityOption | unde
   }
   return undefined
 }
+export function normalizeServiceTierOption(value: unknown): ServiceTierOption | undefined {
+  if (typeof value !== "string") return undefined
+  const normalized = value.trim().toLowerCase()
+  if (normalized === "default" || normalized === "priority" || normalized === "flex") {
+    return normalized
+  }
+  return undefined
+}
 type ModelBehaviorSettings = {
   personality?: PersonalityOption
   thinkingSummaries?: boolean
   verbosityEnabled?: boolean
   verbosity?: VerbosityOption
+  serviceTier?: ServiceTierOption
 }
 
 function normalizeModelBehaviorSettings(raw: unknown): ModelBehaviorSettings | undefined {
@@ -165,11 +176,17 @@ function normalizeModelBehaviorSettings(raw: unknown): ModelBehaviorSettings | u
     out.verbosity = verbosity
   }
 
+  const serviceTier = normalizeServiceTierOption(raw.serviceTier)
+  if (serviceTier) {
+    out.serviceTier = serviceTier
+  }
+
   if (
     !out.personality &&
     out.thinkingSummaries === undefined &&
     out.verbosityEnabled === undefined &&
-    out.verbosity === undefined
+    out.verbosity === undefined &&
+    out.serviceTier === undefined
   ) {
     return undefined
   }
@@ -193,7 +210,8 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
         ...(normalized.personality ? { personality: normalized.personality } : {}),
         ...(normalized.thinkingSummaries !== undefined ? { thinkingSummaries: normalized.thinkingSummaries } : {}),
         ...(normalized.verbosityEnabled !== undefined ? { verbosityEnabled: normalized.verbosityEnabled } : {}),
-        ...(normalized.verbosity ? { verbosity: normalized.verbosity } : {})
+        ...(normalized.verbosity ? { verbosity: normalized.verbosity } : {}),
+        ...(normalized.serviceTier ? { serviceTier: normalized.serviceTier } : {})
       }
     }
     if (Object.keys(variantMap).length > 0) {
@@ -210,6 +228,7 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
     ...(modelBehavior?.thinkingSummaries !== undefined ? { thinkingSummaries: modelBehavior.thinkingSummaries } : {}),
     ...(modelBehavior?.verbosityEnabled !== undefined ? { verbosityEnabled: modelBehavior.verbosityEnabled } : {}),
     ...(modelBehavior?.verbosity ? { verbosity: modelBehavior.verbosity } : {}),
+    ...(modelBehavior?.serviceTier ? { serviceTier: modelBehavior.serviceTier } : {}),
     ...(variants ? { variants } : {})
   }
 }
@@ -238,51 +257,6 @@ function normalizeNewBehaviorSections(raw: Record<string, unknown>): BehaviorSet
   return {
     ...(global ? { global } : {}),
     ...(perModel ? { perModel } : {})
-  }
-}
-
-export function cloneBehaviorSettings(input: BehaviorSettings | undefined): BehaviorSettings | undefined {
-  if (!input) return undefined
-  return {
-    ...(input.global
-      ? {
-          global: {
-            ...input.global
-          }
-        }
-      : {}),
-    perModel: input.perModel
-      ? Object.fromEntries(
-          Object.entries(input.perModel).map(([key, value]) => [
-            key,
-            {
-              ...(value.personality !== undefined ? { personality: value.personality } : {}),
-              ...(value.thinkingSummaries !== undefined ? { thinkingSummaries: value.thinkingSummaries } : {}),
-              ...(value.verbosityEnabled !== undefined ? { verbosityEnabled: value.verbosityEnabled } : {}),
-              ...(value.verbosity !== undefined ? { verbosity: value.verbosity } : {}),
-              ...(value.variants
-                ? {
-                    variants: Object.fromEntries(
-                      Object.entries(value.variants).map(([variantKey, variantValue]) => [
-                        variantKey,
-                        {
-                          ...(variantValue.personality !== undefined ? { personality: variantValue.personality } : {}),
-                          ...(variantValue.thinkingSummaries !== undefined
-                            ? { thinkingSummaries: variantValue.thinkingSummaries }
-                            : {}),
-                          ...(variantValue.verbosityEnabled !== undefined
-                            ? { verbosityEnabled: variantValue.verbosityEnabled }
-                            : {}),
-                          ...(variantValue.verbosity !== undefined ? { verbosity: variantValue.verbosity } : {})
-                        }
-                      ])
-                    )
-                  }
-                : {})
-            }
-          ])
-        )
-      : undefined
   }
 }
 
@@ -367,6 +341,7 @@ export function buildResolvedBehaviorSettings(input: {
   envThinkingSummaries: boolean | undefined
   envVerbosityEnabled: boolean | undefined
   envVerbosity: VerbosityOption | undefined
+  envServiceTier: ServiceTierOption | undefined
 }): BehaviorSettings | undefined {
   const behaviorSettings = cloneBehaviorSettings(input.fileBehavior) ?? {}
   const globalBehavior: ModelBehaviorOverride = {
@@ -385,12 +360,16 @@ export function buildResolvedBehaviorSettings(input: {
   if (input.envVerbosity) {
     globalBehavior.verbosity = input.envVerbosity
   }
+  if (input.envServiceTier) {
+    globalBehavior.serviceTier = input.envServiceTier
+  }
 
   if (
     globalBehavior.personality !== undefined ||
     globalBehavior.thinkingSummaries !== undefined ||
     globalBehavior.verbosityEnabled !== undefined ||
-    globalBehavior.verbosity !== undefined
+    globalBehavior.verbosity !== undefined ||
+    globalBehavior.serviceTier !== undefined
   ) {
     behaviorSettings.global = globalBehavior
   }

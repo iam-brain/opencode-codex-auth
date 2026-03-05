@@ -2,6 +2,7 @@ import type { RotationStrategy } from "../types.js"
 import {
   buildResolvedBehaviorSettings,
   normalizePersonalityOption,
+  normalizeServiceTierOption,
   normalizeVerbosityOption,
   parseEnvBoolean,
   parseEnvNumber,
@@ -42,6 +43,7 @@ export function resolveConfig(input: {
   const envThinkingSummaries = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES)
   const envVerbosityEnabled = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED)
   const envVerbosity = normalizeVerbosityOption(env.OPENCODE_OPENAI_MULTI_VERBOSITY)
+  const envServiceTier = normalizeServiceTierOption(env.OPENCODE_OPENAI_MULTI_SERVICE_TIER)
   const spoofModeFromEnv = parseSpoofMode(env.OPENCODE_OPENAI_MULTI_SPOOF_MODE)
   const modeFromEnv = parseRuntimeMode(env.OPENCODE_OPENAI_MULTI_MODE)
   const modeFromLegacySpoofInput =
@@ -61,7 +63,8 @@ export function resolveConfig(input: {
     envPersonality,
     envThinkingSummaries,
     envVerbosityEnabled,
-    envVerbosity
+    envVerbosity,
+    envServiceTier
   })
 
   const personality = envPersonality ?? resolvedBehaviorSettings?.global?.personality

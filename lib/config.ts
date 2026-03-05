@@ -10,15 +10,18 @@ export {
   type PluginConfig,
   type PluginRuntimeMode,
   type PromptCacheKeyStrategy,
+  type ServiceTierOption,
   type VerbosityOption
 } from "./config/types.js"
 
 export { type ConfigValidationResult, validateConfigFileObject } from "./config/validation.js"
 
+export { cloneBehaviorSettings } from "./config/behavior-settings.js"
+
 export {
   buildResolvedBehaviorSettings,
-  cloneBehaviorSettings,
   normalizePersonalityOption,
+  normalizeServiceTierOption,
   normalizeVerbosityOption,
   parseConfigFileObject,
   parseConfigJsonWithComments,

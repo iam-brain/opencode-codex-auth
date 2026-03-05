@@ -4,6 +4,7 @@ export type PersonalityOption = string
 export type CodexSpoofMode = "native" | "codex"
 export type PluginRuntimeMode = "native" | "codex"
 export type VerbosityOption = "default" | "low" | "medium" | "high"
+export type ServiceTierOption = "default" | "priority" | "flex"
 export type PromptCacheKeyStrategy = "default" | "project"
 
 export type ModelBehaviorOverride = {
@@ -11,6 +12,7 @@ export type ModelBehaviorOverride = {
   thinkingSummaries?: boolean
   verbosityEnabled?: boolean
   verbosity?: VerbosityOption
+  serviceTier?: ServiceTierOption
 }
 
 export type ModelConfigOverride = ModelBehaviorOverride & {
@@ -177,6 +179,13 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // "default" uses each model's catalog default verbosity.
     // default: "default"
     "verbosity": "default"
+
+    // Service tier / fast-mode behavior:
+    // "default"  => do not force a service_tier override
+    // "priority" => fast mode for GPT-5.4* requests only
+    // "flex"     => pass through service_tier: "flex"
+    // omit       => leave request body unchanged (recommended)
+    // "serviceTier": "priority"
   },
 
   // Optional model-specific overrides.
@@ -187,12 +196,14 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
      //   "thinkingSummaries": true,
      //   "verbosityEnabled": true,
      //   "verbosity": "default",
+     //   "serviceTier": "priority",
      //   "variants": {
      //     "high": {
      //       "personality": "pragmatic",
      //       "thinkingSummaries": false,
-     //       "verbosityEnabled": true,
-     //       "verbosity": "high"
+      //       "verbosityEnabled": true,
+     //       "verbosity": "high",
+     //       "serviceTier": "flex"
      //     }
      //   }
      // }

@@ -57,6 +57,7 @@ import {
 import { createSessionAffinityRuntimeState } from "./codex-native/session-affinity-state.js"
 import { initializeCatalogSync } from "./codex-native/catalog-sync.js"
 import { createOpenAIFetchHandler } from "./codex-native/openai-loader-fetch.js"
+import { STATIC_FALLBACK_MODELS } from "./codex-native/static-fallback-models.js"
 export { browserOpenInvocationFor } from "./codex-native/browser.js"
 export { upsertAccount } from "./codex-native/accounts.js"
 export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from "./codex-native/oauth-utils.js"
@@ -64,15 +65,6 @@ export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const INTERNAL_COLLABORATION_AGENT_HEADER = "x-opencode-collaboration-agent-kind"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
-
-const STATIC_FALLBACK_MODELS = [
-  "gpt-5.1-codex-max",
-  "gpt-5.1-codex-mini",
-  "gpt-5.2",
-  "gpt-5.2-codex",
-  "gpt-5.3-codex",
-  "gpt-5.1-codex"
-]
 
 const CODEX_RS_COMPACT_PROMPT = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
 

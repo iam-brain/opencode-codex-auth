@@ -35,14 +35,17 @@ Top-level:
 - `global.thinkingSummaries: boolean`
 - `global.verbosityEnabled: boolean`
 - `global.verbosity: "default" | "low" | "medium" | "high"`
+- `global.serviceTier: "default" | "priority" | "flex"`
 - `perModel.<model>.personality: string`
 - `perModel.<model>.thinkingSummaries: boolean`
 - `perModel.<model>.verbosityEnabled: boolean`
 - `perModel.<model>.verbosity: "default" | "low" | "medium" | "high"`
+- `perModel.<model>.serviceTier: "default" | "priority" | "flex"`
 - `perModel.<model>.variants.<variant>.personality: string`
 - `perModel.<model>.variants.<variant>.thinkingSummaries: boolean`
 - `perModel.<model>.variants.<variant>.verbosityEnabled: boolean`
 - `perModel.<model>.variants.<variant>.verbosity: "default" | "low" | "medium" | "high"`
+- `perModel.<model>.variants.<variant>.serviceTier: "default" | "priority" | "flex"`
 
 Canonical user-edited file set:
 
@@ -113,6 +116,7 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`
 - `OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED`
 - `OPENCODE_OPENAI_MULTI_VERBOSITY`
+- `OPENCODE_OPENAI_MULTI_SERVICE_TIER`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`
 - `OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE`

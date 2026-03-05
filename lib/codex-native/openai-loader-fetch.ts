@@ -30,7 +30,6 @@ type SnapshotRecorder = {
   captureRequest: (stage: string, request: Request, metadata?: Record<string, unknown>) => Promise<void>
   captureResponse: (stage: string, response: Response, metadata?: Record<string, unknown>) => Promise<void>
 }
-
 export type CreateOpenAIFetchHandlerInput = {
   authMode: OpenAIAuthMode
   spoofMode: CodexSpoofMode
@@ -144,7 +143,6 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
 
     let selectedIdentityKey: string | undefined
     let selectedAuthForQuota: { access: string; accountId?: string; identityKey?: string } | undefined
-
     const promptCacheKeyStrategy = input.promptCacheKeyStrategy ?? "default"
     const promptCacheKeyOverride =
       promptCacheKeyStrategy === "project"
@@ -169,6 +167,11 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         spoofMode: input.spoofMode,
         instructionsOverridden: transformed.instructionOverride.changed,
         instructionOverrideReason: transformed.instructionOverride.reason,
+        serviceTierOverridden: transformed.serviceTierOverride.changed,
+        serviceTierOverrideReason: transformed.serviceTierOverride.reason,
+        ...(transformed.serviceTierOverride.serviceTier
+          ? { serviceTier: transformed.serviceTierOverride.serviceTier }
+          : {}),
         developerMessagesRemapped: initialPayloadTransform.developerRoleRemap.changed,
         developerMessageRemapReason: initialPayloadTransform.developerRoleRemap.reason,
         developerMessageRemapCount: initialPayloadTransform.developerRoleRemap.remappedCount,

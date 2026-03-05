@@ -13,7 +13,7 @@ import type { CodexOriginator } from "./originator.js"
 import { URL } from "node:url"
 
 const DEFAULT_PLUGIN_VERSION = "0.1.0"
-const DEFAULT_CODEX_CLIENT_VERSION = "0.97.0"
+const DEFAULT_CODEX_CLIENT_VERSION = "0.111.0"
 const CODEX_CLIENT_VERSION_CACHE_FILE = path.join(defaultOpencodeCachePath(), "codex-client-version.json")
 const CODEX_CLIENT_VERSION_TTL_MS = 60 * 60 * 1000
 const CODEX_GITHUB_RELEASES_API = "https://api.github.com/repos/openai/codex/releases/latest"

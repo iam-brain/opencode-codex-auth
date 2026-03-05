@@ -69,4 +69,112 @@ describe("request transform pipeline", () => {
     expect(result.subagentHeader).toBeUndefined()
     expect(result.developerRoleRemap.reason).toBe("disabled")
   })
+
+  it("injects service_tier priority only for gpt-5.4 requests and preserves 1M-context fields", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.4",
+        model_context_window: 1_000_000,
+        model_auto_compact_token_limit: 900_000,
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const result = await applyRequestTransformPipeline({
+      request,
+      spoofMode: "codex",
+      remapDeveloperMessagesToUserEnabled: false,
+      catalogModels: CATALOG_MODELS,
+      behaviorSettings: {
+        global: {
+          serviceTier: "priority"
+        }
+      }
+    })
+
+    const body = JSON.parse(await result.request.text()) as {
+      service_tier?: string
+      model_context_window?: number
+      model_auto_compact_token_limit?: number
+    }
+
+    expect(result.serviceTierOverride.changed).toBe(true)
+    expect(body.service_tier).toBe("priority")
+    expect(body.model_context_window).toBe(1_000_000)
+    expect(body.model_auto_compact_token_limit).toBe(900_000)
+  })
+
+  it("preserves explicit request-body service_tier", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.4",
+        service_tier: "flex",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const result = await applyRequestTransformPipeline({
+      request,
+      spoofMode: "codex",
+      remapDeveloperMessagesToUserEnabled: false,
+      catalogModels: CATALOG_MODELS,
+      behaviorSettings: {
+        global: {
+          serviceTier: "priority"
+        }
+      }
+    })
+
+    const body = JSON.parse(await result.request.text()) as { service_tier?: string }
+    expect(result.serviceTierOverride.changed).toBe(false)
+    expect(result.serviceTierOverride.reason).toBe("preserved")
+    expect(body.service_tier).toBe("flex")
+  })
+
+  it("suppresses priority on non-gpt-5.4 models but passes flex through", async () => {
+    const priorityRequest = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+    const flexRequest = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const priorityResult = await applyRequestTransformPipeline({
+      request: priorityRequest,
+      spoofMode: "codex",
+      remapDeveloperMessagesToUserEnabled: false,
+      catalogModels: CATALOG_MODELS,
+      behaviorSettings: { global: { serviceTier: "priority" } }
+    })
+    const flexResult = await applyRequestTransformPipeline({
+      request: flexRequest,
+      spoofMode: "codex",
+      remapDeveloperMessagesToUserEnabled: false,
+      catalogModels: CATALOG_MODELS,
+      behaviorSettings: { global: { serviceTier: "flex" } }
+    })
+
+    const priorityBody = JSON.parse(await priorityResult.request.text()) as { service_tier?: string }
+    const flexBody = JSON.parse(await flexResult.request.text()) as { service_tier?: string }
+
+    expect(priorityResult.serviceTierOverride.changed).toBe(false)
+    expect(priorityResult.serviceTierOverride.reason).toBe("unsupported_model")
+    expect(priorityBody.service_tier).toBeUndefined()
+    expect(flexResult.serviceTierOverride.changed).toBe(true)
+    expect(flexBody.service_tier).toBe("flex")
+  })
 })

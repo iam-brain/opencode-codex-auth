@@ -41,7 +41,8 @@ describe("config file loading", () => {
           thinkingSummaries: true,
           personality: "friendly",
           verbosityEnabled: true,
-          verbosity: "high"
+          verbosity: "high",
+          serviceTier: "priority"
         },
         perModel: {
           "gpt-5.3-codex": {
@@ -49,8 +50,15 @@ describe("config file loading", () => {
             thinkingSummaries: false,
             verbosityEnabled: false,
             verbosity: "default",
+            serviceTier: "flex",
             variants: {
-              high: { personality: "strict", thinkingSummaries: true, verbosityEnabled: true, verbosity: "medium" }
+              high: {
+                personality: "strict",
+                thinkingSummaries: true,
+                verbosityEnabled: true,
+                verbosity: "medium",
+                serviceTier: "priority"
+              }
             }
           }
         }
@@ -81,15 +89,18 @@ describe("config file loading", () => {
     expect(loaded.behaviorSettings?.global?.thinkingSummaries).toBe(true)
     expect(loaded.behaviorSettings?.global?.verbosityEnabled).toBe(true)
     expect(loaded.behaviorSettings?.global?.verbosity).toBe("high")
+    expect(loaded.behaviorSettings?.global?.serviceTier).toBe("priority")
     expect(loaded.behaviorSettings?.global?.personality).toBe("friendly")
     expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.personality).toBe("pirate")
     expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.thinkingSummaries).toBe(false)
     expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.verbosityEnabled).toBe(false)
     expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.verbosity).toBe("default")
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.serviceTier).toBe("flex")
     expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.personality).toBe("strict")
     expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.thinkingSummaries).toBe(true)
     expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.verbosityEnabled).toBe(true)
     expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.verbosity).toBe("medium")
+    expect(loaded.behaviorSettings?.perModel?.["gpt-5.3-codex"]?.variants?.high?.serviceTier).toBe("priority")
     expect(loaded.personality).toBe("friendly")
   })
 
