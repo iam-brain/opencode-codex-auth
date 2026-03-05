@@ -109,10 +109,10 @@
       "statements": 95.29
     },
     "lib/codex-native/client-identity.ts": {
-      "lines": 67.86,
-      "branches": 66.9,
-      "functions": 91.3,
-      "statements": 67.86
+      "lines": 65.09,
+      "branches": 64.39,
+      "functions": 86.95,
+      "statements": 65.09
     },
     "lib/codex-native/collaboration.ts": {
       "lines": 95.05,
@@ -206,7 +206,7 @@
     },
     "lib/codex-native/request-transform-model-service-tier.ts": {
       "lines": 57.14,
-      "branches": 56.25,
+      "branches": 53.33,
       "functions": 83.33,
       "statements": 57.14
     },

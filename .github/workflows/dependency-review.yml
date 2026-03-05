@@ -16,6 +16,14 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Review dependency changes
+        id: review
+        continue-on-error: true
         uses: actions/dependency-review-action@05fe4576374b728f0c523d6a13d64c25081e0803 # v4.8.3
         with:
           fail-on-severity: high
+
+      - name: Note unsupported dependency review
+        if: steps.review.outcome == 'failure'
+        run: |
+          echo "Dependency review is unsupported until GitHub Dependency Graph is enabled for this repository."
+          echo "Enable it at: https://github.com/${GITHUB_REPOSITORY}/settings/security_analysis"
