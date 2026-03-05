@@ -29,6 +29,10 @@ function normalizeServiceTierSetting(value: unknown): ServiceTierOption | undefi
   return undefined
 }
 
+function stripEffortSuffix(value: string): string {
+  return value.replace(EFFORT_SUFFIX_REGEX, "")
+}
+
 export function getRequestBodyVariantCandidates(input: { body: Record<string, unknown>; modelSlug: string }): string[] {
   const out: string[] = []
   const seen = new Set<string>()
@@ -58,7 +62,21 @@ export function getModelServiceTierOverride(
   const models = behaviorSettings?.perModel
   if (!models) return undefined
 
+  const lookupCandidates: string[] = []
+  const seen = new Set<string>()
+  const addCandidate = (value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed || seen.has(trimmed)) return
+    seen.add(trimmed)
+    lookupCandidates.push(trimmed)
+  }
+
   for (const candidate of modelCandidates) {
+    addCandidate(candidate)
+    addCandidate(stripEffortSuffix(candidate))
+  }
+
+  for (const candidate of lookupCandidates) {
     const entry = resolveCaseInsensitiveEntry(models, candidate)
     if (!entry) continue
 

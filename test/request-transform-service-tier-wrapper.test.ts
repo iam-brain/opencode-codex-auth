@@ -29,4 +29,37 @@ describe("request transform service tier wrapper", () => {
     expect(transformed.serviceTier).toBe("priority")
     expect(body.service_tier).toBe("priority")
   })
+
+  it("matches variant overrides against suffixed model ids via the base slug", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.4-high",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const transformed = await applyServiceTierOverrideToRequest({
+      request,
+      behaviorSettings: {
+        perModel: {
+          "gpt-5.4": {
+            variants: {
+              high: {
+                serviceTier: "priority"
+              }
+            }
+          }
+        }
+      }
+    })
+
+    const body = JSON.parse(await transformed.request.text()) as { service_tier?: string }
+
+    expect(transformed.changed).toBe(true)
+    expect(transformed.reason).toBe("updated")
+    expect(transformed.serviceTier).toBe("priority")
+    expect(body.service_tier).toBe("priority")
+  })
 })
