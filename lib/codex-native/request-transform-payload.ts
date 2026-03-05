@@ -206,9 +206,9 @@ export async function transformOutboundRequestPayload(
         reason: compatSanitizedPayload?.changed === true ? "updated" : "already_matches"
       }
     : disabledCompatSanitizer
-  const serviceTier = applyServiceTierOverrideToPayload(payload, input.behaviorSettings)
 
   const finalPayload = compatSanitizedPayload?.payload ?? payload
+  const serviceTier = applyServiceTierOverrideToPayload(finalPayload, input.behaviorSettings)
   changed = changed || compatSanitizer.changed || serviceTier.changed
 
   if (!changed) {
