@@ -69,19 +69,6 @@ npm run check:docs
 
 `npm run verify` is the primary quality gate and includes lint, formatting, type-checking, anti-mock, coverage/ratchet, file-size checks, docs drift checks, build validation, and CLI smoke checks.
 
-## Release Notes
-
-Releases are automated through GitHub Actions trusted publishing.
-
-- Release process: [docs/releasing.md](docs/releasing.md)
-- Workflow: [.github/workflows/release.yml](.github/workflows/release.yml)
-
-If publish fails with `ENEEDAUTH`, verify npm Trusted Publisher mapping for:
-
-- repository: `iam-brain/opencode-codex-auth`
-- workflow: `.github/workflows/release.yml`
-- environment: `npm-release`
-
 ## Usage Note
 
 This plugin is intended for personal development usage with your own ChatGPT account. For production multi-user systems, use official OpenAI Platform API auth flows.
