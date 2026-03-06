@@ -11,7 +11,7 @@ const allowedRuntimeExtensions = new Set([".js", ".json", ".node", ".mjs", ".cjs
 
 if (isDistMode) {
   const distRoot = path.resolve("dist")
-  if (!fs.existsSync(distRoot)) {
+  if (!fs.existsSync(distRoot) || !fs.statSync(distRoot).isDirectory()) {
     console.error("dist output not found. Run `npm run build` before checking dist ESM imports.")
     process.exit(1)
   }

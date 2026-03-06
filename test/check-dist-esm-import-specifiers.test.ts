@@ -20,6 +20,19 @@ describe("check-dist-esm-import-specifiers script", () => {
     expect(result.stderr).toContain("Run `npm run build`")
   })
 
+  it("fails when dist exists as a plain file", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-dist-esm-guard-"))
+    await fs.writeFile(path.join(root, "dist"), "not a directory\n", "utf8")
+
+    const result = spawnSync("node", [script, "--dist"], {
+      cwd: root,
+      encoding: "utf8"
+    })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("Run `npm run build`")
+  })
+
   it("fails for extensionless side-effect imports in dist output", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-dist-esm-guard-"))
     await fs.mkdir(path.join(root, "dist", "lib"), { recursive: true })
