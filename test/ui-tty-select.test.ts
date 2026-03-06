@@ -2,9 +2,7 @@ import { EventEmitter } from "node:events"
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { confirm } from "../lib/ui/tty/confirm.js"
-import { ANSI, parseKey } from "../lib/ui/tty/ansi.js"
-import { select } from "../lib/ui/tty/select.js"
+import { ANSI, confirm, parseKey, select } from "../lib/ui/tty.js"
 
 type MockInput = NodeJS.ReadStream & {
   isTTY: boolean

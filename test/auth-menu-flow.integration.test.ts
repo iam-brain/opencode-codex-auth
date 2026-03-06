@@ -8,7 +8,7 @@ let tmpDir: string | undefined
 const previousXdgConfigHome = process.env.XDG_CONFIG_HOME
 
 afterEach(async () => {
-  vi.doUnmock("../lib/ui/auth-menu-runner")
+  vi.doUnmock("../lib/ui/auth-menu")
   vi.resetModules()
   if (previousXdgConfigHome === undefined) {
     delete process.env.XDG_CONFIG_HOME
@@ -71,7 +71,7 @@ describe("auth-menu flow integration", () => {
       }
     )
 
-    vi.doMock("../lib/ui/auth-menu-runner", () => ({
+    vi.doMock("../lib/ui/auth-menu", () => ({
       runAuthMenuOnce
     }))
 

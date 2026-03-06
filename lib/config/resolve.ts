@@ -1,6 +1,5 @@
 import type { RotationStrategy } from "../types.js"
 import {
-  buildResolvedBehaviorSettings,
   normalizePersonalityOption,
   normalizeServiceTierOption,
   normalizeVerbosityOption,
@@ -10,15 +9,94 @@ import {
   parseRotationStrategy,
   parseRuntimeMode,
   parseSpoofMode
-} from "./parse.js"
+} from "./file.js"
 import type {
   BehaviorSettings,
   CodexSpoofMode,
+  ModelBehaviorOverride,
   PersonalityOption,
   PluginConfig,
   PluginRuntimeMode,
   PromptCacheKeyStrategy
 } from "./types.js"
+
+function cloneBehaviorOverride<T extends Record<string, unknown>>(input: T | undefined): T | undefined {
+  if (!input) return undefined
+  return { ...input }
+}
+
+export function cloneBehaviorSettings(input: BehaviorSettings | undefined): BehaviorSettings | undefined {
+  if (!input) return undefined
+  return {
+    ...(input.global
+      ? {
+          global: cloneBehaviorOverride(input.global)
+        }
+      : {}),
+    perModel: input.perModel
+      ? Object.fromEntries(
+          Object.entries(input.perModel).map(([key, value]) => [
+            key,
+            {
+              ...cloneBehaviorOverride(value),
+              ...(value.variants
+                ? {
+                    variants: Object.fromEntries(
+                      Object.entries(value.variants).map(([variantKey, variantValue]) => [
+                        variantKey,
+                        cloneBehaviorOverride(variantValue) ?? {}
+                      ])
+                    )
+                  }
+                : {})
+            }
+          ])
+        )
+      : undefined
+  }
+}
+
+export function buildResolvedBehaviorSettings(input: {
+  fileBehavior: BehaviorSettings | undefined
+  envPersonality: PersonalityOption | undefined
+  envThinkingSummaries: boolean | undefined
+  envVerbosityEnabled: boolean | undefined
+  envVerbosity: ModelBehaviorOverride["verbosity"]
+  envServiceTier: ModelBehaviorOverride["serviceTier"]
+}): BehaviorSettings | undefined {
+  const behaviorSettings = cloneBehaviorSettings(input.fileBehavior) ?? {}
+  const globalBehavior: ModelBehaviorOverride = {
+    ...(behaviorSettings.global ?? {})
+  }
+
+  if (input.envPersonality) {
+    globalBehavior.personality = input.envPersonality
+  }
+  if (input.envThinkingSummaries !== undefined) {
+    globalBehavior.thinkingSummaries = input.envThinkingSummaries
+  }
+  if (input.envVerbosityEnabled !== undefined) {
+    globalBehavior.verbosityEnabled = input.envVerbosityEnabled
+  }
+  if (input.envVerbosity) {
+    globalBehavior.verbosity = input.envVerbosity
+  }
+  if (input.envServiceTier) {
+    globalBehavior.serviceTier = input.envServiceTier
+  }
+
+  if (
+    globalBehavior.personality !== undefined ||
+    globalBehavior.thinkingSummaries !== undefined ||
+    globalBehavior.verbosityEnabled !== undefined ||
+    globalBehavior.verbosity !== undefined ||
+    globalBehavior.serviceTier !== undefined
+  ) {
+    behaviorSettings.global = globalBehavior
+  }
+
+  return behaviorSettings.global !== undefined || behaviorSettings.perModel !== undefined ? behaviorSettings : undefined
+}
 
 export function resolveConfig(input: {
   env: Record<string, string | undefined>

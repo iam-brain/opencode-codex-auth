@@ -60,7 +60,7 @@ async function loadPluginWithMenu(input: {
       }
     } as Record<string, unknown>)
 
-  vi.doMock("../lib/ui/auth-menu-runner", () => ({
+  vi.doMock("../lib/ui/auth-menu", () => ({
     runAuthMenuOnce
   }))
 

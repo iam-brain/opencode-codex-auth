@@ -4,7 +4,7 @@ import path from "node:path"
 import { performance } from "node:perf_hooks"
 import { pathToFileURL } from "node:url"
 
-type RequestTransformModule = typeof import("../lib/codex-native/request-transform.js")
+type RequestTransformModule = typeof import("../lib/codex-native/request-transform-payload.js")
 type LoaderModule = typeof import("../lib/codex-native/openai-loader-fetch.js")
 type OrchestratorModule = typeof import("../lib/fetch-orchestrator.js")
 type RotationModule = typeof import("../lib/rotation.js")
@@ -113,7 +113,7 @@ async function benchmarkPayloadTransforms(
   legacy: { medianMs: number; p95Ms: number }
   singlePass?: { medianMs: number; p95Ms: number }
 }> {
-  const mod = await importFromRoot<RequestTransformModule>(root, "dist/lib/codex-native/request-transform.js")
+  const mod = await importFromRoot<RequestTransformModule>(root, "dist/lib/codex-native/request-transform-payload.js")
   const legacyDurations: number[] = []
   for (let i = 0; i < iterations; i += 1) {
     const t0 = performance.now()

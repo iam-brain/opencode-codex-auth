@@ -47,7 +47,7 @@
     "check:docs": "node scripts/check-docs-references.mjs",
     "verify": "npm run check:esm-imports && npm run lint && npm run format:check && npm run typecheck && npm run typecheck:test && npm run test:anti-mock && npm run test:coverage && npm run check:coverage-ratchet && npm run check:docs && npm run build && npm run check:dist-esm-imports && npm run smoke:cli:dist",
     "check:esm-imports": "node scripts/check-esm-import-specifiers.mjs",
-    "check:dist-esm-imports": "node scripts/check-dist-esm-import-specifiers.mjs",
+    "check:dist-esm-imports": "node scripts/check-esm-import-specifiers.mjs --dist",
     "smoke:cli": "npm run build && npm run smoke:cli:dist",
     "smoke:cli:dist": "node ./dist/bin/opencode-codex-auth.js --help",
     "perf:profile": "npm run build && node dist/scripts/perf-profile.js 300 .",

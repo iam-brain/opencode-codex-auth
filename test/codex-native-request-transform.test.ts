@@ -8,7 +8,7 @@ import {
   stripReasoningReplayFromRequest,
   stripStaleCatalogScopedDefaultsFromRequest,
   transformOutboundRequestPayload
-} from "../lib/codex-native/request-transform"
+} from "../lib/codex-native/request-transform-payload.js"
 
 describe("codex request role remap", () => {
   it("remaps non-permissions developer messages to user", async () => {

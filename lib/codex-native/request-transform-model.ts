@@ -1,15 +1,53 @@
 import type { BehaviorSettings, PersonalityOption } from "../config.js"
 import type { CodexModelInfo } from "../model-catalog.js"
 import { isRecord } from "../util.js"
-import {
-  asString,
-  asStringArray,
-  EFFORT_SUFFIX_REGEX,
-  mergeUnique,
-  normalizeReasoningSummaryOption,
-  normalizeTextVerbosity,
-  normalizeVerbositySetting
-} from "./request-transform-shared.js"
+
+const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
+
+function asString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+}
+
+function normalizeReasoningSummaryOption(value: unknown): "auto" | "concise" | "detailed" | undefined {
+  const normalized = asString(value)?.toLowerCase()
+  if (!normalized || normalized === "none") return undefined
+  if (normalized === "auto" || normalized === "concise" || normalized === "detailed") return normalized
+  return undefined
+}
+
+function normalizeTextVerbosity(value: unknown): "low" | "medium" | "high" | undefined {
+  const normalized = asString(value)?.toLowerCase()
+  if (!normalized) return undefined
+  if (normalized === "low" || normalized === "medium" || normalized === "high") return normalized
+  return undefined
+}
+
+function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | undefined {
+  const normalized = asString(value)?.toLowerCase()
+  if (!normalized) return undefined
+  if (normalized === "default" || normalized === "low" || normalized === "medium" || normalized === "high") {
+    return normalized
+  }
+  return undefined
+}
+
+function mergeUnique(values: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const value of values) {
+    if (seen.has(value)) continue
+    seen.add(value)
+    out.push(value)
+  }
+  return out
+}
 
 type ChatParamsOutput = {
   temperature: number

@@ -7,17 +7,22 @@ import { ensureConfigDirGitignore } from "./config-dir-gitignore.js"
 import { withLockedFile } from "./cache-lock.js"
 import { isFsErrorCode, writeJsonFileAtomic } from "./cache-io.js"
 import type { AuthFile, OpenAIAuthMode } from "./types.js"
-import { ensureOpenAIOAuthDomain, normalizeOpenAIOAuthState, OPENAI_AUTH_MODES } from "./storage/domain-state.js"
 import {
+  ensureOpenAIOAuthDomain,
   ensureMultiOauthState,
+  getOpenAIOAuthDomain,
   hasUsableOpenAIOAuth,
   listLegacyAuthCandidates,
+  listOpenAIOAuthDomains,
   migrateAuthFile,
   migrateLegacyCodexAccounts,
+  normalizeOpenAIOAuthState,
+  OPENAI_AUTH_MODES,
+  requireOpenAIMultiOauthAuth,
   sanitizeAuthFile,
   shouldEnforceOpenAIOnlyStorage,
   upsertDomainAccount
-} from "./storage/migration.js"
+} from "./storage/auth-state.js"
 
 type AuthLoadOptions = {
   quarantineDir?: string
@@ -259,4 +264,4 @@ export {
   getOpenAIOAuthDomain,
   listOpenAIOAuthDomains,
   requireOpenAIMultiOauthAuth
-} from "./storage/domain-state.js"
+} from "./storage/auth-state.js"

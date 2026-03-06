@@ -12,7 +12,7 @@ import {
   getModelVerbosityOverride,
   getVariantLookupCandidates,
   resolvePersonalityForModel
-} from "./request-transform.js"
+} from "./request-transform-model.js"
 import { resolveServiceTierForModel } from "./request-transform-model-service-tier.js"
 import { resolveRequestUserAgent } from "./client-identity.js"
 import { resolveCodexOriginator } from "./originator.js"

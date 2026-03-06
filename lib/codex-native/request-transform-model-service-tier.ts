@@ -1,6 +1,13 @@
 import type { BehaviorSettings, ServiceTierOption } from "../config.js"
 import { isRecord } from "../util.js"
-import { asString, EFFORT_SUFFIX_REGEX } from "./request-transform-shared.js"
+
+const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
+
+function asString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
+}
 
 function resolveCaseInsensitiveEntry<T>(entries: Record<string, T> | undefined, candidate: string): T | undefined {
   if (!entries) return undefined

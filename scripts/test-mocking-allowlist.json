@@ -21,23 +21,13 @@
       "mock": 0,
       "stubGlobal": 0
     },
-    "test/auth-menu-runner-delete-all.test.ts": {
-      "doMock": 1,
-      "mock": 0,
-      "stubGlobal": 0
-    },
-    "test/auth-menu-runner-scopes.test.ts": {
-      "doMock": 2,
-      "mock": 0,
-      "stubGlobal": 0
-    },
-    "test/catalog-auth.test.ts": {
-      "doMock": 2,
+    "test/auth-menu-runner.test.ts": {
+      "doMock": 3,
       "mock": 0,
       "stubGlobal": 0
     },
     "test/catalog-sync.test.ts": {
-      "doMock": 2,
+      "doMock": 3,
       "mock": 0,
       "stubGlobal": 0
     },

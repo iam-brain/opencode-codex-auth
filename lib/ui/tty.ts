@@ -1,4 +1,18 @@
-import { ANSI, isTTY, parseKey, shouldUseColor } from "./ansi.js"
+export const ANSI = {
+  hide: "\x1b[?25l",
+  show: "\x1b[?25h",
+  up: (n = 1) => `\x1b[${n}A`,
+  clearLine: "\x1b[2K",
+  cyan: "\x1b[36m",
+  green: "\x1b[32m",
+  red: "\x1b[31m",
+  yellow: "\x1b[33m",
+  dim: "\x1b[2m",
+  bold: "\x1b[1m",
+  reset: "\x1b[0m"
+} as const
+
+export type KeyAction = "up" | "down" | "enter" | "escape" | "escape-start" | null
 
 export interface MenuItem<T = string> {
   label: string
@@ -12,6 +26,12 @@ export interface MenuItem<T = string> {
 export interface SelectOptions {
   message: string
   subtitle?: string
+  input?: NodeJS.ReadStream
+  output?: NodeJS.WriteStream
+  useColor?: boolean
+}
+
+export type ConfirmOptions = {
   input?: NodeJS.ReadStream
   output?: NodeJS.WriteStream
   useColor?: boolean
@@ -92,6 +112,26 @@ function formatItemLabel(item: MenuItem<unknown>, selected: boolean, useColor: b
   }
 
   return truncateAnsi(labelText, maxWidth)
+}
+
+export function parseKey(data: Buffer): KeyAction {
+  const s = data.toString()
+  if (s === "\x1b[A" || s === "\x1bOA") return "up"
+  if (s === "\x1b[B" || s === "\x1bOB") return "down"
+  if (s === "\r" || s === "\n") return "enter"
+  if (s === "\x03") return "escape"
+  if (s === "\x1b") return "escape-start"
+  return null
+}
+
+export function isTTY(input: NodeJS.ReadStream = process.stdin, output: NodeJS.WriteStream = process.stdout): boolean {
+  return Boolean(input.isTTY && output.isTTY)
+}
+
+export function shouldUseColor(): boolean {
+  const noColor = process.env.NO_COLOR
+  if (noColor && noColor !== "0") return false
+  return true
 }
 
 export async function select<T>(items: MenuItem<T>[], options: SelectOptions): Promise<T | null> {
@@ -187,7 +227,6 @@ export async function select<T>(items: MenuItem<T>[], options: SelectOptions): P
         if (error instanceof Error) {
           // best effort cleanup
         }
-        // best effort cleanup
       }
 
       process.removeListener("SIGINT", onSignal)
@@ -258,10 +297,29 @@ export async function select<T>(items: MenuItem<T>[], options: SelectOptions): P
       input.on("data", onKey)
     } catch (error) {
       if (error instanceof Error) {
-        // fall back to null selection when terminal setup fails
+        // fall through to null result on non-interactive terminals
       }
-      cleanup()
-      resolve(null)
+      finishWithValue(null)
     }
   })
+}
+
+export async function confirm(message: string, defaultYes = false, options: ConfirmOptions = {}): Promise<boolean> {
+  const items = defaultYes
+    ? [
+        { label: "Yes", value: true },
+        { label: "No", value: false }
+      ]
+    : [
+        { label: "No", value: false },
+        { label: "Yes", value: true }
+      ]
+
+  const result = await select(items, {
+    message,
+    input: options.input,
+    output: options.output,
+    useColor: options.useColor
+  })
+  return result ?? false
 }

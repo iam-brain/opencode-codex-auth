@@ -14,12 +14,10 @@ export {
   type VerbosityOption
 } from "./config/types.js"
 
-export { type ConfigValidationResult, validateConfigFileObject } from "./config/validation.js"
-
-export { cloneBehaviorSettings } from "./config/behavior-settings.js"
-
 export {
-  buildResolvedBehaviorSettings,
+  type ConfigValidationResult,
+  ensureDefaultConfigFile,
+  loadConfigFile,
   normalizePersonalityOption,
   normalizeServiceTierOption,
   normalizeVerbosityOption,
@@ -30,17 +28,15 @@ export {
   parsePromptCacheKeyStrategy,
   parseRotationStrategy,
   parseRuntimeMode,
-  parseSpoofMode
-} from "./config/parse.js"
-
-export {
-  ensureDefaultConfigFile,
-  loadConfigFile,
+  parseSpoofMode,
   resolveDefaultConfigPath,
-  type EnsureDefaultConfigFileResult
-} from "./config/io.js"
+  type EnsureDefaultConfigFileResult,
+  validateConfigFileObject
+} from "./config/file.js"
 
 export {
+  buildResolvedBehaviorSettings,
+  cloneBehaviorSettings,
   getBehaviorSettings,
   getCodexCompactionOverrideEnabled,
   getCollaborationProfileEnabled,

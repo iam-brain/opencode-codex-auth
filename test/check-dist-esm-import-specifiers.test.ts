@@ -5,16 +5,28 @@ import { spawnSync } from "node:child_process"
 
 import { describe, expect, it } from "vitest"
 
-const script = path.resolve(process.cwd(), "scripts/check-dist-esm-import-specifiers.mjs")
+const script = path.resolve(process.cwd(), "scripts/check-esm-import-specifiers.mjs")
 
 describe("check-dist-esm-import-specifiers script", () => {
+  it("fails when dist output is missing", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-dist-esm-guard-"))
+
+    const result = spawnSync("node", [script, "--dist"], {
+      cwd: root,
+      encoding: "utf8"
+    })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("Run `npm run build`")
+  })
+
   it("fails for extensionless side-effect imports in dist output", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-dist-esm-guard-"))
     await fs.mkdir(path.join(root, "dist", "lib"), { recursive: true })
     await fs.writeFile(path.join(root, "dist", "index.js"), 'import "./lib/side-effect"\n', "utf8")
     await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export {}\n", "utf8")
 
-    const result = spawnSync("node", [script], {
+    const result = spawnSync("node", [script, "--dist"], {
       cwd: root,
       encoding: "utf8"
     })
@@ -30,7 +42,7 @@ describe("check-dist-esm-import-specifiers script", () => {
     await fs.writeFile(path.join(root, "dist", "index.js"), 'void 0;import "./lib/side-effect"\n', "utf8")
     await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export {}\n", "utf8")
 
-    const result = spawnSync("node", [script], {
+    const result = spawnSync("node", [script, "--dist"], {
       cwd: root,
       encoding: "utf8"
     })
@@ -45,7 +57,7 @@ describe("check-dist-esm-import-specifiers script", () => {
     await fs.writeFile(path.join(root, "dist", "index.js"), 'import "./lib/side-effect.js"\n', "utf8")
     await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export {}\n", "utf8")
 
-    const result = spawnSync("node", [script], {
+    const result = spawnSync("node", [script, "--dist"], {
       cwd: root,
       encoding: "utf8"
     })
@@ -60,7 +72,7 @@ describe("check-dist-esm-import-specifiers script", () => {
     await fs.writeFile(path.join(root, "dist", "index.js"), '// import "./lib/side-effect"\n', "utf8")
     await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export {}\n", "utf8")
 
-    const result = spawnSync("node", [script], {
+    const result = spawnSync("node", [script, "--dist"], {
       cwd: root,
       encoding: "utf8"
     })
@@ -75,7 +87,7 @@ describe("check-dist-esm-import-specifiers script", () => {
     await fs.writeFile(path.join(root, "dist", "index.js"), '/* import "./lib/side-effect" */\n', "utf8")
     await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export {}\n", "utf8")
 
-    const result = spawnSync("node", [script], {
+    const result = spawnSync("node", [script, "--dist"], {
       cwd: root,
       encoding: "utf8"
     })
@@ -90,7 +102,7 @@ describe("check-dist-esm-import-specifiers script", () => {
     await fs.writeFile(path.join(root, "dist", "index.mjs"), 'import "./lib/side-effect"\n', "utf8")
     await fs.writeFile(path.join(root, "dist", "lib", "side-effect.mjs"), "export {}\n", "utf8")
 
-    const result = spawnSync("node", [script], {
+    const result = spawnSync("node", [script, "--dist"], {
       cwd: root,
       encoding: "utf8"
     })
@@ -105,7 +117,7 @@ describe("check-dist-esm-import-specifiers script", () => {
     await fs.writeFile(path.join(root, "dist", "index.js"), '// import { x } from "./lib/side-effect"\n', "utf8")
     await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export const x = 1\n", "utf8")
 
-    const result = spawnSync("node", [script], {
+    const result = spawnSync("node", [script, "--dist"], {
       cwd: root,
       encoding: "utf8"
     })
@@ -124,7 +136,7 @@ describe("check-dist-esm-import-specifiers script", () => {
     )
     await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export const x = 1\n", "utf8")
 
-    const result = spawnSync("node", [script], {
+    const result = spawnSync("node", [script, "--dist"], {
       cwd: root,
       encoding: "utf8"
     })
@@ -143,7 +155,7 @@ describe("check-dist-esm-import-specifiers script", () => {
     )
     await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export const x = 1\n", "utf8")
 
-    const result = spawnSync("node", [script], {
+    const result = spawnSync("node", [script, "--dist"], {
       cwd: root,
       encoding: "utf8"
     })
@@ -162,7 +174,7 @@ describe("check-dist-esm-import-specifiers script", () => {
     )
     await fs.writeFile(path.join(root, "dist", "lib", "side-effect.js"), "export {}\n", "utf8")
 
-    const result = spawnSync("node", [script], {
+    const result = spawnSync("node", [script, "--dist"], {
       cwd: root,
       encoding: "utf8"
     })
