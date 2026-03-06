@@ -56,6 +56,7 @@ export async function handleChatMessageHook(input: {
 
 export async function handleChatParamsHook(input: {
   hookInput: {
+    sessionID?: string
     model: {
       providerID?: string
       options?: unknown
@@ -187,7 +188,7 @@ export async function handleChatHeadersHook(input: {
   hookInput: { model: { providerID?: string }; sessionID: string; agent?: unknown }
   output: { headers: Record<string, unknown> }
   spoofMode: CodexSpoofMode
-  activeCatalogScopeKey?: string
+  requestCatalogScopeKey?: string
   internalCatalogScopeHeader: string
   internalCollaborationModeHeader: string
   internalCollaborationAgentHeader: string
@@ -201,8 +202,8 @@ export async function handleChatHeadersHook(input: {
   input.output.headers.session_id = input.hookInput.sessionID
   delete input.output.headers["OpenAI-Beta"]
   delete input.output.headers.conversation_id
-  if (input.activeCatalogScopeKey) {
-    input.output.headers[input.internalCatalogScopeHeader] = input.activeCatalogScopeKey
+  if (input.requestCatalogScopeKey) {
+    input.output.headers[input.internalCatalogScopeHeader] = input.requestCatalogScopeKey
   } else {
     delete input.output.headers[input.internalCatalogScopeHeader]
   }
