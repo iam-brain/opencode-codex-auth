@@ -13,7 +13,7 @@ const PRIORITY_BEHAVIOR_SETTINGS: BehaviorSettings = {
 }
 
 describe("GPT-5.4 long-context request clamps", () => {
-  it("preserves valid 1M-context fields while still injecting service_tier priority", async () => {
+  it("preserves valid 1M-context fields without mutating service_tier on the main payload path", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -40,10 +40,10 @@ describe("GPT-5.4 long-context request clamps", () => {
       model_auto_compact_token_limit?: number
     }
 
-    expect(transformed.changed).toBe(true)
-    expect(transformed.serviceTier.changed).toBe(true)
-    expect(transformed.serviceTier.reason).toBe("updated")
-    expect(body.service_tier).toBe("priority")
+    expect(transformed.changed).toBe(false)
+    expect(transformed.serviceTier.changed).toBe(false)
+    expect(transformed.serviceTier.reason).toBe("handled_by_chat_params")
+    expect(body.service_tier).toBeUndefined()
     expect(body.model_context_window).toBe(1_000_000)
     expect(body.model_auto_compact_token_limit).toBe(872_000)
   })
@@ -53,7 +53,7 @@ describe("GPT-5.4 long-context request clamps", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: "openai/gpt-5.4",
+        model: "gpt-5.4",
         model_context_window: 2_000_000,
         model_auto_compact_token_limit: 2_000_000,
         max_output_tokens: 200_000,
@@ -78,9 +78,9 @@ describe("GPT-5.4 long-context request clamps", () => {
     }
 
     expect(transformed.changed).toBe(true)
-    expect(transformed.serviceTier.changed).toBe(true)
-    expect(transformed.serviceTier.reason).toBe("updated")
-    expect(body.service_tier).toBe("priority")
+    expect(transformed.serviceTier.changed).toBe(false)
+    expect(transformed.serviceTier.reason).toBe("handled_by_chat_params")
+    expect(body.service_tier).toBeUndefined()
     expect(body.model_context_window).toBe(1_050_000)
     expect(body.model_auto_compact_token_limit).toBe(922_000)
     expect(body.max_output_tokens).toBe(128_000)

@@ -58,7 +58,7 @@ describe("codex-native chat hooks instruction source order", () => {
     expect(modelOptions.codexInstructions).toBe("Cached template instructions")
   })
 
-  it("ignores catalog-derived model state when pre-auth catalog trust is disabled", async () => {
+  it("applies catalog-derived model state from the active scoped provider model", async () => {
     const output = {
       temperature: 0,
       topP: 1,
@@ -94,16 +94,15 @@ describe("codex-native chat hooks instruction source order", () => {
           }
         }
       ],
-      allowCatalogModelState: false,
       spoofMode: "codex",
       collaborationProfileEnabled: false,
       orchestratorSubagentsEnabled: false
     })
 
-    expect(output.options.instructions).toBeUndefined()
-    expect(output.options.reasoningEffort).toBeUndefined()
-    expect(output.options.textVerbosity).toBeUndefined()
-    expect(output.options.parallelToolCalls).toBeUndefined()
+    expect(output.options.instructions).toBe("Cached template instructions")
+    expect(output.options.reasoningEffort).toBe("high")
+    expect(output.options.textVerbosity).toBe("medium")
+    expect(output.options.parallelToolCalls).toBe(false)
   })
 
   it("leaves review subtask agents unchanged", async () => {

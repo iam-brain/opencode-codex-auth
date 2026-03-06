@@ -264,6 +264,7 @@ async function benchmarkQuotaBlocking(root: string): Promise<{ latencyMs: number
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
+      internalCatalogScopeHeader: "x-opencode-catalog-scope-key",
       internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: async () => {},

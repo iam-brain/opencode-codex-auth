@@ -17,13 +17,11 @@ export {
 
 export {
   applyPromptCacheKeyOverrideToRequest,
-  applyServiceTierOverrideToRequest,
   remapDeveloperMessagesToUserOnRequest,
   sanitizeOutboundRequestIfNeeded,
+  stripStaleCatalogScopedDefaultsFromRequest,
   stripReasoningReplayFromRequest,
   transformOutboundRequestPayload,
   type ServiceTierTransformResult,
   type OutboundRequestPayloadTransformResult
 } from "./request-transform-payload.js"
-
-export { applyCatalogInstructionOverrideToRequest } from "./request-transform-instructions.js"
