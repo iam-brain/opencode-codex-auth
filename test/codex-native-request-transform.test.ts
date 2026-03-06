@@ -1,25 +1,14 @@
 import { describe, expect, it } from "vitest"
 
 import type { BehaviorSettings } from "../lib/config.js"
-import type { CodexModelInfo } from "../lib/model-catalog.js"
 import {
   applyPromptCacheKeyOverrideToRequest,
   remapDeveloperMessagesToUserOnRequest,
   sanitizeOutboundRequestIfNeeded,
-  transformOutboundRequestPayload,
-  stripReasoningReplayFromRequest
+  stripReasoningReplayFromRequest,
+  stripStaleCatalogScopedDefaultsFromRequest,
+  transformOutboundRequestPayload
 } from "../lib/codex-native/request-transform"
-
-const RUNTIME_DEFAULT_CATALOG: CodexModelInfo[] = [
-  {
-    slug: "gpt-5.3-codex",
-    default_reasoning_level: "high",
-    supports_reasoning_summaries: true,
-    default_verbosity: "medium",
-    apply_patch_tool_type: "apply_patch",
-    supports_parallel_tool_calls: false
-  }
-]
 
 describe("codex request role remap", () => {
   it("remaps non-permissions developer messages to user", async () => {
@@ -325,7 +314,7 @@ describe("request transform aggregation", () => {
     expect(transformed.promptCacheKey.reason).toBe("set")
     expect(transformed.compatSanitizer.changed).toBe(false)
     expect(transformed.serviceTier.changed).toBe(false)
-    expect(transformed.serviceTier.reason).toBe("unsupported_model")
+    expect(transformed.serviceTier.reason).toBe("handled_by_chat_params")
 
     const body = JSON.parse(await transformed.request.text()) as {
       input: Array<{ role?: string; content?: Array<{ type?: string; text?: string }> }>
@@ -375,10 +364,10 @@ describe("request transform aggregation", () => {
     expect(aggregated.promptCacheKey.reason).toBe("set")
     expect(aggregated.compatSanitizer.changed).toBe(false)
     expect(aggregated.serviceTier.changed).toBe(false)
-    expect(aggregated.serviceTier.reason).toBe("unsupported_model")
+    expect(aggregated.serviceTier.reason).toBe("handled_by_chat_params")
   })
 
-  it("preserves explicit request-body service_tier and passes flex through", async () => {
+  it("leaves service_tier alone on the main payload path", async () => {
     const preservedRequest = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -418,60 +407,27 @@ describe("request transform aggregation", () => {
     const flexBody = JSON.parse(await flex.request.text()) as { service_tier?: string }
 
     expect(preserved.serviceTier.changed).toBe(false)
-    expect(preserved.serviceTier.reason).toBe("preserved")
+    expect(preserved.serviceTier.reason).toBe("handled_by_chat_params")
     expect(preservedBody.service_tier).toBe("flex")
-    expect(flex.serviceTier.changed).toBe(true)
-    expect(flex.serviceTier.reason).toBe("updated")
-    expect(flexBody.service_tier).toBe("flex")
+    expect(flex.serviceTier.changed).toBe(false)
+    expect(flex.serviceTier.reason).toBe("handled_by_chat_params")
+    expect(flexBody.service_tier).toBeUndefined()
   })
 
-  it("applies catalog runtime defaults from the authenticated catalog payload", async () => {
+  it("preserves canonical wire fields without injecting provider-option aliases", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         model: "gpt-5.3-codex",
-        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
-      })
-    })
-
-    const transformed = await transformOutboundRequestPayload({
-      request,
-      stripReasoningReplayEnabled: false,
-      remapDeveloperMessagesToUserEnabled: false,
-      compatInputSanitizerEnabled: false,
-      promptCacheKeyOverrideEnabled: false,
-      catalogModels: RUNTIME_DEFAULT_CATALOG
-    })
-
-    const body = JSON.parse(await transformed.request.text()) as {
-      reasoningEffort?: string
-      reasoningSummary?: string
-      textVerbosity?: string
-      applyPatchToolType?: string
-      parallelToolCalls?: boolean
-      include?: string[]
-    }
-
-    expect(body.reasoningEffort).toBe("high")
-    expect(body.reasoningSummary).toBe("auto")
-    expect(body.textVerbosity).toBe("medium")
-    expect(body.applyPatchToolType).toBe("apply_patch")
-    expect(body.parallelToolCalls).toBe(false)
-    expect(body.include).toEqual(["reasoning.encrypted_content"])
-  })
-
-  it("preserves explicit runtime options when catalog defaults are applied after auth", async () => {
-    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model: "gpt-5.3-codex",
-        reasoningEffort: "minimal",
-        reasoningSummary: "none",
-        textVerbosity: "high",
-        parallelToolCalls: true,
-        applyPatchToolType: "legacy",
+        reasoning: {
+          effort: "high",
+          summary: "auto"
+        },
+        text: {
+          verbosity: "medium"
+        },
+        parallel_tool_calls: false,
         include: ["reasoning.encrypted_content"],
         input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
       })
@@ -482,11 +438,13 @@ describe("request transform aggregation", () => {
       stripReasoningReplayEnabled: false,
       remapDeveloperMessagesToUserEnabled: false,
       compatInputSanitizerEnabled: false,
-      promptCacheKeyOverrideEnabled: false,
-      catalogModels: RUNTIME_DEFAULT_CATALOG
+      promptCacheKeyOverrideEnabled: false
     })
 
     const body = JSON.parse(await transformed.request.text()) as {
+      reasoning?: { effort?: string; summary?: string }
+      text?: { verbosity?: string }
+      parallel_tool_calls?: boolean
       reasoningEffort?: string
       reasoningSummary?: string
       textVerbosity?: string
@@ -495,11 +453,54 @@ describe("request transform aggregation", () => {
       include?: string[]
     }
 
-    expect(body.reasoningEffort).toBe("minimal")
+    expect(body.reasoning).toEqual({ effort: "high", summary: "auto" })
+    expect(body.text).toEqual({ verbosity: "medium" })
+    expect(body.parallel_tool_calls).toBe(false)
+    expect(body.reasoningEffort).toBeUndefined()
     expect(body.reasoningSummary).toBeUndefined()
-    expect(body.textVerbosity).toBe("high")
-    expect(body.applyPatchToolType).toBe("legacy")
-    expect(body.parallelToolCalls).toBe(true)
+    expect(body.textVerbosity).toBeUndefined()
+    expect(body.applyPatchToolType).toBeUndefined()
+    expect(body.parallelToolCalls).toBeUndefined()
+    expect(body.include).toEqual(["reasoning.encrypted_content"])
+  })
+
+  it("keeps canonical wire payloads unchanged when no wire-level transform applies", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        reasoning: {
+          effort: "minimal",
+          summary: "none"
+        },
+        text: {
+          verbosity: "high"
+        },
+        parallel_tool_calls: true,
+        include: ["reasoning.encrypted_content"],
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false
+    })
+
+    const body = JSON.parse(await transformed.request.text()) as {
+      reasoning?: { effort?: string; summary?: string }
+      text?: { verbosity?: string }
+      parallel_tool_calls?: boolean
+      include?: string[]
+    }
+
+    expect(body.reasoning).toEqual({ effort: "minimal", summary: "none" })
+    expect(body.text).toEqual({ verbosity: "high" })
+    expect(body.parallel_tool_calls).toBe(true)
     expect(body.include).toEqual(["reasoning.encrypted_content"])
   })
 })
@@ -529,5 +530,297 @@ describe("compat sanitizer wrapper", () => {
       input: Array<Record<string, unknown>>
     }
     expect(body.input[0]).not.toHaveProperty("item_reference")
+  })
+})
+
+describe("catalog-scoped payload cleanup", () => {
+  const previousCatalogModels = [
+    {
+      slug: "gpt-5.3-codex",
+      default_reasoning_level: "high",
+      supports_reasoning_summaries: true,
+      reasoning_summary_format: "auto",
+      default_verbosity: "medium",
+      supports_parallel_tool_calls: true,
+      model_messages: {
+        instructions_template: "Account A instructions"
+      }
+    }
+  ]
+
+  it("preserves explicit wire settings when failed-refresh cleanup cannot tie them to prior defaults", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: "Explicit request instructions",
+        reasoning: {
+          effort: "medium",
+          summary: "detailed"
+        },
+        text: {
+          verbosity: "high"
+        },
+        parallel_tool_calls: false,
+        include: ["reasoning.encrypted_content", "web_search_call.action.sources"],
+        input: "hello"
+      })
+    })
+
+    const transformed = await stripStaleCatalogScopedDefaultsFromRequest({
+      request,
+      previousCatalogModels
+    })
+
+    expect(transformed.changed).toBe(false)
+    const body = JSON.parse(await transformed.request.text()) as {
+      instructions?: string
+      reasoning?: { effort?: string; summary?: string }
+      text?: { verbosity?: string }
+      parallel_tool_calls?: boolean
+      include?: string[]
+    }
+    expect(body.instructions).toBe("Explicit request instructions")
+    expect(body.reasoning).toEqual({ effort: "medium", summary: "detailed" })
+    expect(body.text).toEqual({ verbosity: "high" })
+    expect(body.parallel_tool_calls).toBe(false)
+    expect(body.include).toEqual(["reasoning.encrypted_content", "web_search_call.action.sources"])
+  })
+
+  it("preserves explicit reasoning include when failed-refresh cleanup leaves explicit effort untouched", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        reasoning: {
+          effort: "medium"
+        },
+        include: ["reasoning.encrypted_content", "web_search_call.action.sources"],
+        input: "hello"
+      })
+    })
+
+    const transformed = await stripStaleCatalogScopedDefaultsFromRequest({
+      request,
+      previousCatalogModels
+    })
+
+    expect(transformed.changed).toBe(false)
+    const body = JSON.parse(await transformed.request.text()) as {
+      reasoning?: { effort?: string; summary?: string }
+      include?: string[]
+    }
+    expect(body.reasoning).toEqual({ effort: "medium" })
+    expect(body.include).toEqual(["reasoning.encrypted_content", "web_search_call.action.sources"])
+  })
+
+  it("strips stale reasoning summary and encrypted-content include when selected catalog refresh fails", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: "Account A instructions",
+        reasoning: {
+          effort: "high",
+          summary: "auto"
+        },
+        text: {
+          verbosity: "medium"
+        },
+        parallel_tool_calls: true,
+        include: ["reasoning.encrypted_content", "web_search_call.action.sources"],
+        input: "hello"
+      })
+    })
+
+    const transformed = await stripStaleCatalogScopedDefaultsFromRequest({
+      request,
+      previousCatalogModels
+    })
+
+    expect(transformed.changed).toBe(true)
+    const body = JSON.parse(await transformed.request.text()) as {
+      instructions?: string
+      reasoning?: { effort?: string; summary?: string }
+      text?: { verbosity?: string }
+      parallel_tool_calls?: boolean
+      include?: string[]
+    }
+    expect(body.instructions).toBeUndefined()
+    expect(body.reasoning).toBeUndefined()
+    expect(body.text).toBeUndefined()
+    expect(body.parallel_tool_calls).toBeUndefined()
+    expect(body.include).toEqual(["web_search_call.action.sources"])
+  })
+
+  it("updates reasoning summary and encrypted-content include when the selected account changes", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: "Account A instructions",
+        reasoning: {
+          effort: "high",
+          summary: "auto"
+        },
+        text: {
+          verbosity: "medium"
+        },
+        parallel_tool_calls: true,
+        include: ["reasoning.encrypted_content", "web_search_call.action.sources"],
+        input: "hello"
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      requestCatalogScopeChanged: true,
+      previousCatalogModels,
+      catalogModels: [
+        {
+          slug: "gpt-5.3-codex",
+          default_reasoning_level: "low",
+          supports_reasoning_summaries: true,
+          reasoning_summary_format: "concise",
+          default_verbosity: "low",
+          supports_parallel_tool_calls: false,
+          model_messages: {
+            instructions_template: "Account B instructions"
+          }
+        }
+      ]
+    })
+
+    expect(transformed.changed).toBe(true)
+    const body = JSON.parse(await transformed.request.text()) as {
+      instructions?: string
+      reasoning?: { effort?: string; summary?: string }
+      text?: { verbosity?: string }
+      parallel_tool_calls?: boolean
+      include?: string[]
+    }
+    expect(body.instructions).toBe("Account B instructions")
+    expect(body.reasoning).toEqual({ effort: "low", summary: "concise" })
+    expect(body.text).toEqual({ verbosity: "low" })
+    expect(body.parallel_tool_calls).toBe(false)
+    expect(body.include).toEqual(["reasoning.encrypted_content", "web_search_call.action.sources"])
+  })
+
+  it("strips stale catalog instructions when the next account no longer renders safe instructions", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: "Account A instructions",
+        reasoning: {
+          effort: "high",
+          summary: "auto"
+        },
+        text: {
+          verbosity: "medium"
+        },
+        parallel_tool_calls: true,
+        include: ["reasoning.encrypted_content"],
+        input: "hello"
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      requestCatalogScopeChanged: true,
+      previousCatalogModels,
+      catalogModels: [
+        {
+          slug: "gpt-5.3-codex",
+          default_reasoning_level: "low",
+          supports_reasoning_summaries: true,
+          reasoning_summary_format: "concise",
+          default_verbosity: "low",
+          supports_parallel_tool_calls: false,
+          model_messages: {
+            instructions_template: "{{ unsupported_marker }}"
+          }
+        }
+      ]
+    })
+
+    expect(transformed.changed).toBe(true)
+    const body = JSON.parse(await transformed.request.text()) as {
+      instructions?: string
+      reasoning?: { effort?: string; summary?: string }
+      text?: { verbosity?: string }
+      parallel_tool_calls?: boolean
+      include?: string[]
+    }
+    expect(body.instructions).toBeUndefined()
+    expect(body.reasoning).toEqual({ effort: "low", summary: "concise" })
+    expect(body.text).toEqual({ verbosity: "low" })
+    expect(body.parallel_tool_calls).toBe(false)
+    expect(body.include).toEqual(["reasoning.encrypted_content"])
+  })
+
+  it("clears stale scoped defaults when the next catalog falls back to a minimal official model row", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: "Account A instructions",
+        reasoning: {
+          effort: "high",
+          summary: "auto"
+        },
+        text: {
+          verbosity: "medium"
+        },
+        parallel_tool_calls: true,
+        include: ["reasoning.encrypted_content"],
+        input: "hello"
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      requestCatalogScopeChanged: true,
+      previousCatalogModels,
+      catalogModels: [
+        {
+          slug: "gpt-5.3-codex",
+          context_window: 272000,
+          input_modalities: ["text"]
+        }
+      ]
+    })
+
+    expect(transformed.changed).toBe(true)
+    const body = JSON.parse(await transformed.request.text()) as {
+      instructions?: string
+      reasoning?: { effort?: string; summary?: string }
+      text?: { verbosity?: string }
+      parallel_tool_calls?: boolean
+      include?: string[]
+    }
+    expect(body.instructions).toBeUndefined()
+    expect(body.reasoning).toBeUndefined()
+    expect(body.text).toBeUndefined()
+    expect(body.parallel_tool_calls).toBeUndefined()
+    expect(body.include).toBeUndefined()
   })
 })

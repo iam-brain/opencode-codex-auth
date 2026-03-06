@@ -38,6 +38,8 @@ describe("mode smoke: native vs codex", () => {
       provider: {},
       message: {},
       model: {
+        id: "gpt-5.4",
+        api: { id: "gpt-5.4" },
         providerID: "openai",
         capabilities: { toolcall: true },
         options: {
@@ -71,8 +73,14 @@ describe("mode smoke: native vs codex", () => {
       }
     }
 
-    const nativeHooks = await CodexAuthPlugin({} as never, { spoofMode: "native" })
-    const codexHooks = await CodexAuthPlugin({} as never, { spoofMode: "codex" })
+    const nativeHooks = await CodexAuthPlugin({} as never, {
+      spoofMode: "native",
+      behaviorSettings: { global: { serviceTier: "priority" } }
+    })
+    const codexHooks = await CodexAuthPlugin({} as never, {
+      spoofMode: "codex",
+      behaviorSettings: { global: { serviceTier: "priority" } }
+    })
 
     const nativeWithHost = structuredClone(withHost)
     const codexWithHost = structuredClone(withHost)
@@ -92,6 +100,8 @@ describe("mode smoke: native vs codex", () => {
     expect(codexNoHost.options.reasoningSummary).toBe("experimental")
     expect(nativeNoHost.options.textVerbosity).toBe("medium")
     expect(codexNoHost.options.textVerbosity).toBe("medium")
+    expect(nativeNoHost.options.serviceTier).toBe("priority")
+    expect(codexNoHost.options.serviceTier).toBe("priority")
   })
 
   it("falls back to model.instructions for codex replacement when options are missing catalog fields", async () => {

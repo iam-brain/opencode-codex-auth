@@ -63,6 +63,7 @@ export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from
 
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const INTERNAL_COLLABORATION_AGENT_HEADER = "x-opencode-collaboration-agent-kind"
+const INTERNAL_CATALOG_SCOPE_HEADER = "x-opencode-catalog-scope-key"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
 
 const CODEX_RS_COMPACT_PROMPT = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
@@ -211,6 +212,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     log: opts.log
   })
   const catalogModelsByScope = new Map<string, CodexModelInfo[]>()
+  const catalogScopeKeyBySession = new Map<string, string>()
   let activeCatalogScopeKey: string | undefined
   let activeCatalogModels: CodexModelInfo[] | undefined
   let providerModelsForCatalogSync: Record<string, Record<string, unknown>> | undefined
@@ -341,6 +343,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           configuredRotationStrategy: opts.rotationStrategy,
           headerTransformDebug: opts.headerTransformDebug === true,
           compatInputSanitizerEnabled: opts.compatInputSanitizer === true,
+          internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
           internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
           internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
           requestSnapshots,
@@ -399,28 +402,41 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       await handleChatMessageHook({ hookInput, output, client: input.client })
     },
     "chat.params": async (hookInput, output) => {
+      const requestCatalogModels = activeCatalogModels
+      const requestCatalogScopeKey = activeCatalogScopeKey
       await handleChatParamsHook({
         hookInput,
         output,
-        lastCatalogModels: activeCatalogModels,
-        allowCatalogModelState: activeCatalogScopeKey === undefined,
+        lastCatalogModels: requestCatalogModels,
         behaviorSettings: opts.behaviorSettings,
         fallbackPersonality: opts.personality,
         spoofMode,
         collaborationProfileEnabled,
         orchestratorSubagentsEnabled
       })
+
+      const sessionID = typeof (hookInput as { sessionID?: unknown }).sessionID === "string" ? hookInput.sessionID : ""
+      if (!sessionID) return
+      if (hookInput.model.providerID !== "openai" || !requestCatalogScopeKey) {
+        catalogScopeKeyBySession.delete(sessionID)
+        return
+      }
+      catalogScopeKeyBySession.set(sessionID, requestCatalogScopeKey)
     },
     "chat.headers": async (hookInput, output) => {
+      const requestCatalogScopeKey = catalogScopeKeyBySession.get(hookInput.sessionID) ?? activeCatalogScopeKey
       await handleChatHeadersHook({
         hookInput,
         output,
         spoofMode,
+        requestCatalogScopeKey,
+        internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
         internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
         internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
         collaborationProfileEnabled,
         orchestratorSubagentsEnabled
       })
+      catalogScopeKeyBySession.delete(hookInput.sessionID)
     },
     "experimental.session.compacting": async (hookInput, output) => {
       await handleSessionCompactingHook({

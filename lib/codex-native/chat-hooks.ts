@@ -13,6 +13,7 @@ import {
   getVariantLookupCandidates,
   resolvePersonalityForModel
 } from "./request-transform.js"
+import { resolveServiceTierForModel } from "./request-transform-model-service-tier.js"
 import { resolveRequestUserAgent } from "./client-identity.js"
 import { resolveCodexOriginator } from "./originator.js"
 import {
@@ -55,6 +56,7 @@ export async function handleChatMessageHook(input: {
 
 export async function handleChatParamsHook(input: {
   hookInput: {
+    sessionID?: string
     model: {
       providerID?: string
       options?: unknown
@@ -67,7 +69,6 @@ export async function handleChatParamsHook(input: {
   }
   output: Parameters<typeof applyCodexRuntimeDefaultsToParams>[0]["output"]
   lastCatalogModels: CodexModelInfo[] | undefined
-  allowCatalogModelState?: boolean
   behaviorSettings?: BehaviorSettings
   fallbackPersonality?: PersonalityOption
   spoofMode: CodexSpoofMode
@@ -80,14 +81,11 @@ export async function handleChatParamsHook(input: {
     id: input.hookInput.model.id,
     api: { id: input.hookInput.model.api?.id }
   })
-  const allowCatalogModelState = input.allowCatalogModelState !== false
   const variantCandidates = getVariantLookupCandidates({
     message: input.hookInput.message,
     modelCandidates
   })
-  const catalogModelFallback = allowCatalogModelState
-    ? findCatalogModelForCandidates(input.lastCatalogModels, modelCandidates)
-    : undefined
+  const catalogModelFallback = findCatalogModelForCandidates(input.lastCatalogModels, modelCandidates)
   const effectivePersonality = resolvePersonalityForModel({
     behaviorSettings: input.behaviorSettings,
     modelCandidates,
@@ -109,17 +107,9 @@ export async function handleChatParamsHook(input: {
   const globalVerbosityEnabled =
     typeof globalBehavior?.verbosityEnabled === "boolean" ? globalBehavior.verbosityEnabled : undefined
   const globalVerbosity = normalizeVerbositySetting(globalBehavior?.verbosity)
-  const runtimeModelOptions = allowCatalogModelState
-    ? modelOptions
-    : Object.fromEntries(
-        Object.entries(modelOptions).filter(([key]) => {
-          return key !== "codexCatalogModel" && key !== "codexRuntimeDefaults" && key !== "codexInstructions"
-        })
-      )
-  const catalogModelFromOptions =
-    allowCatalogModelState && isRecord(modelOptions.codexCatalogModel)
-      ? (modelOptions.codexCatalogModel as CodexModelInfo)
-      : undefined
+  const catalogModelFromOptions = isRecord(modelOptions.codexCatalogModel)
+    ? (modelOptions.codexCatalogModel as CodexModelInfo)
+    : undefined
   let renderedCatalogInstructions = catalogModelFromOptions
     ? resolveInstructionsForModel(catalogModelFromOptions, effectivePersonality)
     : undefined
@@ -136,15 +126,24 @@ export async function handleChatParamsHook(input: {
   }
 
   if (renderedCatalogInstructions) {
-    runtimeModelOptions.codexInstructions = renderedCatalogInstructions
+    modelOptions.codexInstructions = renderedCatalogInstructions
   } else {
-    const directModelInstructions = allowCatalogModelState
-      ? asString((input.hookInput.model as Record<string, unknown>).instructions)
-      : undefined
+    const directModelInstructions = asString((input.hookInput.model as Record<string, unknown>).instructions)
     if (directModelInstructions) {
-      runtimeModelOptions.codexInstructions = directModelInstructions
-    } else if (asString(runtimeModelOptions.codexInstructions) === undefined) {
-      delete runtimeModelOptions.codexInstructions
+      modelOptions.codexInstructions = directModelInstructions
+    } else if (asString(modelOptions.codexInstructions) === undefined) {
+      delete modelOptions.codexInstructions
+    }
+  }
+
+  if (asString(input.output.options.serviceTier) === undefined) {
+    const resolvedServiceTier = resolveServiceTierForModel({
+      behaviorSettings: input.behaviorSettings,
+      modelCandidates,
+      variantCandidates
+    })
+    if (resolvedServiceTier && resolvedServiceTier !== "default") {
+      input.output.options.serviceTier = resolvedServiceTier
     }
   }
   const profile = resolveCollaborationProfile(input.hookInput.agent)
@@ -152,8 +151,8 @@ export async function handleChatParamsHook(input: {
     profile.isOrchestrator === true && isOrchestratorInstructions(asString(input.output.options.instructions))
 
   applyCodexRuntimeDefaultsToParams({
-    modelOptions: runtimeModelOptions,
-    modelToolCallCapable: allowCatalogModelState ? input.hookInput.model.capabilities?.toolcall : undefined,
+    modelOptions,
+    modelToolCallCapable: input.hookInput.model.capabilities?.toolcall,
     thinkingSummariesOverride: modelThinkingSummariesOverride ?? globalBehavior?.thinkingSummaries,
     verbosityEnabledOverride: modelVerbosityEnabledOverride ?? globalVerbosityEnabled,
     verbosityOverride: modelVerbosityOverride ?? globalVerbosity,
@@ -189,6 +188,8 @@ export async function handleChatHeadersHook(input: {
   hookInput: { model: { providerID?: string }; sessionID: string; agent?: unknown }
   output: { headers: Record<string, unknown> }
   spoofMode: CodexSpoofMode
+  requestCatalogScopeKey?: string
+  internalCatalogScopeHeader: string
   internalCollaborationModeHeader: string
   internalCollaborationAgentHeader: string
   collaborationProfileEnabled: boolean
@@ -201,6 +202,11 @@ export async function handleChatHeadersHook(input: {
   input.output.headers.session_id = input.hookInput.sessionID
   delete input.output.headers["OpenAI-Beta"]
   delete input.output.headers.conversation_id
+  if (input.requestCatalogScopeKey) {
+    input.output.headers[input.internalCatalogScopeHeader] = input.requestCatalogScopeKey
+  } else {
+    delete input.output.headers[input.internalCatalogScopeHeader]
+  }
 
   if (!input.collaborationProfileEnabled) {
     delete input.output.headers["x-openai-subagent"]
