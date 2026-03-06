@@ -372,11 +372,12 @@ function syncReasoningEncryptedContentInclude(input: {
   payload: Record<string, unknown>
   previousShouldInclude: boolean
   nextShouldInclude: boolean
+  allowRemoval?: boolean
 }): boolean {
   const include = asStringArray(input.payload.include)
   const hasEntry = include?.includes("reasoning.encrypted_content") === true
 
-  if (input.previousShouldInclude && !input.nextShouldInclude && hasEntry && include) {
+  if (input.previousShouldInclude && !input.nextShouldInclude && input.allowRemoval !== false && hasEntry && include) {
     const nextInclude = include.filter((entry) => entry !== "reasoning.encrypted_content")
     if (nextInclude.length > 0) {
       input.payload.include = nextInclude
@@ -515,6 +516,7 @@ function applySelectedCatalogScopeToPayload(
   const reasoning = isRecord(payload.reasoning) ? payload.reasoning : undefined
   const reasoningEffortBefore = asString(reasoning?.effort)
   const reasoningSummaryBefore = asString(reasoning?.summary)
+  let reasoningChanged = false
   if (
     reasoning &&
     reasoningEffortBefore &&
@@ -528,6 +530,7 @@ function applySelectedCatalogScopeToPayload(
       delete reasoning.effort
     }
     changed = true
+    reasoningChanged = true
   }
 
   const previousReasoningSummary = resolveDefaultReasoningSummary(previousRuntimeDefaults)
@@ -545,6 +548,7 @@ function applySelectedCatalogScopeToPayload(
         delete reasoning.summary
       }
       changed = true
+      reasoningChanged = true
     } else if (
       reasoningSummaryBefore === undefined &&
       previousReasoningSummary === undefined &&
@@ -554,6 +558,7 @@ function applySelectedCatalogScopeToPayload(
     ) {
       reasoning.summary = nextReasoningSummary
       changed = true
+      reasoningChanged = true
     }
 
     if (Object.keys(reasoning).length === 0) {
@@ -611,7 +616,8 @@ function applySelectedCatalogScopeToPayload(
     syncReasoningEncryptedContentInclude({
       payload,
       previousShouldInclude,
-      nextShouldInclude
+      nextShouldInclude,
+      allowRemoval: reasoningChanged
     })
   ) {
     changed = true
@@ -645,6 +651,7 @@ function clearPreviousCatalogScopedFields(
   const reasoning = isRecord(payload.reasoning) ? payload.reasoning : undefined
   const reasoningEffortBefore = asString(reasoning?.effort)
   const reasoningSummaryBefore = asString(reasoning?.summary)
+  let reasoningChanged = false
   if (
     reasoning &&
     reasoningEffortBefore &&
@@ -653,6 +660,7 @@ function clearPreviousCatalogScopedFields(
   ) {
     delete reasoning.effort
     changed = true
+    reasoningChanged = true
   }
 
   const previousReasoningSummary = resolveDefaultReasoningSummary(input.previousRuntimeDefaults)
@@ -664,6 +672,7 @@ function clearPreviousCatalogScopedFields(
   ) {
     delete reasoning.summary
     changed = true
+    reasoningChanged = true
   }
 
   if (reasoning && Object.keys(reasoning).length === 0) {
@@ -709,7 +718,8 @@ function clearPreviousCatalogScopedFields(
     syncReasoningEncryptedContentInclude({
       payload,
       previousShouldInclude,
-      nextShouldInclude
+      nextShouldInclude,
+      allowRemoval: reasoningChanged
     })
   ) {
     changed = true

@@ -588,6 +588,34 @@ describe("catalog-scoped payload cleanup", () => {
     expect(body.include).toEqual(["reasoning.encrypted_content", "web_search_call.action.sources"])
   })
 
+  it("preserves explicit reasoning include when failed-refresh cleanup leaves explicit effort untouched", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        reasoning: {
+          effort: "medium"
+        },
+        include: ["reasoning.encrypted_content", "web_search_call.action.sources"],
+        input: "hello"
+      })
+    })
+
+    const transformed = await stripStaleCatalogScopedDefaultsFromRequest({
+      request,
+      previousCatalogModels
+    })
+
+    expect(transformed.changed).toBe(false)
+    const body = JSON.parse(await transformed.request.text()) as {
+      reasoning?: { effort?: string; summary?: string }
+      include?: string[]
+    }
+    expect(body.reasoning).toEqual({ effort: "medium" })
+    expect(body.include).toEqual(["reasoning.encrypted_content", "web_search_call.action.sources"])
+  })
+
   it("strips stale reasoning summary and encrypted-content include when selected catalog refresh fails", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
