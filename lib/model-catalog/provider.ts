@@ -47,9 +47,43 @@ function formatModelDisplayNameFromSlug(slug: string): string {
   return words.join(" ")
 }
 
-function resolveDisplayName(slug: string, catalogDisplayName?: string | null): string {
+function isRawCatalogSlugDisplayName(slug: string, displayName: string): boolean {
+  return displayName.trim() === slug.trim()
+}
+
+function getExistingDisplayName(model: Record<string, unknown>): string | undefined {
+  const candidates: string[] = []
+  for (const key of ["displayName", "display_name", "name"]) {
+    const value = model[key]
+    if (typeof value !== "string") continue
+    const trimmed = value.trim()
+    if (trimmed) candidates.push(trimmed)
+  }
+  return candidates[0]
+}
+
+function getBestExistingDisplayName(slug: string, model: Record<string, unknown>): string | undefined {
+  const candidates: string[] = []
+  for (const key of ["displayName", "display_name", "name"]) {
+    const value = model[key]
+    if (typeof value !== "string") continue
+    const trimmed = value.trim()
+    if (trimmed) candidates.push(trimmed)
+  }
+  if (candidates.length === 0) return undefined
+  return candidates.find((candidate) => !isRawCatalogSlugDisplayName(slug, candidate)) ?? candidates[0]
+}
+
+function resolveDisplayName(slug: string, model: Record<string, unknown>, catalogDisplayName?: string | null): string {
   const trimmed = catalogDisplayName?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : formatModelDisplayNameFromSlug(slug)
+  if (trimmed && trimmed.length > 0) {
+    const existing = getBestExistingDisplayName(slug, model)
+    if (existing && isRawCatalogSlugDisplayName(slug, trimmed) && existing.trim() !== trimmed) {
+      return existing
+    }
+    return trimmed
+  }
+  return getExistingDisplayName(model) ?? formatModelDisplayNameFromSlug(slug)
 }
 
 function setModelIdentityFields(
@@ -57,7 +91,7 @@ function setModelIdentityFields(
   slug: string,
   catalogDisplayName?: string | null
 ): void {
-  const display = resolveDisplayName(slug, catalogDisplayName)
+  const display = resolveDisplayName(slug, model, catalogDisplayName)
 
   for (const key of ["id", "slug", "model"]) {
     model[key] = slug

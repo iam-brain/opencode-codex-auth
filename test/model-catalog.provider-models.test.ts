@@ -105,6 +105,46 @@ describe("model catalog provider model mapping", () => {
     expect(providerModels["gpt-5.1-codex-mini"].displayName).toBe("GPT-5.1 Codex Mini")
   })
 
+  it("preserves styled provider names when catalog display_name is only the raw slug", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.4": {
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        displayName: "GPT-5.4"
+      }
+    }
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [{ slug: "gpt-5.4", display_name: "gpt-5.4" }],
+      fallbackModels: []
+    })
+
+    expect(providerModels["gpt-5.4"].name).toBe("GPT-5.4")
+    expect(providerModels["gpt-5.4"].displayName).toBe("GPT-5.4")
+    expect(providerModels["gpt-5.4"].display_name).toBe("GPT-5.4")
+  })
+
+  it("keeps the best existing styled label when provider display fields are mixed", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.4": {
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        displayName: "gpt-5.4"
+      }
+    }
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [{ slug: "gpt-5.4", display_name: "gpt-5.4" }],
+      fallbackModels: []
+    })
+
+    expect(providerModels["gpt-5.4"].name).toBe("GPT-5.4")
+    expect(providerModels["gpt-5.4"].displayName).toBe("GPT-5.4")
+    expect(providerModels["gpt-5.4"].display_name).toBe("GPT-5.4")
+  })
+
   it("orders provider models by catalog priority before slug fallback", () => {
     const providerModels: Record<string, Record<string, unknown>> = {
       "gpt-5.2-codex": { id: "gpt-5.2-codex" },
