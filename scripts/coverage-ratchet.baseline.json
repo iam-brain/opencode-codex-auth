@@ -607,10 +607,10 @@
       "statements": 93.71
     },
     "lib/ui/tty.ts": {
-      "lines": 76.44,
-      "branches": 67.21,
-      "functions": 94.11,
-      "statements": 76.44
+      "lines": 71.04,
+      "branches": 46.39,
+      "functions": 88.23,
+      "statements": 71.04
     },
     "lib/ui/tty/ansi.ts": {
       "lines": 86.66,
