@@ -1,0 +1,111 @@
+{
+  "models": [
+    {
+      "slug": "gpt-5",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [
+        { "effort": "minimal" },
+        { "effort": "low" },
+        { "effort": "medium" },
+        { "effort": "high" }
+      ]
+    },
+    {
+      "slug": "gpt-5-codex",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [{ "effort": "low" }, { "effort": "medium" }, { "effort": "high" }]
+    },
+    {
+      "slug": "gpt-5-codex-mini",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [{ "effort": "medium" }, { "effort": "high" }]
+    },
+    {
+      "slug": "gpt-5.1",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [{ "effort": "low" }, { "effort": "medium" }, { "effort": "high" }]
+    },
+    {
+      "slug": "gpt-5.1-codex",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [{ "effort": "low" }, { "effort": "medium" }, { "effort": "high" }]
+    },
+    {
+      "slug": "gpt-5.1-codex-max",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [
+        { "effort": "low" },
+        { "effort": "medium" },
+        { "effort": "high" },
+        { "effort": "xhigh" }
+      ]
+    },
+    {
+      "slug": "gpt-5.1-codex-mini",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [{ "effort": "medium" }, { "effort": "high" }]
+    },
+    {
+      "slug": "gpt-5.2",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [
+        { "effort": "low" },
+        { "effort": "medium" },
+        { "effort": "high" },
+        { "effort": "xhigh" }
+      ]
+    },
+    {
+      "slug": "gpt-5.2-codex",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [
+        { "effort": "low" },
+        { "effort": "medium" },
+        { "effort": "high" },
+        { "effort": "xhigh" }
+      ]
+    },
+    {
+      "slug": "gpt-5.3-codex",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [
+        { "effort": "low" },
+        { "effort": "medium" },
+        { "effort": "high" },
+        { "effort": "xhigh" }
+      ]
+    },
+    {
+      "slug": "gpt-5.3-codex-spark",
+      "context_window": 128000,
+      "input_modalities": ["text"],
+      "supported_reasoning_levels": [
+        { "effort": "low" },
+        { "effort": "medium" },
+        { "effort": "high" },
+        { "effort": "xhigh" }
+      ]
+    },
+    {
+      "slug": "gpt-5.4",
+      "context_window": 272000,
+      "input_modalities": ["text", "image"],
+      "supported_reasoning_levels": [
+        { "effort": "low" },
+        { "effort": "medium" },
+        { "effort": "high" },
+        { "effort": "xhigh" }
+      ]
+    }
+  ]
+}

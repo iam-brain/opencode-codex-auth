@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises"
+
 import { describe, expect, it } from "vitest"
 
 import {
@@ -179,6 +181,54 @@ describe("model catalog provider model mapping", () => {
       high: { reasoningEffort: "high" },
       xhigh: { reasoningEffort: "xhigh" }
     })
+  })
+
+  it("replaces existing provider variants with the selected catalog source variants", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.4": makeBaselineModel("gpt-5.4")
+    }
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [
+        {
+          slug: "gpt-5.4",
+          context_window: 272000,
+          input_modalities: ["text", "image"] as const,
+          supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }]
+        }
+      ]
+    })
+
+    expect(providerModels["gpt-5.4"].variants).toEqual({
+      low: { reasoningEffort: "low" },
+      medium: { reasoningEffort: "medium" },
+      high: { reasoningEffort: "high" }
+    })
+  })
+
+  it("supports all variants from the current live catalog snapshot", async () => {
+    const liveCatalogPayload = JSON.parse(
+      await readFile(new URL("./fixtures/live-catalog-current.json", import.meta.url), "utf8")
+    ) as unknown
+    const catalogModels = parseCatalogResponse(liveCatalogPayload)
+    const providerModels: Record<string, Record<string, unknown>> = {}
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels
+    })
+
+    expect(Object.keys(providerModels).sort()).toEqual(catalogModels.map((model) => model.slug).sort())
+
+    for (const model of catalogModels) {
+      const supportedEfforts = (model.supported_reasoning_levels ?? []).flatMap((level) =>
+        typeof level.effort === "string" ? [level.effort] : []
+      )
+      expect(providerModels[model.slug]?.variants).toEqual(
+        Object.fromEntries(supportedEfforts.map((effort) => [effort, { reasoningEffort: effort }]))
+      )
+    }
   })
 
   it("uses richer catalog display names when provided", () => {

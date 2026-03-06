@@ -36,6 +36,11 @@ Remote CI gate notes:
 - Requires authenticated `gh` CLI.
 - Override only for emergency/manual recovery with `RELEASE_SKIP_REMOTE_CI_GATE=1`.
 
+Failure behavior:
+
+- If the GitHub release workflow fails after the tag is pushed, the script may auto-rollback by reverting the tagged commit on the default branch and deleting the remote tag.
+- Auto-rollback is skipped when npm publish already succeeded, publish status is unknown, or the failure happened before the release-workflow phase.
+
 ## Required checks before release
 
 Run this locally before any release command:

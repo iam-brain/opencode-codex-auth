@@ -4,9 +4,23 @@ import path from "node:path"
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { CodexModelCatalogEvent } from "../lib/model-catalog"
+import { applyCodexCatalogToProviderModels } from "../lib/model-catalog"
 
 async function makeCacheDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-model-catalog-"))
+}
+
+function providerVariantKeysFor(
+  catalogModels: Parameters<typeof applyCodexCatalogToProviderModels>[0]["catalogModels"]
+): string[] {
+  const providerModels: Record<string, Record<string, unknown>> = {}
+  applyCodexCatalogToProviderModels({
+    providerModels,
+    catalogModels
+  })
+  const variants = providerModels["gpt-5.4"]?.variants
+  if (!variants || typeof variants !== "object" || Array.isArray(variants)) return []
+  return Object.keys(variants)
 }
 
 describe("model catalog fallback behavior", () => {
@@ -135,6 +149,144 @@ describe("model catalog fallback behavior", () => {
     expect(tokenEvents.some((event) => event.type === "network_fetch_success")).toBe(true)
   })
 
+  it("keeps live model variants source-faithful even when github fallback lacks the model", async () => {
+    const { getCodexModelCatalog } = await import("../lib/model-catalog")
+    const cacheDir = await makeCacheDir()
+    await fs.writeFile(
+      path.join(cacheDir, "codex-models-cache.json"),
+      JSON.stringify(
+        {
+          fetchedAt: 100,
+          source: "github",
+          models: [{ slug: "gpt-5.3-codex", supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }] }]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    )
+
+    const models = await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      cacheDir,
+      forceRefresh: true,
+      fetchImpl: async (url: string | URL | Request) => {
+        const endpoint =
+          typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
+        if (endpoint.includes("/backend-api/codex/models")) {
+          return new Response(
+            JSON.stringify({
+              models: [
+                {
+                  slug: "gpt-5.4",
+                  context_window: 272000,
+                  input_modalities: ["text", "image"],
+                  supported_reasoning_levels: [
+                    { effort: "low" },
+                    { effort: "medium" },
+                    { effort: "high" },
+                    { effort: "xhigh" }
+                  ]
+                }
+              ]
+            }),
+            { status: 200 }
+          )
+        }
+        return new Response(
+          JSON.stringify({
+            models: [{ slug: "gpt-5.3-codex", supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }] }]
+          }),
+          { status: 200 }
+        )
+      }
+    })
+
+    expect(models?.map((model) => model.slug)).toEqual(["gpt-5.4"])
+    expect(models?.[0]?.supported_reasoning_levels?.map((level) => level.effort)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ])
+    expect(providerVariantKeysFor(models)).toEqual(["low", "medium", "high", "xhigh"])
+  })
+
+  it("does not union github fallback variants into a successful live catalog response", async () => {
+    const { getCodexModelCatalog } = await import("../lib/model-catalog")
+    const cacheDir = await makeCacheDir()
+    await fs.writeFile(
+      path.join(cacheDir, "codex-models-cache.json"),
+      JSON.stringify(
+        {
+          fetchedAt: 100,
+          source: "github",
+          models: [
+            {
+              slug: "gpt-5.4",
+              supported_reasoning_levels: [
+                { effort: "low" },
+                { effort: "medium" },
+                { effort: "high" },
+                { effort: "xhigh" }
+              ]
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    )
+
+    const models = await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      cacheDir,
+      forceRefresh: true,
+      fetchImpl: async (url: string | URL | Request) => {
+        const endpoint =
+          typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
+        if (endpoint.includes("/backend-api/codex/models")) {
+          return new Response(
+            JSON.stringify({
+              models: [
+                {
+                  slug: "gpt-5.4",
+                  context_window: 272000,
+                  input_modalities: ["text", "image"],
+                  supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }]
+                }
+              ]
+            }),
+            { status: 200 }
+          )
+        }
+        return new Response(
+          JSON.stringify({
+            models: [
+              {
+                slug: "gpt-5.4",
+                supported_reasoning_levels: [
+                  { effort: "low" },
+                  { effort: "medium" },
+                  { effort: "high" },
+                  { effort: "xhigh" }
+                ]
+              }
+            ]
+          }),
+          { status: 200 }
+        )
+      }
+    })
+
+    expect(models?.map((model) => model.slug)).toEqual(["gpt-5.4"])
+    expect(models?.[0]?.supported_reasoning_levels?.map((level) => level.effort)).toEqual(["low", "medium", "high"])
+    expect(providerVariantKeysFor(models)).toEqual(["low", "medium", "high"])
+  })
+
   it("falls back to the upstream github cache when the network fetch fails", async () => {
     const { getCodexModelCatalog } = await import("../lib/model-catalog")
     const cacheDir = await makeCacheDir()
@@ -179,6 +331,55 @@ describe("model catalog fallback behavior", () => {
     expect(events.some((event) => event.type === "stale_cache_used" && event.reason === "github_cache_fallback")).toBe(
       true
     )
+  })
+
+  it("uses github fallback variants directly when live catalog is unavailable", async () => {
+    const { getCodexModelCatalog } = await import("../lib/model-catalog")
+    const cacheDir = await makeCacheDir()
+    await fs.writeFile(
+      path.join(cacheDir, "codex-models-cache.json"),
+      JSON.stringify(
+        {
+          fetchedAt: 1234,
+          source: "github",
+          models: [
+            {
+              slug: "gpt-5.4",
+              context_window: 272000,
+              input_modalities: ["text", "image"],
+              supported_reasoning_levels: [
+                { effort: "low" },
+                { effort: "medium" },
+                { effort: "high" },
+                { effort: "xhigh" }
+              ]
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    )
+
+    const models = await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      cacheDir,
+      forceRefresh: true,
+      fetchImpl: async () => {
+        throw new Error("network down")
+      }
+    })
+
+    expect(models?.map((model) => model.slug)).toEqual(["gpt-5.4"])
+    expect(models?.[0]?.supported_reasoning_levels?.map((level) => level.effort)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ])
+    expect(providerVariantKeysFor(models)).toEqual(["low", "medium", "high", "xhigh"])
   })
 
   it("returns undefined when neither the endpoint nor github fallback is available", async () => {

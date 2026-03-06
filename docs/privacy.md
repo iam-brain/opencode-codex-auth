@@ -43,6 +43,8 @@
 
 ## External files read/imported (not plugin-owned)
 
+- resolved `<config-root>/openai-codex-accounts.json`
+  - Legacy plugin account file read only during explicit transfer/import flows
 - `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
   - OpenCode provider auth marker/state legacy transfer source
 

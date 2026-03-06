@@ -56,7 +56,7 @@ describe("model catalog fetch and primary cache", () => {
       expect(fetchImpl).toHaveBeenCalledTimes(2)
     })
     expect(result?.map((m) => m.slug)).toEqual(["gpt-5.1-codex-mini", "gpt-5.2-codex", "gpt-5.4-codex"])
-    expect(result?.find((model) => model.slug === "gpt-5.4-codex")?.context_window).toBe(272000)
+    expect(result?.find((model) => model.slug === "gpt-5.4-codex")?.context_window).toBeNull()
   })
 
   it("writes plugin cache into codex-auth and codex-models-cache shard files", async () => {

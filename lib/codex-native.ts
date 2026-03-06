@@ -1,4 +1,5 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
+import type { Config } from "@opencode-ai/sdk"
 import process from "node:process"
 
 import { loadAuthStorage, setAccountCooldown } from "./storage.js"
@@ -12,7 +13,7 @@ import type {
   PromptCacheKeyStrategy
 } from "./config.js"
 import { formatToastMessage } from "./toast.js"
-import { applyCodexCatalogToProviderModels, type CodexModelInfo } from "./model-catalog.js"
+import { applyCodexCatalogToProviderModels, getCodexModelCatalog, type CodexModelInfo } from "./model-catalog.js"
 import { createRequestSnapshots } from "./request-snapshots.js"
 import { resolveCodexOriginator } from "./codex-native/originator.js"
 import { tryOpenUrlInBrowser as openUrlInBrowser } from "./codex-native/browser.js"
@@ -55,7 +56,7 @@ import {
   handleTextCompleteHook
 } from "./codex-native/chat-hooks.js"
 import { createSessionAffinityRuntimeState } from "./codex-native/session-affinity-state.js"
-import { initializeCatalogSync } from "./codex-native/catalog-sync.js"
+import { initializeCatalogSync, selectCatalogAuthCandidate } from "./codex-native/catalog-sync.js"
 import { createOpenAIFetchHandler } from "./codex-native/openai-loader-fetch.js"
 export { browserOpenInvocationFor } from "./codex-native/browser.js"
 export { upsertAccount } from "./codex-native/accounts.js"
@@ -65,6 +66,7 @@ const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const INTERNAL_COLLABORATION_AGENT_HEADER = "x-opencode-collaboration-agent-kind"
 const INTERNAL_CATALOG_SCOPE_HEADER = "x-opencode-catalog-scope-key"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
+const REASONING_VARIANT_KEYS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const
 
 const CODEX_RS_COMPACT_PROMPT = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
 
@@ -162,6 +164,70 @@ export type CodexAuthPluginOptions = {
   headerTransformDebug?: boolean
   collaborationProfileEnabled?: boolean
   orchestratorSubagentsEnabled?: boolean
+}
+
+type ConfigWithProviderVariants = Config & {
+  provider?: Record<
+    string,
+    {
+      models?: Record<
+        string,
+        {
+          variants?: Record<string, Record<string, unknown>>
+        }
+      >
+    }
+  >
+}
+
+function getSupportedReasoningEfforts(model: CodexModelInfo): string[] {
+  return Array.from(
+    new Set(
+      (model.supported_reasoning_levels ?? [])
+        .flatMap((level) => (typeof level.effort === "string" ? [level.effort] : []))
+        .filter((effort): effort is string => effort.length > 0)
+    )
+  )
+}
+
+function buildVariantConfigOverrides(model: CodexModelInfo): Record<string, Record<string, unknown>> | undefined {
+  const supportedEfforts = getSupportedReasoningEfforts(model)
+  if (supportedEfforts.length === 0) return undefined
+
+  return Object.fromEntries(
+    REASONING_VARIANT_KEYS.map((variant) => {
+      if (!supportedEfforts.includes(variant)) {
+        return [variant, { disabled: true }]
+      }
+      return [
+        variant,
+        {
+          reasoningEffort: variant,
+          reasoningSummary: "auto",
+          include: ["reasoning.encrypted_content"]
+        }
+      ]
+    })
+  )
+}
+
+function applyCatalogVariantOverridesToConfig(config: Config, catalogModels: CodexModelInfo[] | undefined): void {
+  if (!catalogModels || catalogModels.length === 0) return
+
+  const nextConfig = config as ConfigWithProviderVariants
+  const provider = (nextConfig.provider ??= {})
+  const openai = (provider.openai ??= {})
+  const models = (openai.models ??= {})
+
+  for (const catalogModel of catalogModels) {
+    const overrides = buildVariantConfigOverrides(catalogModel)
+    if (!overrides) continue
+    const modelEntry = (models[catalogModel.slug] ??= {})
+    modelEntry.variants = {
+      ...(modelEntry.variants ?? {}),
+      ...overrides
+    }
+  }
 }
 
 export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginOptions = {}): Promise<Hooks> {
@@ -291,6 +357,26 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   }
 
   return {
+    async config(config) {
+      try {
+        const catalogAuth = await selectCatalogAuthCandidate(
+          authMode,
+          opts.pidOffsetEnabled === true,
+          opts.rotationStrategy
+        )
+        const catalogModels = await getCodexModelCatalog({
+          accessToken: catalogAuth.accessToken,
+          accountId: catalogAuth.accountId,
+          ...resolveCatalogHeaders(),
+          onEvent: (event) => opts.log?.debug("codex model catalog", event)
+        })
+        applyCatalogVariantOverridesToConfig(config, catalogModels)
+      } catch (error) {
+        if (error instanceof Error) {
+          opts.log?.debug("config variant override failed", { error: error.message })
+        }
+      }
+    },
     auth: {
       provider: "openai",
       async loader(getAuth, provider) {

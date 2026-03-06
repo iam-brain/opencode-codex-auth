@@ -6,6 +6,7 @@
 2. Confirm config exists at the resolved path (`OPENCODE_OPENAI_MULTI_CONFIG_PATH` when set, otherwise exactly one default path: `$XDG_CONFIG_HOME/opencode/codex-config.json` when `XDG_CONFIG_HOME` is set, else `~/.config/opencode/codex-config.json`).
 3. Confirm auth files exist:
    - required runtime store: resolved `<config-root>/codex-accounts.json`
+   - optional legacy transfer source: resolved `<config-root>/openai-codex-accounts.json`
    - optional legacy transfer source: `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
 4. Confirm cache files exist when relevant features were used (files are created on demand):
    - `<config-root>/cache/codex-client-version.json`

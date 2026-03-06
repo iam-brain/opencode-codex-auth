@@ -15,7 +15,6 @@ import {
   DEFAULT_CLIENT_VERSION,
   FETCH_TIMEOUT_MS,
   type GetCodexModelCatalogInput,
-  mergeCatalogModels,
   parseCatalogResponse,
   normalizeSemver
 } from "./shared.js"
@@ -164,11 +163,10 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
         throw new Error("codex models response did not contain usable models")
       }
       await ensureFallbackCaches(true)
-      const mergedModels = mergeCatalogModels(models, githubCacheFallback?.models)
 
       const nextCache = {
         fetchedAt: now,
-        models: mergedModels
+        models
       }
       inMemoryCatalog.set(key, nextCache)
       await writeCatalogToDisk(cacheDir, accountId, nextCache)

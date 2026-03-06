@@ -145,7 +145,7 @@ Legacy import is explicit-only through auth menu transfer.
 
 Source files:
 
-- `~/.config/opencode/openai-codex-accounts.json`
+- resolved `<config-root>/openai-codex-accounts.json` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`)
 - `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
 
 If `codex-accounts.json` exists (including empty accounts), it remains authoritative.

@@ -117,6 +117,7 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - prompt-cache metadata (`lastChecked`, URLs, ETags)
 
 Fetch behavior is best-effort and uses ETag/304 revalidation plus a TTL to limit network traffic.
+Successful live catalog fetches are source-faithful: the account-scoped `/backend-api/codex/models` payload is cached and handed to provider shaping without field-level merging against the GitHub fallback snapshot. The shared GitHub cache is used only when live catalog data is unavailable.
 
 ## Invariants
 

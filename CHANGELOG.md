@@ -25,6 +25,11 @@ All notable changes to this project will be documented in this file.
 - Replaced silent catches with explicit error handling throughout codebase.
 - Reduced read contention and catalog fallback IO in storage paths.
 
+## 1.5.1 - 2026-03-06
+
+- Fixed model catalog shaping to preserve source-faithful live catalog variants, including `gpt-5.4` `xhigh`, instead of field-merging GitHub fallback metadata into successful live responses.
+- Added regression coverage for live-vs-fallback catalog variant behavior and config-variant overrides.
+
 ## 0.3.2 - 2026-02-13
 
 - Refactored `codex-native` into focused sub-modules: auth helpers, OAuth method flows, chat hooks, transform pipeline, state/catalog helpers, loader fetch pipeline.

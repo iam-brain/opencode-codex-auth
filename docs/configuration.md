@@ -135,7 +135,10 @@ Mode-derived runtime defaults when omitted:
 
 ### Model behavior
 
-- Current live Codex catalog shape is the source of truth for model availability.
+- Model availability comes from the selected catalog source for the current account.
+- When a live account-scoped `/backend-api/codex/models` fetch succeeds, the plugin uses that source alone after normalizing, deduplicating, and sorting the catalog response for provider shaping.
+- When live catalog data is unavailable, the plugin falls back to the shared GitHub `models.json` snapshot, normalized through the same catalog parser.
+- The plugin does not field-merge live catalog entries with GitHub fallback entries.
 - As of March 5, 2026, the live `/backend-api/codex/models` payload includes `gpt-5.4`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, and older GPT-5 Codex variants.
 - Actual availability still depends on the authenticated account's live catalog and plan entitlements.
 

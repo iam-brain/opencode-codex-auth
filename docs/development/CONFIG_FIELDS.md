@@ -153,7 +153,7 @@ Path and UI variables used by helpers:
 
 ## Parsing rules
 
-- Boolean env parser accepts only `1|0|true|false`.
+- Boolean env parser accepts `1|0|true|false|yes|no|on|off` (case-insensitive).
 - `OPENCODE_OPENAI_MULTI_DEBUG` and `DEBUG_CODEX_PLUGIN` enable debug only when equal to `1`.
 - `CODEX_OAUTH_CALLBACK_TIMEOUT_MS` values below `60000` are ignored.
 - Grace timeout envs (`CODEX_OAUTH_SERVER_SHUTDOWN_*`) must be numeric and `>= 0`.
