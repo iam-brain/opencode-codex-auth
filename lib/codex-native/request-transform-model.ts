@@ -266,19 +266,27 @@ export function resolvePersonalityForModel(input: {
   return normalizePersonalityKey(input.fallback)
 }
 
-export function applyCodexRuntimeDefaultsToParams(input: {
-  modelOptions: Record<string, unknown>
+export function applyResolvedCodexRuntimeDefaults(input: {
+  options: Record<string, unknown>
+  codexInstructions?: string
+  defaults?: {
+    applyPatchToolType?: string
+    defaultReasoningEffort?: string
+    supportsReasoningSummaries?: boolean
+    reasoningSummaryFormat?: string
+    supportsParallelToolCalls?: boolean
+    defaultVerbosity?: "low" | "medium" | "high"
+    supportsVerbosity?: boolean
+  }
   modelToolCallCapable: boolean | undefined
   thinkingSummariesOverride: boolean | undefined
   verbosityEnabledOverride: boolean | undefined
   verbosityOverride: "default" | "low" | "medium" | "high" | undefined
   preferCodexInstructions: boolean
-  output: ChatParamsOutput
 }): void {
-  const options = input.output.options
-  const modelOptions = input.modelOptions
-  const defaults = readModelRuntimeDefaults(modelOptions)
-  const codexInstructions = asString(modelOptions.codexInstructions)
+  const options = input.options
+  const defaults = input.defaults ?? {}
+  const codexInstructions = asString(input.codexInstructions)
 
   if (codexInstructions && (input.preferCodexInstructions || asString(options.instructions) === undefined)) {
     options.instructions = codexInstructions
@@ -358,4 +366,26 @@ export function applyCodexRuntimeDefaultsToParams(input: {
     const include = asStringArray(options.include) ?? []
     options.include = mergeUnique([...include, "reasoning.encrypted_content"])
   }
+}
+
+export function applyCodexRuntimeDefaultsToParams(input: {
+  modelOptions: Record<string, unknown>
+  modelToolCallCapable: boolean | undefined
+  thinkingSummariesOverride: boolean | undefined
+  verbosityEnabledOverride: boolean | undefined
+  verbosityOverride: "default" | "low" | "medium" | "high" | undefined
+  preferCodexInstructions: boolean
+  output: ChatParamsOutput
+}): void {
+  const modelOptions = input.modelOptions
+  applyResolvedCodexRuntimeDefaults({
+    options: input.output.options,
+    codexInstructions: asString(modelOptions.codexInstructions),
+    defaults: readModelRuntimeDefaults(modelOptions),
+    modelToolCallCapable: input.modelToolCallCapable,
+    thinkingSummariesOverride: input.thinkingSummariesOverride,
+    verbosityEnabledOverride: input.verbosityEnabledOverride,
+    verbosityOverride: input.verbosityOverride,
+    preferCodexInstructions: input.preferCodexInstructions
+  })
 }

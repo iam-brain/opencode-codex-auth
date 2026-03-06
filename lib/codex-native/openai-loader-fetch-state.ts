@@ -37,6 +37,7 @@ export function resolveCatalogScopeKey(auth: {
   const email = normalizeCatalogScopePart(auth.email)?.toLowerCase()
   const plan = normalizeCatalogScopePart(auth.plan)?.toLowerCase()
   if (accountId && email && plan) return `tuple:${accountId}|${email}|${plan}`
+  if (accountId) return `account:${accountId}`
 
   const attemptKey = normalizeCatalogScopePart(auth.selectionTrace?.attemptKey)
   if (attemptKey) return `attempt:${attemptKey}`

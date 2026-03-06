@@ -29,10 +29,11 @@ export async function applyRequestTransformPipeline(input: {
 }): Promise<RequestTransformPipelineResult> {
   const instructionOverride = await applyCatalogInstructionOverrideToRequest({
     request: input.request,
-    enabled: input.spoofMode === "codex",
+    enabled: true,
     catalogModels: input.catalogModels,
     behaviorSettings: input.behaviorSettings,
     fallbackPersonality: input.fallbackPersonality,
+    replaceExistingInstructions: input.spoofMode === "codex",
     preserveOrchestratorInstructions: input.preserveOrchestratorInstructions,
     replaceCodexToolCalls: input.replaceCodexToolCalls
   })

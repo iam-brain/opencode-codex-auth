@@ -1,16 +1,12 @@
-import fs from "node:fs/promises"
-import os from "node:os"
-import path from "node:path"
 import { fetchRemoteText } from "../remote-cache-fetch.js"
-import { isFsErrorCode, readJsonFileBestEffort, writeJsonFileBestEffort } from "../cache-io.js"
+import { readJsonFileBestEffort, writeJsonFileBestEffort } from "../cache-io.js"
 import { withLockedDirectory } from "../cache-lock.js"
 import {
   buildCodexModelsMemoryCacheKey,
   codexAuthModelsCachePath,
   codexModelsCompatShardPath,
   codexModelsMetaPath,
-  codexModelsSharedCachePath,
-  isCodexModelsCacheFileName
+  codexModelsSharedCachePath
 } from "../codex-cache-layout.js"
 import {
   CACHE_TTL_MS,
@@ -27,7 +23,6 @@ import {
   normalizeSemver,
   parseCatalogResponse,
   parseSemver,
-  parseFetchedAtFromUnknown,
   semverFromTag
 } from "./shared.js"
 
@@ -80,7 +75,10 @@ export async function refreshSharedGitHubModelsCache(input: {
   const existingVersion = parseSemver(semverFromTag(existingMeta?.tag))
   const target = parseSemver(targetVersion)
   if (!target) return
-  if (existingVersion && compareSemver(existingVersion, target) >= 0) return
+  if (existingVersion && compareSemver(existingVersion, target) >= 0) {
+    const existingCache = await readCatalogFromGitHubCache(input.cacheDir)
+    if (existingCache) return
+  }
 
   const tag = githubModelsTag(targetVersion)
   const url = githubModelsUrl(targetVersion)
@@ -153,46 +151,15 @@ export async function readCatalogFromDisk(cacheDir: string, accountId?: string):
   })
 }
 
-export async function readCatalogFromOpencodeCache(cacheDir: string): Promise<CodexModelsCache | undefined> {
-  try {
-    const entries = await fs.readdir(cacheDir)
-    const candidates = entries.filter((name) => {
-      return isCodexModelsCacheFileName(name)
-    })
-    if (candidates.length === 0) return undefined
-
-    let best: CodexModelsCache | undefined
-    for (const fileName of candidates) {
-      const parsed = await readJsonFileBestEffort(path.join(cacheDir, fileName))
-      if (!isRecord(parsed)) continue
-      const models = parseCatalogResponse({ models: parsed.models })
-      if (models.length === 0) continue
-      const fetchedAt = typeof parsed.fetchedAt === "number" ? parsed.fetchedAt : 0
-      if (!best || fetchedAt > best.fetchedAt) {
-        best = {
-          fetchedAt,
-          models
-        }
-      }
-    }
-
-    return best
-  } catch (error) {
-    if (!isFsErrorCode(error, "ENOENT")) {
-      // Best effort fallback discovery.
-    }
-    return undefined
-  }
-}
-
-export async function readCatalogFromCodexCliCache(): Promise<CodexModelsCache | undefined> {
-  const file = path.join(os.homedir(), ".codex", "models_cache.json")
-  const parsed = await readJsonFileBestEffort(file)
+export async function readCatalogFromGitHubCache(cacheDir: string): Promise<CodexModelsCache | undefined> {
+  const parsed = await readJsonFileBestEffort(opencodeSharedCachePath(cacheDir))
   if (!isRecord(parsed)) return undefined
+  if (parsed.source !== "github") return undefined
+  if (typeof parsed.fetchedAt !== "number") return undefined
   const models = parseCatalogResponse({ models: parsed.models })
   if (models.length === 0) return undefined
   return {
-    fetchedAt: parseFetchedAtFromUnknown(parsed.fetched_at ?? parsed.fetchedAt),
+    fetchedAt: parsed.fetchedAt,
     models
   }
 }
@@ -242,21 +209,16 @@ export function emitStaleCacheFallback(
   input: GetCodexModelCatalogInput,
   fallback: {
     disk?: CodexModelsCache
-    opencode?: CodexModelsCache
-    codexCli?: CodexModelsCache
+    github?: CodexModelsCache
   }
 ): CodexModelInfo[] | undefined {
   if (fallback.disk) {
     emitEvent(input, { type: "stale_cache_used", reason: "network_fetch_failed" })
     return fallback.disk.models
   }
-  if (fallback.opencode) {
-    emitEvent(input, { type: "stale_cache_used", reason: "opencode_cache_fallback" })
-    return fallback.opencode.models
-  }
-  if (fallback.codexCli) {
-    emitEvent(input, { type: "stale_cache_used", reason: "codex_cli_cache_fallback" })
-    return fallback.codexCli.models
+  if (fallback.github) {
+    emitEvent(input, { type: "stale_cache_used", reason: "github_cache_fallback" })
+    return fallback.github.models
   }
   return undefined
 }

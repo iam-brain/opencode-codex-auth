@@ -10,8 +10,9 @@ describe("codex-native in-vivo instruction replacement", () => {
       personalityText: "Vivo Persona Voice"
     })
 
-    expect(result.preflightInstructions).toBe("Base Vivo Persona Voice")
-    expect(result.outboundInstructions).toBe("Base Vivo Persona Voice")
+    expect(result.preflightInstructions).toBe("OpenCode Host Instructions")
+    expect(result.outboundInstructions).toContain("Base Vivo Persona Voice")
+    expect(result.outboundInstructions).toContain("OpenCode Host Instructions")
     expect(result.outboundInstructions).not.toBe("OpenCode Host Instructions")
     expect(result.outboundUrl).toBe("https://chatgpt.com/backend-api/codex/responses")
     expect(result.outboundOriginator).toMatch(/^codex_/)

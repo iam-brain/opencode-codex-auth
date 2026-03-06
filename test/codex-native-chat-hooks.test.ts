@@ -58,6 +58,54 @@ describe("codex-native chat hooks instruction source order", () => {
     expect(modelOptions.codexInstructions).toBe("Cached template instructions")
   })
 
+  it("ignores catalog-derived model state when pre-auth catalog trust is disabled", async () => {
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {} as Record<string, unknown>
+    }
+
+    await handleChatParamsHook({
+      hookInput: {
+        model: {
+          id: "gpt-5.3-codex",
+          api: { id: "gpt-5.3-codex" },
+          providerID: "openai",
+          instructions: "Model Instructions From Catalog",
+          capabilities: { toolcall: true },
+          options: {
+            codexInstructions: "Catalog instructions",
+            codexRuntimeDefaults: {
+              defaultReasoningEffort: "high",
+              defaultVerbosity: "medium",
+              supportsParallelToolCalls: false
+            }
+          }
+        } as any,
+        message: {}
+      },
+      output: output as any,
+      lastCatalogModels: [
+        {
+          slug: "gpt-5.3-codex",
+          model_messages: {
+            instructions_template: "Cached template instructions"
+          }
+        }
+      ],
+      allowCatalogModelState: false,
+      spoofMode: "codex",
+      collaborationProfileEnabled: false,
+      orchestratorSubagentsEnabled: false
+    })
+
+    expect(output.options.instructions).toBeUndefined()
+    expect(output.options.reasoningEffort).toBeUndefined()
+    expect(output.options.textVerbosity).toBeUndefined()
+    expect(output.options.parallelToolCalls).toBeUndefined()
+  })
+
   it("leaves review subtask agents unchanged", async () => {
     const output = {
       parts: [

@@ -41,6 +41,7 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
   catalogModels: CodexModelInfo[] | undefined
   behaviorSettings: BehaviorSettings | undefined
   fallbackPersonality: PersonalityOption | undefined
+  replaceExistingInstructions?: boolean
   preserveOrchestratorInstructions?: boolean
   replaceCodexToolCalls?: boolean
 }): Promise<{ request: Request; changed: boolean; reason: string }> {
@@ -88,14 +89,23 @@ export async function applyCatalogInstructionOverrideToRequest(input: {
     input.replaceCodexToolCalls === true ? (replaceCodexToolCallsForOpenCode(rendered) ?? rendered) : rendered
 
   const currentInstructions = asString(payload.instructions)
+  const replaceExistingInstructions = input.replaceExistingInstructions !== false
 
   const preserveOrchestratorInstructions = input.preserveOrchestratorInstructions !== false
-  if (preserveOrchestratorInstructions && isOrchestratorInstructions(currentInstructions)) {
+  if (
+    replaceExistingInstructions &&
+    preserveOrchestratorInstructions &&
+    isOrchestratorInstructions(currentInstructions)
+  ) {
     return { request: input.request, changed: false, reason: "orchestrator_instructions_preserved" }
   }
 
   if (currentInstructions === renderedForRequest) {
     return { request: input.request, changed: false, reason: "already_matches" }
+  }
+
+  if (!replaceExistingInstructions && currentInstructions) {
+    return { request: input.request, changed: false, reason: "existing_instructions_preserved" }
   }
 
   const collaborationTail = currentInstructions ? extractCollaborationInstructionTail(currentInstructions) : undefined

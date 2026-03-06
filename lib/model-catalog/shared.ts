@@ -17,10 +17,14 @@ type ModelReasoningLevel = {
   effort?: string | null
 }
 
+type CatalogInputModality = "text" | "audio" | "image" | "video" | "pdf"
+
 export type CodexModelInfo = {
   slug: string
   display_name?: string | null
   priority?: number | null
+  context_window?: number | null
+  input_modalities?: readonly CatalogInputModality[] | null
   model_messages?: ModelMessages | null
   base_instructions?: string | null
   apply_patch_tool_type?: string | null
@@ -85,7 +89,6 @@ export type GetCodexModelCatalogInput = {
 export type ApplyCodexCatalogInput = {
   providerModels: Record<string, Record<string, unknown>>
   catalogModels?: CodexModelInfo[]
-  fallbackModels: readonly string[]
   personality?: PersonalityOption
 }
 
@@ -98,6 +101,7 @@ export const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
 
 const REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"])
 const TEXT_VERBOSITY = new Set(["low", "medium", "high"])
+const INPUT_MODALITIES = new Set<CatalogInputModality>(["text", "audio", "image", "video", "pdf"])
 
 export type GitHubModelsCacheMeta = {
   etag?: string
@@ -152,6 +156,19 @@ export function parseReasoningLevels(value: unknown): ModelReasoningLevel[] | nu
   return out.length > 0 ? out : null
 }
 
+function parseInputModalities(value: unknown): CatalogInputModality[] | null {
+  if (!Array.isArray(value)) return null
+  const out: CatalogInputModality[] = []
+  for (const item of value) {
+    if (typeof item !== "string") continue
+    const normalized = item.trim().toLowerCase()
+    if (INPUT_MODALITIES.has(normalized as CatalogInputModality)) {
+      out.push(normalized as CatalogInputModality)
+    }
+  }
+  return out.length > 0 ? Array.from(new Set(out)) : null
+}
+
 export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
   if (!isRecord(payload)) return []
   const root = payload as CodexModelsResponse
@@ -166,6 +183,9 @@ export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
       slug,
       display_name: typeof item.display_name === "string" ? item.display_name : null,
       priority: typeof item.priority === "number" && Number.isFinite(item.priority) ? item.priority : null,
+      context_window:
+        typeof item.context_window === "number" && Number.isFinite(item.context_window) ? item.context_window : null,
+      input_modalities: parseInputModalities(item.input_modalities),
       model_messages: isRecord(item.model_messages)
         ? {
             instructions_template:
@@ -213,6 +233,51 @@ export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
   }
 
   return Array.from(deduped.values()).sort((a, b) => compareModelSlugs(a.slug, b.slug))
+}
+
+function preferCatalogField<T>(primary: T | null | undefined, fallback: T | null | undefined): T | null {
+  return primary ?? fallback ?? null
+}
+
+export function mergeCatalogModels(
+  primaryModels: readonly CodexModelInfo[],
+  fallbackModels: readonly CodexModelInfo[] | undefined
+): CodexModelInfo[] {
+  if (!fallbackModels || fallbackModels.length === 0) {
+    return [...primaryModels]
+  }
+
+  const fallbackBySlug = new Map(fallbackModels.map((model) => [model.slug, model]))
+  return primaryModels.map((model) => {
+    const fallback = fallbackBySlug.get(model.slug)
+    if (!fallback) return model
+    return {
+      slug: model.slug,
+      display_name: preferCatalogField(model.display_name, fallback.display_name),
+      priority: preferCatalogField(model.priority, fallback.priority),
+      context_window: preferCatalogField(model.context_window, fallback.context_window),
+      input_modalities: preferCatalogField(model.input_modalities, fallback.input_modalities),
+      model_messages: preferCatalogField(model.model_messages, fallback.model_messages),
+      base_instructions: preferCatalogField(model.base_instructions, fallback.base_instructions),
+      apply_patch_tool_type: preferCatalogField(model.apply_patch_tool_type, fallback.apply_patch_tool_type),
+      supported_reasoning_levels: preferCatalogField(
+        model.supported_reasoning_levels,
+        fallback.supported_reasoning_levels
+      ),
+      default_reasoning_level: preferCatalogField(model.default_reasoning_level, fallback.default_reasoning_level),
+      supports_reasoning_summaries: preferCatalogField(
+        model.supports_reasoning_summaries,
+        fallback.supports_reasoning_summaries
+      ),
+      reasoning_summary_format: preferCatalogField(model.reasoning_summary_format, fallback.reasoning_summary_format),
+      supports_parallel_tool_calls: preferCatalogField(
+        model.supports_parallel_tool_calls,
+        fallback.supports_parallel_tool_calls
+      ),
+      support_verbosity: preferCatalogField(model.support_verbosity, fallback.support_verbosity),
+      default_verbosity: preferCatalogField(model.default_verbosity, fallback.default_verbosity)
+    }
+  })
 }
 
 export function parseFetchedAtFromUnknown(value: unknown): number {

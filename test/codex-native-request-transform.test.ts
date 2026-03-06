@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { BehaviorSettings } from "../lib/config.js"
+import type { CodexModelInfo } from "../lib/model-catalog.js"
 import {
   applyPromptCacheKeyOverrideToRequest,
   remapDeveloperMessagesToUserOnRequest,
@@ -8,6 +9,17 @@ import {
   transformOutboundRequestPayload,
   stripReasoningReplayFromRequest
 } from "../lib/codex-native/request-transform"
+
+const RUNTIME_DEFAULT_CATALOG: CodexModelInfo[] = [
+  {
+    slug: "gpt-5.3-codex",
+    default_reasoning_level: "high",
+    supports_reasoning_summaries: true,
+    default_verbosity: "medium",
+    apply_patch_tool_type: "apply_patch",
+    supports_parallel_tool_calls: false
+  }
+]
 
 describe("codex request role remap", () => {
   it("remaps non-permissions developer messages to user", async () => {
@@ -411,6 +423,84 @@ describe("request transform aggregation", () => {
     expect(flex.serviceTier.changed).toBe(true)
     expect(flex.serviceTier.reason).toBe("updated")
     expect(flexBody.service_tier).toBe("flex")
+  })
+
+  it("applies catalog runtime defaults from the authenticated catalog payload", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      catalogModels: RUNTIME_DEFAULT_CATALOG
+    })
+
+    const body = JSON.parse(await transformed.request.text()) as {
+      reasoningEffort?: string
+      reasoningSummary?: string
+      textVerbosity?: string
+      applyPatchToolType?: string
+      parallelToolCalls?: boolean
+      include?: string[]
+    }
+
+    expect(body.reasoningEffort).toBe("high")
+    expect(body.reasoningSummary).toBe("auto")
+    expect(body.textVerbosity).toBe("medium")
+    expect(body.applyPatchToolType).toBe("apply_patch")
+    expect(body.parallelToolCalls).toBe(false)
+    expect(body.include).toEqual(["reasoning.encrypted_content"])
+  })
+
+  it("preserves explicit runtime options when catalog defaults are applied after auth", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        reasoningEffort: "minimal",
+        reasoningSummary: "none",
+        textVerbosity: "high",
+        parallelToolCalls: true,
+        applyPatchToolType: "legacy",
+        include: ["reasoning.encrypted_content"],
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      catalogModels: RUNTIME_DEFAULT_CATALOG
+    })
+
+    const body = JSON.parse(await transformed.request.text()) as {
+      reasoningEffort?: string
+      reasoningSummary?: string
+      textVerbosity?: string
+      applyPatchToolType?: string
+      parallelToolCalls?: boolean
+      include?: string[]
+    }
+
+    expect(body.reasoningEffort).toBe("minimal")
+    expect(body.reasoningSummary).toBeUndefined()
+    expect(body.textVerbosity).toBe("high")
+    expect(body.applyPatchToolType).toBe("legacy")
+    expect(body.parallelToolCalls).toBe(true)
+    expect(body.include).toEqual(["reasoning.encrypted_content"])
   })
 })
 

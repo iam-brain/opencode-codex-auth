@@ -12,7 +12,7 @@ import type {
   PromptCacheKeyStrategy
 } from "./config.js"
 import { formatToastMessage } from "./toast.js"
-import type { CodexModelInfo } from "./model-catalog.js"
+import { applyCodexCatalogToProviderModels, type CodexModelInfo } from "./model-catalog.js"
 import { createRequestSnapshots } from "./request-snapshots.js"
 import { resolveCodexOriginator } from "./codex-native/originator.js"
 import { tryOpenUrlInBrowser as openUrlInBrowser } from "./codex-native/browser.js"
@@ -57,7 +57,6 @@ import {
 import { createSessionAffinityRuntimeState } from "./codex-native/session-affinity-state.js"
 import { initializeCatalogSync } from "./codex-native/catalog-sync.js"
 import { createOpenAIFetchHandler } from "./codex-native/openai-loader-fetch.js"
-import { STATIC_FALLBACK_MODELS } from "./codex-native/static-fallback-models.js"
 export { browserOpenInvocationFor } from "./codex-native/browser.js"
 export { upsertAccount } from "./codex-native/accounts.js"
 export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from "./codex-native/oauth-utils.js"
@@ -211,8 +210,47 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     captureBodies: opts.headerSnapshotBodies === true,
     log: opts.log
   })
-  let lastCatalogModels: CodexModelInfo[] | undefined
+  const catalogModelsByScope = new Map<string, CodexModelInfo[]>()
+  let activeCatalogScopeKey: string | undefined
+  let activeCatalogModels: CodexModelInfo[] | undefined
+  let providerModelsForCatalogSync: Record<string, Record<string, unknown>> | undefined
   const quotaFetchCooldownByIdentity = new Map<string, number>()
+  const activateCatalogScope = (scopeKey: string | undefined): void => {
+    const normalizedScopeKey = scopeKey?.trim() || undefined
+    activeCatalogScopeKey = normalizedScopeKey
+    activeCatalogModels = normalizedScopeKey ? catalogModelsByScope.get(normalizedScopeKey) : undefined
+    if (!providerModelsForCatalogSync) return
+    applyCodexCatalogToProviderModels({
+      providerModels: providerModelsForCatalogSync,
+      catalogModels: activeCatalogModels,
+      personality: opts.personality
+    })
+  }
+  const setCatalogModels = (scopeKey: string | undefined, models: CodexModelInfo[] | undefined): void => {
+    const normalizedScopeKey = scopeKey?.trim() || undefined
+    if (normalizedScopeKey) {
+      if (models && models.length > 0) {
+        catalogModelsByScope.set(normalizedScopeKey, models)
+      } else {
+        catalogModelsByScope.delete(normalizedScopeKey)
+      }
+    }
+    if (normalizedScopeKey !== activeCatalogScopeKey) return
+    activeCatalogModels = models
+    if (!providerModelsForCatalogSync) return
+    applyCodexCatalogToProviderModels({
+      providerModels: providerModelsForCatalogSync,
+      catalogModels: activeCatalogModels,
+      personality: opts.personality
+    })
+  }
+  const getCatalogModels = (scopeKey?: string): CodexModelInfo[] | undefined => {
+    const normalizedScopeKey = scopeKey?.trim()
+    if (normalizedScopeKey) {
+      return catalogModelsByScope.get(normalizedScopeKey)
+    }
+    return activeCatalogModels
+  }
   const showToast = async (
     message: string,
     variant: "info" | "success" | "warning" | "error" = "info",
@@ -276,20 +314,17 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
             missingGraceMs: SESSION_AFFINITY_MISSING_GRACE_MS,
             log: opts.log
           })
+        const providerModels = provider.models as Record<string, Record<string, unknown>>
+        providerModelsForCatalogSync = providerModels
 
         const syncCatalogFromAuth = await initializeCatalogSync({
           authMode,
           pidOffsetEnabled: opts.pidOffsetEnabled === true,
           rotationStrategy: opts.rotationStrategy,
           resolveCatalogHeaders,
-          providerModels: provider.models as Record<string, Record<string, unknown>>,
-          fallbackModels: STATIC_FALLBACK_MODELS,
-          personality: opts.personality,
           log: opts.log,
-          getLastCatalogModels: () => lastCatalogModels,
-          setLastCatalogModels: (models) => {
-            lastCatalogModels = models
-          }
+          setCatalogModels,
+          activateCatalogScope
         })
 
         const fetch = createOpenAIFetchHandler({
@@ -315,7 +350,9 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
             hybridSessionState,
             persistSessionAffinityState
           },
-          getCatalogModels: () => lastCatalogModels,
+          getCatalogModels,
+          getActiveCatalogScopeKey: () => activeCatalogScopeKey,
+          activateCatalogScope,
           syncCatalogFromAuth,
           setCooldown: async (idKey, cooldownUntil) => {
             await setAccountCooldown(undefined, idKey, cooldownUntil, authMode)
@@ -365,7 +402,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       await handleChatParamsHook({
         hookInput,
         output,
-        lastCatalogModels,
+        lastCatalogModels: activeCatalogModels,
+        allowCatalogModelState: activeCatalogScopeKey === undefined,
         behaviorSettings: opts.behaviorSettings,
         fallbackPersonality: opts.personality,
         spoofMode,

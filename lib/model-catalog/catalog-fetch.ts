@@ -4,9 +4,8 @@ import {
   emitEvent,
   emitStaleCacheFallback,
   isFresh,
-  readCatalogFromCodexCliCache,
   readCatalogFromDisk,
-  readCatalogFromOpencodeCache,
+  readCatalogFromGitHubCache,
   refreshSharedGitHubModelsCache,
   writeCatalogToDisk
 } from "./cache-helpers.js"
@@ -16,6 +15,7 @@ import {
   DEFAULT_CLIENT_VERSION,
   FETCH_TIMEOUT_MS,
   type GetCodexModelCatalogInput,
+  mergeCatalogModels,
   parseCatalogResponse,
   normalizeSemver
 } from "./shared.js"
@@ -43,6 +43,10 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   const fetchImpl = input.fetchImpl ?? fetch
   const accessToken = input.accessToken?.trim()
   const targetClientVersion = normalizeSemver(input.clientVersion) ?? normalizeSemver(input.versionHeader)
+  const githubFallbackVersion =
+    normalizeSemver(normalizeClientVersion(input.clientVersion, input.versionHeader)) ??
+    normalizeSemver(DEFAULT_CLIENT_VERSION) ??
+    DEFAULT_CLIENT_VERSION
   const defaultGithubModelsRefresh =
     Boolean(accessToken) && input.fetchImpl === undefined && targetClientVersion !== undefined
   const shouldRefreshGithubModelsCache = input.refreshGithubModelsCache ?? defaultGithubModelsRefresh
@@ -71,25 +75,35 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
     return disk.models
   }
 
-  let opencodeCacheFallback: { fetchedAt: number; models: CodexModelInfo[] } | undefined
-  let codexCliCacheFallback: { fetchedAt: number; models: CodexModelInfo[] } | undefined
+  let githubCacheFallback: { fetchedAt: number; models: CodexModelInfo[] } | undefined
 
-  const ensureFallbackCaches = async (): Promise<void> => {
-    if (opencodeCacheFallback !== undefined || codexCliCacheFallback !== undefined) return
-    opencodeCacheFallback = await readCatalogFromOpencodeCache(cacheDir)
-    codexCliCacheFallback = await readCatalogFromCodexCliCache()
+  const ensureFallbackCaches = async (refreshGithub = false): Promise<void> => {
+    if (!githubCacheFallback) {
+      githubCacheFallback = await readCatalogFromGitHubCache(cacheDir)
+    }
+    if (refreshGithub) {
+      await refreshSharedGitHubModelsCache({
+        cacheDir,
+        targetClientVersion: githubFallbackVersion,
+        now,
+        fetchImpl
+      })
+      githubCacheFallback = (await readCatalogFromGitHubCache(cacheDir)) ?? githubCacheFallback
+    }
   }
 
   if (!accessToken) {
     await ensureFallbackCaches()
+    if (!githubCacheFallback) {
+      await ensureFallbackCaches(true)
+    }
     if (disk) {
       emitEvent(input, { type: "stale_cache_used", reason: "missing_access_token" })
       inMemoryCatalog.set(key, disk)
       return disk.models
     }
     const stale = emitStaleCacheFallback(input, {
-      opencode: opencodeCacheFallback,
-      codexCli: codexCliCacheFallback
+      github: githubCacheFallback
     })
     if (stale) {
       inMemoryCatalog.set(key, {
@@ -149,10 +163,12 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
       if (models.length === 0) {
         throw new Error("codex models response did not contain usable models")
       }
+      await ensureFallbackCaches(true)
+      const mergedModels = mergeCatalogModels(models, githubCacheFallback?.models)
 
       const nextCache = {
         fetchedAt: now,
-        models
+        models: mergedModels
       }
       inMemoryCatalog.set(key, nextCache)
       await writeCatalogToDisk(cacheDir, accountId, nextCache)
@@ -161,10 +177,12 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
     } catch (error) {
       emitEvent(input, { type: "network_fetch_failed", reason: deriveReason(error) })
       await ensureFallbackCaches()
+      if (!githubCacheFallback) {
+        await ensureFallbackCaches(true)
+      }
       const stale = emitStaleCacheFallback(input, {
         disk,
-        opencode: opencodeCacheFallback,
-        codexCli: codexCliCacheFallback
+        github: githubCacheFallback
       })
       if (stale) {
         inMemoryCatalog.set(key, {

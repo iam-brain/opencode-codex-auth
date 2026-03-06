@@ -10,7 +10,6 @@ npm test
 npm run build
 npm run lint
 npm run test:anti-mock
-npm run check:file-size
 npm run check:coverage-ratchet
 npm run check:docs
 npm run verify
@@ -18,7 +17,7 @@ npm run verify
 
 `npm run verify` is the pre-release gate.
 
-It now includes strict Biome linting + format checks (including typed promise-safety rules), anti-mock policy checks, coverage ratcheting, file-size caps, docs drift checks, Node ESM regression checks (source + dist import specifiers), and a built CLI smoke run.
+It now includes strict Biome linting + format checks (including typed promise-safety rules), anti-mock policy checks, coverage ratcheting, docs drift checks, Node ESM regression checks (source + dist import specifiers), and a built CLI smoke run.
 
 ## Quality policy gates
 
@@ -28,8 +27,6 @@ It now includes strict Biome linting + format checks (including typed promise-sa
   - Enforces boundary-only mock policy.
   - No new `vi.doMock`/`vi.mock`/direct `vi.stubGlobal` usage beyond the tracked baseline in `scripts/test-mocking-allowlist.json`.
   - Shared global stub seam lives in `test/helpers/mock-policy.ts`.
-- `npm run check:file-size`
-  - Enforces source/test line-count caps with transitional allowlists in `scripts/file-size-allowlist.json`.
 - `npm run check:coverage-ratchet`
   - Enforces global coverage floor and prevents touched-file coverage regressions against `scripts/coverage-ratchet.baseline.json`.
   - Uses `regressionTolerancePct: 1` from `scripts/coverage-ratchet.config.json` when comparing touched files to baseline.

@@ -12,7 +12,7 @@ import { resolveCodexOriginator } from "./originator.js"
 import { buildProjectPromptCacheKey } from "../prompt-cache-key.js"
 import { persistRateLimitSnapshotFromResponse } from "./rate-limit-snapshots.js"
 import { assertAllowedOutboundUrl, rewriteUrl } from "./request-routing.js"
-import { applyRequestTransformPipeline } from "./request-transform-pipeline.js"
+import { applyRequestTransformPipeline, type RequestTransformPipelineResult } from "./request-transform-pipeline.js"
 import { type OutboundRequestPayloadTransformResult, transformOutboundRequestPayload } from "./request-transform.js"
 import type { SessionAffinityRuntimeState } from "./session-affinity-state.js"
 import { scheduleQuotaRefresh } from "./openai-loader-fetch-quota.js"
@@ -47,8 +47,17 @@ export type CreateOpenAIFetchHandlerInput = {
   internalCollaborationAgentHeader?: string
   requestSnapshots: SnapshotRecorder
   sessionAffinityState: SessionAffinityRuntimeState
-  getCatalogModels: () => CodexModelInfo[] | undefined
-  syncCatalogFromAuth: (auth: { accessToken?: string; accountId?: string }) => Promise<CodexModelInfo[] | undefined>
+  getCatalogModels: (scopeKey?: string) => CodexModelInfo[] | undefined
+  getActiveCatalogScopeKey?: () => string | undefined
+  activateCatalogScope?: (scopeKey: string | undefined) => void
+  syncCatalogFromAuth: (auth: {
+    accessToken?: string
+    accountId?: string
+    identityKey?: string
+    email?: string
+    plan?: string
+    selectionTrace?: { attemptKey?: string }
+  }) => Promise<CodexModelInfo[] | undefined>
   setCooldown: (idKey: string, cooldownUntil: number) => Promise<void>
   showToast: (message: string, variant?: "info" | "success" | "warning" | "error", quietMode?: boolean) => Promise<void>
 }
@@ -126,22 +135,12 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
     if (outbound.headers.has(internalCollaborationAgentHeader)) {
       outbound.headers.delete(internalCollaborationAgentHeader)
     }
-
-    const transformed = await applyRequestTransformPipeline({
-      request: outbound,
-      spoofMode: input.spoofMode,
-      remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
-      catalogModels: input.getCatalogModels(),
-      behaviorSettings: input.behaviorSettings,
-      fallbackPersonality: input.personality,
-      preserveOrchestratorInstructions: collaborationAgentKind === "orchestrator",
-      replaceCodexToolCalls: input.spoofMode === "codex"
-    })
-    outbound = transformed.request
-    const isSubagentRequest = transformed.isSubagentRequest
+    const subagentHeader = outbound.headers.get("x-openai-subagent")?.trim()
+    const isSubagentRequest = Boolean(subagentHeader)
 
     let selectedIdentityKey: string | undefined
     let selectedAuthForQuota: { access: string; accountId?: string; identityKey?: string } | undefined
+    let selectedCatalogModels: CodexModelInfo[] | undefined
     const promptCacheKeyStrategy = input.promptCacheKeyStrategy ?? "default"
     const promptCacheKeyOverride =
       promptCacheKeyStrategy === "project"
@@ -150,42 +149,6 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
             spoofMode: input.spoofMode
           })
         : undefined
-
-    const initialPayloadTransform: OutboundRequestPayloadTransformResult = await transformOutboundRequestPayload({
-      request: outbound,
-      stripReasoningReplayEnabled: true,
-      remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
-      compatInputSanitizerEnabled: input.compatInputSanitizerEnabled,
-      promptCacheKeyOverrideEnabled: promptCacheKeyStrategy === "project",
-      promptCacheKeyOverride,
-      behaviorSettings: input.behaviorSettings
-    })
-    outbound = initialPayloadTransform.request
-
-    if (input.headerTransformDebug) {
-      await input.requestSnapshots.captureRequest("after-header-transform", outbound, {
-        spoofMode: input.spoofMode,
-        instructionsOverridden: transformed.instructionOverride.changed,
-        instructionOverrideReason: transformed.instructionOverride.reason,
-        serviceTierOverridden: initialPayloadTransform.serviceTier.changed,
-        serviceTierOverrideReason: initialPayloadTransform.serviceTier.reason,
-        ...(initialPayloadTransform.serviceTier.serviceTier
-          ? { serviceTier: initialPayloadTransform.serviceTier.serviceTier }
-          : {}),
-        developerMessagesRemapped: initialPayloadTransform.developerRoleRemap.changed,
-        developerMessageRemapReason: initialPayloadTransform.developerRoleRemap.reason,
-        developerMessageRemapCount: initialPayloadTransform.developerRoleRemap.remappedCount,
-        developerMessagePreservedCount: initialPayloadTransform.developerRoleRemap.preservedCount,
-        ...(isSubagentRequest ? { subagent: transformed.subagentHeader } : {})
-      })
-    }
-
-    if (initialPayloadTransform.replay.changed) {
-      input.log?.debug("reasoning replay stripped", {
-        removedPartCount: initialPayloadTransform.replay.removedPartCount,
-        removedFieldCount: initialPayloadTransform.replay.removedFieldCount
-      })
-    }
 
     await input.requestSnapshots.captureRequest("before-auth", outbound, { spoofMode: input.spoofMode })
 
@@ -208,9 +171,14 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         })
 
         const now = Date.now()
-        const currentCatalog = input.getCatalogModels()
-        const shouldAwaitCatalog = input.spoofMode === "codex" && (!currentCatalog || currentCatalog.length === 0)
         const catalogScopeKey = resolveCatalogScopeKey(auth)
+        const cachedCatalog = input.getCatalogModels(catalogScopeKey)
+        if (input.getActiveCatalogScopeKey?.() !== catalogScopeKey) {
+          input.activateCatalogScope?.(catalogScopeKey)
+        }
+
+        let currentCatalog = cachedCatalog
+        const shouldAwaitCatalog = !currentCatalog || currentCatalog.length === 0
         const catalogSyncState = getCatalogSyncState(catalogSyncByScope, catalogScopeKey)
         const refreshRetryMs =
           catalogSyncState.lastFailureAt > 0 ? CATALOG_REFRESH_FAILURE_RETRY_MS : CATALOG_REFRESH_TTL_MS
@@ -221,7 +189,14 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           if (!catalogSyncState.inFlight) {
             catalogSyncState.lastAttemptAt = now
             const syncPromise = input
-              .syncCatalogFromAuth({ accessToken: auth.access, accountId: auth.accountId })
+              .syncCatalogFromAuth({
+                accessToken: auth.access,
+                accountId: auth.accountId,
+                identityKey: auth.identityKey,
+                email: auth.email,
+                plan: auth.plan,
+                selectionTrace: auth.selectionTrace
+              })
               .then(() => {
                 catalogSyncState.lastFailureAt = 0
               })
@@ -243,6 +218,8 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         if (shouldAwaitCatalog && catalogSyncState.inFlight) {
           await catalogSyncState.inFlight
         }
+        currentCatalog = input.getCatalogModels(catalogScopeKey)
+        selectedCatalogModels = currentCatalog
 
         selectedIdentityKey = auth.identityKey
         selectedAuthForQuota = {
@@ -267,7 +244,59 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       maxRedirects: 3,
       showToast: input.showToast,
       onAttemptRequest: async ({ attempt, maxAttempts, attemptReasonCode, request, auth, sessionKey }) => {
-        await input.requestSnapshots.captureRequest("outbound-attempt", request, {
+        const transformed: RequestTransformPipelineResult = await applyRequestTransformPipeline({
+          request,
+          spoofMode: input.spoofMode,
+          remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
+          catalogModels: selectedCatalogModels,
+          behaviorSettings: input.behaviorSettings,
+          fallbackPersonality: input.personality,
+          preserveOrchestratorInstructions: collaborationAgentKind === "orchestrator",
+          replaceCodexToolCalls: input.spoofMode === "codex"
+        })
+
+        const payloadTransform: OutboundRequestPayloadTransformResult = await transformOutboundRequestPayload({
+          request: transformed.request,
+          stripReasoningReplayEnabled: true,
+          remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
+          compatInputSanitizerEnabled: input.compatInputSanitizerEnabled,
+          promptCacheKeyOverrideEnabled: promptCacheKeyStrategy === "project",
+          promptCacheKeyOverride,
+          catalogModels: selectedCatalogModels,
+          behaviorSettings: input.behaviorSettings
+        })
+
+        if (input.headerTransformDebug) {
+          await input.requestSnapshots.captureRequest("after-header-transform", payloadTransform.request, {
+            spoofMode: input.spoofMode,
+            instructionsOverridden: transformed.instructionOverride.changed,
+            instructionOverrideReason: transformed.instructionOverride.reason,
+            serviceTierOverridden: payloadTransform.serviceTier.changed,
+            serviceTierOverrideReason: payloadTransform.serviceTier.reason,
+            ...(payloadTransform.serviceTier.serviceTier
+              ? { serviceTier: payloadTransform.serviceTier.serviceTier }
+              : {}),
+            developerMessagesRemapped: payloadTransform.developerRoleRemap.changed,
+            developerMessageRemapReason: payloadTransform.developerRoleRemap.reason,
+            developerMessageRemapCount: payloadTransform.developerRoleRemap.remappedCount,
+            developerMessagePreservedCount: payloadTransform.developerRoleRemap.preservedCount,
+            ...(isSubagentRequest ? { subagent: transformed.subagentHeader } : {})
+          })
+        }
+
+        if (payloadTransform.replay.changed) {
+          input.log?.debug("reasoning replay stripped", {
+            removedPartCount: payloadTransform.replay.removedPartCount,
+            removedFieldCount: payloadTransform.replay.removedFieldCount
+          })
+        }
+
+        await input.requestSnapshots.captureRequest("after-sanitize", payloadTransform.request, {
+          spoofMode: input.spoofMode,
+          sanitized: payloadTransform.compatSanitizer.changed
+        })
+
+        await input.requestSnapshots.captureRequest("outbound-attempt", payloadTransform.request, {
           attempt: attempt + 1,
           maxAttempts,
           attemptReasonCode,
@@ -276,13 +305,13 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           accountLabel: auth.accountLabel,
           instructionsOverridden: transformed.instructionOverride.changed,
           instructionOverrideReason: transformed.instructionOverride.reason,
-          developerMessagesRemapped: initialPayloadTransform.developerRoleRemap.changed,
-          developerMessageRemapReason: initialPayloadTransform.developerRoleRemap.reason,
-          developerMessageRemapCount: initialPayloadTransform.developerRoleRemap.remappedCount,
-          developerMessagePreservedCount: initialPayloadTransform.developerRoleRemap.preservedCount,
-          promptCacheKeyOverridden: initialPayloadTransform.promptCacheKey.changed,
+          developerMessagesRemapped: payloadTransform.developerRoleRemap.changed,
+          developerMessageRemapReason: payloadTransform.developerRoleRemap.reason,
+          developerMessageRemapCount: payloadTransform.developerRoleRemap.remappedCount,
+          developerMessagePreservedCount: payloadTransform.developerRoleRemap.preservedCount,
+          promptCacheKeyOverridden: payloadTransform.promptCacheKey.changed,
           promptCacheKeyOverrideReason:
-            promptCacheKeyStrategy === "project" ? initialPayloadTransform.promptCacheKey.reason : "default_strategy",
+            promptCacheKeyStrategy === "project" ? payloadTransform.promptCacheKey.reason : "default_strategy",
           ...(input.headerTransformDebug === true && auth.selectionTrace
             ? {
                 selectionStrategy: auth.selectionTrace.strategy,
@@ -310,7 +339,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
             : null)
         })
 
-        return request
+        return payloadTransform.request
       },
       onAttemptResponse: async ({ attempt, maxAttempts, attemptReasonCode, response, auth, sessionKey }) => {
         await input.requestSnapshots.captureResponse("outbound-response", response, {
@@ -324,17 +353,8 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       }
     })
 
-    if (initialPayloadTransform.compatSanitizer.changed) {
-      input.log?.debug("compat input sanitizer applied", { mode: input.spoofMode })
-    }
-
-    await input.requestSnapshots.captureRequest("after-sanitize", initialPayloadTransform.request, {
-      spoofMode: input.spoofMode,
-      sanitized: initialPayloadTransform.compatSanitizer.changed
-    })
-
     try {
-      assertAllowedOutboundUrl(new URL(initialPayloadTransform.request.url))
+      assertAllowedOutboundUrl(new URL(outbound.url))
     } catch (error) {
       if (isPluginFatalError(error)) {
         return toSyntheticErrorResponse(error)
@@ -351,7 +371,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
 
     let response: Response
     try {
-      response = await orchestrator.execute(initialPayloadTransform.request)
+      response = await orchestrator.execute(outbound)
     } catch (error) {
       if (isPluginFatalError(error)) {
         input.log?.debug("fatal auth/error response", {

@@ -54,7 +54,6 @@ npm run verify
 - `npm run test:anti-mock`
 - `npm run test:coverage`
 - `npm run check:coverage-ratchet`
-- `npm run check:file-size`
 - `npm run check:docs`
 - `npm run build`
 - `npm run check:dist-esm-imports`

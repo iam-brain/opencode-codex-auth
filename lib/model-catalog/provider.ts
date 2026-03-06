@@ -10,6 +10,23 @@ import {
   type PersonalityOption
 } from "./shared.js"
 
+const DEFAULT_OPENAI_NPM = "@ai-sdk/openai"
+const DEFAULT_OPENAI_API_URL = "https://chatgpt.com/backend-api/codex"
+const DEFAULT_OUTPUT_TOKEN_LIMIT = 128_000
+const DEFAULT_OUTPUT_CAPABILITIES = {
+  text: true,
+  audio: false,
+  image: false,
+  video: false,
+  pdf: false
+}
+const DEFAULT_INPUT_CAPABILITIES = {
+  text: true,
+  audio: false,
+  image: false,
+  video: false,
+  pdf: false
+}
 const UNRESOLVED_TEMPLATE_MARKER_REGEX = /\{\{\s*[^}]+\s*\}\}/
 const STALE_BRIDGE_MARKERS = [
   /multi_tool_use\.parallel/i,
@@ -17,12 +34,30 @@ const STALE_BRIDGE_MARKERS = [
   /functions\.(read|exec_command|write_stdin|apply_patch|edit|grep|glob|list)\b/i,
   /recipient_name\s*[:=]/i
 ]
-const BASELINE_PROVIDER_MODEL_SLUG_REGEX = /^gpt-(5(?:[.-].+)?|oss-(?:120b|20b))$/i
 
-function cloneModelTemplate(template: Record<string, unknown>, slug: string): Record<string, unknown> {
-  const cloned = { ...template }
-  setModelIdentityFields(cloned, slug)
-  return cloned
+type ProviderTransport = {
+  providerID: string
+  apiUrl: string
+  apiNpm: string
+  status: string
+  headers: Record<string, string>
+}
+
+type CapabilityMap = typeof DEFAULT_INPUT_CAPABILITIES
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined
+  return value as Record<string, unknown>
+}
+
+function asString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function asFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
 }
 
 function formatModelDisplayNameFromSlug(slug: string): string {
@@ -48,56 +83,135 @@ function formatModelDisplayNameFromSlug(slug: string): string {
 }
 
 function isRawCatalogSlugDisplayName(slug: string, displayName: string): boolean {
-  return displayName.trim() === slug.trim()
+  return displayName.trim().toLowerCase() === slug.trim().toLowerCase()
 }
 
-function getExistingDisplayName(model: Record<string, unknown>): string | undefined {
-  const candidates: string[] = []
-  for (const key of ["displayName", "display_name", "name"]) {
-    const value = model[key]
-    if (typeof value !== "string") continue
-    const trimmed = value.trim()
-    if (trimmed) candidates.push(trimmed)
-  }
-  return candidates[0]
-}
-
-function getBestExistingDisplayName(slug: string, model: Record<string, unknown>): string | undefined {
-  const candidates: string[] = []
-  for (const key of ["displayName", "display_name", "name"]) {
-    const value = model[key]
-    if (typeof value !== "string") continue
-    const trimmed = value.trim()
-    if (trimmed) candidates.push(trimmed)
-  }
-  if (candidates.length === 0) return undefined
-  return candidates.find((candidate) => !isRawCatalogSlugDisplayName(slug, candidate)) ?? candidates[0]
-}
-
-function resolveDisplayName(slug: string, model: Record<string, unknown>, catalogDisplayName?: string | null): string {
+function resolveDisplayName(slug: string, catalogDisplayName?: string | null): string {
   const trimmed = catalogDisplayName?.trim()
-  if (trimmed && trimmed.length > 0) {
-    const existing = getBestExistingDisplayName(slug, model)
-    if (existing && isRawCatalogSlugDisplayName(slug, trimmed) && existing.trim() !== trimmed) {
-      return existing
-    }
-    return trimmed
-  }
-  return getExistingDisplayName(model) ?? formatModelDisplayNameFromSlug(slug)
+  if (!trimmed) return formatModelDisplayNameFromSlug(slug)
+  if (isRawCatalogSlugDisplayName(slug, trimmed)) return formatModelDisplayNameFromSlug(slug)
+  return trimmed
 }
 
-function setModelIdentityFields(
-  model: Record<string, unknown>,
-  slug: string,
-  catalogDisplayName?: string | null
-): void {
-  const display = resolveDisplayName(slug, model, catalogDisplayName)
+function resolveProviderTransport(
+  providerModels: Record<string, Record<string, unknown>>,
+  existingModel?: Record<string, unknown>
+): ProviderTransport {
+  const source = existingModel ?? Object.values(providerModels)[0] ?? {}
+  const api = asRecord(source.api)
 
-  for (const key of ["id", "slug", "model"]) {
-    model[key] = slug
+  return {
+    providerID: asString(source.providerID) ?? "openai",
+    apiUrl: asString(api?.url) ?? DEFAULT_OPENAI_API_URL,
+    apiNpm: asString(api?.npm) ?? DEFAULT_OPENAI_NPM,
+    status: asString(source.status) ?? "active",
+    headers: Object.fromEntries(
+      Object.entries(asRecord(source.headers) ?? {}).filter((entry): entry is [string, string] => {
+        return typeof entry[1] === "string"
+      })
+    )
   }
-  for (const key of ["name", "displayName", "display_name"]) {
-    model[key] = display
+}
+
+function resolveFamily(slug: string): string {
+  if (slug.includes("codex")) return "gpt-codex"
+  if (slug.startsWith("gpt-")) return "gpt-5"
+  if (slug.startsWith("o")) return "o-series"
+  return "openai"
+}
+
+function readCapabilityMap(value: unknown, fallback: CapabilityMap): CapabilityMap {
+  const source = asRecord(value)
+  return {
+    text: source?.text !== false,
+    audio: source?.audio === true,
+    image: source?.image === true,
+    video: source?.video === true,
+    pdf: source?.pdf === true
+  }
+}
+
+function buildInputCapabilities(model: CodexModelInfo): CapabilityMap {
+  const modalities = new Set(model.input_modalities ?? ["text"])
+  return {
+    text: modalities.has("text"),
+    audio: modalities.has("audio"),
+    image: modalities.has("image"),
+    video: modalities.has("video"),
+    pdf: modalities.has("pdf")
+  }
+}
+
+function buildVariants(model: CodexModelInfo): Record<string, Record<string, unknown>> {
+  const efforts = Array.from(
+    new Set(
+      (model.supported_reasoning_levels ?? [])
+        .map((level) => normalizeReasoningEffort(level.effort))
+        .filter((value): value is NonNullable<typeof value> => value !== undefined)
+    )
+  )
+
+  return Object.fromEntries(efforts.map((effort) => [effort, { reasoningEffort: effort }]))
+}
+
+function buildProviderModelFromCatalog(
+  model: CodexModelInfo,
+  providerModels: Record<string, Record<string, unknown>>,
+  existingModel?: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  const display = resolveDisplayName(model.slug, model.display_name)
+  const transport = resolveProviderTransport(providerModels, existingModel)
+  const inputCapabilities = buildInputCapabilities(model)
+  const outputCapabilities = readCapabilityMap(undefined, DEFAULT_OUTPUT_CAPABILITIES)
+  const attachment =
+    inputCapabilities.audio || inputCapabilities.image || inputCapabilities.video || inputCapabilities.pdf
+  const hasReasoning =
+    (model.supported_reasoning_levels?.length ?? 0) > 0 ||
+    normalizeReasoningEffort(model.default_reasoning_level) !== undefined ||
+    model.supports_reasoning_summaries === true
+  const contextWindow = asFiniteNumber(model.context_window)
+  if (contextWindow === undefined) return undefined
+  const outputLimit = DEFAULT_OUTPUT_TOKEN_LIMIT
+  const variants = buildVariants(model)
+
+  return {
+    id: model.slug,
+    slug: model.slug,
+    model: model.slug,
+    name: display,
+    displayName: display,
+    display_name: display,
+    providerID: transport.providerID,
+    api: {
+      id: model.slug,
+      url: transport.apiUrl,
+      npm: transport.apiNpm
+    },
+    status: transport.status,
+    headers: { ...transport.headers },
+    options: {},
+    cost: {
+      input: 0,
+      output: 0,
+      cache: { read: 0, write: 0 }
+    },
+    limit: {
+      context: contextWindow,
+      input: contextWindow,
+      output: outputLimit
+    },
+    capabilities: {
+      temperature: false,
+      reasoning: hasReasoning,
+      attachment,
+      toolcall: true,
+      input: inputCapabilities,
+      output: outputCapabilities,
+      interleaved: false
+    },
+    family: resolveFamily(model.slug),
+    release_date: "",
+    variants
   }
 }
 
@@ -175,37 +289,6 @@ export function resolveInstructionsForModel(
   return normalizeSafeInstructions(rendered) ?? safeBase
 }
 
-function resolveAllowedSlugs(catalogModels: CodexModelInfo[] | undefined, fallback: readonly string[]): string[] {
-  const preferred = (catalogModels ?? []).map((model) => model.slug).filter((slug) => slug.length > 0)
-  if (preferred.length > 0) {
-    return Array.from(new Set(preferred)).sort(compareModelSlugs)
-  }
-  return Array.from(new Set(fallback.map((slug) => slug.trim().toLowerCase()).filter(Boolean))).sort(compareModelSlugs)
-}
-
-function resolveAllowedSlugsFromBaselineProvider(
-  providerModels: Record<string, Record<string, unknown>>,
-  fallback: readonly string[]
-): string[] {
-  const providerBaseline = Object.keys(providerModels)
-    .map((slug) => slug.trim().toLowerCase())
-    .filter((slug) => BASELINE_PROVIDER_MODEL_SLUG_REGEX.test(slug))
-  return Array.from(
-    new Set([...fallback.map((slug) => slug.trim().toLowerCase()), ...providerBaseline].filter(Boolean))
-  ).sort(compareModelSlugs)
-}
-
-function resolveTemplateSource(
-  providerModels: Record<string, Record<string, unknown>>
-): Record<string, unknown> | undefined {
-  for (const candidate of ["gpt-5.4", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex", "gpt-5.2"]) {
-    const found = providerModels[candidate]
-    if (found) return found
-  }
-  const first = Object.values(providerModels)[0]
-  return first
-}
-
 function stripEffortSuffix(slug: string): string {
   return slug.replace(EFFORT_SUFFIX_REGEX, "")
 }
@@ -218,6 +301,14 @@ function ensureModelOptions(model: Record<string, unknown>): Record<string, unkn
   const options: Record<string, unknown> = {}
   model.options = options
   return options
+}
+
+function clearCatalogInstructionState(model: Record<string, unknown>, options: Record<string, unknown>): void {
+  const priorInstructions = typeof options.codexInstructions === "string" ? options.codexInstructions : undefined
+  if (priorInstructions && model.instructions === priorInstructions) {
+    delete model.instructions
+  }
+  delete options.codexInstructions
 }
 
 function findModelBySlug(catalogModels: CodexModelInfo[] | undefined, slug: string): CodexModelInfo | undefined {
@@ -289,44 +380,41 @@ export function getRuntimeDefaultsForSlug(
 }
 
 export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput): void {
-  const allowedSlugs =
-    input.catalogModels && input.catalogModels.length > 0
-      ? resolveAllowedSlugs(input.catalogModels, input.fallbackModels)
-      : resolveAllowedSlugsFromBaselineProvider(input.providerModels, input.fallbackModels)
-  const allowed = new Set(allowedSlugs)
-  const bySlug = new Map((input.catalogModels ?? []).map((model) => [model.slug, model]))
+  const catalogModels = input.catalogModels ?? []
+  if (catalogModels.length === 0) {
+    for (const modelId of Object.keys(input.providerModels)) {
+      delete input.providerModels[modelId]
+    }
+    return
+  }
 
-  const templateSource = resolveTemplateSource(input.providerModels)
+  const allowedSlugs = Array.from(new Set(catalogModels.map((model) => model.slug))).sort(compareModelSlugs)
+  const allowed = new Set(allowedSlugs)
+  const bySlug = new Map(catalogModels.map((model) => [model.slug, model]))
 
   for (const slug of allowedSlugs) {
-    if (!input.providerModels[slug]) {
-      if (templateSource) {
-        input.providerModels[slug] = cloneModelTemplate(templateSource, slug)
-      } else {
-        input.providerModels[slug] = { id: slug, model: slug }
-      }
-    } else {
-      setModelIdentityFields(input.providerModels[slug], slug, bySlug.get(slug)?.display_name)
-    }
-
-    setModelIdentityFields(input.providerModels[slug], slug, bySlug.get(slug)?.display_name)
-
     const catalogModel = bySlug.get(slug)
+    if (!catalogModel) continue
+
+    const existingModel = input.providerModels[slug]
+    const nextModel = buildProviderModelFromCatalog(catalogModel, input.providerModels, existingModel)
+    if (!nextModel) {
+      delete input.providerModels[slug]
+      continue
+    }
+    input.providerModels[slug] = nextModel
+
     const options = ensureModelOptions(input.providerModels[slug])
-    if (catalogModel) {
-      const instructions = resolveInstructionsForModel(catalogModel, input.personality)
-      options.codexCatalogModel = catalogModel
-      if (instructions) {
-        input.providerModels[slug].instructions = instructions
-        options.codexInstructions = instructions
-      } else {
-        delete options.codexInstructions
-      }
+    const instructions = resolveInstructionsForModel(catalogModel, input.personality)
+    options.codexCatalogModel = catalogModel
+    if (instructions) {
+      input.providerModels[slug].instructions = instructions
+      options.codexInstructions = instructions
     } else {
-      delete options.codexCatalogModel
+      clearCatalogInstructionState(input.providerModels[slug], options)
     }
 
-    const runtimeDefaults = getRuntimeDefaultsForSlug(slug, input.catalogModels)
+    const runtimeDefaults = getRuntimeDefaultsForSlug(slug, catalogModels)
     if (runtimeDefaults) {
       input.providerModels[slug].codexRuntimeDefaults = runtimeDefaults
       options.codexRuntimeDefaults = runtimeDefaults

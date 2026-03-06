@@ -15,16 +15,29 @@ describe("model catalog fetch and primary cache", () => {
     const cacheDir = await makeCacheDir()
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
-      expect(endpoint).toContain("/backend-api/codex/models")
-      expect(endpoint).toContain("client_version=0.111.0")
-      const headers = init?.headers as Record<string, string>
-      expect(headers.authorization).toBe("Bearer at")
-      expect(headers["chatgpt-account-id"]).toBe("acc_123")
-      expect(headers.version).toBe("0.111.0")
+      if (endpoint.includes("/backend-api/codex/models")) {
+        expect(endpoint).toContain("client_version=0.111.0")
+        const headers = init?.headers as Record<string, string>
+        expect(headers.authorization).toBe("Bearer at")
+        expect(headers["chatgpt-account-id"]).toBe("acc_123")
+        expect(headers.version).toBe("0.111.0")
 
+        return new Response(
+          JSON.stringify({
+            models: [{ slug: "gpt-5.4-codex" }, { slug: "gpt-5.1-codex-mini" }, { slug: "gpt-5.2-codex" }]
+          }),
+          { status: 200 }
+        )
+      }
+
+      expect(endpoint).toBe("https://raw.githubusercontent.com/openai/codex/rust-v0.111.0/codex-rs/core/models.json")
       return new Response(
         JSON.stringify({
-          models: [{ slug: "gpt-5.4-codex" }, { slug: "gpt-5.1-codex-mini" }, { slug: "gpt-5.2-codex" }]
+          models: [
+            { slug: "gpt-5.4-codex", context_window: 272000, input_modalities: ["text", "image"] },
+            { slug: "gpt-5.1-codex-mini", context_window: 272000, input_modalities: ["text"] },
+            { slug: "gpt-5.2-codex", context_window: 272000, input_modalities: ["text", "image"] }
+          ]
         }),
         { status: 200 }
       )
@@ -40,9 +53,10 @@ describe("model catalog fetch and primary cache", () => {
     })
 
     await vi.waitFor(() => {
-      expect(fetchImpl).toHaveBeenCalledTimes(1)
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
     })
     expect(result?.map((m) => m.slug)).toEqual(["gpt-5.1-codex-mini", "gpt-5.2-codex", "gpt-5.4-codex"])
+    expect(result?.find((model) => model.slug === "gpt-5.4-codex")?.context_window).toBe(272000)
   })
 
   it("writes plugin cache into codex-auth and codex-models-cache shard files", async () => {
@@ -71,7 +85,7 @@ describe("model catalog fetch and primary cache", () => {
 
     expect(authShards.length).toBe(1)
     expect(opencodeShards.length).toBe(1)
-    expect(cacheEntries).not.toContain("codex-models-cache.json")
+    expect(cacheEntries).toContain("codex-models-cache.json")
   })
 
   it("refreshes shared github models cache when client version bumps", async () => {
@@ -150,6 +164,50 @@ describe("model catalog fetch and primary cache", () => {
     expect(meta.lastChecked).toBe(200)
     expect(meta.url).toBe("https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/core/models.json")
     expect(meta.version).toBeUndefined()
+  })
+
+  it("rebuilds the shared github cache when metadata is current but the cache file is missing", async () => {
+    const cacheDir = await makeCacheDir()
+    await fs.writeFile(
+      path.join(cacheDir, "codex-models-cache-meta.json"),
+      JSON.stringify(
+        {
+          tag: "rust-v0.99.0",
+          lastChecked: 100,
+          url: "https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/core/models.json"
+        },
+        null,
+        2
+      ),
+      "utf8"
+    )
+
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
+      expect(endpoint).toBe("https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/core/models.json")
+      return new Response(
+        JSON.stringify({
+          models: [{ slug: "gpt-5.4-codex", context_window: 272000 }]
+        }),
+        { status: 200 }
+      )
+    })
+
+    const models = await getCodexModelCatalog({
+      cacheDir,
+      clientVersion: "0.99.0",
+      refreshGithubModelsCache: true,
+      now: () => 200,
+      fetchImpl
+    })
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(models?.map((model) => model.slug)).toEqual(["gpt-5.4-codex"])
+
+    const sharedRaw = await fs.readFile(path.join(cacheDir, "codex-models-cache.json"), "utf8")
+    const shared = JSON.parse(sharedRaw) as { source?: string; models?: Array<{ slug?: string }> }
+    expect(shared.source).toBe("github")
+    expect(shared.models?.map((model) => model.slug)).toEqual(["gpt-5.4-codex"])
   })
 
   it("deduplicates concurrent network catalog fetches for the same cache key", async () => {
@@ -238,14 +296,21 @@ describe("model catalog fetch and primary cache", () => {
     const cacheDir = await makeCacheDir()
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
-      expect(endpoint).toContain("client_version=9.9.9")
-      const headers = init?.headers as Record<string, string>
-      expect(headers.originator).toBe("codex_exec")
-      expect(headers["user-agent"]).toBe("codex_exec/0.1.0 (Mac OS 26.3; arm64) ghostty/1.2.3")
-      expect(headers["openai-beta"]).toBeUndefined()
-      expect(headers.authorization).toBe("Bearer at")
-      expect(headers.version).toBe("9.9.8")
-      return new Response(JSON.stringify({ models: [{ slug: "gpt-5.4-codex" }] }), {
+      if (endpoint.includes("/backend-api/codex/models")) {
+        expect(endpoint).toContain("client_version=9.9.9")
+        const headers = init?.headers as Record<string, string>
+        expect(headers.originator).toBe("codex_exec")
+        expect(headers["user-agent"]).toBe("codex_exec/0.1.0 (Mac OS 26.3; arm64) ghostty/1.2.3")
+        expect(headers["openai-beta"]).toBeUndefined()
+        expect(headers.authorization).toBe("Bearer at")
+        expect(headers.version).toBe("9.9.8")
+        return new Response(JSON.stringify({ models: [{ slug: "gpt-5.4-codex" }] }), {
+          status: 200
+        })
+      }
+
+      expect(endpoint).toBe("https://raw.githubusercontent.com/openai/codex/rust-v9.9.9/codex-rs/core/models.json")
+      return new Response(JSON.stringify({ models: [{ slug: "gpt-5.4-codex", context_window: 272000 }] }), {
         status: 200
       })
     })
@@ -263,6 +328,6 @@ describe("model catalog fetch and primary cache", () => {
       now: () => 1000
     })
 
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 })

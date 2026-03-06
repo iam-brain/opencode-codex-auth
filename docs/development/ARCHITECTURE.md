@@ -139,7 +139,5 @@ Repository quality is enforced as code, not convention:
   - focused-test bans (`describe.only`, `it.only`, `fit`, `fdescribe`)
 - `scripts/check-test-mocking.mjs`
   - boundary-only anti-mock policy with tracked legacy baseline (`scripts/test-mocking-allowlist.json`)
-- `scripts/check-file-size.mjs`
-  - maintainability guardrails via source/test line-count caps with transitional allowlist (`scripts/file-size-allowlist.json`)
 - `scripts/check-coverage-ratchet.mjs`
   - global coverage floor + touched-file regression protection using `scripts/coverage-ratchet.baseline.json`

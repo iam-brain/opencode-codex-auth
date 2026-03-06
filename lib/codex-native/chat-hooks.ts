@@ -67,6 +67,7 @@ export async function handleChatParamsHook(input: {
   }
   output: Parameters<typeof applyCodexRuntimeDefaultsToParams>[0]["output"]
   lastCatalogModels: CodexModelInfo[] | undefined
+  allowCatalogModelState?: boolean
   behaviorSettings?: BehaviorSettings
   fallbackPersonality?: PersonalityOption
   spoofMode: CodexSpoofMode
@@ -79,11 +80,14 @@ export async function handleChatParamsHook(input: {
     id: input.hookInput.model.id,
     api: { id: input.hookInput.model.api?.id }
   })
+  const allowCatalogModelState = input.allowCatalogModelState !== false
   const variantCandidates = getVariantLookupCandidates({
     message: input.hookInput.message,
     modelCandidates
   })
-  const catalogModelFallback = findCatalogModelForCandidates(input.lastCatalogModels, modelCandidates)
+  const catalogModelFallback = allowCatalogModelState
+    ? findCatalogModelForCandidates(input.lastCatalogModels, modelCandidates)
+    : undefined
   const effectivePersonality = resolvePersonalityForModel({
     behaviorSettings: input.behaviorSettings,
     modelCandidates,
@@ -105,9 +109,17 @@ export async function handleChatParamsHook(input: {
   const globalVerbosityEnabled =
     typeof globalBehavior?.verbosityEnabled === "boolean" ? globalBehavior.verbosityEnabled : undefined
   const globalVerbosity = normalizeVerbositySetting(globalBehavior?.verbosity)
-  const catalogModelFromOptions = isRecord(modelOptions.codexCatalogModel)
-    ? (modelOptions.codexCatalogModel as CodexModelInfo)
-    : undefined
+  const runtimeModelOptions = allowCatalogModelState
+    ? modelOptions
+    : Object.fromEntries(
+        Object.entries(modelOptions).filter(([key]) => {
+          return key !== "codexCatalogModel" && key !== "codexRuntimeDefaults" && key !== "codexInstructions"
+        })
+      )
+  const catalogModelFromOptions =
+    allowCatalogModelState && isRecord(modelOptions.codexCatalogModel)
+      ? (modelOptions.codexCatalogModel as CodexModelInfo)
+      : undefined
   let renderedCatalogInstructions = catalogModelFromOptions
     ? resolveInstructionsForModel(catalogModelFromOptions, effectivePersonality)
     : undefined
@@ -124,13 +136,15 @@ export async function handleChatParamsHook(input: {
   }
 
   if (renderedCatalogInstructions) {
-    modelOptions.codexInstructions = renderedCatalogInstructions
+    runtimeModelOptions.codexInstructions = renderedCatalogInstructions
   } else {
-    const directModelInstructions = asString((input.hookInput.model as Record<string, unknown>).instructions)
+    const directModelInstructions = allowCatalogModelState
+      ? asString((input.hookInput.model as Record<string, unknown>).instructions)
+      : undefined
     if (directModelInstructions) {
-      modelOptions.codexInstructions = directModelInstructions
-    } else if (asString(modelOptions.codexInstructions) === undefined) {
-      delete modelOptions.codexInstructions
+      runtimeModelOptions.codexInstructions = directModelInstructions
+    } else if (asString(runtimeModelOptions.codexInstructions) === undefined) {
+      delete runtimeModelOptions.codexInstructions
     }
   }
   const profile = resolveCollaborationProfile(input.hookInput.agent)
@@ -138,8 +152,8 @@ export async function handleChatParamsHook(input: {
     profile.isOrchestrator === true && isOrchestratorInstructions(asString(input.output.options.instructions))
 
   applyCodexRuntimeDefaultsToParams({
-    modelOptions,
-    modelToolCallCapable: input.hookInput.model.capabilities?.toolcall,
+    modelOptions: runtimeModelOptions,
+    modelToolCallCapable: allowCatalogModelState ? input.hookInput.model.capabilities?.toolcall : undefined,
     thinkingSummariesOverride: modelThinkingSummariesOverride ?? globalBehavior?.thinkingSummaries,
     verbosityEnabledOverride: modelVerbosityEnabledOverride ?? globalVerbosityEnabled,
     verbosityOverride: modelVerbosityOverride ?? globalVerbosity,

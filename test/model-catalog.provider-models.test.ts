@@ -6,6 +6,47 @@ import {
   parseCatalogResponse
 } from "../lib/model-catalog"
 
+function makeBaselineModel(id: string): Record<string, unknown> {
+  return {
+    id,
+    slug: id,
+    model: id,
+    providerID: "openai",
+    api: {
+      id,
+      url: "https://chatgpt.com/backend-api/codex",
+      npm: "@ai-sdk/openai"
+    },
+    status: "active",
+    headers: {},
+    options: {},
+    cost: {
+      input: 1,
+      output: 2,
+      cache: { read: 3, write: 4 }
+    },
+    limit: {
+      context: 111,
+      input: 111,
+      output: 222
+    },
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: false,
+      input: { text: true, audio: false, image: true, video: false, pdf: false },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false
+    },
+    family: "legacy",
+    release_date: "2026-01-01",
+    variants: {
+      none: { reasoningEffort: "none" }
+    }
+  }
+}
+
 describe("model catalog provider model mapping", () => {
   it("parses live catalog display metadata used by runtime shaping", () => {
     const parsed = parseCatalogResponse({
@@ -14,6 +55,8 @@ describe("model catalog provider model mapping", () => {
           slug: "gpt-5.4",
           display_name: "gpt-5.4",
           priority: 0,
+          context_window: 272000,
+          input_modalities: ["text", "image"] as const,
           supports_parallel_tool_calls: true
         }
       ]
@@ -24,6 +67,8 @@ describe("model catalog provider model mapping", () => {
         slug: "gpt-5.4",
         display_name: "gpt-5.4",
         priority: 0,
+        context_window: 272000,
+        input_modalities: ["text", "image"] as const,
         model_messages: null,
         base_instructions: null,
         apply_patch_tool_type: null,
@@ -38,9 +83,9 @@ describe("model catalog provider model mapping", () => {
     ])
   })
 
-  it("extracts runtime defaults and applies them to provider models", () => {
+  it("extracts runtime defaults and applies them to catalog-built provider models", () => {
     const providerModels: Record<string, Record<string, unknown>> = {
-      "gpt-5.2-codex": { id: "gpt-5.2-codex", instructions: "old" },
+      "gpt-5.2-codex": makeBaselineModel("gpt-5.2-codex"),
       "o3-mini": { id: "o3-mini" }
     }
 
@@ -48,6 +93,8 @@ describe("model catalog provider model mapping", () => {
       {
         slug: "gpt-5.4-codex",
         display_name: "GPT-5.4 Frontier",
+        context_window: 272000,
+        input_modalities: ["text", "image"] as const,
         apply_patch_tool_type: "apply_patch",
         default_reasoning_level: "medium",
         supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }],
@@ -65,8 +112,7 @@ describe("model catalog provider model mapping", () => {
 
     applyCodexCatalogToProviderModels({
       providerModels,
-      catalogModels,
-      fallbackModels: ["gpt-5.2-codex"]
+      catalogModels
     })
 
     expect(providerModels["gpt-5.4-codex"]).toBeDefined()
@@ -89,113 +135,158 @@ describe("model catalog provider model mapping", () => {
     expect(defaults?.defaultReasoningEffort).toBe("medium")
   })
 
-  it("normalizes slug-style model names into title-cased display names", () => {
+  it("creates new catalog-only provider entries without cross-slug inheritance", () => {
     const providerModels: Record<string, Record<string, unknown>> = {
-      "gpt-5.2-codex": { id: "gpt-5.2-codex" }
-    }
-
-    applyCodexCatalogToProviderModels({
-      providerModels,
-      catalogModels: [{ slug: "gpt-5.1-codex-mini" }],
-      fallbackModels: []
-    })
-
-    expect(providerModels["gpt-5.1-codex-mini"]).toBeDefined()
-    expect(providerModels["gpt-5.1-codex-mini"].name).toBe("GPT-5.1 Codex Mini")
-    expect(providerModels["gpt-5.1-codex-mini"].displayName).toBe("GPT-5.1 Codex Mini")
-  })
-
-  it("preserves styled provider names when catalog display_name is only the raw slug", () => {
-    const providerModels: Record<string, Record<string, unknown>> = {
-      "gpt-5.4": {
-        id: "gpt-5.4",
-        name: "GPT-5.4",
-        displayName: "GPT-5.4"
-      }
-    }
-
-    applyCodexCatalogToProviderModels({
-      providerModels,
-      catalogModels: [{ slug: "gpt-5.4", display_name: "gpt-5.4" }],
-      fallbackModels: []
-    })
-
-    expect(providerModels["gpt-5.4"].name).toBe("GPT-5.4")
-    expect(providerModels["gpt-5.4"].displayName).toBe("GPT-5.4")
-    expect(providerModels["gpt-5.4"].display_name).toBe("GPT-5.4")
-  })
-
-  it("keeps the best existing styled label when provider display fields are mixed", () => {
-    const providerModels: Record<string, Record<string, unknown>> = {
-      "gpt-5.4": {
-        id: "gpt-5.4",
-        name: "GPT-5.4",
-        displayName: "gpt-5.4"
-      }
-    }
-
-    applyCodexCatalogToProviderModels({
-      providerModels,
-      catalogModels: [{ slug: "gpt-5.4", display_name: "gpt-5.4" }],
-      fallbackModels: []
-    })
-
-    expect(providerModels["gpt-5.4"].name).toBe("GPT-5.4")
-    expect(providerModels["gpt-5.4"].displayName).toBe("GPT-5.4")
-    expect(providerModels["gpt-5.4"].display_name).toBe("GPT-5.4")
-  })
-
-  it("orders provider models by catalog priority before slug fallback", () => {
-    const providerModels: Record<string, Record<string, unknown>> = {
-      "gpt-5.2-codex": { id: "gpt-5.2-codex" },
-      "gpt-5.1-codex-mini": { id: "gpt-5.1-codex-mini" },
-      "gpt-5.3-codex": { id: "gpt-5.3-codex" }
+      "gpt-5.3-codex": makeBaselineModel("gpt-5.3-codex")
     }
 
     applyCodexCatalogToProviderModels({
       providerModels,
       catalogModels: [
-        { slug: "gpt-5.2-codex", priority: 3 },
-        { slug: "gpt-5.1-codex-mini", priority: 12 },
-        { slug: "gpt-5.3-codex", priority: 0 }
-      ],
-      fallbackModels: []
+        {
+          slug: "gpt-5.4",
+          display_name: "gpt-5.4",
+          context_window: 272000,
+          input_modalities: ["text", "image"] as const,
+          default_reasoning_level: "medium",
+          supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }, { effort: "xhigh" }]
+        }
+      ]
+    })
+
+    expect(providerModels["gpt-5.4"].name).toBe("GPT-5.4")
+    expect(providerModels["gpt-5.4"].displayName).toBe("GPT-5.4")
+    expect(providerModels["gpt-5.4"].display_name).toBe("GPT-5.4")
+    expect(providerModels["gpt-5.4"].family).toBe("gpt-5")
+    expect(providerModels["gpt-5.4"].release_date).toBe("")
+    expect(providerModels["gpt-5.4"].limit).toEqual({
+      context: 272000,
+      input: 272000,
+      output: 128000
+    })
+    expect(providerModels["gpt-5.4"].capabilities).toEqual({
+      temperature: false,
+      reasoning: true,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: false, pdf: false },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false
+    })
+    expect(providerModels["gpt-5.4"].variants).toEqual({
+      low: { reasoningEffort: "low" },
+      medium: { reasoningEffort: "medium" },
+      high: { reasoningEffort: "high" },
+      xhigh: { reasoningEffort: "xhigh" }
+    })
+  })
+
+  it("uses richer catalog display names when provided", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.4": makeBaselineModel("gpt-5.4")
+    }
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [{ slug: "gpt-5.4", display_name: "GPT-5.4 Frontier", context_window: 272000 }]
+    })
+
+    expect(providerModels["gpt-5.4"].name).toBe("GPT-5.4 Frontier")
+    expect(providerModels["gpt-5.4"].displayName).toBe("GPT-5.4 Frontier")
+  })
+
+  it("orders provider models by catalog priority before slug fallback", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.2-codex": makeBaselineModel("gpt-5.2-codex"),
+      "gpt-5.1-codex-mini": makeBaselineModel("gpt-5.1-codex-mini"),
+      "gpt-5.3-codex": makeBaselineModel("gpt-5.3-codex")
+    }
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [
+        { slug: "gpt-5.2-codex", priority: 3, context_window: 272000 },
+        { slug: "gpt-5.1-codex-mini", priority: 12, context_window: 272000 },
+        { slug: "gpt-5.3-codex", priority: 0, context_window: 272000 }
+      ]
     })
 
     expect(Object.keys(providerModels)).toEqual(["gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-mini"])
   })
 
-  it("keeps newer-first fallback ordering when catalog priorities are absent", () => {
+  it("falls back to newer-first slug ordering when catalog priorities are absent", () => {
     const providerModels: Record<string, Record<string, unknown>> = {
-      "gpt-5.2-codex": { id: "gpt-5.2-codex" },
-      "gpt-5.1-codex-mini": { id: "gpt-5.1-codex-mini" },
-      "gpt-5.3-codex": { id: "gpt-5.3-codex" }
+      "gpt-5.2-codex": makeBaselineModel("gpt-5.2-codex"),
+      "gpt-5.1-codex-mini": makeBaselineModel("gpt-5.1-codex-mini"),
+      "gpt-5.3-codex": makeBaselineModel("gpt-5.3-codex")
     }
 
     applyCodexCatalogToProviderModels({
       providerModels,
-      catalogModels: [{ slug: "gpt-5.2-codex" }, { slug: "gpt-5.1-codex-mini" }, { slug: "gpt-5.3-codex" }],
-      fallbackModels: []
+      catalogModels: [
+        { slug: "gpt-5.2-codex", context_window: 272000 },
+        { slug: "gpt-5.1-codex-mini", context_window: 272000 },
+        { slug: "gpt-5.3-codex", context_window: 272000 }
+      ]
     })
 
     expect(Object.keys(providerModels)).toEqual(["gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-mini"])
   })
 
-  it("keeps GPT-5.4 from the OpenCode baseline surface when no live catalog is available", () => {
+  it("clears stale catalog-derived instructions when the catalog stops providing safe instructions", () => {
     const providerModels: Record<string, Record<string, unknown>> = {
-      "gpt-5.4": { id: "gpt-5.4", name: "GPT-5.4" },
-      "gpt-5.3-codex": { id: "gpt-5.3-codex" },
-      "o3-mini": { id: "o3-mini" }
+      "gpt-5.4": makeBaselineModel("gpt-5.4")
     }
 
     applyCodexCatalogToProviderModels({
       providerModels,
-      catalogModels: undefined,
-      fallbackModels: ["gpt-5.3-codex"]
+      catalogModels: [
+        {
+          slug: "gpt-5.4",
+          context_window: 272000,
+          model_messages: {
+            instructions_template: "Use {{ personality }}",
+            instructions_variables: { personality_default: "Default tone" }
+          }
+        }
+      ]
     })
 
-    expect(providerModels["gpt-5.4"]).toBeDefined()
-    expect(providerModels["gpt-5.3-codex"]).toBeDefined()
-    expect(providerModels["o3-mini"]).toBeUndefined()
+    expect(providerModels["gpt-5.4"].instructions).toBe("Use Default tone")
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [
+        {
+          slug: "gpt-5.4",
+          context_window: 272000,
+          model_messages: {
+            instructions_template: "Use {{ personality }} and functions.exec_command"
+          }
+        }
+      ]
+    })
+
+    expect(providerModels["gpt-5.4"].instructions).toBeUndefined()
+    expect(providerModels["gpt-5.4"].options).toMatchObject({
+      codexCatalogModel: {
+        slug: "gpt-5.4"
+      }
+    })
+    expect((providerModels["gpt-5.4"].options as Record<string, unknown>).codexInstructions).toBeUndefined()
+  })
+
+  it("clears provider models instead of synthesizing a fallback model set when no catalog is available", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.4": makeBaselineModel("gpt-5.4"),
+      "gpt-5.3-codex": makeBaselineModel("gpt-5.3-codex")
+    }
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: undefined
+    })
+
+    expect(providerModels).toEqual({})
   })
 })

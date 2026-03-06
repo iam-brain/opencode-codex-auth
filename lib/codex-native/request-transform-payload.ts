@@ -1,10 +1,19 @@
 import type { BehaviorSettings } from "../config.js"
+import type { CodexModelInfo } from "../model-catalog.js"
+import { getRuntimeDefaultsForModel } from "../model-catalog.js"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer.js"
 import { isRecord } from "../util.js"
 import { applyGpt54LongContextClampsToPayload } from "./request-transform-gpt54-limits.js"
-import { getModelLookupCandidates } from "./request-transform-model.js"
+import {
+  applyResolvedCodexRuntimeDefaults,
+  findCatalogModelForCandidates,
+  getModelLookupCandidates,
+  getModelThinkingSummariesOverride,
+  getModelVerbosityEnabledOverride,
+  getModelVerbosityOverride
+} from "./request-transform-model.js"
 import { getRequestBodyVariantCandidates, resolveServiceTierForModel } from "./request-transform-model-service-tier.js"
-import { asString } from "./request-transform-shared.js"
+import { asString, normalizeVerbositySetting } from "./request-transform-shared.js"
 import {
   type CompatSanitizerTransformResult,
   type DeveloperRoleRemapTransformResult,
@@ -24,6 +33,7 @@ type OutboundRequestPayloadTransformInput = {
   promptCacheKeyOverrideEnabled: boolean
   gpt54LongContextClampEnabled?: boolean
   promptCacheKeyOverride?: string
+  catalogModels?: CodexModelInfo[]
   behaviorSettings?: BehaviorSettings
 }
 
@@ -211,10 +221,20 @@ export async function transformOutboundRequestPayload(
     : disabledCompatSanitizer
 
   const finalPayload = compatSanitizedPayload?.payload ?? payload
+  const catalogRuntimeDefaultsChanged = applyCatalogRuntimeDefaultsToPayload(
+    finalPayload,
+    input.catalogModels,
+    input.behaviorSettings
+  )
   const gpt54LongContextClampChanged =
     input.gpt54LongContextClampEnabled !== false ? applyGpt54LongContextClampsToPayload(finalPayload) : false
   const serviceTier = applyServiceTierOverrideToPayload(finalPayload, input.behaviorSettings)
-  changed = changed || compatSanitizer.changed || gpt54LongContextClampChanged || serviceTier.changed
+  changed =
+    changed ||
+    compatSanitizer.changed ||
+    catalogRuntimeDefaultsChanged ||
+    gpt54LongContextClampChanged ||
+    serviceTier.changed
 
   if (!changed) {
     return {
@@ -390,4 +410,70 @@ function applyServiceTierOverrideToPayload(
 
 function supportsPriorityServiceTierModel(modelCandidates: string[]): boolean {
   return modelCandidates.some((candidate) => candidate.trim().toLowerCase().startsWith("gpt-5.4"))
+}
+
+function applyCatalogRuntimeDefaultsToPayload(
+  payload: Record<string, unknown>,
+  catalogModels: CodexModelInfo[] | undefined,
+  behaviorSettings: BehaviorSettings | undefined
+): boolean {
+  if (!catalogModels || catalogModels.length === 0) return false
+
+  const modelSlug = asString(payload.model)
+  if (!modelSlug) return false
+
+  const modelCandidates = getModelLookupCandidates({
+    id: modelSlug,
+    api: { id: modelSlug }
+  })
+  const catalogModel = findCatalogModelForCandidates(catalogModels, modelCandidates)
+  if (!catalogModel) return false
+
+  const variantCandidates = getRequestBodyVariantCandidates({
+    body: payload,
+    modelSlug
+  })
+  const runtimeDefaults = getRuntimeDefaultsForModel(catalogModel)
+  if (!runtimeDefaults) return false
+
+  const globalBehavior = behaviorSettings?.global
+  const thinkingSummariesOverride =
+    getModelThinkingSummariesOverride(behaviorSettings, modelCandidates, variantCandidates) ??
+    globalBehavior?.thinkingSummaries
+  const verbosityEnabledOverride =
+    getModelVerbosityEnabledOverride(behaviorSettings, modelCandidates, variantCandidates) ??
+    (typeof globalBehavior?.verbosityEnabled === "boolean" ? globalBehavior.verbosityEnabled : undefined)
+  const verbosityOverride =
+    getModelVerbosityOverride(behaviorSettings, modelCandidates, variantCandidates) ??
+    normalizeVerbositySetting(globalBehavior?.verbosity)
+  const before = JSON.stringify({
+    instructions: payload.instructions,
+    reasoningEffort: payload.reasoningEffort,
+    reasoningSummary: payload.reasoningSummary,
+    textVerbosity: payload.textVerbosity,
+    applyPatchToolType: payload.applyPatchToolType,
+    parallelToolCalls: payload.parallelToolCalls,
+    include: payload.include
+  })
+
+  applyResolvedCodexRuntimeDefaults({
+    options: payload,
+    defaults: runtimeDefaults,
+    modelToolCallCapable: undefined,
+    thinkingSummariesOverride,
+    verbosityEnabledOverride,
+    verbosityOverride,
+    preferCodexInstructions: false
+  })
+
+  const after = JSON.stringify({
+    instructions: payload.instructions,
+    reasoningEffort: payload.reasoningEffort,
+    reasoningSummary: payload.reasoningSummary,
+    textVerbosity: payload.textVerbosity,
+    applyPatchToolType: payload.applyPatchToolType,
+    parallelToolCalls: payload.parallelToolCalls,
+    include: payload.include
+  })
+  return before !== after
 }

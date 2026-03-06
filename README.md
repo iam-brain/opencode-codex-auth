@@ -67,7 +67,7 @@ npm run test:coverage
 npm run check:docs
 ```
 
-`npm run verify` is the primary quality gate and includes lint, formatting, type-checking, anti-mock, coverage/ratchet, file-size checks, docs drift checks, build validation, and CLI smoke checks.
+`npm run verify` is the primary quality gate and includes lint, formatting, type-checking, anti-mock, coverage/ratchet, docs drift checks, build validation, and CLI smoke checks.
 
 ## Usage Note
 

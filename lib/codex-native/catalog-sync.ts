@@ -1,8 +1,8 @@
-import type { PersonalityOption } from "../config.js"
 import type { Logger } from "../logger.js"
-import { applyCodexCatalogToProviderModels, getCodexModelCatalog, type CodexModelInfo } from "../model-catalog.js"
+import { getCodexModelCatalog, type CodexModelInfo } from "../model-catalog.js"
 import type { OpenAIAuthMode, RotationStrategy } from "../types.js"
 import { selectCatalogAuthCandidate } from "./catalog-auth.js"
+import { resolveCatalogScopeKey } from "./openai-loader-fetch-state.js"
 
 type CatalogHeaders = {
   originator: string
@@ -17,26 +17,20 @@ export async function initializeCatalogSync(input: {
   pidOffsetEnabled: boolean
   rotationStrategy?: RotationStrategy
   resolveCatalogHeaders: () => CatalogHeaders
-  providerModels: Record<string, Record<string, unknown>>
-  fallbackModels: readonly string[]
-  personality?: PersonalityOption
   log?: Logger
-  getLastCatalogModels: () => CodexModelInfo[] | undefined
-  setLastCatalogModels: (models: CodexModelInfo[] | undefined) => void
-}): Promise<(auth: { accessToken?: string; accountId?: string }) => Promise<CodexModelInfo[] | undefined>> {
+  setCatalogModels: (scopeKey: string | undefined, models: CodexModelInfo[] | undefined) => void
+  activateCatalogScope: (scopeKey: string | undefined) => void
+}): Promise<
+  (auth: {
+    accessToken?: string
+    accountId?: string
+    identityKey?: string
+    email?: string
+    plan?: string
+    selectionTrace?: { attemptKey?: string }
+  }) => Promise<CodexModelInfo[] | undefined>
+> {
   const catalogAuth = await selectCatalogAuthCandidate(input.authMode, input.pidOffsetEnabled, input.rotationStrategy)
-
-  const applyCatalogModels = (models: CodexModelInfo[] | undefined): void => {
-    if (models) {
-      input.setLastCatalogModels(models)
-    }
-    applyCodexCatalogToProviderModels({
-      providerModels: input.providerModels,
-      catalogModels: models ?? input.getLastCatalogModels(),
-      fallbackModels: input.fallbackModels,
-      personality: input.personality
-    })
-  }
 
   const initialCatalog = await getCodexModelCatalog({
     accessToken: catalogAuth.accessToken,
@@ -45,9 +39,11 @@ export async function initializeCatalogSync(input: {
     onEvent: (event) => input.log?.debug("codex model catalog", event)
   })
 
-  applyCatalogModels(initialCatalog)
+  const initialScopeKey = resolveCatalogScopeKey(catalogAuth)
+  input.setCatalogModels(initialScopeKey, initialCatalog)
+  input.activateCatalogScope(initialScopeKey)
 
-  return async (auth: { accessToken?: string; accountId?: string }): Promise<CodexModelInfo[] | undefined> => {
+  return async (auth): Promise<CodexModelInfo[] | undefined> => {
     if (!auth.accessToken) return undefined
     const refreshedCatalog = await getCodexModelCatalog({
       accessToken: auth.accessToken,
@@ -55,7 +51,7 @@ export async function initializeCatalogSync(input: {
       ...input.resolveCatalogHeaders(),
       onEvent: (event) => input.log?.debug("codex model catalog", event)
     })
-    applyCatalogModels(refreshedCatalog)
+    input.setCatalogModels(resolveCatalogScopeKey(auth), refreshedCatalog)
     return refreshedCatalog
   }
 }

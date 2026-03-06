@@ -41,7 +41,7 @@ describe("request transform pipeline", () => {
     expect(result.developerRoleRemap.reason).toBe("deferred_to_payload_transform")
   })
 
-  it("keeps request unchanged in native mode", async () => {
+  it("injects catalog instructions in native mode when the request has none", async () => {
     const payload = {
       model: "gpt-5.3-codex",
       input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
@@ -61,13 +61,38 @@ describe("request transform pipeline", () => {
 
     const body = JSON.parse(await result.request.text()) as { instructions?: string; model: string }
 
-    expect(result.instructionOverride.changed).toBe(false)
-    expect(result.instructionOverride.reason).toBe("disabled")
+    expect(result.instructionOverride.changed).toBe(true)
+    expect(result.instructionOverride.reason).toBe("updated")
     expect(body.model).toBe(payload.model)
-    expect(body.instructions).toBeUndefined()
+    expect(body.instructions).toBe("Pipeline catalog instructions")
     expect(result.isSubagentRequest).toBe(false)
     expect(result.subagentHeader).toBeUndefined()
     expect(result.developerRoleRemap.reason).toBe("disabled")
+  })
+
+  it("preserves explicit native-mode instructions", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: "Host instructions",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const result = await applyRequestTransformPipeline({
+      request,
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      catalogModels: CATALOG_MODELS
+    })
+
+    const body = JSON.parse(await result.request.text()) as { instructions?: string }
+
+    expect(result.instructionOverride.changed).toBe(false)
+    expect(result.instructionOverride.reason).toBe("existing_instructions_preserved")
+    expect(body.instructions).toBe("Host instructions")
   })
 
   it("defers service_tier mutation to the payload transform stage", async () => {

@@ -25,7 +25,7 @@ describe("release hygiene", () => {
       "npm run test:anti-mock",
       "npm run test:coverage",
       "npm run check:coverage-ratchet",
-      "npm run check:file-size",
+      "npm run check:docs",
       "npm run build",
       "npm run check:dist-esm-imports",
       "npm run smoke:cli:dist"
@@ -43,12 +43,15 @@ describe("release hygiene", () => {
     expect(pkg.scripts?.["patch:plugin-dts"]).toBe("node scripts/patch-opencode-plugin-dts.js")
     expect(pkg.scripts?.typecheck).toContain("npm run patch:plugin-dts")
     expect(pkg.scripts?.["typecheck:test"]).toContain("npm run patch:plugin-dts")
+    expect(pkg.scripts?.["check:file-size"]).toBeUndefined()
     expect(pkg.scripts?.prepack).toBe("npm run build")
     expect(pkg.scripts?.build).toBe("npm run patch:plugin-dts && npm run clean:dist && tsc")
     expect(pkg.scripts?.["clean:dist"]).toBe("node scripts/clean-dist.js")
     expect(existsSync(join(process.cwd(), "scripts", "clean-dist.js"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "check-esm-import-specifiers.mjs"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "check-dist-esm-import-specifiers.mjs"))).toBe(true)
+    expect(existsSync(join(process.cwd(), "scripts", "check-file-size.mjs"))).toBe(false)
+    expect(existsSync(join(process.cwd(), "scripts", "file-size-allowlist.json"))).toBe(false)
   })
 
   it("declares the Node engine aligned with CI", () => {

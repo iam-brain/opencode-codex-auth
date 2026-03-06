@@ -22,7 +22,9 @@ const REMOVED_TOOLING_PATTERNS = [
   { label: ".prettierrc", regex: /\.prettierrc\b/i },
   { label: ".prettierignore", regex: /\.prettierignore\b/i },
   { label: "eslint", regex: /\beslint\b/i },
-  { label: "prettier", regex: /\bprettier\b/i }
+  { label: "prettier", regex: /\bprettier\b/i },
+  { label: "check:file-size", regex: /\bcheck:file-size\b/i },
+  { label: "file-size checks", regex: /\bfile-size checks\b/i }
 ]
 
 const HISTORICAL_CONTEXT = /\b(history|historical|legacy|archive|archived|migration|migrated|previous|former)\b/i
