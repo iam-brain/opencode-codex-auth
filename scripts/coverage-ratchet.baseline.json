@@ -97,10 +97,10 @@
       "statements": 89.47
     },
     "lib/codex-native/catalog-sync.ts": {
-      "lines": 100,
-      "branches": 75,
+      "lines": 93.75,
+      "branches": 85,
       "functions": 100,
-      "statements": 100
+      "statements": 93.75
     },
     "lib/codex-native/chat-hooks.ts": {
       "lines": 95.29,
@@ -151,10 +151,10 @@
       "statements": 100
     },
     "lib/codex-native/oauth-server.ts": {
-      "lines": 76.41,
-      "branches": 71.01,
-      "functions": 93.75,
-      "statements": 76.41
+      "lines": 76.51,
+      "branches": 74.1,
+      "functions": 92,
+      "statements": 76.51
     },
     "lib/codex-native/oauth-utils.ts": {
       "lines": 92.66,
@@ -217,10 +217,10 @@
       "statements": 92.94
     },
     "lib/codex-native/request-transform-model.ts": {
-      "lines": 92.07,
-      "branches": 86.86,
+      "lines": 91.02,
+      "branches": 82.95,
       "functions": 100,
-      "statements": 92.07
+      "statements": 91.02
     },
     "lib/codex-native/request-transform-payload-helpers.ts": {
       "lines": 95.59,
@@ -323,6 +323,12 @@
       "branches": 100,
       "functions": 100,
       "statements": 100
+    },
+    "lib/config/file.ts": {
+      "lines": 81.62,
+      "branches": 76.08,
+      "functions": 100,
+      "statements": 81.62
     },
     "lib/config/io.ts": {
       "lines": 91.93,
@@ -558,6 +564,12 @@
       "functions": 88.88,
       "statements": 86.19
     },
+    "lib/storage/auth-state.ts": {
+      "lines": 88.56,
+      "branches": 79.37,
+      "functions": 100,
+      "statements": 88.56
+    },
     "lib/storage/domain-state.ts": {
       "lines": 85.98,
       "branches": 81.73,
@@ -589,10 +601,16 @@
       "statements": 82.43
     },
     "lib/ui/auth-menu.ts": {
-      "lines": 61.46,
-      "branches": 75.92,
-      "functions": 73.68,
-      "statements": 61.46
+      "lines": 93.71,
+      "branches": 68.1,
+      "functions": 100,
+      "statements": 93.71
+    },
+    "lib/ui/tty.ts": {
+      "lines": 76.44,
+      "branches": 67.21,
+      "functions": 94.11,
+      "statements": 76.44
     },
     "lib/ui/tty/ansi.ts": {
       "lines": 86.66,
