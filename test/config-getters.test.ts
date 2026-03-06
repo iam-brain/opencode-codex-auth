@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  buildResolvedBehaviorSettings,
+  cloneBehaviorSettings,
   getCollaborationProfileEnabled,
   getCodexCompactionOverrideEnabled,
   getCompatInputSanitizerEnabled,
@@ -33,6 +35,35 @@ describe("config", () => {
       env: { OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS: "   " }
     })
     expect(getProactiveRefreshBufferMs(cfg)).toBe(60_000)
+  })
+
+  it("keeps behavior helpers on the top-level config export surface", () => {
+    const fileBehavior = {
+      global: {
+        personality: "balanced",
+        thinkingSummaries: false
+      }
+    } as const
+
+    const cloned = cloneBehaviorSettings(fileBehavior)
+    expect(cloned).toEqual(fileBehavior)
+    expect(cloned).not.toBe(fileBehavior)
+
+    expect(
+      buildResolvedBehaviorSettings({
+        fileBehavior,
+        envPersonality: "concise",
+        envThinkingSummaries: undefined,
+        envVerbosityEnabled: undefined,
+        envVerbosity: undefined,
+        envServiceTier: undefined
+      })
+    ).toEqual({
+      global: {
+        personality: "concise",
+        thinkingSummaries: false
+      }
+    })
   })
 
   it("clamps and floors buffer", () => {

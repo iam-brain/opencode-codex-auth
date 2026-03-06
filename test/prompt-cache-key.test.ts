@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { buildProjectPromptCacheKey, PROMPT_CACHE_KEY_VERSION } from "../lib/prompt-cache-key"
-import { applyPromptCacheKeyOverrideToRequest } from "../lib/codex-native/request-transform"
+import { applyPromptCacheKeyOverrideToRequest } from "../lib/codex-native/request-transform-payload.js"
 
 describe("prompt cache key", () => {
   it("builds a stable versioned key per project path and mode", () => {

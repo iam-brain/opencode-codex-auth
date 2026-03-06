@@ -12,7 +12,10 @@ import { resolveCodexOriginator } from "./originator.js"
 import { buildProjectPromptCacheKey } from "../prompt-cache-key.js"
 import { persistRateLimitSnapshotFromResponse } from "./rate-limit-snapshots.js"
 import { assertAllowedOutboundUrl, rewriteUrl } from "./request-routing.js"
-import { type OutboundRequestPayloadTransformResult, transformOutboundRequestPayload } from "./request-transform.js"
+import {
+  type OutboundRequestPayloadTransformResult,
+  transformOutboundRequestPayload
+} from "./request-transform-payload.js"
 import type { SessionAffinityRuntimeState } from "./session-affinity-state.js"
 import { scheduleQuotaRefresh } from "./openai-loader-fetch-quota.js"
 import {

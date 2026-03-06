@@ -10,8 +10,8 @@ import {
   shouldOfferLegacyTransfer
 } from "../storage.js"
 import type { OpenAIAuthMode } from "../types.js"
-import { runAuthMenuOnce } from "../ui/auth-menu-runner.js"
-import { shouldUseColor } from "../ui/tty/ansi.js"
+import { runAuthMenuOnce } from "../ui/auth-menu.js"
+import { shouldUseColor } from "../ui/tty.js"
 import {
   buildAuthMenuAccounts,
   ensureAccountAuthTypes,

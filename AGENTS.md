@@ -73,6 +73,12 @@ npm run verify
 
 `npm run verify` is the default pre-release check.
 
+## Module sizing
+
+- There is no hard max-lines or max-file-size rule in this repo.
+- Split code only when it creates a real boundary: security policy, platform I/O, reusable primitives, or independently changing workflows.
+- Prefer coherent feature modules over size-driven micro-files or catch-all monoliths.
+
 ## Test fixtures
 
 Use only repository fixtures under:

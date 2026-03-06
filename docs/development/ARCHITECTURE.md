@@ -5,9 +5,9 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
 ## Runtime overview
 
 1. OpenCode initializes plugin hooks (`index.ts`).
-2. Config is resolved from `codex-config.json` + env overrides through `lib/config.ts` (barrel over `lib/config/*` split modules).
-3. Auth loader selects a healthy account through `lib/storage.ts` + `lib/rotation.ts`, with storage migration/domain helpers in `lib/storage/*`.
-4. `CodexAuthPlugin` wires modular auth/request helpers under `lib/codex-native/` (including split OAuth/request-transform/fetch helpers) and routes Codex backend requests.
+2. Config is resolved from `codex-config.json` + env overrides through `lib/config.ts` (stable barrel over `lib/config/types.ts`, `lib/config/file.ts`, and `lib/config/resolve.ts`).
+3. Auth loader selects a healthy account through `lib/storage.ts` + `lib/rotation.ts`, with storage normalization/migration helpers consolidated in `lib/storage/auth-state.ts`.
+4. `CodexAuthPlugin` wires focused auth/request helpers under `lib/codex-native/` and routes Codex backend requests.
 5. Failures (`429`, refresh/auth) trigger cooldown/disable semantics and retry orchestration (`lib/fetch-orchestrator.ts`).
 
 ## Key modules
@@ -28,13 +28,11 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
 - `lib/codex-native/auth-menu-quotas.ts`
   - auth-menu quota snapshot refresh + cooldown handling
 - `lib/codex-native/oauth-auth-methods.ts`, `lib/codex-native/oauth-persistence.ts`, `lib/codex-native/oauth-utils.ts`, `lib/codex-native/oauth-server.ts`
-  - browser/headless OAuth method flows, token persistence, OAuth primitives, callback server lifecycle
-- `lib/codex-native/oauth-server-debug.ts`, `lib/codex-native/oauth-server-network.ts`, `lib/codex-native/oauth-server-types.ts`
-  - OAuth server diagnostics, loopback binding policy, and lifecycle typing used by `oauth-server.ts`
-- `lib/codex-native/request-transform-pipeline.ts`, `lib/codex-native/request-transform.ts`, `lib/codex-native/request-transform-model.ts`, `lib/codex-native/request-transform-payload.ts`, `lib/codex-native/request-transform-instructions.ts`, `lib/codex-native/chat-hooks.ts`, `lib/codex-native/session-messages.ts`
-  - request/body transform pipeline and chat hook behavior (params/headers/compaction)
-- `lib/codex-native/catalog-sync.ts`, `lib/codex-native/catalog-auth.ts`
-  - model-catalog bootstrap and refresh wiring
+  - browser/headless OAuth method flows, token persistence, OAuth primitives, callback server lifecycle, loopback binding policy, and debug logging
+- `lib/codex-native/request-transform-model.ts`, `lib/codex-native/request-transform-model-service-tier.ts`, `lib/codex-native/request-transform-payload.ts`, `lib/codex-native/request-transform-payload-helpers.ts`, `lib/codex-native/chat-hooks.ts`, `lib/codex-native/session-messages.ts`
+  - request/body transform ownership split by model defaults, service-tier resolution, payload rewrites, and chat hook behavior
+- `lib/codex-native/catalog-sync.ts`
+  - model-catalog bootstrap, auth selection for bootstrap, and per-auth refresh wiring
 - `lib/codex-native/collaboration.ts`
   - plan-mode, orchestrator, and subagent collaboration instruction injection
 - `lib/codex-native/originator.ts`
@@ -43,8 +41,8 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - system browser launch for OAuth callback flow
 - `lib/codex-native/session-affinity-state.ts`, `lib/codex-native/rate-limit-snapshots.ts`, `lib/codex-native/request-routing.ts`
   - session affinity persistence, rate-limit snapshot persistence, outbound URL guard/rewrite
-- `lib/storage.ts`, `lib/storage/domain-state.ts`, `lib/storage/migration.ts`
-  - lock-guarded auth store IO, migration normalization, domain/account invariants, explicit legacy transfer
+- `lib/storage.ts`, `lib/storage/auth-state.ts`
+  - lock-guarded auth store IO, migration normalization, domain/account invariants, and explicit legacy transfer
 - `lib/rotation.ts`
   - `sticky`, `hybrid`, `round_robin` account selection
 - `lib/fetch-orchestrator.ts`
@@ -67,8 +65,8 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - custom personality file generation with enforced core assistant contract
 - `lib/personalities.ts`
   - custom personality resolution from lowercase `personalities/` directories
-- `lib/ui/auth-menu.ts`, `lib/ui/auth-menu-runner.ts`
-  - TTY account manager UI
+- `lib/ui/auth-menu.ts`, `lib/ui/tty.ts`
+  - TTY account manager UI and reusable terminal primitives
 - `lib/accounts-tools.ts`
   - tool handler logic for `codex-status`, `codex-switch-accounts`, `codex-toggle-account`, `codex-remove-account`
 - `lib/codex-status-tool.ts`, `lib/codex-status-storage.ts`, `lib/codex-status-ui.ts`
@@ -83,8 +81,8 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - quota percentage threshold warnings and cooldown triggers
 - `lib/cache-io.ts`, `lib/cache-lock.ts`, `lib/codex-cache-layout.ts`
   - shared cache IO primitives, lock helpers, and cache directory layout
-- `lib/config.ts`, `lib/config/types.ts`, `lib/config/validation.ts`, `lib/config/parse.ts`, `lib/config/io.ts`, `lib/config/resolve.ts`
-  - config typing, parsing, defaults, IO, and getter resolution through a stable top-level barrel
+- `lib/config.ts`, `lib/config/types.ts`, `lib/config/file.ts`, `lib/config/resolve.ts`
+  - config typing, file parsing/validation/default-file IO, and getter resolution through a stable top-level barrel
 - `lib/persona-tool.ts`, `lib/personality-skill.ts`
   - persona generation logic and `personality-builder` skill bundle management
 - `lib/identity.ts`

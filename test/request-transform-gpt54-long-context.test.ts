@@ -4,7 +4,7 @@ import type { BehaviorSettings } from "../lib/config.js"
 import {
   sanitizeOutboundRequestIfNeeded,
   transformOutboundRequestPayload
-} from "../lib/codex-native/request-transform.js"
+} from "../lib/codex-native/request-transform-payload.js"
 
 const PRIORITY_BEHAVIOR_SETTINGS: BehaviorSettings = {
   global: {

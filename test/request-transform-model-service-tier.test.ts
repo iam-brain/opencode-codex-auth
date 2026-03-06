@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { getModelServiceTierOverride, resolveServiceTierForModel } from "../lib/codex-native/request-transform.js"
+import {
+  getModelServiceTierOverride,
+  resolveServiceTierForModel
+} from "../lib/codex-native/request-transform-model-service-tier.js"
 
 describe("request transform model service tier resolution", () => {
   it("passes configured global service tiers through without client-side model gating", () => {

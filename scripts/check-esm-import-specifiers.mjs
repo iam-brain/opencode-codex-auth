@@ -4,9 +4,18 @@ import fs from "node:fs"
 import path from "node:path"
 import { findExtensionlessRelativeImportOffenders, stripCommentsKeepLines } from "./lib/esm-import-guard.mjs"
 
-const roots = ["index.ts", "lib", "bin"]
+const isDistMode = process.argv.includes("--dist")
+const roots = isDistMode ? ["dist"] : ["index.ts", "lib", "bin"]
 const sourceExtensions = new Set([".ts", ".mts"])
 const allowedRuntimeExtensions = new Set([".js", ".json", ".node", ".mjs", ".cjs"])
+
+if (isDistMode) {
+  const distRoot = path.resolve("dist")
+  if (!fs.existsSync(distRoot) || !fs.statSync(distRoot).isDirectory()) {
+    console.error("dist output not found. Run `npm run build` before checking dist ESM imports.")
+    process.exit(1)
+  }
+}
 
 function collectFiles(rootPath) {
   const abs = path.resolve(rootPath)
@@ -14,6 +23,9 @@ function collectFiles(rootPath) {
 
   const stat = fs.statSync(abs)
   if (stat.isFile()) {
+    if (isDistMode) {
+      return allowedRuntimeExtensions.has(path.extname(abs)) ? [abs] : []
+    }
     return sourceExtensions.has(path.extname(abs)) ? [abs] : []
   }
 
@@ -25,7 +37,12 @@ function collectFiles(rootPath) {
       const entryPath = path.join(dir, entry.name)
       if (entry.isDirectory()) {
         stack.push(entryPath)
-      } else if (entry.isFile() && sourceExtensions.has(path.extname(entryPath))) {
+      } else if (
+        entry.isFile() &&
+        (isDistMode
+          ? allowedRuntimeExtensions.has(path.extname(entryPath))
+          : sourceExtensions.has(path.extname(entryPath)))
+      ) {
         files.push(entryPath)
       }
     }
@@ -75,16 +92,26 @@ for (const root of roots) {
   for (const filePath of collectFiles(root)) {
     const content = fs.readFileSync(filePath, "utf8")
     offenders.push(...findExtensionlessRelativeImportOffenders(filePath, content, allowedRuntimeExtensions))
-    collectToolImportViolations(filePath, content)
+    if (!isDistMode) {
+      collectToolImportViolations(filePath, content)
+    }
   }
 }
 
 if (offenders.length > 0) {
-  console.error("Found extensionless local ESM import specifiers:")
+  console.error(
+    isDistMode
+      ? "Found extensionless relative imports in dist output:"
+      : "Found extensionless local ESM import specifiers:"
+  )
   for (const offender of offenders) {
     console.error(`- ${offender.file}:${offender.line} -> ${offender.specifier}`)
   }
   process.exit(1)
 }
 
-console.log("All local ESM import specifiers are fully specified.")
+console.log(
+  isDistMode
+    ? "dist output uses fully specified relative import specifiers."
+    : "All local ESM import specifiers are fully specified."
+)

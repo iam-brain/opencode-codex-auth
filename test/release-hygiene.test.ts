@@ -37,7 +37,7 @@ describe("release hygiene", () => {
       searchFrom = nextIndex + step.length
     }
     expect(pkg.scripts?.["check:esm-imports"]).toBe("node scripts/check-esm-import-specifiers.mjs")
-    expect(pkg.scripts?.["check:dist-esm-imports"]).toBe("node scripts/check-dist-esm-import-specifiers.mjs")
+    expect(pkg.scripts?.["check:dist-esm-imports"]).toBe("node scripts/check-esm-import-specifiers.mjs --dist")
     expect(pkg.scripts?.["smoke:cli:dist"]).toBe("node ./dist/bin/opencode-codex-auth.js --help")
     expect(pkg.scripts?.["test:coverage"]).toBe("vitest run --coverage.enabled true --coverage.provider=v8")
     expect(pkg.scripts?.["patch:plugin-dts"]).toBe("node scripts/patch-opencode-plugin-dts.js")
@@ -49,7 +49,7 @@ describe("release hygiene", () => {
     expect(pkg.scripts?.["clean:dist"]).toBe("node scripts/clean-dist.js")
     expect(existsSync(join(process.cwd(), "scripts", "clean-dist.js"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "check-esm-import-specifiers.mjs"))).toBe(true)
-    expect(existsSync(join(process.cwd(), "scripts", "check-dist-esm-import-specifiers.mjs"))).toBe(true)
+    expect(existsSync(join(process.cwd(), "scripts", "check-dist-esm-import-specifiers.mjs"))).toBe(false)
     expect(existsSync(join(process.cwd(), "scripts", "check-file-size.mjs"))).toBe(false)
     expect(existsSync(join(process.cwd(), "scripts", "file-size-allowlist.json"))).toBe(false)
   })

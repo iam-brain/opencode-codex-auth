@@ -1,5 +1,10 @@
 import { isRecord } from "../util.js"
-import { asString } from "./request-transform-shared.js"
+
+function asString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
+}
 
 export type TransformReason =
   | "disabled"
