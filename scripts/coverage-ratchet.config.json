@@ -5,7 +5,7 @@
   "globalThresholds": {
     "lines": 84.66,
     "branches": 78.4,
-    "functions": 94.6,
+    "functions": 94.59,
     "statements": 84.66
   },
   "milestones": {

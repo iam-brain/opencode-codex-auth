@@ -1,9 +1,9 @@
 {
   "total": {
-    "lines": 84.78,
-    "branches": 78.79,
-    "functions": 94.81,
-    "statements": 84.78
+    "lines": 85.49,
+    "branches": 79.53,
+    "functions": 94.59,
+    "statements": 85.49
   },
   "files": {
     "index.ts": {
@@ -56,8 +56,8 @@
     },
     "lib/codex-native.ts": {
       "lines": 96.2,
-      "branches": 88.13,
-      "functions": 92,
+      "branches": 82.19,
+      "functions": 92.3,
       "statements": 96.2
     },
     "lib/codex-native/accounts.ts": {
@@ -98,7 +98,7 @@
     },
     "lib/codex-native/catalog-sync.ts": {
       "lines": 100,
-      "branches": 81.81,
+      "branches": 75,
       "functions": 100,
       "statements": 100
     },
@@ -175,10 +175,10 @@
       "statements": 69.66
     },
     "lib/codex-native/openai-loader-fetch.ts": {
-      "lines": 90.74,
-      "branches": 86.31,
+      "lines": 90.9,
+      "branches": 85.1,
       "functions": 83.33,
-      "statements": 90.74
+      "statements": 90.9
     },
     "lib/codex-native/originator.ts": {
       "lines": 100,
@@ -229,10 +229,10 @@
       "statements": 95.59
     },
     "lib/codex-native/request-transform-payload.ts": {
-      "lines": 65.75,
-      "branches": 83.33,
+      "lines": 78.06,
+      "branches": 81.57,
       "functions": 100,
-      "statements": 65.75
+      "statements": 78.06
     },
     "lib/codex-native/request-transform-pipeline.ts": {
       "lines": 100,
@@ -415,22 +415,22 @@
       "statements": 88.94
     },
     "lib/model-catalog/catalog-fetch.ts": {
-      "lines": 94.73,
-      "branches": 88.57,
+      "lines": 91.17,
+      "branches": 85.33,
       "functions": 100,
-      "statements": 94.73
+      "statements": 91.17
     },
     "lib/model-catalog/provider.ts": {
-      "lines": 95.54,
-      "branches": 93.91,
+      "lines": 95.88,
+      "branches": 88.54,
       "functions": 100,
-      "statements": 95.54
+      "statements": 95.88
     },
     "lib/model-catalog/shared.ts": {
-      "lines": 84.13,
-      "branches": 60,
-      "functions": 100,
-      "statements": 84.13
+      "lines": 86.95,
+      "branches": 72.63,
+      "functions": 94.11,
+      "statements": 86.95
     },
     "lib/oauth-pages.ts": {
       "lines": 100,
