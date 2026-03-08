@@ -29,14 +29,17 @@ function requireOAuthState(state: string | null): string {
   return state
 }
 
-async function httpGet(url: string): Promise<{
+async function httpRequest(
+  method: string,
+  url: string
+): Promise<{
   statusCode: number
   location?: string
   body: string
   headers: Record<string, string | undefined>
 }> {
   return new Promise((resolve, reject) => {
-    const req = http.get(url, (res) => {
+    const req = http.request(url, { method }, (res) => {
       const location = Array.isArray(res.headers.location) ? res.headers.location[0] : res.headers.location
       const contentSecurityPolicy = Array.isArray(res.headers["content-security-policy"])
         ? res.headers["content-security-policy"][0]
@@ -68,7 +71,17 @@ async function httpGet(url: string): Promise<{
     req.setTimeout(OAUTH_HTTP_TIMEOUT_MS, () => {
       req.destroy(new Error("request timeout"))
     })
+    req.end()
   })
+}
+
+async function httpGet(url: string): Promise<{
+  statusCode: number
+  location?: string
+  body: string
+  headers: Record<string, string | undefined>
+}> {
+  return httpRequest("GET", url)
 }
 
 async function loadPluginForOAuthFlow(input: { mode: "native" | "codex"; spoofMode: "native" | "codex" }) {
@@ -409,6 +422,47 @@ describe("codex-native oauth callback flow", () => {
 
     const result = await flow.callback("")
     expect(result.type).toBe("success")
+  })
+
+  it("returns plain-text not-found responses for unknown routes", async () => {
+    const { hooks } = await loadPluginForOAuthFlow({
+      mode: "codex",
+      spoofMode: "codex"
+    })
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    await browserMethod.authorize()
+
+    const missingRoute = await httpRequest("POST", oauthUrl("/not-found"))
+    expect(missingRoute.statusCode).toBe(404)
+    expect(missingRoute.body).toBe("Not found")
+    expect(missingRoute.headers["content-security-policy"]).toBeUndefined()
+  })
+
+  it("rejects duplicate success callback hits after the first resolution", async () => {
+    const { hooks } = await loadPluginForOAuthFlow({
+      mode: "codex",
+      spoofMode: "codex"
+    })
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    const flow = (await browserMethod.authorize()) as BrowserAuthorizeFlow
+    const state = requireOAuthState(new URL(flow.url).searchParams.get("state"))
+
+    const firstResponse = await httpGet(oauthUrl(`/auth/callback?code=test_code&state=${encodeURIComponent(state)}`))
+    expect(firstResponse.statusCode).toBe(302)
+
+    const result = await flow.callback("")
+    expect(result.type).toBe("success")
+
+    const duplicateResponse = await httpGet(
+      oauthUrl(`/auth/callback?code=test_code&state=${encodeURIComponent(state)}`)
+    )
+    expect(duplicateResponse.statusCode).toBe(400)
+    expect(duplicateResponse.body).toContain("Invalid state")
+    expect(duplicateResponse.headers["content-security-policy"]).toContain("default-src 'none'")
   })
 
   it("cancels oauth flow only with matching cancel state", async () => {

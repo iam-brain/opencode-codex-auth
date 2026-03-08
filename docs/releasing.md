@@ -64,6 +64,8 @@ npm run verify
 - `npm run check:dist-esm-imports`
 - `npm run smoke:cli:dist`
 
+`npm run check:coverage-ratchet` is regression-only: it protects touched existing covered source files from coverage drops, while `npm run test:coverage` still records the full repo snapshot for visibility.
+
 Recommended additional checks:
 
 ```bash

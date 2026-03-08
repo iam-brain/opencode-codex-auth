@@ -83,6 +83,29 @@ describe("release hygiene", () => {
     ).toBe(".githooks/pre-push")
   })
 
+  it("coverage ratchet config stays regression-only", () => {
+    const configPath = join(process.cwd(), "scripts", "coverage-ratchet.config.json")
+    const config = JSON.parse(readFileSync(configPath, "utf-8"))
+    expect(config.baselinePath).toBe("scripts/coverage-ratchet.baseline.json")
+    expect(config.regressionTolerancePct).toBe(1)
+    expect(config.globalThresholds).toBeUndefined()
+    expect(config.milestones).toBeUndefined()
+  })
+
+  it("coverage ratchet script does not enforce repo-wide floors", () => {
+    const scriptPath = join(process.cwd(), "scripts", "check-coverage-ratchet.mjs")
+    const script = readFileSync(scriptPath, "utf-8")
+    expect(script).toContain("function isCoveredSourceFile(filePath)")
+    expect(script).toContain(
+      'return filePath === "index.ts" || (filePath.startsWith("lib/") && filePath.endsWith(".ts"))'
+    )
+    expect(script).toContain("Compared ${comparedFiles} touched existing source file(s).")
+    expect(script).not.toContain("const globalThresholds = config.globalThresholds")
+    expect(script).not.toContain("Global ")
+    expect(script).not.toContain("missing coverage baseline entry")
+    expect(script).not.toContain('rangeCandidates.push("origin/main...HEAD")')
+  })
+
   it("declares the Node engine aligned with CI", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
@@ -280,5 +303,28 @@ describe("package publish surface", () => {
     expect(vitestConfig).toMatch(/setupFiles:\s*\[\s*["']test\/setup-env\.ts["']\s*\]/)
     expect(existsSync(join(process.cwd(), "test", "setup-env.ts"))).toBe(true)
     expect(existsSync(join(process.cwd(), "test", "helpers", "isolate-env.ts"))).toBe(true)
+  })
+
+  it("uses regression-only coverage enforcement", () => {
+    const vitestConfig = readFileSync(join(process.cwd(), "vitest.config.ts"), "utf-8")
+    const ratchetScript = readFileSync(join(process.cwd(), "scripts", "check-coverage-ratchet.mjs"), "utf-8")
+    const ratchetConfig = JSON.parse(
+      readFileSync(join(process.cwd(), "scripts", "coverage-ratchet.config.json"), "utf-8")
+    ) as {
+      regressionTolerancePct?: unknown
+      globalThresholds?: unknown
+      milestones?: unknown
+    }
+    const workflow = readFileSync(join(process.cwd(), ".github", "workflows", "ci.yml"), "utf-8")
+
+    expect(vitestConfig).not.toContain("thresholds:")
+    expect(ratchetScript).toContain("isCoveredSourceFile")
+    expect(ratchetScript).not.toContain("const globalThresholds")
+    expect(ratchetScript).not.toContain("origin/main...HEAD")
+    expect(ratchetConfig.regressionTolerancePct).toBe(1)
+    expect(ratchetConfig.globalThresholds).toBeUndefined()
+    expect(ratchetConfig.milestones).toBeUndefined()
+    expect(workflow).toContain("COVERAGE_RATCHET_BASE_REF")
+    expect(workflow).toContain("COVERAGE_RATCHET_HEAD_REF")
   })
 })

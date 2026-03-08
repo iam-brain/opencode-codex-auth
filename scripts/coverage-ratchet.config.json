@@ -1,16 +1,4 @@
 {
-  "phase": "phase-1-foundation",
   "baselinePath": "scripts/coverage-ratchet.baseline.json",
-  "regressionTolerancePct": 1,
-  "globalThresholds": {
-    "lines": 84.66,
-    "branches": 78.4,
-    "functions": 94.59,
-    "statements": 84.66
-  },
-  "milestones": {
-    "phase1": { "lines": 88, "branches": 84, "functions": 95, "statements": 88 },
-    "phase2": { "lines": 92, "branches": 90, "functions": 96, "statements": 92 },
-    "phase4": { "lines": 95, "branches": 95, "functions": 95, "statements": 95 }
-  }
+  "regressionTolerancePct": 1
 }

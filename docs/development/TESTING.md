@@ -22,7 +22,7 @@ npm run verify
 
 PR GitHub CI is intentionally slimmer than local `verify`: it keeps the clean-room Ubuntu verify job, Linux tarball smoke, Windows smoke, dependency review, and secret scanning. The separate `npm audit` dependency audit remains GitHub-hosted, but it now runs on default-branch pushes instead of every PR.
 
-It now includes strict Biome linting + format checks (including typed promise-safety rules), anti-mock policy checks, coverage ratcheting, docs drift checks, Node ESM regression checks (source + dist import specifiers), and a built CLI smoke run.
+It now includes strict Biome linting + format checks (including typed promise-safety rules), anti-mock policy checks, a regression-only coverage ratchet, docs drift checks, Node ESM regression checks (source + dist import specifiers), and a built CLI smoke run.
 
 ## Quality policy gates
 
@@ -43,9 +43,9 @@ It now includes strict Biome linting + format checks (including typed promise-sa
   - No new `vi.doMock`/`vi.mock`/direct `vi.stubGlobal` usage beyond the tracked baseline in `scripts/test-mocking-allowlist.json`.
   - Shared global stub seam lives in `test/helpers/mock-policy.ts`.
 - `npm run check:coverage-ratchet`
-  - Enforces global coverage floor and prevents touched-file coverage regressions against `scripts/coverage-ratchet.baseline.json`.
-  - Uses `regressionTolerancePct: 1` from `scripts/coverage-ratchet.config.json` when comparing touched files to baseline.
-  - Future milestones are tracked in `scripts/coverage-ratchet.config.json`.
+  - Enforces a regression-only coverage guard against `scripts/coverage-ratchet.baseline.json`.
+  - Compares touched existing covered source files (`lib/**/*.ts`, `index.ts`) against baseline using `regressionTolerancePct: 1` from `scripts/coverage-ratchet.config.json`.
+  - New covered files are reported by coverage output but do not fail the ratchet until the baseline is intentionally refreshed.
 - `npm run check:docs`
   - Enforces canonical-doc reference hygiene (deleted test paths, removed tooling references, and broken repo-relative Markdown links).
 

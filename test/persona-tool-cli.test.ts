@@ -48,4 +48,76 @@ describe("persona-tool cli", () => {
     expect(code).toBe(1)
     expect(capture.err.join("\n")).toMatch(/Unable to read input file/i)
   })
+
+  it("prints help and exits cleanly", async () => {
+    const capture = captureIo()
+    const code = await runPersonaToolCli(["--help"], capture.io)
+    expect(code).toBe(0)
+    expect(capture.err).toEqual([])
+    expect(capture.out.join("\n")).toContain("Usage:")
+  })
+
+  it("fails with help text when --in is missing", async () => {
+    const capture = captureIo()
+    const code = await runPersonaToolCli(["--style", "mid"], capture.io)
+    expect(code).toBe(1)
+    expect(capture.err.join("\n")).toContain("Missing required --in <path> argument.")
+    expect(capture.err.join("\n")).toContain("Usage:")
+  })
+
+  it("falls back to defaults for invalid style, domain, and numeric options", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "persona-tool-cli-"))
+    const inputFile = path.join(root, "voice.md")
+    await fs.writeFile(inputFile, "Talk like a competent pirate.", "utf8")
+
+    const capture = captureIo()
+    const code = await runPersonaToolCli(
+      [
+        "--in",
+        inputFile,
+        "--style",
+        "not-a-style",
+        "--domain",
+        "not-a-domain",
+        "--voice-fidelity",
+        "NaN",
+        "--competence-strictness",
+        "bogus"
+      ],
+      capture.io
+    )
+
+    expect(code).toBe(0)
+    expect(capture.err).toEqual([])
+    expect(capture.out.join("\n")).toContain("## Voice Layer (How you sound)")
+    expect(capture.out.join("\n")).toContain("Token estimate:")
+  })
+
+  it("returns a clean CLI error when markdown output cannot be written", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "persona-tool-cli-"))
+    const inputFile = path.join(root, "voice.md")
+    const outDir = path.join(root, "existing-dir")
+    await fs.writeFile(inputFile, "Talk like a competent pirate.", "utf8")
+    await fs.mkdir(outDir)
+
+    const capture = captureIo()
+    const code = await runPersonaToolCli(["--in", inputFile, "--out", outDir], capture.io)
+
+    expect(code).toBe(1)
+    expect(capture.err.join("\n")).toContain("Unable to write markdown output:")
+  })
+
+  it("returns a clean CLI error when json output cannot be written", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "persona-tool-cli-"))
+    const inputFile = path.join(root, "voice.md")
+    const jsonDir = path.join(root, "existing-dir")
+    await fs.writeFile(inputFile, "Talk like a competent pirate.", "utf8")
+    await fs.mkdir(jsonDir)
+
+    const capture = captureIo()
+    const code = await runPersonaToolCli(["--in", inputFile, "--json", jsonDir], capture.io)
+
+    expect(code).toBe(1)
+    expect(capture.err.join("\n")).toContain("Unable to write JSON output:")
+  })
 })

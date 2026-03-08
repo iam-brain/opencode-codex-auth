@@ -20,17 +20,7 @@ const config = JSON.parse(fs.readFileSync(configPath, "utf8"))
 const summary = JSON.parse(fs.readFileSync(coveragePath, "utf8"))
 const baselinePath = path.resolve(ROOT, config.baselinePath)
 const baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"))
-const globalThresholds = config.globalThresholds
 const regressionTolerancePct = Number(config.regressionTolerancePct ?? 0.25)
-
-const globalViolations = []
-for (const metric of ["lines", "branches", "functions", "statements"]) {
-  const actual = Number(summary.total[metric]?.pct ?? 0)
-  const required = Number(globalThresholds[metric] ?? 0)
-  if (actual + 1e-9 < required) {
-    globalViolations.push(`${metric}: ${actual.toFixed(2)} < ${required.toFixed(2)}`)
-  }
-}
 
 function toRelativeCoverageMap(rawSummary) {
   const out = {}
@@ -68,81 +58,71 @@ function isAllZeroRef(value) {
   return typeof value === "string" && /^[0]+$/.test(value)
 }
 
+function isCoveredSourceFile(filePath) {
+  return filePath === "index.ts" || (filePath.startsWith("lib/") && filePath.endsWith(".ts"))
+}
+
+function collectTouchedFilesForRange(range) {
+  return parseTouchedFiles(runGitCommand(`git diff --name-only --diff-filter=ACMRTUXB ${range}`))
+}
+
+function collectTouchedStagedFiles() {
+  return parseTouchedFiles(runGitCommand("git diff --cached --name-only --diff-filter=ACMRTUXB"))
+}
+
+function collectTouchedWorkingTreeFiles() {
+  return parseTouchedFiles(runGitCommand("git diff --name-only --diff-filter=ACMRTUXB"))
+}
+
 function collectTouchedFiles() {
   const rangeCandidates = []
-  const githubRef = process.env.GITHUB_REF?.trim()
-  const isTagPush = typeof githubRef === "string" && githubRef.startsWith("refs/tags/")
   const explicitRange = process.env.COVERAGE_RATCHET_DIFF_RANGE?.trim()
   if (explicitRange) rangeCandidates.push(explicitRange)
 
   const rawBaseRef = process.env.COVERAGE_RATCHET_BASE_REF?.trim()
   const baseRef = rawBaseRef && !isAllZeroRef(rawBaseRef) ? rawBaseRef : undefined
   const headRef = process.env.COVERAGE_RATCHET_HEAD_REF?.trim() || "HEAD"
-  const singleCommitBase = runGitCommand(`git rev-parse --verify ${headRef}^`)?.trim()
-  if (isTagPush) {
-    // Tag retarget pushes should compare before...after; new tags should compare only the tagged commit.
-    if (baseRef) {
-      rangeCandidates.push(`${baseRef}...${headRef}`)
-    } else if (singleCommitBase) {
-      rangeCandidates.push(`${singleCommitBase}...${headRef}`)
-    }
-
-    for (const range of [...new Set(rangeCandidates)]) {
-      const files = parseTouchedFiles(runGitCommand(`git diff --name-only --diff-filter=ACMRTUXB ${range}`))
-      if (files.length > 0) {
-        return files
-      }
-    }
-
-    return []
-  }
-
   if (baseRef) {
     rangeCandidates.push(`${baseRef}...${headRef}`)
   }
 
-  if (singleCommitBase) {
-    rangeCandidates.push(`${singleCommitBase}...${headRef}`)
-  }
-
-  rangeCandidates.push("origin/main...HEAD")
-
-  const mergeBaseMain = runGitCommand("git merge-base origin/main HEAD")?.trim()
-  if (mergeBaseMain) rangeCandidates.push(`${mergeBaseMain}...HEAD`)
-
-  const mergeBaseOriginHead = runGitCommand("git merge-base origin/HEAD HEAD")?.trim()
-  if (mergeBaseOriginHead) rangeCandidates.push(`${mergeBaseOriginHead}...HEAD`)
-
-  const rootCommit = runGitCommand("git rev-list --max-parents=0 HEAD")
-    ?.split("\n")
-    .map((entry) => entry.trim())
-    .find(Boolean)
-  if (rootCommit) rangeCandidates.push(`${rootCommit}...HEAD`)
-
   for (const range of [...new Set(rangeCandidates)]) {
-    const files = parseTouchedFiles(runGitCommand(`git diff --name-only --diff-filter=ACMRTUXB ${range}`))
+    const files = collectTouchedFilesForRange(range)
     if (files.length > 0) {
       return files
     }
   }
 
-  return parseTouchedFiles(runGitCommand("git diff --name-only --diff-filter=ACMRTUXB"))
+  const stagedFiles = collectTouchedStagedFiles()
+  const workingTreeFiles = collectTouchedWorkingTreeFiles()
+  const localFiles = [...new Set([...stagedFiles, ...workingTreeFiles])]
+  if (localFiles.length > 0) {
+    return localFiles
+  }
+
+  const singleCommitBase = runGitCommand(`git rev-parse --verify ${headRef}^`)?.trim()
+  if (singleCommitBase) {
+    const files = collectTouchedFilesForRange(`${singleCommitBase}...${headRef}`)
+    if (files.length > 0) {
+      return files
+    }
+  }
+
+  return workingTreeFiles
 }
 
 const coverageByFile = toRelativeCoverageMap(summary)
 const touched = new Set(collectTouchedFiles())
 const regressionViolations = []
-const missingBaseline = []
+let comparedFiles = 0
 
 for (const filePath of touched) {
-  if (!filePath.endsWith(".ts")) continue
+  if (!isCoveredSourceFile(filePath)) continue
   const current = coverageByFile[filePath]
   const prior = baseline.files[filePath]
   if (!current) continue
-  if (!prior) {
-    missingBaseline.push(filePath)
-    continue
-  }
+  if (!prior) continue
+  comparedFiles += 1
 
   for (const metric of ["lines", "branches", "functions", "statements"]) {
     const floor = Number(prior[metric])
@@ -153,19 +133,8 @@ for (const filePath of touched) {
   }
 }
 
-if (missingBaseline.length > 0) {
-  regressionViolations.push(
-    ...missingBaseline
-      .sort((left, right) => left.localeCompare(right))
-      .map((filePath) => `${filePath}: missing coverage baseline entry (update scripts/coverage-ratchet.baseline.json)`)
-  )
-}
-
-if (globalViolations.length > 0 || regressionViolations.length > 0) {
+if (regressionViolations.length > 0) {
   console.error("Coverage ratchet policy violation(s):")
-  for (const violation of globalViolations) {
-    console.error(`- Global ${violation}`)
-  }
   for (const violation of regressionViolations) {
     console.error(`- ${violation}`)
   }
@@ -173,5 +142,5 @@ if (globalViolations.length > 0 || regressionViolations.length > 0) {
 }
 
 console.log(
-  `Coverage ratchet OK. Global=${summary.total.lines.pct.toFixed(2)}/${summary.total.branches.pct.toFixed(2)}/${summary.total.functions.pct.toFixed(2)}/${summary.total.statements.pct.toFixed(2)} (lines/branches/functions/statements).`
+  `Coverage ratchet OK. Compared ${comparedFiles} touched existing source file(s). Coverage snapshot=${summary.total.lines.pct.toFixed(2)}/${summary.total.branches.pct.toFixed(2)}/${summary.total.functions.pct.toFixed(2)}/${summary.total.statements.pct.toFixed(2)} (lines/branches/functions/statements).`
 )

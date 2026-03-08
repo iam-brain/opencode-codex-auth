@@ -139,4 +139,4 @@ Repository quality is enforced as code, not convention:
 - `scripts/check-test-mocking.mjs`
   - boundary-only anti-mock policy with tracked legacy baseline (`scripts/test-mocking-allowlist.json`)
 - `scripts/check-coverage-ratchet.mjs`
-  - global coverage floor + touched-file regression protection using `scripts/coverage-ratchet.baseline.json`
+  - regression-only touched-file coverage protection using `scripts/coverage-ratchet.baseline.json`

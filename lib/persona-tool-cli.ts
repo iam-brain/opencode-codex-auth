@@ -150,19 +150,29 @@ export async function runPersonaToolCli(args: string[], io: CliIo = DEFAULT_IO):
 
   if (parsed.outPath) {
     const outputPath = path.resolve(parsed.outPath)
-    await fs.mkdir(path.dirname(outputPath), { recursive: true })
-    await fs.writeFile(outputPath, result.agent_markdown, { encoding: "utf8", mode: 0o600 })
+    try {
+      await fs.mkdir(path.dirname(outputPath), { recursive: true })
+      await fs.writeFile(outputPath, result.agent_markdown, { encoding: "utf8", mode: 0o600 })
+    } catch {
+      io.err(`Unable to write markdown output: ${outputPath}`)
+      return 1
+    }
   } else {
     io.out(result.agent_markdown.trimEnd())
   }
 
   if (parsed.jsonPath) {
     const jsonPath = path.resolve(parsed.jsonPath)
-    await fs.mkdir(path.dirname(jsonPath), { recursive: true })
-    await fs.writeFile(jsonPath, `${JSON.stringify(result, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600
-    })
+    try {
+      await fs.mkdir(path.dirname(jsonPath), { recursive: true })
+      await fs.writeFile(jsonPath, `${JSON.stringify(result, null, 2)}\n`, {
+        encoding: "utf8",
+        mode: 0o600
+      })
+    } catch {
+      io.err(`Unable to write JSON output: ${jsonPath}`)
+      return 1
+    }
   }
 
   io.out(`Token estimate: ${result.token_estimate}`)

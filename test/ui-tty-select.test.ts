@@ -110,4 +110,84 @@ describe("tty select primitives", () => {
     input.emit("data", Buffer.from("\r"))
     await expect(resultPromise).resolves.toBe(true)
   })
+
+  it("returns null on non-interactive terminals", async () => {
+    const { input, output } = createMockTTY()
+    input.isTTY = false
+    await expect(select([{ label: "Only", value: "only" }], { message: "Pick", input, output })).resolves.toBeNull()
+  })
+
+  it("skips disabled items and separators while navigating", async () => {
+    const { input, output } = createMockTTY()
+
+    const resultPromise = select(
+      [
+        { label: "Disabled", value: "disabled", disabled: true },
+        { label: "Separator", value: "separator", separator: true },
+        { label: "First", value: "first" },
+        { label: "Second", value: "second" }
+      ],
+      {
+        message: "Pick one",
+        input,
+        output,
+        useColor: false
+      }
+    )
+
+    input.emit("data", Buffer.from("\x1b[A"))
+    input.emit("data", Buffer.from("\r"))
+
+    await expect(resultPromise).resolves.toBe("second")
+  })
+
+  it("cleans up and resolves null on SIGINT", async () => {
+    const { input, output } = createMockTTY()
+
+    const resultPromise = select(
+      [
+        { label: "First", value: "first" },
+        { label: "Second", value: "second" }
+      ],
+      {
+        message: "Pick one",
+        input,
+        output,
+        useColor: false
+      }
+    )
+
+    process.emit("SIGINT")
+
+    await expect(resultPromise).resolves.toBeNull()
+    expect(input.setRawMode).toHaveBeenLastCalledWith(false)
+    expect(output.write).toHaveBeenCalledWith(ANSI.show)
+  })
+
+  it("truncates long colored labels to the available width", async () => {
+    const { input, output } = createMockTTY()
+    output.columns = 20
+
+    const resultPromise = select(
+      [
+        {
+          label: "A very long option label that should truncate",
+          value: "first",
+          color: "green",
+          hint: "with hint"
+        },
+        { label: "Short", value: "short" }
+      ],
+      {
+        message: "Pick one",
+        input,
+        output,
+        useColor: true
+      }
+    )
+
+    input.emit("data", Buffer.from("\r"))
+    await expect(resultPromise).resolves.toBe("first")
+    expect(output.writes.join("")).toContain("...")
+  })
 })
