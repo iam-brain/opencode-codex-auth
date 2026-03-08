@@ -20,6 +20,8 @@ npm run verify
 
 `npm run verify` is the required local gate before commits, pushes, and PR updates. `npm run verify:local` runs that gate with caching, and the installed git hooks enforce it automatically before `git commit` and `git push`. The commit hook accepts staged-only commit-ready changes; the push hook requires a clean tree so it validates the exact commits being pushed. GitHub Actions still adds extra platform and security jobs beyond the repo-local verify run.
 
+PR GitHub CI is intentionally slimmer than local `verify`: it keeps the clean-room Ubuntu verify job, Linux tarball smoke, Windows smoke, dependency review, and secret scanning. The separate `npm audit` dependency audit remains GitHub-hosted, but it now runs on default-branch pushes instead of every PR.
+
 It now includes strict Biome linting + format checks (including typed promise-safety rules), anti-mock policy checks, coverage ratcheting, docs drift checks, Node ESM regression checks (source + dist import specifiers), and a built CLI smoke run.
 
 ## Quality policy gates

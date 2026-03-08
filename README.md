@@ -72,6 +72,8 @@ npm run check:docs
 
 Local git hooks now enforce `npm run verify` before both `git commit` and `git push`. The commit hook accepts staged-only commit-ready changes, and the push hook requires a clean tree so it verifies the exact commits being pushed. `npm run verify:local` runs the same enforcement manually, with a cache so unchanged trees do not rerun the full suite twice in a row.
 
+Pull request CI stays intentionally lean: GitHub still runs clean-room verify, tarball smoke, Windows smoke, dependency review, and secret scanning. Dependency vulnerability auditing via `npm audit` now runs on default-branch pushes instead of every PR.
+
 ## Usage Note
 
 This plugin is intended for personal development usage with your own ChatGPT account. For production multi-user systems, use official OpenAI Platform API auth flows.

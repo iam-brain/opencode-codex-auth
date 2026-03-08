@@ -11,6 +11,7 @@ const REQUIRED_RELEASE_RUNTIME_CI_JOBS = [
   "Security Audit"
 ]
 const REQUIRED_WORKFLOW_STATIC_JOB_NAMES = ["Package Smoke Test", "Windows Compatibility Smoke", "Security Audit"]
+const REQUIRED_PR_CI_JOB_NAMES = ["Verify (Node.js 22.x)", "Package Smoke Test", "Windows Compatibility Smoke"]
 
 describe("release hygiene", () => {
   it("package.json has verify script", () => {
@@ -129,6 +130,35 @@ describe("release hygiene", () => {
     }
   })
 
+  it("keeps PR CI lean while retaining security audit on main pushes", () => {
+    const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
+    const workflow = readFileSync(workflowPath, "utf-8")
+    expect(workflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:/)
+    for (const job of REQUIRED_PR_CI_JOB_NAMES) {
+      expect(workflow).toContain(job)
+    }
+    const securityAuditBlock = workflow
+      .split(/\n/)
+      .slice(workflow.split(/\n/).findIndex((line) => line.includes("security-audit:")))
+      .join("\n")
+    expect(securityAuditBlock).toContain("name: Security Audit")
+    expect(securityAuditBlock).toContain("if: github.event_name == 'push'")
+    expect(securityAuditBlock).toContain("npm audit --audit-level=high")
+  })
+
+  it("keeps dependency review and secret scanning on pull requests", () => {
+    const dependencyReviewWorkflow = readFileSync(
+      join(process.cwd(), ".github", "workflows", "dependency-review.yml"),
+      "utf-8"
+    )
+    const secretScanWorkflow = readFileSync(join(process.cwd(), ".github", "workflows", "secret-scan.yml"), "utf-8")
+    expect(dependencyReviewWorkflow).toMatch(/on:\s*\n\s+pull_request:/)
+    expect(dependencyReviewWorkflow).toContain("name: Dependency Review")
+    expect(secretScanWorkflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:/)
+    expect(secretScanWorkflow).toContain("name: Secret Scan")
+    expect(secretScanWorkflow).toContain("name: Gitleaks")
+  })
+
   it("release workflow validates tag/package version parity and idempotent publish", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "release.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
@@ -227,6 +257,7 @@ describe("package publish surface", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
     expect(workflow).toContain("Audit dependencies (including dev toolchain)")
+    expect(workflow).toContain("if: github.event_name == 'push'")
     expect(workflow).toContain("npm audit --audit-level=high")
     expect(workflow).not.toContain("npm audit --omit=dev")
   })
