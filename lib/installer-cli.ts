@@ -44,7 +44,7 @@ function parseArgs(args: string[]):
     if (!token) continue
     if (token === "--config") {
       const value = tail[i + 1]
-      if (!value) {
+      if (!value || value.startsWith("-")) {
         return { ok: false, error: "Missing value for --config" }
       }
       configPath = value
@@ -61,7 +61,7 @@ function parseArgs(args: string[]):
     }
     if (token === "--plugin") {
       const value = tail[i + 1]
-      if (!value) {
+      if (!value || value.startsWith("-")) {
         return { ok: false, error: "Missing value for --plugin" }
       }
       pluginSpecifier = value

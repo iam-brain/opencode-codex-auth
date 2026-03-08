@@ -122,6 +122,17 @@ export function findDomainAccountIndex(
   account: AccountInfo,
   preferredAuthMode?: OpenAIAuthMode
 ): number {
+  const matchesAccountInfo = (entry: AccountRecord | undefined): boolean => {
+    if (!entry) return false
+    if (account.identityKey && entry.identityKey) {
+      return entry.identityKey === account.identityKey
+    }
+    const sameId = (entry.accountId?.trim() ?? "") === (account.accountId?.trim() ?? "")
+    const sameEmail = normalizeEmail(entry.email) === normalizeEmail(account.email)
+    const samePlan = normalizePlan(entry.plan) === normalizePlan(account.plan)
+    return sameId && sameEmail && samePlan
+  }
+
   const sourceIndices = account.sourceIndices
   if (sourceIndices) {
     const orderedAuthTypes: OpenAIAuthMode[] = preferredAuthMode
@@ -130,19 +141,14 @@ export function findDomainAccountIndex(
     for (const authType of orderedAuthTypes) {
       const sourceIndex = sourceIndices[authType]
       if (typeof sourceIndex !== "number" || !Number.isInteger(sourceIndex) || sourceIndex < 0) continue
-      if (domain.accounts[sourceIndex]) return sourceIndex
+      if (matchesAccountInfo(domain.accounts[sourceIndex])) return sourceIndex
     }
   }
   if (account.identityKey) {
     const byIdentity = domain.accounts.findIndex((entry) => entry.identityKey === account.identityKey)
     if (byIdentity >= 0) return byIdentity
   }
-  return domain.accounts.findIndex((entry) => {
-    const sameId = (entry.accountId?.trim() ?? "") === (account.accountId?.trim() ?? "")
-    const sameEmail = normalizeEmail(entry.email) === normalizeEmail(account.email)
-    const samePlan = normalizePlan(entry.plan) === normalizePlan(account.plan)
-    return sameId && sameEmail && samePlan
-  })
+  return domain.accounts.findIndex((entry) => matchesAccountInfo(entry))
 }
 
 export function buildAuthMenuAccounts(input: {

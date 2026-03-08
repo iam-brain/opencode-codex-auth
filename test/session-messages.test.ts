@@ -22,6 +22,18 @@ describe("session-messages helpers", () => {
     await expect(readSessionMessageRows(client, "ses_error")).resolves.toEqual([])
   })
 
+  it("treats non-array session message payloads as empty", async () => {
+    const client = {
+      session: {
+        messages: async () => ({
+          data: { nope: true }
+        })
+      }
+    } as never
+
+    await expect(readSessionMessageRows(client, "ses_non_array")).resolves.toEqual([])
+  })
+
   it("requests a deeper message window for long-running sessions", async () => {
     const messages = async (input: unknown) => {
       expect(input).toMatchObject({ sessionID: "ses_limit", limit: 1000 })
@@ -45,6 +57,22 @@ describe("session-messages helpers", () => {
     } as never
 
     await expect(sessionUsesOpenAIProvider(client, "ses_provider")).resolves.toBe(true)
+  })
+
+  it("ignores non-user rows and returns false when no user provider can be determined", async () => {
+    const client = {
+      session: {
+        messages: async () => ({
+          data: [
+            { info: { role: "assistant", model: { providerID: "openai" } } },
+            { info: { role: "user" } },
+            { info: { role: "tool", providerID: "openai" } }
+          ]
+        })
+      }
+    } as never
+
+    await expect(sessionUsesOpenAIProvider(client, "ses_no_provider")).resolves.toBe(false)
   })
 
   it("reads specific message info rows and provider id fallbacks", async () => {
@@ -81,5 +109,42 @@ describe("session-messages helpers", () => {
     const info = await readSessionMessageInfo(client, "ses_lookup", "m-direct")
     expect(info).toBeDefined()
     expect(getMessageProviderID(info ?? {})).toBe("openai")
+  })
+
+  it("accepts direct message lookup responses nested under data.info", async () => {
+    const client = {
+      session: {
+        message: async () => ({
+          data: {
+            info: { id: "m-direct-data", role: "assistant", providerID: "openai" }
+          }
+        })
+      }
+    } as never
+
+    await expect(readSessionMessageInfo(client, "ses_lookup", "m-direct-data")).resolves.toEqual({
+      id: "m-direct-data",
+      role: "assistant",
+      providerID: "openai"
+    })
+  })
+
+  it("falls back to row scanning when direct message lookup fails", async () => {
+    const client = {
+      session: {
+        message: async () => {
+          throw new Error("boom")
+        },
+        messages: async () => ({
+          data: [{ info: { id: "m-fallback", role: "assistant", providerID: "openai" } }]
+        })
+      }
+    } as never
+
+    await expect(readSessionMessageInfo(client, "ses_lookup", "m-fallback")).resolves.toEqual({
+      id: "m-fallback",
+      role: "assistant",
+      providerID: "openai"
+    })
   })
 })

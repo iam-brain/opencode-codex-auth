@@ -103,6 +103,32 @@ describe("installer cli", () => {
     expect(capture.err.join("\n")).toContain("Missing value for --config")
   })
 
+  it("rejects missing plugin option values", async () => {
+    const capture = captureIo()
+    const code = await runInstallerCli(["--plugin="], capture.io)
+    expect(code).toBe(1)
+    expect(capture.err.join("\n")).toContain("Missing value for --plugin")
+  })
+
+  it("rejects option-looking values for config and plugin flags", async () => {
+    const configCapture = captureIo()
+    const configCode = await runInstallerCli(["install", "--config", "--plugin=@pkg"], configCapture.io)
+    expect(configCode).toBe(1)
+    expect(configCapture.err.join("\n")).toContain("Missing value for --config")
+
+    const pluginCapture = captureIo()
+    const pluginCode = await runInstallerCli(["install", "--plugin", "--config=/tmp/opencode.json"], pluginCapture.io)
+    expect(pluginCode).toBe(1)
+    expect(pluginCapture.err.join("\n")).toContain("Missing value for --plugin")
+  })
+
+  it("rejects unexpected positional arguments after install", async () => {
+    const capture = captureIo()
+    const code = await runInstallerCli(["install", "extra-arg"], capture.io)
+    expect(code).toBe(1)
+    expect(capture.err.join("\n")).toContain("Unexpected argument: extra-arg")
+  })
+
   it("shows orchestrator agent in codex mode", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-codex-"))
     const configPath = path.join(root, "opencode.json")
@@ -157,6 +183,32 @@ describe("installer cli", () => {
       expect(await fs.readFile(skillPath, "utf8")).toBe("custom skill\n")
       expect(secondCapture.out.join("\n")).toContain("/create-personality synchronized: unchanged")
       expect(secondCapture.out.join("\n")).toContain("personality-builder skill synchronized: unchanged")
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg
+      }
+    }
+  })
+
+  it("accepts inline plugin and config options", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-inline-"))
+    const configPath = path.join(root, "opencode.json")
+    const capture = captureIo()
+    const previousXdg = process.env.XDG_CONFIG_HOME
+    process.env.XDG_CONFIG_HOME = root
+
+    try {
+      const code = await runInstallerCli(
+        ["install", `--config=${configPath}`, "--plugin=@iam-brain/opencode-codex-auth@test"],
+        capture.io
+      )
+      expect(code).toBe(0)
+      expect(capture.out.join("\n")).toContain("Plugin specifier: @iam-brain/opencode-codex-auth@test")
+
+      const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
+      expect(config.plugin).toContain("@iam-brain/opencode-codex-auth@test")
     } finally {
       if (previousXdg === undefined) {
         delete process.env.XDG_CONFIG_HOME
