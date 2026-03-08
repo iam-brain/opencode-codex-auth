@@ -6,9 +6,12 @@ import {
   getCollaborationProfileEnabled,
   getCodexCompactionOverrideEnabled,
   getCompatInputSanitizerEnabled,
+  getCustomModels,
   getOrchestratorSubagentsEnabled,
   getProactiveRefreshBufferMs,
   getProactiveRefreshEnabled,
+  getReasoningSummaryOverride,
+  getThinkingSummariesOverride,
   getRemapDeveloperMessagesToUserEnabled,
   resolveConfig
 } from "../lib/config"
@@ -65,6 +68,88 @@ describe("config", () => {
         reasoningSummaries: false
       }
     })
+  })
+
+  it("maps env reasoning summaries, text verbosity, and service tier into canonical behavior settings", () => {
+    expect(
+      buildResolvedBehaviorSettings({
+        fileBehavior: undefined,
+        envPersonality: undefined,
+        envReasoningSummaries: false,
+        envVerbosityEnabled: undefined,
+        envVerbosity: undefined,
+        envTextVerbosity: "high",
+        envServiceTier: "priority"
+      })
+    ).toEqual({
+      global: {
+        reasoningSummary: "none",
+        reasoningSummaries: false,
+        textVerbosity: "high",
+        verbosityEnabled: true,
+        verbosity: "high",
+        serviceTier: "priority"
+      }
+    })
+  })
+
+  it("maps legacy verbosity env toggles when canonical text verbosity is unset", () => {
+    expect(
+      buildResolvedBehaviorSettings({
+        fileBehavior: undefined,
+        envPersonality: undefined,
+        envReasoningSummaries: undefined,
+        envVerbosityEnabled: true,
+        envVerbosity: undefined,
+        envTextVerbosity: undefined,
+        envServiceTier: undefined
+      })
+    ).toEqual({
+      global: {
+        textVerbosity: "default",
+        verbosityEnabled: true,
+        verbosity: "default"
+      }
+    })
+  })
+
+  it("deep-clones custom models and surfaces canonical reasoning summary getters", () => {
+    const cfg = resolveConfig({
+      env: {},
+      file: {
+        behaviorSettings: {
+          global: {
+            reasoningSummary: "concise"
+          }
+        },
+        customModels: {
+          "openai/my-fast-codex": {
+            targetModel: "gpt-5.3-codex",
+            variants: {
+              high: {
+                reasoningSummary: "detailed"
+              }
+            }
+          }
+        }
+      }
+    })
+
+    const customModels = getCustomModels(cfg)
+    expect(customModels).toEqual({
+      "openai/my-fast-codex": {
+        targetModel: "gpt-5.3-codex",
+        variants: {
+          high: {
+            reasoningSummary: "detailed"
+          }
+        }
+      }
+    })
+    expect(customModels).not.toBe(cfg.customModels)
+    expect(customModels?.["openai/my-fast-codex"]).not.toBe(cfg.customModels?.["openai/my-fast-codex"])
+    expect(getReasoningSummaryOverride(cfg)).toBe("concise")
+    expect(getThinkingSummariesOverride(cfg)).toBe(true)
   })
 
   it("clamps and floors buffer", () => {

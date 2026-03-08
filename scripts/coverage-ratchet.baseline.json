@@ -55,10 +55,10 @@
       "statements": 100
     },
     "lib/codex-native.ts": {
-      "lines": 96.2,
-      "branches": 82.19,
-      "functions": 92.3,
-      "statements": 96.2
+      "lines": 94.88,
+      "branches": 83.33,
+      "functions": 88.57,
+      "statements": 94.88
     },
     "lib/codex-native/accounts.ts": {
       "lines": 92.09,
@@ -175,10 +175,10 @@
       "statements": 69.66
     },
     "lib/codex-native/openai-loader-fetch.ts": {
-      "lines": 90.9,
-      "branches": 85.1,
+      "lines": 89.72,
+      "branches": 86.48,
       "functions": 83.33,
-      "statements": 90.9
+      "statements": 89.72
     },
     "lib/codex-native/originator.ts": {
       "lines": 100,
@@ -189,6 +189,12 @@
     "lib/codex-native/rate-limit-snapshots.ts": {
       "lines": 100,
       "branches": 100,
+      "functions": 100,
+      "statements": 100
+    },
+    "lib/codex-native/reasoning-summary.ts": {
+      "lines": 100,
+      "branches": 95.23,
       "functions": 100,
       "statements": 100
     },
@@ -217,10 +223,10 @@
       "statements": 92.94
     },
     "lib/codex-native/request-transform-model.ts": {
-      "lines": 91.02,
-      "branches": 82.95,
-      "functions": 100,
-      "statements": 91.02
+      "lines": 93.22,
+      "branches": 89.07,
+      "functions": 92.85,
+      "statements": 93.22
     },
     "lib/codex-native/request-transform-payload-helpers.ts": {
       "lines": 95.59,
@@ -349,10 +355,10 @@
       "statements": 88.88
     },
     "lib/config/resolve.ts": {
-      "lines": 99.34,
-      "branches": 96.38,
+      "lines": 96.83,
+      "branches": 90.9,
       "functions": 100,
-      "statements": 99.34
+      "statements": 96.83
     },
     "lib/config/types.ts": {
       "lines": 100,
@@ -427,10 +433,10 @@
       "statements": 91.17
     },
     "lib/model-catalog/provider.ts": {
-      "lines": 95.88,
-      "branches": 88.54,
+      "lines": 96.32,
+      "branches": 87.89,
       "functions": 100,
-      "statements": 95.88
+      "statements": 96.32
     },
     "lib/model-catalog/shared.ts": {
       "lines": 86.95,

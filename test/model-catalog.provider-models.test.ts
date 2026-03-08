@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from "vitest"
 import {
   applyCodexCatalogToProviderModels,
   getRuntimeDefaultsForSlug,
-  parseCatalogResponse
+  parseCatalogResponse,
+  resolveInstructionsForModel
 } from "../lib/model-catalog"
 
 function makeBaselineModel(id: string): Record<string, unknown> {
@@ -431,6 +432,27 @@ describe("model catalog provider model mapping", () => {
       }
     })
     expect((providerModels["gpt-5.4"].options as Record<string, unknown>).codexInstructions).toBeUndefined()
+  })
+
+  it("falls back to safe base instructions when rendered templates contain stale bridge markers", () => {
+    expect(
+      resolveInstructionsForModel(
+        {
+          slug: "gpt-5.4",
+          context_window: 272000,
+          base_instructions: "Use the safe base",
+          model_messages: {
+            instructions_template: "Use {{ personality }} with multi_tool_use.parallel",
+            instructions_variables: {
+              personalities: {
+                default: "Default tone"
+              }
+            }
+          }
+        },
+        undefined
+      )
+    ).toBe("Use the safe base")
   })
 
   it("clears provider models instead of synthesizing a fallback model set when no catalog is available", () => {
