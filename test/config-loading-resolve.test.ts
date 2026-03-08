@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
   getBehaviorSettings,
   getCollaborationProfileEnabled,
   getCodexCompactionOverrideEnabled,
   getCompatInputSanitizerEnabled,
+  getCustomModels,
   getDebugEnabled,
   getHeaderSnapshotBodiesEnabled,
   getHeaderSnapshotsEnabled,
@@ -15,10 +16,10 @@ import {
   getPidOffsetEnabled,
   getPromptCacheKeyStrategy,
   getQuietMode,
+  getReasoningSummariesOverride,
   getRemapDeveloperMessagesToUserEnabled,
   getRotationStrategy,
   getSpoofMode,
-  getThinkingSummariesOverride,
   resolveConfig
 } from "../lib/config"
 
@@ -236,7 +237,7 @@ describe("config loading", () => {
         behaviorSettings: {
           global: {
             personality: "friendly",
-            thinkingSummaries: false
+            reasoningSummaries: false
           },
           perModel: {
             "gpt-5.3-codex": {
@@ -248,7 +249,7 @@ describe("config loading", () => {
     })
 
     expect(getPersonality(cfg)).toBe("friendly")
-    expect(getThinkingSummariesOverride(cfg)).toBe(false)
+    expect(getReasoningSummariesOverride(cfg)).toBe(false)
     expect(getBehaviorSettings(cfg)?.perModel?.["gpt-5.3-codex"]?.personality).toBe("pragmatic")
   })
 
@@ -266,19 +267,84 @@ describe("config loading", () => {
     expect(getBehaviorSettings(cfg)?.global?.personality).toBe("pirate")
   })
 
-  it("lets env thinking summaries override file behavior settings", () => {
+  it("lets env reasoning summaries override file behavior settings", () => {
     const cfg = resolveConfig({
-      env: { OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES: "1" },
+      env: { OPENCODE_OPENAI_MULTI_REASONING_SUMMARIES: "1" },
       file: {
         behaviorSettings: {
           global: {
+            reasoningSummaries: false
+          }
+        }
+      }
+    })
+
+    expect(getReasoningSummariesOverride(cfg)).toBe(true)
+  })
+
+  it("preserves custom selectable model definitions from file config", () => {
+    const cfg = resolveConfig({
+      env: {},
+      file: {
+        customModels: {
+          "openai/my-fast-codex": {
+            targetModel: "gpt-5.3-codex",
+            reasoningSummary: "concise",
+            variants: {
+              high: {
+                reasoningSummary: "detailed"
+              }
+            }
+          }
+        }
+      }
+    })
+
+    expect(getCustomModels(cfg)).toEqual({
+      "openai/my-fast-codex": {
+        targetModel: "gpt-5.3-codex",
+        reasoningSummary: "concise",
+        variants: {
+          high: {
+            reasoningSummary: "detailed"
+          }
+        }
+      }
+    })
+  })
+
+  it("prefers canonical reasoningSummary over deprecated boolean aliases in the same scope", () => {
+    const cfg = resolveConfig({
+      env: {},
+      file: {
+        behaviorSettings: {
+          global: {
+            reasoningSummary: "detailed",
+            reasoningSummaries: false,
             thinkingSummaries: false
           }
         }
       }
     })
 
-    expect(getThinkingSummariesOverride(cfg)).toBe(true)
+    expect(getBehaviorSettings(cfg)?.global?.reasoningSummary).toBe("detailed")
+    expect(getReasoningSummariesOverride(cfg)).toBe(true)
+  })
+
+  it("accepts deprecated env thinking summaries alias with a warning", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const cfg = resolveConfig({
+        env: { OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES: "0" }
+      })
+
+      expect(getReasoningSummariesOverride(cfg)).toBe(false)
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES")
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it("parses verbosity overrides from env", () => {
@@ -289,8 +355,9 @@ describe("config loading", () => {
       }
     })
 
+    expect(getBehaviorSettings(cfg)?.global?.textVerbosity).toBe("none")
     expect(getBehaviorSettings(cfg)?.global?.verbosityEnabled).toBe(false)
-    expect(getBehaviorSettings(cfg)?.global?.verbosity).toBe("low")
+    expect(getBehaviorSettings(cfg)?.global?.verbosity).toBeUndefined()
   })
 
   it("parses service tier override from env", () => {

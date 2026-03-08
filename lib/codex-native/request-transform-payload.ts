@@ -6,8 +6,13 @@ import { isRecord } from "../util.js"
 import {
   findCatalogModelForCandidates,
   getModelLookupCandidates,
+  getModelReasoningSummaryOverride,
   resolvePersonalityForModel
 } from "./request-transform-model.js"
+import {
+  type ReasoningSummaryValidationDiagnostic,
+  resolveReasoningSummaryValue
+} from "./reasoning-summary.js"
 import { getRequestBodyVariantCandidates } from "./request-transform-model-service-tier.js"
 import {
   type CompatSanitizerTransformResult,
@@ -104,6 +109,7 @@ export type OutboundRequestPayloadTransformResult = {
   promptCacheKey: PromptCacheKeyTransformResult
   compatSanitizer: CompatSanitizerTransformResult
   serviceTier: ServiceTierTransformResult
+  reasoningSummaryValidation?: ReasoningSummaryValidationDiagnostic
 }
 
 export type ServiceTierTransformResult = {
@@ -175,7 +181,8 @@ export async function transformOutboundRequestPayload(
       compatSanitizer: input.compatInputSanitizerEnabled
         ? { ...disabledCompatSanitizer, reason: "non_post" }
         : disabledCompatSanitizer,
-      serviceTier: disabledServiceTier
+      serviceTier: disabledServiceTier,
+      reasoningSummaryValidation: undefined
     }
   }
 
@@ -196,7 +203,8 @@ export async function transformOutboundRequestPayload(
       compatSanitizer: input.compatInputSanitizerEnabled
         ? { ...disabledCompatSanitizer, reason: "invalid_json" }
         : disabledCompatSanitizer,
-      serviceTier: disabledServiceTier
+      serviceTier: disabledServiceTier,
+      reasoningSummaryValidation: undefined
     }
   }
 
@@ -214,7 +222,8 @@ export async function transformOutboundRequestPayload(
       compatSanitizer: input.compatInputSanitizerEnabled
         ? { ...disabledCompatSanitizer, reason: "empty_body" }
         : disabledCompatSanitizer,
-      serviceTier: disabledServiceTier
+      serviceTier: disabledServiceTier,
+      reasoningSummaryValidation: undefined
     }
   }
 
@@ -235,7 +244,8 @@ export async function transformOutboundRequestPayload(
       compatSanitizer: input.compatInputSanitizerEnabled
         ? { ...disabledCompatSanitizer, reason: "invalid_json" }
         : disabledCompatSanitizer,
-      serviceTier: disabledServiceTier
+      serviceTier: disabledServiceTier,
+      reasoningSummaryValidation: undefined
     }
   }
 
@@ -253,7 +263,8 @@ export async function transformOutboundRequestPayload(
       compatSanitizer: input.compatInputSanitizerEnabled
         ? { ...disabledCompatSanitizer, reason: "non_object_body" }
         : disabledCompatSanitizer,
-      serviceTier: disabledServiceTier
+      serviceTier: disabledServiceTier,
+      reasoningSummaryValidation: undefined
     }
   }
 
@@ -290,6 +301,11 @@ export async function transformOutboundRequestPayload(
   const gpt54LongContextClampChanged =
     input.gpt54LongContextClampEnabled !== false ? applyGpt54LongContextClampsToPayload(finalPayload) : false
   const serviceTier = disabledServiceTier
+  const reasoningSummaryValidation = validateReasoningSummaryPayload({
+    payload: finalPayload,
+    catalogModels: input.catalogModels,
+    behaviorSettings: input.behaviorSettings
+  })
   changed =
     changed ||
     compatSanitizer.changed ||
@@ -305,7 +321,8 @@ export async function transformOutboundRequestPayload(
       developerRoleRemap,
       promptCacheKey,
       compatSanitizer,
-      serviceTier: { ...serviceTier, request: input.request }
+      serviceTier: { ...serviceTier, request: input.request },
+      reasoningSummaryValidation
     }
   }
 
@@ -319,7 +336,8 @@ export async function transformOutboundRequestPayload(
     serviceTier: {
       ...serviceTier,
       request: input.request
-    }
+    },
+    reasoningSummaryValidation
   }
 }
 
@@ -454,6 +472,55 @@ function syncReasoningEncryptedContentInclude(input: {
   }
 
   return false
+}
+
+function validateReasoningSummaryPayload(input: {
+  payload: Record<string, unknown>
+  catalogModels?: CodexModelInfo[]
+  behaviorSettings?: BehaviorSettings
+}): ReasoningSummaryValidationDiagnostic | undefined {
+  const modelSlug = asString(input.payload.model)
+  if (!modelSlug) return undefined
+
+  const modelCandidates = getModelLookupCandidates({
+    id: modelSlug,
+    api: { id: modelSlug }
+  })
+  const variantCandidates = getRequestBodyVariantCandidates({
+    body: input.payload,
+    modelSlug
+  })
+  const reasoning = isRecord(input.payload.reasoning) ? input.payload.reasoning : undefined
+  const reasoningEffort = asString(reasoning?.effort)
+  const reasoningSummary = asString(reasoning?.summary)
+  const globalBehavior = input.behaviorSettings?.global
+  const catalogModel = findCatalogModelForCandidates(input.catalogModels, modelCandidates)
+  const defaults = catalogModel ? getRuntimeDefaultsForModel(catalogModel) : undefined
+  const modelReasoningSummaryOverride = getModelReasoningSummaryOverride(
+    input.behaviorSettings,
+    modelCandidates,
+    variantCandidates
+  )
+  const globalReasoningSummary =
+    typeof globalBehavior?.reasoningSummary === "string"
+      ? globalBehavior.reasoningSummary
+      : typeof globalBehavior?.reasoningSummaries === "boolean"
+        ? globalBehavior.reasoningSummaries
+          ? "auto"
+          : "none"
+        : undefined
+
+  return resolveReasoningSummaryValue({
+    explicitValue: reasoningSummary,
+    explicitSource: "request.reasoning.summary",
+    hasReasoning: reasoningEffort !== undefined && reasoningEffort !== "none",
+    configuredValue: modelReasoningSummaryOverride ?? globalReasoningSummary,
+    configuredSource: "config.reasoningSummary",
+    supportsReasoningSummaries: defaults?.supportsReasoningSummaries,
+    defaultReasoningSummaryFormat: defaults?.reasoningSummaryFormat,
+    defaultReasoningSummarySource: "codexRuntimeDefaults.reasoningSummaryFormat",
+    model: modelSlug
+  }).diagnostic
 }
 
 export async function remapDeveloperMessagesToUserOnRequest(input: { request: Request; enabled: boolean }): Promise<{

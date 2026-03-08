@@ -41,7 +41,7 @@ describe("config", () => {
     const fileBehavior = {
       global: {
         personality: "balanced",
-        thinkingSummaries: false
+        reasoningSummaries: false
       }
     } as const
 
@@ -53,7 +53,7 @@ describe("config", () => {
       buildResolvedBehaviorSettings({
         fileBehavior,
         envPersonality: "concise",
-        envThinkingSummaries: undefined,
+        envReasoningSummaries: undefined,
         envVerbosityEnabled: undefined,
         envVerbosity: undefined,
         envServiceTier: undefined
@@ -61,7 +61,7 @@ describe("config", () => {
     ).toEqual({
       global: {
         personality: "concise",
-        thinkingSummaries: false
+        reasoningSummaries: false
       }
     })
   })

@@ -38,7 +38,7 @@ Use this page as the fast entrypoint for humans and agents.
 
 - `docs/examples/README.md`
 - `docs/examples/opencode.json`
-- `docs/examples/codex-config.json`
+- `docs/examples/codex-config.jsonc`
 
 ## Planning and Research
 

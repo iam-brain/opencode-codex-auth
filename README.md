@@ -38,7 +38,7 @@ opencode run "say hi" --model=openai/gpt-5
 
 ## Configuration
 
-Keep plugin install/enablement in `opencode.json`, and runtime behavior in `codex-config.json`.
+Keep plugin install/enablement in `opencode.json`, and runtime behavior in `codex-config.jsonc`. The plugin still accepts commented legacy `codex-config.json` files for compatibility.
 
 - Config reference: [docs/configuration.md](docs/configuration.md)
 - Multi-account behavior: [docs/multi-account.md](docs/multi-account.md)

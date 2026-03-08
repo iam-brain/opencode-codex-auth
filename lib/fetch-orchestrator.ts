@@ -1,5 +1,5 @@
 import { computeBackoffMs, parseRetryAfterMs } from "./rate-limit.js"
-import { createSyntheticErrorResponse, formatWaitTime } from "./fatal-errors.js"
+import { createSyntheticErrorResponse, formatWaitTime, isPluginFatalError } from "./fatal-errors.js"
 import {
   DEFAULT_ACCOUNT_SWITCH_TOAST_DEBOUNCE_MS,
   DEFAULT_RATE_LIMIT_TOAST_DEBOUNCE_MS,
@@ -325,6 +325,9 @@ export class FetchOrchestrator {
             request = maybeRequest
           }
         } catch (error) {
+          if (isPluginFatalError(error)) {
+            throw error
+          }
           if (error instanceof Error) {
             // Snapshot/debug hooks should never block request execution.
           }

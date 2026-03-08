@@ -6,18 +6,18 @@ This directory contains starter config files.
 
 - `opencode.json`
   - minimal plugin registration example (published install)
-- `codex-config.json`
+- `codex-config.jsonc`
   - runtime and model behavior example
 
 ## Usage
 
 1. Keep `opencode.json` minimal (plugin enablement only).
-2. Put runtime behavior in `~/.config/opencode/codex-config.json`.
+2. Put runtime behavior in `~/.config/opencode/codex-config.jsonc`.
 3. Customize:
    - `runtime.mode` (`native`, `codex`)
    - `runtime.developerMessagesToUser` (codex-mode role remap toggle)
    - `runtime.promptCacheKeyStrategy` (`default`, `project`)
-   - `global` personality/summaries
+   - `global` personality/reasoning summaries
    - `perModel` and `variants`
 4. Validate with schemas:
    - `schemas/codex-config.schema.json`

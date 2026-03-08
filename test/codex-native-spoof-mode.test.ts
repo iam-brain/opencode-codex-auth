@@ -62,7 +62,7 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.include).toEqual(["web_search_call.action.sources", "reasoning.encrypted_content"])
   })
 
-  it("applies model reasoning summary format default verbatim", async () => {
+  it("drops invalid model reasoning summary format defaults from chat params", async () => {
     const hooks = await CodexAuthPlugin({} as never)
     const chatParams = hooks["chat.params"]
     expect(chatParams).toBeTypeOf("function")
@@ -93,7 +93,7 @@ describe("codex-native spoof + params hooks", () => {
     }
 
     await chatParams?.(input, output)
-    expect(output.options.reasoningSummary).toBe("experimental")
+    expect(output.options.reasoningSummary).toBeUndefined()
   })
 
   it("treats model reasoning summary format none as disabled", async () => {
@@ -465,11 +465,11 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.instructions).toBe("Base Strict voice")
   })
 
-  it("honors thinking_summaries false override", async () => {
+  it("honors reasoning summaries false override", async () => {
     const hooks = await CodexAuthPlugin({} as never, {
       behaviorSettings: {
         global: {
-          thinkingSummaries: false
+          reasoningSummaries: false
         }
       }
     })
@@ -507,15 +507,68 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.reasoningSummary).toBeUndefined()
   })
 
-  it("prefers per-model thinking summaries over global setting", async () => {
+  it("applies canonical reasoningSummary, textVerbosity, include, and parallelToolCalls config overrides", async () => {
     const hooks = await CodexAuthPlugin({} as never, {
       behaviorSettings: {
         global: {
-          thinkingSummaries: true
+          reasoningEffort: "medium",
+          reasoningSummary: "concise",
+          textVerbosity: "high",
+          include: ["file_search_call.results"],
+          parallelToolCalls: false
+        }
+      }
+    })
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_canonical_behavior",
+      agent: "default",
+      provider: {},
+      message: {},
+      model: {
+        id: "gpt-5.3-codex",
+        api: { id: "gpt-5.3-codex" },
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexInstructions: "Catalog instructions",
+          codexRuntimeDefaults: {
+            defaultReasoningEffort: "high",
+            supportsReasoningSummaries: true,
+            defaultVerbosity: "medium",
+            supportsParallelToolCalls: true
+          }
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output: any = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {}
+    }
+
+    await chatParams?.(input, output)
+
+    expect(output.options.reasoningEffort).toBe("medium")
+    expect(output.options.reasoningSummary).toBe("concise")
+    expect(output.options.textVerbosity).toBe("high")
+    expect(output.options.parallelToolCalls).toBe(false)
+    expect(output.options.include).toEqual(["file_search_call.results", "reasoning.encrypted_content"])
+  })
+
+  it("prefers per-model reasoning summaries over global setting", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      behaviorSettings: {
+        global: {
+          reasoningSummaries: true
         },
         perModel: {
           "gpt-5.3-codex": {
-            thinkingSummaries: false
+            reasoningSummaries: false
           }
         }
       }
@@ -554,17 +607,17 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.reasoningSummary).toBeUndefined()
   })
 
-  it("prefers per-variant thinking summaries over per-model and global", async () => {
+  it("prefers per-variant reasoning summaries over per-model and global", async () => {
     const hooks = await CodexAuthPlugin({} as never, {
       behaviorSettings: {
         global: {
-          thinkingSummaries: false
+          reasoningSummaries: false
         },
         perModel: {
           "gpt-5.3-codex": {
-            thinkingSummaries: false,
+            reasoningSummaries: false,
             variants: {
-              high: { thinkingSummaries: true }
+              high: { reasoningSummaries: true }
             }
           }
         }
@@ -602,6 +655,81 @@ describe("codex-native spoof + params hooks", () => {
 
     await chatParams?.(input, output)
     expect(output.options.reasoningSummary).toBe("auto")
+  })
+
+  it("applies custom selectable model defaults and lets perModel custom slug overrides win", async () => {
+    const hooks = await CodexAuthPlugin({} as never, {
+      behaviorSettings: {
+        global: {
+          reasoningSummary: "auto",
+          textVerbosity: "low",
+          parallelToolCalls: true
+        },
+        perModel: {
+          "openai/my-fast-codex": {
+            reasoningSummary: "detailed",
+            textVerbosity: "high"
+          },
+          "gpt-5.3-codex": {
+            reasoningSummary: "none",
+            serviceTier: "priority"
+          }
+        }
+      }
+    })
+    const chatParams = hooks["chat.params"]
+    expect(chatParams).toBeTypeOf("function")
+
+    const input = {
+      sessionID: "ses_custom_model",
+      agent: "default",
+      provider: {},
+      message: { variant: "high" },
+      model: {
+        id: "openai/my-fast-codex",
+        api: { id: "gpt-5.3-codex" },
+        providerID: "openai",
+        capabilities: { toolcall: true },
+        options: {
+          codexRuntimeDefaults: {
+            defaultReasoningEffort: "medium",
+            supportsReasoningSummaries: true,
+            defaultVerbosity: "medium",
+            supportsParallelToolCalls: false
+          },
+          codexCustomModelConfig: {
+            slug: "openai/my-fast-codex",
+            targetModel: "gpt-5.3-codex",
+            reasoningEffort: "low",
+            reasoningSummary: "concise",
+            textVerbosity: "medium",
+            parallelToolCalls: true,
+            variants: {
+              high: {
+                reasoningEffort: "high",
+                reasoningSummary: "detailed",
+                serviceTier: "flex"
+              }
+            }
+          }
+        }
+      }
+    } as unknown as Parameters<NonNullable<typeof chatParams>>[0]
+
+    const output: any = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {}
+    }
+
+    await chatParams?.(input, output)
+
+    expect(output.options.reasoningEffort).toBe("high")
+    expect(output.options.reasoningSummary).toBe("detailed")
+    expect(output.options.textVerbosity).toBe("high")
+    expect(output.options.parallelToolCalls).toBe(true)
+    expect(output.options.serviceTier).toBe("flex")
   })
 
   it("applies global verbosity override when enabled", async () => {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { PluginFatalError } from "../lib/fatal-errors"
 import { FetchOrchestrator } from "../lib/fetch-orchestrator"
 import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
@@ -97,6 +98,60 @@ describe("FetchOrchestrator snapshots and redirect policy", () => {
 
     expect(response.status).toBe(200)
     expect(onAttemptRequest).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("propagates PluginFatalError from onAttemptRequest", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "token_abc",
+      identityKey: "id1",
+      accountId: "acc1"
+    }))
+    const setCooldown = vi.fn<(identityKey: string, cooldownUntil: number) => Promise<void>>(async () => {})
+    const fetchMock = vi.fn(async () => new Response("OK", { status: 200 }))
+    stubGlobalForTest("fetch", fetchMock)
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      onAttemptRequest: async () => {
+        throw new PluginFatalError({
+          message: "fatal request prep",
+          type: "fatal_request_prep",
+          param: "request.reasoning.summary",
+          source: "request.reasoning.summary"
+        })
+      }
+    })
+
+    await expect(orch.execute("https://api.com")).rejects.toMatchObject({
+      message: "fatal request prep",
+      type: "fatal_request_prep",
+      source: "request.reasoning.summary"
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("continues request execution when onAttemptRequest throws a non-fatal error", async () => {
+    const acquireAuth = vi.fn(async () => ({
+      access: "token_abc",
+      identityKey: "id1",
+      accountId: "acc1"
+    }))
+    const setCooldown = vi.fn<(identityKey: string, cooldownUntil: number) => Promise<void>>(async () => {})
+    const fetchMock = vi.fn(async () => new Response("OK", { status: 200 }))
+    stubGlobalForTest("fetch", fetchMock)
+
+    const orch = new FetchOrchestrator({
+      acquireAuth,
+      setCooldown,
+      onAttemptRequest: async () => {
+        throw new Error("debug hook failed")
+      }
+    })
+
+    const response = await orch.execute("https://api.com")
+    expect(response.status).toBe(200)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 

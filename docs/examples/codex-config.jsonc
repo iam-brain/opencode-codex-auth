@@ -1,0 +1,124 @@
+{
+  "$schema": "https://schemas.iam-brain.dev/opencode-codex-auth/codex-config.schema.json",
+
+  // Enable verbose plugin debug logs.
+  "debug": false,
+
+  // Suppress plugin toasts and notifications.
+  "quiet": false,
+
+  // Proactively refresh access tokens before expiry.
+  "refreshAhead": {
+    // Refresh before token expiry.
+    "enabled": true,
+
+    // Milliseconds before expiry to refresh.
+    "bufferMs": 60000
+  },
+
+  "runtime": {
+    // Request identity/profile mode.
+    "mode": "native",
+
+    // Account rotation strategy.
+    "rotationStrategy": "sticky",
+
+    // Input compatibility sanitizer for edge payloads.
+    "sanitizeInputs": false,
+
+    // Remap non-permissions developer messages to user role in codex mode.
+    "developerMessagesToUser": true,
+
+    // Prompt cache key policy.
+    "promptCacheKeyStrategy": "default",
+
+    // Optional codex-rs compaction/profile override.
+    // "codexCompactionOverride": true,
+
+    // Optional collaboration controls.
+    // "collaborationProfile": true,
+    // "orchestratorSubagents": true,
+
+    // Debug request snapshots.
+    "headerSnapshots": false,
+    "headerSnapshotBodies": false,
+    "headerTransformDebug": false,
+
+    // Session-aware offset for account selection.
+    "pidOffset": false
+  },
+
+  "global": {
+    // Built-ins: "pragmatic", "friendly"
+    // Custom: personalities/<key>.md
+    "personality": "pragmatic",
+
+    // Reasoning effort override forwarded upstream.
+    "reasoningEffort": "high",
+
+    // Reasoning summary format forwarded upstream as reasoning.summary.
+    // options: "auto" | "concise" | "detailed" | "none"
+    // "none" disables summaries entirely.
+    "reasoningSummary": "auto",
+
+    // Optional Fast Mode (`serviceTier`) override:
+    // "auto" leaves the request unchanged.
+    // "serviceTier": "priority",
+
+    // Text verbosity sent upstream as text.verbosity.
+    // options: "default" | "low" | "medium" | "high" | "none"
+    // "default" uses the selected model's catalog default.
+    // "none" disables text verbosity entirely.
+    "textVerbosity": "default",
+
+    // Optional extra response include values.
+    // allowed: "reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs"
+    "include": ["file_search_call.results"],
+
+    // Whether to allow multiple tool calls in parallel.
+    "parallelToolCalls": true
+  },
+
+  // Optional custom selectable model aliases.
+  // The config key becomes the model slug users select.
+  // targetModel remains the backend-facing API model id.
+  "customModels": {
+    "openai/my-fast-codex": {
+      "targetModel": "gpt-5.3-codex",
+      "name": "My Fast Codex",
+      "reasoningEffort": "low",
+      "reasoningSummary": "concise",
+      "textVerbosity": "medium",
+      "serviceTier": "auto",
+      "include": ["file_search_call.results"],
+      "parallelToolCalls": true,
+      "variants": {
+        "high": {
+          "reasoningEffort": "high",
+          "reasoningSummary": "detailed"
+        }
+      }
+    }
+  },
+
+  "perModel": {
+    // Per-model override example.
+    "gpt-5.3-codex": {
+      "personality": "friendly",
+      "reasoningEffort": "medium",
+      "reasoningSummary": "concise",
+      "textVerbosity": "medium",
+      "serviceTier": "flex",
+      "include": ["file_search_call.results"],
+      "parallelToolCalls": false,
+      "variants": {
+        // Variant-specific override example.
+        "high": {
+          "personality": "pragmatic",
+          "reasoningSummary": "detailed",
+          "textVerbosity": "high"
+        }
+      }
+    }
+  }
+}

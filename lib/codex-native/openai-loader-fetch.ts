@@ -16,6 +16,7 @@ import {
   type OutboundRequestPayloadTransformResult,
   transformOutboundRequestPayload
 } from "./request-transform-payload.js"
+import { toReasoningSummaryPluginFatalError } from "./reasoning-summary.js"
 import type { SessionAffinityRuntimeState } from "./session-affinity-state.js"
 import { scheduleQuotaRefresh } from "./openai-loader-fetch-quota.js"
 import {
@@ -92,7 +93,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           message: "Outbound request validation failed before preparing OpenAI request.",
           status: 400,
           type: "disallowed_outbound_request",
-          param: "request"
+          param: "request",
+          source: "request.url",
+          hint: "Check the outbound URL and request target before calling the OpenAI provider."
         })
       )
     }
@@ -106,7 +109,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           message: "Outbound request could not be prepared for OpenAI backend.",
           status: 400,
           type: "disallowed_outbound_request",
-          param: "request"
+          param: "request",
+          source: "request",
+          hint: "Ensure the outbound request can be constructed with a valid URL, method, headers, and body."
         })
       )
     }
@@ -273,6 +278,10 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           behaviorSettings: input.behaviorSettings
         })
 
+        if (payloadTransform.reasoningSummaryValidation) {
+          throw toReasoningSummaryPluginFatalError(payloadTransform.reasoningSummaryValidation)
+        }
+
         if (input.headerTransformDebug) {
           await input.requestSnapshots.captureRequest("after-header-transform", payloadTransform.request, {
             spoofMode: input.spoofMode,
@@ -367,7 +376,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           message: "Outbound request validation failed before sending to OpenAI backend.",
           status: 400,
           type: "disallowed_outbound_request",
-          param: "request"
+          param: "request",
+          source: "request.url",
+          hint: "Check the rewritten outbound URL and request target before the request is sent."
         })
       )
     }
@@ -392,7 +403,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           message: "OpenAI request failed unexpectedly. Retry once, and if it persists run `opencode auth login`.",
           status: 502,
           type: "plugin_fetch_failed",
-          param: "request"
+          param: "request",
+          source: "request",
+          hint: "If retries keep failing, refresh auth state with `opencode auth login` and inspect plugin debug logs."
         })
       )
     }

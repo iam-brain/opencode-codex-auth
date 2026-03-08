@@ -14,6 +14,7 @@ import {
   getCompatInputSanitizerEnabled,
   getCodexCompactionOverrideEnabled,
   getBehaviorSettings,
+  getCustomModels,
   getCollaborationProfileEnabled,
   getDebugEnabled,
   getHeaderSnapshotBodiesEnabled,
@@ -157,7 +158,8 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
     collaborationProfileEnabled,
     orchestratorSubagentsEnabled: getOrchestratorSubagentsEnabled(cfg),
-    behaviorSettings: getBehaviorSettings(cfg)
+    behaviorSettings: getBehaviorSettings(cfg),
+    customModels: getCustomModels(cfg)
   })
 
   const z = tool.schema

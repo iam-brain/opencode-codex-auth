@@ -57,7 +57,7 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
         },
         onConfigureModels: async () => {
           process.stdout.write(
-            "\nConfigure provider models in opencode.json and runtime flags in codex-config.json.\n\n"
+            "\nConfigure provider models in opencode.json and runtime flags in codex-config.jsonc.\n\n"
           )
         },
         onTransfer: async () => {

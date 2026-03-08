@@ -53,7 +53,7 @@ describe("installer cli", () => {
       const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
       expect(config.plugin).toContain("@iam-brain/opencode-codex-auth@latest")
       const codexConfig = parseConfigJsonWithComments(
-        await fs.readFile(path.join(root, "opencode", "codex-config.json"), "utf8")
+        await fs.readFile(path.join(root, "opencode", "codex-config.jsonc"), "utf8")
       ) as { runtime?: { mode?: string } }
       expect(codexConfig.runtime?.mode).toBe("native")
 

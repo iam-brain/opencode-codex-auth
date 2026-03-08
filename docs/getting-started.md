@@ -18,7 +18,7 @@ npx -y @iam-brain/opencode-codex-auth@latest
 What this does:
 
 - Adds `@iam-brain/opencode-codex-auth@latest` to resolved `<config-root>/opencode.json` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`)
-- Creates `codex-config.json` at resolved config root (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`) if missing
+- Creates `codex-config.jsonc` at resolved config root (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`) if missing
 - Synchronizes `/create-personality` command at `<config-root>/commands/create-personality.md`
 - Synchronizes `personality-builder` skill at `<config-root>/skills/personality-builder/SKILL.md`
 
@@ -33,7 +33,7 @@ Installer flags:
 - `--config <path>`: use a custom `opencode.json` path.
 - `--plugin <specifier>`: override plugin specifier written into `opencode.json`.
 
-`codex-config.json` is still created at the default resolved config location. To load config from a custom path at runtime, set `OPENCODE_OPENAI_MULTI_CONFIG_PATH`.
+`codex-config.jsonc` is created at the default resolved config location when no config exists. To load config from a custom path at runtime, set `OPENCODE_OPENAI_MULTI_CONFIG_PATH`.
 
 ## 2) Keep OpenCode config minimal
 
@@ -49,9 +49,10 @@ Example:
 
 Put all plugin behavior flags in:
 
-- resolved `<config-root>/codex-config.json` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`)
+- resolved `<config-root>/codex-config.jsonc` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`)
+- compatibility fallback: `<config-root>/codex-config.json` when `codex-config.jsonc` is absent
 
-Use `docs/examples/codex-config.json` as a baseline.
+Use `docs/examples/codex-config.jsonc` as a baseline.
 Use schemas for autocomplete/validation:
 
 - `schemas/codex-config.schema.json`
@@ -98,7 +99,7 @@ The plugin now tracks the live Codex catalog, so exact GPT-5-family availability
 
 ## 5a) Optional: enable GPT-5.4 fast mode
 
-Add a `serviceTier` override in `codex-config.json`:
+Add a `serviceTier` override in `codex-config.jsonc`:
 
 ```json
 {
@@ -140,7 +141,7 @@ This guided flow writes a profile into:
 
 ## Mode + agent behavior
 
-Runtime mode is configured in `codex-config.json`.
+Runtime mode is configured in `codex-config.jsonc`.
 
 - `native`: default
 - `codex`

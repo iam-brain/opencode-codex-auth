@@ -227,4 +227,61 @@ describe("codex-native config variants", () => {
       expect(config).toEqual(baseline)
     })
   })
+
+  it("adds selectable custom models to provider config when their targets exist", async () => {
+    await withIsolatedHome(async () => {
+      await seedAuthFixture(Date.now() + 60_000)
+      stubGlobalForTest(
+        "fetch",
+        vi.fn(async (url: string | URL | Request) => {
+          const endpoint =
+            typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
+          if (endpoint.includes("/backend-api/codex/models")) {
+            return new Response(
+              JSON.stringify({
+                models: [
+                  {
+                    slug: "gpt-5.4",
+                    context_window: 272000,
+                    input_modalities: ["text", "image"],
+                    supported_reasoning_levels: [{ effort: "medium" }, { effort: "high" }]
+                  }
+                ]
+              }),
+              { status: 200 }
+            )
+          }
+          if (endpoint.includes("raw.githubusercontent.com/openai/codex/")) {
+            return new Response(JSON.stringify({ models: [] }), { status: 200 })
+          }
+          return new Response("ok", { status: 200 })
+        })
+      )
+
+      const { CodexAuthPlugin } = await import("../lib/codex-native")
+      const hooks = await CodexAuthPlugin({} as never, {
+        customModels: {
+          "openai/my-fast-codex": {
+            targetModel: "gpt-5.4",
+            name: "My Fast Codex",
+            reasoningSummary: "concise"
+          }
+        }
+      })
+      const config = makeConfig()
+
+      await hooks.config?.(config as never)
+
+      expect(config.provider.openai.models["openai/my-fast-codex"]).toBeDefined()
+      expect(config.provider.openai.models["openai/my-fast-codex"].name).toBe("My Fast Codex")
+      expect(config.provider.openai.models["openai/my-fast-codex"].api).toMatchObject({
+        id: "gpt-5.4"
+      })
+      expect(config.provider.openai.models["openai/my-fast-codex"].variants.high).toEqual({
+        reasoningEffort: "high",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"]
+      })
+    })
+  })
 })

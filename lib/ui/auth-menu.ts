@@ -173,7 +173,7 @@ export function buildAuthMenuItems(
     { label: "Add new account", value: { type: "add" } },
     { label: "Check quotas", value: { type: "check" } },
     { label: "Manage accounts (enable/disable)", value: { type: "manage" } },
-    { label: "Configure models in codex-config.json", value: { type: "configure-models" } },
+    { label: "Configure models in codex-config.jsonc", value: { type: "configure-models" } },
     ...(options.allowTransfer
       ? [
           {

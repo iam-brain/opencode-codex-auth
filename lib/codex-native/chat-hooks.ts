@@ -6,10 +6,18 @@ import { getRuntimeDefaultsForModel, resolveInstructionsForModel } from "../mode
 import {
   applyCodexRuntimeDefaultsToParams,
   findCatalogModelForCandidates,
+  getCustomModelIncludeOverride,
+  getCustomModelParallelToolCallsOverride,
+  getCustomModelReasoningEffortOverride,
+  getCustomModelReasoningSummaryOverride,
+  getCustomModelTextVerbosityOverride,
   getModelLookupCandidates,
-  getModelThinkingSummariesOverride,
-  getModelVerbosityEnabledOverride,
-  getModelVerbosityOverride,
+  getModelIncludeOverride,
+  getModelParallelToolCallsOverride,
+  getModelReasoningEffortOverride,
+  getModelReasoningSummaryOverride,
+  getSelectedModelLookupCandidates,
+  getModelTextVerbosityOverride,
   getVariantLookupCandidates,
   resolvePersonalityForModel
 } from "./request-transform-model.js"
@@ -33,10 +41,16 @@ import {
   resolveSubagentHeaderValue
 } from "./collaboration.js"
 
-function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | undefined {
+function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | "none" | undefined {
   if (typeof value !== "string") return undefined
   const normalized = value.trim().toLowerCase()
-  if (normalized === "default" || normalized === "low" || normalized === "medium" || normalized === "high") {
+  if (
+    normalized === "default" ||
+    normalized === "low" ||
+    normalized === "medium" ||
+    normalized === "high" ||
+    normalized === "none"
+  ) {
     return normalized
   }
   return undefined
@@ -77,6 +91,9 @@ export async function handleChatParamsHook(input: {
 }): Promise<void> {
   if (input.hookInput.model.providerID !== "openai") return
   const modelOptions = isRecord(input.hookInput.model.options) ? input.hookInput.model.options : {}
+  const selectedModelCandidates = getSelectedModelLookupCandidates({
+    id: input.hookInput.model.id
+  })
   const modelCandidates = getModelLookupCandidates({
     id: input.hookInput.model.id,
     api: { id: input.hookInput.model.api?.id }
@@ -88,25 +105,51 @@ export async function handleChatParamsHook(input: {
   const catalogModelFallback = findCatalogModelForCandidates(input.lastCatalogModels, modelCandidates)
   const effectivePersonality = resolvePersonalityForModel({
     behaviorSettings: input.behaviorSettings,
-    modelCandidates,
+    modelOptions,
+    modelCandidates: selectedModelCandidates,
     variantCandidates,
     fallback: input.fallbackPersonality
   })
-  const modelThinkingSummariesOverride = getModelThinkingSummariesOverride(
+  const customModelReasoningEffortOverride = getCustomModelReasoningEffortOverride(modelOptions, variantCandidates)
+  const customModelReasoningSummaryOverride = getCustomModelReasoningSummaryOverride(modelOptions, variantCandidates)
+  const customModelTextVerbosityOverride = getCustomModelTextVerbosityOverride(modelOptions, variantCandidates)
+  const customModelIncludeOverride = getCustomModelIncludeOverride(modelOptions, variantCandidates)
+  const customModelParallelToolCallsOverride = getCustomModelParallelToolCallsOverride(modelOptions, variantCandidates)
+  const modelReasoningEffortOverride = getModelReasoningEffortOverride(
     input.behaviorSettings,
-    modelCandidates,
+    selectedModelCandidates,
     variantCandidates
   )
-  const modelVerbosityEnabledOverride = getModelVerbosityEnabledOverride(
+  const modelReasoningSummaryOverride = getModelReasoningSummaryOverride(
     input.behaviorSettings,
-    modelCandidates,
+    selectedModelCandidates,
     variantCandidates
   )
-  const modelVerbosityOverride = getModelVerbosityOverride(input.behaviorSettings, modelCandidates, variantCandidates)
+  const modelTextVerbosityOverride = getModelTextVerbosityOverride(
+    input.behaviorSettings,
+    selectedModelCandidates,
+    variantCandidates
+  )
+  const modelIncludeOverride = getModelIncludeOverride(input.behaviorSettings, selectedModelCandidates, variantCandidates)
+  const modelParallelToolCallsOverride = getModelParallelToolCallsOverride(
+    input.behaviorSettings,
+    selectedModelCandidates,
+    variantCandidates
+  )
   const globalBehavior = input.behaviorSettings?.global
-  const globalVerbosityEnabled =
-    typeof globalBehavior?.verbosityEnabled === "boolean" ? globalBehavior.verbosityEnabled : undefined
-  const globalVerbosity = normalizeVerbositySetting(globalBehavior?.verbosity)
+  const globalReasoningSummary =
+    typeof globalBehavior?.reasoningSummary === "string"
+      ? globalBehavior.reasoningSummary
+      : typeof globalBehavior?.reasoningSummaries === "boolean"
+        ? globalBehavior.reasoningSummaries
+          ? "auto"
+          : "none"
+        : undefined
+  const globalTextVerbosity =
+    normalizeVerbositySetting(globalBehavior?.textVerbosity) ??
+    (typeof globalBehavior?.verbosityEnabled === "boolean" && globalBehavior.verbosityEnabled === false
+      ? "none"
+      : normalizeVerbositySetting(globalBehavior?.verbosity))
   const catalogModelFromOptions = isRecord(modelOptions.codexCatalogModel)
     ? (modelOptions.codexCatalogModel as CodexModelInfo)
     : undefined
@@ -139,10 +182,11 @@ export async function handleChatParamsHook(input: {
   if (asString(input.output.options.serviceTier) === undefined) {
     const resolvedServiceTier = resolveServiceTierForModel({
       behaviorSettings: input.behaviorSettings,
-      modelCandidates,
+      modelOptions,
+      modelCandidates: selectedModelCandidates,
       variantCandidates
     })
-    if (resolvedServiceTier && resolvedServiceTier !== "default") {
+    if (resolvedServiceTier && resolvedServiceTier !== "auto") {
       input.output.options.serviceTier = resolvedServiceTier
     }
   }
@@ -153,10 +197,16 @@ export async function handleChatParamsHook(input: {
   applyCodexRuntimeDefaultsToParams({
     modelOptions,
     modelToolCallCapable: input.hookInput.model.capabilities?.toolcall,
-    thinkingSummariesOverride: modelThinkingSummariesOverride ?? globalBehavior?.thinkingSummaries,
-    verbosityEnabledOverride: modelVerbosityEnabledOverride ?? globalVerbosityEnabled,
-    verbosityOverride: modelVerbosityOverride ?? globalVerbosity,
+    resolvedBehavior: {
+      reasoningEffort: modelReasoningEffortOverride ?? customModelReasoningEffortOverride ?? globalBehavior?.reasoningEffort,
+      reasoningSummary: modelReasoningSummaryOverride ?? customModelReasoningSummaryOverride ?? globalReasoningSummary,
+      textVerbosity: modelTextVerbosityOverride ?? customModelTextVerbosityOverride ?? globalTextVerbosity,
+      include: modelIncludeOverride ?? customModelIncludeOverride ?? globalBehavior?.include,
+      parallelToolCalls:
+        modelParallelToolCallsOverride ?? customModelParallelToolCallsOverride ?? globalBehavior?.parallelToolCalls
+    },
     preferCodexInstructions: input.spoofMode === "codex" && !preserveOrchestratorInstructions,
+    modelId: input.hookInput.model.id,
     output: input.output
   })
 
