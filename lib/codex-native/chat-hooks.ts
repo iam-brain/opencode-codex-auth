@@ -130,7 +130,11 @@ export async function handleChatParamsHook(input: {
     selectedModelCandidates,
     variantCandidates
   )
-  const modelIncludeOverride = getModelIncludeOverride(input.behaviorSettings, selectedModelCandidates, variantCandidates)
+  const modelIncludeOverride = getModelIncludeOverride(
+    input.behaviorSettings,
+    selectedModelCandidates,
+    variantCandidates
+  )
   const modelParallelToolCallsOverride = getModelParallelToolCallsOverride(
     input.behaviorSettings,
     selectedModelCandidates,
@@ -198,7 +202,8 @@ export async function handleChatParamsHook(input: {
     modelOptions,
     modelToolCallCapable: input.hookInput.model.capabilities?.toolcall,
     resolvedBehavior: {
-      reasoningEffort: modelReasoningEffortOverride ?? customModelReasoningEffortOverride ?? globalBehavior?.reasoningEffort,
+      reasoningEffort:
+        modelReasoningEffortOverride ?? customModelReasoningEffortOverride ?? globalBehavior?.reasoningEffort,
       reasoningSummary: modelReasoningSummaryOverride ?? customModelReasoningSummaryOverride ?? globalReasoningSummary,
       textVerbosity: modelTextVerbosityOverride ?? customModelTextVerbosityOverride ?? globalTextVerbosity,
       include: modelIncludeOverride ?? customModelIncludeOverride ?? globalBehavior?.include,
@@ -235,11 +240,12 @@ export async function handleChatParamsHook(input: {
 }
 
 export async function handleChatHeadersHook(input: {
-  hookInput: { model: { providerID?: string }; sessionID: string; agent?: unknown }
+  hookInput: { model: { providerID?: string; id?: string }; sessionID: string; agent?: unknown }
   output: { headers: Record<string, unknown> }
   spoofMode: CodexSpoofMode
   requestCatalogScopeKey?: string
   internalCatalogScopeHeader: string
+  internalSelectedModelHeader: string
   internalCollaborationModeHeader: string
   internalCollaborationAgentHeader: string
   collaborationProfileEnabled: boolean
@@ -250,6 +256,11 @@ export async function handleChatHeadersHook(input: {
   input.output.headers.originator = originator
   input.output.headers["User-Agent"] = resolveRequestUserAgent(input.spoofMode, originator)
   input.output.headers.session_id = input.hookInput.sessionID
+  if (typeof input.hookInput.model.id === "string" && input.hookInput.model.id.trim()) {
+    input.output.headers[input.internalSelectedModelHeader] = input.hookInput.model.id
+  } else {
+    delete input.output.headers[input.internalSelectedModelHeader]
+  }
   delete input.output.headers["OpenAI-Beta"]
   delete input.output.headers.conversation_id
   if (input.requestCatalogScopeKey) {

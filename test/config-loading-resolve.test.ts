@@ -339,9 +339,7 @@ describe("config loading", () => {
       })
 
       expect(getReasoningSummariesOverride(cfg)).toBe(false)
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES")
-      )
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES"))
     } finally {
       warnSpy.mockRestore()
     }

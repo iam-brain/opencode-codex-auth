@@ -599,6 +599,45 @@ describe("reasoning summary validation diagnostics", () => {
       sourceType: "catalog_default"
     })
   })
+
+  it("honors custom model reasoningSummary overrides during payload validation", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        reasoning: {
+          effort: "high"
+        },
+        input: "hello"
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      selectedModelSlug: "openai/my-fast-codex",
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      catalogModels: [
+        {
+          slug: "gpt-5.3-codex",
+          default_reasoning_level: "high",
+          supports_reasoning_summaries: true,
+          reasoning_summary_format: "experimental"
+        }
+      ],
+      customModels: {
+        "openai/my-fast-codex": {
+          targetModel: "gpt-5.3-codex",
+          reasoningSummary: "none"
+        }
+      }
+    })
+
+    expect(transformed.reasoningSummaryValidation).toBeUndefined()
+  })
 })
 
 describe("catalog-scoped payload cleanup", () => {

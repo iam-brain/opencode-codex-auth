@@ -3,7 +3,13 @@ import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "
 import type { Logger } from "../logger.js"
 import type { CodexModelInfo } from "../model-catalog.js"
 import type { RotationStrategy } from "../types.js"
-import type { BehaviorSettings, CodexSpoofMode, PersonalityOption, PromptCacheKeyStrategy } from "../config.js"
+import type {
+  BehaviorSettings,
+  CodexSpoofMode,
+  CustomModelConfig,
+  PersonalityOption,
+  PromptCacheKeyStrategy
+} from "../config.js"
 import type { OpenAIAuthMode } from "../types.js"
 import type { QuotaThresholdTrackerState } from "../quota-threshold-alerts.js"
 import { acquireOpenAIAuth } from "./acquire-auth.js"
@@ -37,6 +43,7 @@ export type CreateOpenAIFetchHandlerInput = {
   spoofMode: CodexSpoofMode
   remapDeveloperMessagesToUserEnabled: boolean
   behaviorSettings?: BehaviorSettings
+  customModels?: Record<string, CustomModelConfig>
   personality?: PersonalityOption
   promptCacheKeyStrategy?: PromptCacheKeyStrategy
   projectPath?: string
@@ -47,6 +54,7 @@ export type CreateOpenAIFetchHandlerInput = {
   headerTransformDebug: boolean
   compatInputSanitizerEnabled: boolean
   internalCatalogScopeHeader?: string
+  internalSelectedModelHeader?: string
   internalCollaborationModeHeader: string
   internalCollaborationAgentHeader?: string
   requestSnapshots: SnapshotRecorder
@@ -68,6 +76,7 @@ export type CreateOpenAIFetchHandlerInput = {
 
 export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
   const internalCatalogScopeHeader = input.internalCatalogScopeHeader ?? "x-opencode-catalog-scope-key"
+  const internalSelectedModelHeader = input.internalSelectedModelHeader ?? "x-opencode-selected-model-slug"
   const internalCollaborationAgentHeader =
     input.internalCollaborationAgentHeader ?? "x-opencode-collaboration-agent-kind"
   const quotaTrackerByIdentity = new Map<string, QuotaThresholdTrackerState>()
@@ -254,8 +263,12 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       maxRedirects: 3,
       showToast: input.showToast,
       onAttemptRequest: async ({ attempt, maxAttempts, attemptReasonCode, request, auth, sessionKey }) => {
+        const selectedModelSlug = request.headers.get(internalSelectedModelHeader)?.trim() || undefined
         const requestCatalogScopeKey =
           request.headers.get(internalCatalogScopeHeader)?.trim() || selectedPreviousCatalogScopeKey
+        if (request.headers.has(internalSelectedModelHeader)) {
+          request.headers.delete(internalSelectedModelHeader)
+        }
         if (request.headers.has(internalCatalogScopeHeader)) {
           request.headers.delete(internalCatalogScopeHeader)
         }
@@ -266,6 +279,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           (selectedCatalogModels === undefined && Boolean(requestCatalogModels))
         const payloadTransform: OutboundRequestPayloadTransformResult = await transformOutboundRequestPayload({
           request,
+          selectedModelSlug,
           stripReasoningReplayEnabled: true,
           remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
           compatInputSanitizerEnabled: input.compatInputSanitizerEnabled,
@@ -275,7 +289,8 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           previousCatalogModels: requestCatalogModels,
           requestCatalogScopeChanged,
           fallbackPersonality: input.personality,
-          behaviorSettings: input.behaviorSettings
+          behaviorSettings: input.behaviorSettings,
+          customModels: input.customModels
         })
 
         if (payloadTransform.reasoningSummaryValidation) {

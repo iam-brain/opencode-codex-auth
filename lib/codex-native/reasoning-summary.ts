@@ -109,9 +109,7 @@ export function resolveReasoningSummaryValue(input: {
   return { value: "auto" }
 }
 
-export function toReasoningSummaryPluginFatalError(
-  diagnostic: ReasoningSummaryValidationDiagnostic
-): PluginFatalError {
+export function toReasoningSummaryPluginFatalError(diagnostic: ReasoningSummaryValidationDiagnostic): PluginFatalError {
   const supportedValues = [...SUPPORTED_REASONING_SUMMARY_VALUES, "none"].map((value) => `\`${value}\``).join(", ")
   const subject =
     diagnostic.sourceType === "catalog_default"

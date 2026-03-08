@@ -1,18 +1,16 @@
-import type { BehaviorSettings, PersonalityOption } from "../config.js"
+import type { BehaviorSettings, CustomModelConfig, PersonalityOption } from "../config.js"
 import type { CodexModelInfo } from "../model-catalog.js"
 import { getRuntimeDefaultsForModel, resolveInstructionsForModel } from "../model-catalog.js"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer.js"
 import { isRecord } from "../util.js"
 import {
   findCatalogModelForCandidates,
+  getConfiguredCustomModelReasoningSummaryOverride,
   getModelLookupCandidates,
   getModelReasoningSummaryOverride,
   resolvePersonalityForModel
 } from "./request-transform-model.js"
-import {
-  type ReasoningSummaryValidationDiagnostic,
-  resolveReasoningSummaryValue
-} from "./reasoning-summary.js"
+import { type ReasoningSummaryValidationDiagnostic, resolveReasoningSummaryValue } from "./reasoning-summary.js"
 import { getRequestBodyVariantCandidates } from "./request-transform-model-service-tier.js"
 import {
   type CompatSanitizerTransformResult,
@@ -88,6 +86,7 @@ export function applyGpt54LongContextClampsToPayload(payload: Record<string, unk
 
 type OutboundRequestPayloadTransformInput = {
   request: Request
+  selectedModelSlug?: string
   stripReasoningReplayEnabled: boolean
   remapDeveloperMessagesToUserEnabled: boolean
   compatInputSanitizerEnabled: boolean
@@ -99,6 +98,7 @@ type OutboundRequestPayloadTransformInput = {
   requestCatalogScopeChanged?: boolean
   fallbackPersonality?: PersonalityOption
   behaviorSettings?: BehaviorSettings
+  customModels?: Record<string, CustomModelConfig>
 }
 
 export type OutboundRequestPayloadTransformResult = {
@@ -303,8 +303,10 @@ export async function transformOutboundRequestPayload(
   const serviceTier = disabledServiceTier
   const reasoningSummaryValidation = validateReasoningSummaryPayload({
     payload: finalPayload,
+    selectedModelSlug: input.selectedModelSlug,
     catalogModels: input.catalogModels,
-    behaviorSettings: input.behaviorSettings
+    behaviorSettings: input.behaviorSettings,
+    customModels: input.customModels
   })
   changed =
     changed ||
@@ -476,19 +478,28 @@ function syncReasoningEncryptedContentInclude(input: {
 
 function validateReasoningSummaryPayload(input: {
   payload: Record<string, unknown>
+  selectedModelSlug?: string
   catalogModels?: CodexModelInfo[]
   behaviorSettings?: BehaviorSettings
+  customModels?: Record<string, CustomModelConfig>
 }): ReasoningSummaryValidationDiagnostic | undefined {
   const modelSlug = asString(input.payload.model)
-  if (!modelSlug) return undefined
+  const selectedModelSlug = asString(input.selectedModelSlug)
+  if (!modelSlug && !selectedModelSlug) return undefined
 
   const modelCandidates = getModelLookupCandidates({
     id: modelSlug,
     api: { id: modelSlug }
   })
+  const configuredModelCandidates = selectedModelSlug
+    ? getModelLookupCandidates({
+        id: selectedModelSlug,
+        api: { id: modelSlug }
+      })
+    : modelCandidates
   const variantCandidates = getRequestBodyVariantCandidates({
     body: input.payload,
-    modelSlug
+    modelSlug: modelSlug ?? selectedModelSlug ?? ""
   })
   const reasoning = isRecord(input.payload.reasoning) ? input.payload.reasoning : undefined
   const reasoningEffort = asString(reasoning?.effort)
@@ -498,7 +509,12 @@ function validateReasoningSummaryPayload(input: {
   const defaults = catalogModel ? getRuntimeDefaultsForModel(catalogModel) : undefined
   const modelReasoningSummaryOverride = getModelReasoningSummaryOverride(
     input.behaviorSettings,
-    modelCandidates,
+    configuredModelCandidates,
+    variantCandidates
+  )
+  const customModelReasoningSummaryOverride = getConfiguredCustomModelReasoningSummaryOverride(
+    input.customModels,
+    configuredModelCandidates,
     variantCandidates
   )
   const globalReasoningSummary =
@@ -514,12 +530,12 @@ function validateReasoningSummaryPayload(input: {
     explicitValue: reasoningSummary,
     explicitSource: "request.reasoning.summary",
     hasReasoning: reasoningEffort !== undefined && reasoningEffort !== "none",
-    configuredValue: modelReasoningSummaryOverride ?? globalReasoningSummary,
+    configuredValue: modelReasoningSummaryOverride ?? customModelReasoningSummaryOverride ?? globalReasoningSummary,
     configuredSource: "config.reasoningSummary",
     supportsReasoningSummaries: defaults?.supportsReasoningSummaries,
     defaultReasoningSummaryFormat: defaults?.reasoningSummaryFormat,
     defaultReasoningSummarySource: "codexRuntimeDefaults.reasoningSummaryFormat",
-    model: modelSlug
+    model: modelSlug ?? selectedModelSlug
   }).diagnostic
 }
 

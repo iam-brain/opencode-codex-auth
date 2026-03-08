@@ -1,4 +1,4 @@
-import type { BehaviorSettings, ModelBehaviorOverride, PersonalityOption } from "../config.js"
+import type { BehaviorSettings, CustomModelConfig, ModelBehaviorOverride, PersonalityOption } from "../config.js"
 import type { CodexModelInfo, CustomModelBehaviorConfig } from "../model-catalog.js"
 import { isRecord } from "../util.js"
 import { resolveReasoningSummaryValue } from "./reasoning-summary.js"
@@ -104,16 +104,16 @@ function readCustomModelConfig(options: Record<string, unknown>): CustomModelBeh
   if (!isRecord(raw)) return undefined
   const targetModel = asString(raw.targetModel)
   if (!targetModel) return undefined
-  const variants = isRecord(raw.variants)
-    ? (raw.variants as Record<string, ModelBehaviorOverride>)
-    : undefined
+  const variants = isRecord(raw.variants) ? (raw.variants as Record<string, ModelBehaviorOverride>) : undefined
 
   return {
     targetModel,
     ...(asString(raw.name) ? { name: asString(raw.name) } : {}),
     ...(normalizePersonalityKey(raw.personality) ? { personality: normalizePersonalityKey(raw.personality) } : {}),
     ...(asString(raw.reasoningEffort) ? { reasoningEffort: asString(raw.reasoningEffort) } : {}),
-    ...(normalizeVerbositySetting(raw.textVerbosity) ? { textVerbosity: normalizeVerbositySetting(raw.textVerbosity) } : {}),
+    ...(normalizeVerbositySetting(raw.textVerbosity)
+      ? { textVerbosity: normalizeVerbositySetting(raw.textVerbosity) }
+      : {}),
     ...(typeof raw.serviceTier === "string" &&
     (raw.serviceTier === "auto" || raw.serviceTier === "priority" || raw.serviceTier === "flex")
       ? { serviceTier: raw.serviceTier }
@@ -147,6 +147,32 @@ function getCustomModelBehaviorOverrideValue<T>(
   }
 
   return selector(config)
+}
+
+export function getConfiguredCustomModelBehaviorOverrideValue<T>(
+  customModels: Record<string, CustomModelConfig> | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[],
+  selector: (entry: ModelBehaviorOverride) => T | undefined
+): T | undefined {
+  if (!customModels) return undefined
+
+  for (const candidate of getModelLookupCandidatesWithEffortFallback(modelCandidates)) {
+    const entry = resolveCaseInsensitiveEntry(customModels, candidate)
+    if (!entry) continue
+
+    for (const variantCandidate of variantCandidates) {
+      const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
+      if (!variantEntry) continue
+      const variantValue = selector(variantEntry)
+      if (variantValue !== undefined) return variantValue
+    }
+
+    const modelValue = selector(entry)
+    if (modelValue !== undefined) return modelValue
+  }
+
+  return undefined
 }
 
 export function getModelLookupCandidates(model: { id?: string; api?: { id?: string } }): string[] {
@@ -412,6 +438,23 @@ export function getCustomModelReasoningSummaryOverride(
     const normalized = asString(entry.reasoningSummary)?.toLowerCase()
     if (normalized === "auto" || normalized === "concise" || normalized === "detailed" || normalized === "none") {
       return normalized
+    }
+    return undefined
+  })
+}
+
+export function getConfiguredCustomModelReasoningSummaryOverride(
+  customModels: Record<string, CustomModelConfig> | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): "auto" | "concise" | "detailed" | "none" | undefined {
+  return getConfiguredCustomModelBehaviorOverrideValue(customModels, modelCandidates, variantCandidates, (entry) => {
+    const normalized = asString(entry.reasoningSummary)?.toLowerCase()
+    if (normalized === "auto" || normalized === "concise" || normalized === "detailed" || normalized === "none") {
+      return normalized
+    }
+    if (typeof entry.reasoningSummaries === "boolean") {
+      return entry.reasoningSummaries ? "auto" : "none"
     }
     return undefined
   })

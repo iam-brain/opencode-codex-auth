@@ -23,11 +23,9 @@ describe("codex config schema", () => {
     }
 
     const behaviorServiceTier =
-      schema.$defs?.serviceTier?.enum ??
-      schema.$defs?.modelBehavior?.properties?.serviceTier?.enum
+      schema.$defs?.serviceTier?.enum ?? schema.$defs?.modelBehavior?.properties?.serviceTier?.enum
     const modelConfigServiceTier =
-      schema.$defs?.serviceTier?.enum ??
-      schema.$defs?.modelConfig?.allOf?.[1]?.properties?.serviceTier?.enum
+      schema.$defs?.serviceTier?.enum ?? schema.$defs?.modelConfig?.allOf?.[1]?.properties?.serviceTier?.enum
 
     expect(behaviorServiceTier).toEqual(["auto", "priority", "flex", "default"])
     expect(modelConfigServiceTier).toEqual(["auto", "priority", "flex", "default"])

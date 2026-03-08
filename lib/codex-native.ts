@@ -66,6 +66,7 @@ export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const INTERNAL_COLLABORATION_AGENT_HEADER = "x-opencode-collaboration-agent-kind"
 const INTERNAL_CATALOG_SCOPE_HEADER = "x-opencode-catalog-scope-key"
+const INTERNAL_SELECTED_MODEL_HEADER = "x-opencode-selected-model-slug"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
 const REASONING_VARIANT_KEYS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const
 
@@ -508,6 +509,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           projectPath: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
           remapDeveloperMessagesToUserEnabled,
           behaviorSettings: opts.behaviorSettings,
+          customModels: opts.customModels,
           personality: opts.personality,
           log: opts.log,
           quietMode: opts.quietMode === true,
@@ -516,6 +518,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           headerTransformDebug: opts.headerTransformDebug === true,
           compatInputSanitizerEnabled: opts.compatInputSanitizer === true,
           internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
+          internalSelectedModelHeader: INTERNAL_SELECTED_MODEL_HEADER,
           internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
           internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
           requestSnapshots,
@@ -603,6 +606,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         spoofMode,
         requestCatalogScopeKey,
         internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
+        internalSelectedModelHeader: INTERNAL_SELECTED_MODEL_HEADER,
         internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
         internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
         collaborationProfileEnabled,

@@ -6,10 +6,7 @@ export type PluginRuntimeMode = "native" | "codex"
 export type VerbosityOption = "default" | "low" | "medium" | "high"
 export type TextVerbosityOption = VerbosityOption | "none"
 export type ReasoningSummaryOption = "auto" | "concise" | "detailed" | "none"
-export type IncludeOption =
-  | "reasoning.encrypted_content"
-  | "file_search_call.results"
-  | "message.output_text.logprobs"
+export type IncludeOption = "reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs"
 export type ServiceTierOption = "auto" | "priority" | "flex"
 export type PromptCacheKeyStrategy = "default" | "project"
 

@@ -59,12 +59,7 @@ function describeValueType(value: unknown): string {
 
 function describeValuePreview(value: unknown): string {
   if (typeof value === "string") return JSON.stringify(value)
-  if (
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    value === null ||
-    value === undefined
-  ) {
+  if (typeof value === "number" || typeof value === "boolean" || value === null || value === undefined) {
     return String(value)
   }
   if (Array.isArray(value)) {
@@ -338,17 +333,13 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
         ...(normalized.personality ? { personality: normalized.personality } : {}),
         ...(normalized.reasoningEffort ? { reasoningEffort: normalized.reasoningEffort } : {}),
         ...(normalized.reasoningSummary ? { reasoningSummary: normalized.reasoningSummary } : {}),
-        ...(normalized.reasoningSummaries !== undefined
-          ? { reasoningSummaries: normalized.reasoningSummaries }
-          : {}),
+        ...(normalized.reasoningSummaries !== undefined ? { reasoningSummaries: normalized.reasoningSummaries } : {}),
         ...(normalized.textVerbosity ? { textVerbosity: normalized.textVerbosity } : {}),
         ...(normalized.verbosityEnabled !== undefined ? { verbosityEnabled: normalized.verbosityEnabled } : {}),
         ...(normalized.verbosity ? { verbosity: normalized.verbosity } : {}),
         ...(normalized.serviceTier ? { serviceTier: normalized.serviceTier } : {}),
         ...(normalized.include ? { include: normalized.include } : {}),
-        ...(normalized.parallelToolCalls !== undefined
-          ? { parallelToolCalls: normalized.parallelToolCalls }
-          : {})
+        ...(normalized.parallelToolCalls !== undefined ? { parallelToolCalls: normalized.parallelToolCalls } : {})
       }
     }
     if (Object.keys(variantMap).length > 0) {
@@ -372,9 +363,7 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
     ...(modelBehavior?.verbosity ? { verbosity: modelBehavior.verbosity } : {}),
     ...(modelBehavior?.serviceTier ? { serviceTier: modelBehavior.serviceTier } : {}),
     ...(modelBehavior?.include ? { include: modelBehavior.include } : {}),
-    ...(modelBehavior?.parallelToolCalls !== undefined
-      ? { parallelToolCalls: modelBehavior.parallelToolCalls }
-      : {}),
+    ...(modelBehavior?.parallelToolCalls !== undefined ? { parallelToolCalls: modelBehavior.parallelToolCalls } : {}),
     ...(variants ? { variants } : {})
   }
 }
@@ -935,12 +924,7 @@ function resolveDefaultConfigCandidates(env: Record<string, string | undefined>)
   const hasLegacy = fs.existsSync(legacyPath)
 
   if (hasFile && hasLegacy) {
-    const quarantinedPath = quarantineLegacyConfigSync(legacyPath)
-    const suffix = quarantinedPath ? ` Quarantined legacy file to ${quarantinedPath}.` : ""
-    console.warn(
-      `[opencode-codex-auth] Found both ${CONFIG_FILE} and ${LEGACY_CONFIG_FILE}. Using ${CONFIG_FILE}.${suffix}`
-    )
-    return [filePath]
+    return [filePath, legacyPath]
   }
   if (hasFile) return [filePath]
   if (hasLegacy) return [legacyPath]
@@ -984,6 +968,15 @@ export function loadConfigFile(
   const env = input.env ?? process.env
   const explicitPath = input.filePath ?? env.OPENCODE_OPENAI_MULTI_CONFIG_PATH?.trim()
   const candidates = explicitPath ? [explicitPath] : resolveDefaultConfigCandidates(env)
+  const canonicalPath = explicitPath ? undefined : resolveDefaultConfigPath(env)
+  const legacyPath = explicitPath ? undefined : resolveLegacyDefaultConfigPath(env)
+  const shouldQuarantineLegacyAfterCanonicalLoad =
+    !explicitPath &&
+    canonicalPath !== undefined &&
+    legacyPath !== undefined &&
+    candidates.length > 1 &&
+    fs.existsSync(canonicalPath) &&
+    fs.existsSync(legacyPath)
 
   for (const filePath of candidates) {
     if (!filePath || !fs.existsSync(filePath)) continue
@@ -999,6 +992,18 @@ export function loadConfigFile(
       if (result.deprecatedKeys.length > 0) {
         console.warn(
           `[opencode-codex-auth] Deprecated config key(s) in ${filePath}: ${result.deprecatedKeys.join(", ")}. Use reasoningSummary, textVerbosity, and serviceTier: "auto" instead.`
+        )
+      }
+      if (
+        shouldQuarantineLegacyAfterCanonicalLoad &&
+        filePath === canonicalPath &&
+        legacyPath &&
+        fs.existsSync(legacyPath)
+      ) {
+        const quarantinedPath = quarantineLegacyConfigSync(legacyPath)
+        const suffix = quarantinedPath ? ` Quarantined legacy file to ${quarantinedPath}.` : ""
+        console.warn(
+          `[opencode-codex-auth] Found both ${CONFIG_FILE} and ${LEGACY_CONFIG_FILE}. Using ${CONFIG_FILE}.${suffix}`
         )
       }
       return result.config

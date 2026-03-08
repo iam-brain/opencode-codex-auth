@@ -404,11 +404,34 @@ describe("config file loading", () => {
     try {
       const loaded = loadConfigFile({ env: { XDG_CONFIG_HOME: root } })
       expect(loaded.quietMode).toBe(true)
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Found both codex-config.jsonc and codex-config.json"))
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Found both codex-config.jsonc and codex-config.json")
+      )
       await expect(fs.access(legacyPath)).rejects.toThrow()
       const quarantineDir = path.join(configDir, "quarantine")
       const quarantined = await fs.readdir(quarantineDir)
       expect(quarantined.some((name) => name.startsWith("codex-config.json."))).toBe(true)
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it("falls back to legacy codex-config.json when canonical codex-config.jsonc is invalid", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-config-file-"))
+    const configDir = path.join(root, "opencode")
+    const canonicalPath = path.join(configDir, "codex-config.jsonc")
+    const legacyPath = path.join(configDir, "codex-config.json")
+    await fs.mkdir(configDir, { recursive: true })
+    await fs.writeFile(canonicalPath, '{"quiet": true,', "utf8")
+    await fs.writeFile(legacyPath, JSON.stringify({ quiet: false }), "utf8")
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const loaded = loadConfigFile({ env: { XDG_CONFIG_HOME: root } })
+      expect(loaded.quietMode).toBe(false)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`Failed to read codex-config at ${canonicalPath}`))
+      await expect(fs.access(legacyPath)).resolves.toBeUndefined()
+      await expect(fs.access(path.join(configDir, "quarantine"))).rejects.toThrow()
     } finally {
       warnSpy.mockRestore()
     }
