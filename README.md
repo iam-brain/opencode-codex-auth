@@ -63,13 +63,14 @@ npm run verify
 Helpful local commands:
 
 ```bash
+npm run verify:local
 npm run prepush
 npm run lint
 npm run test:coverage
 npm run check:docs
 ```
 
-`npm run prepush` is the lightweight local gate for PR updates and pushes. It runs formatting, main TypeScript checks, test-project TypeScript checks, and the full Vitest suite. `npm run verify` is the primary quality gate and adds anti-mock, coverage/ratchet, docs drift, build validation, and CLI smoke checks.
+Local git hooks now enforce `npm run verify` before both `git commit` and `git push`. The commit hook accepts staged-only commit-ready changes, and the push hook requires a clean tree so it verifies the exact commits being pushed. `npm run verify:local` runs the same enforcement manually, with a cache so unchanged trees do not rerun the full suite twice in a row.
 
 ## Usage Note
 

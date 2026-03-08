@@ -2,5 +2,8 @@
 
 set -eu
 
-echo "Running local pre-push checks..."
-npm run prepush
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "Ensuring local verify passed before push..."
+node scripts/enforce-local-verify.mjs pre-push

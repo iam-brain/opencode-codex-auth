@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 
 import { execFileSync } from "node:child_process"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 const REQUIRED_RELEASE_RUNTIME_CI_JOBS = [
@@ -17,7 +17,8 @@ describe("release hygiene", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
     const verifyScript = String(pkg.scripts?.verify ?? "")
-    expect(pkg.scripts?.prepush).toBe("npm run format:check && npm run typecheck && npm run typecheck:test && npm test")
+    expect(pkg.scripts?.["verify:local"]).toBe("node scripts/enforce-local-verify.mjs manual")
+    expect(pkg.scripts?.prepush).toBe("npm run verify:local")
     expect(pkg.scripts?.["hooks:install"]).toBe("node scripts/install-git-hooks.mjs")
     const verifyOrder = [
       "npm run check:esm-imports",
@@ -51,12 +52,28 @@ describe("release hygiene", () => {
     expect(pkg.scripts?.build).toBe("npm run patch:plugin-dts && npm run clean:dist && tsc")
     expect(pkg.scripts?.["clean:dist"]).toBe("node scripts/clean-dist.js")
     expect(existsSync(join(process.cwd(), "scripts", "clean-dist.js"))).toBe(true)
+    expect(existsSync(join(process.cwd(), "scripts", "enforce-local-verify.mjs"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "install-git-hooks.mjs"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "check-esm-import-specifiers.mjs"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "check-dist-esm-import-specifiers.mjs"))).toBe(false)
     expect(existsSync(join(process.cwd(), "scripts", "check-file-size.mjs"))).toBe(false)
     expect(existsSync(join(process.cwd(), "scripts", "file-size-allowlist.json"))).toBe(false)
+    expect(existsSync(join(process.cwd(), ".githooks", "pre-commit"))).toBe(true)
     expect(existsSync(join(process.cwd(), ".githooks", "pre-push"))).toBe(true)
+    expect((statSync(join(process.cwd(), ".githooks", "pre-commit")).mode & 0o111) !== 0).toBe(true)
+    expect((statSync(join(process.cwd(), ".githooks", "pre-push")).mode & 0o111) !== 0).toBe(true)
+    expect(readFileSync(join(process.cwd(), ".githooks", "pre-commit"), "utf-8")).toContain(
+      "node scripts/enforce-local-verify.mjs pre-commit"
+    )
+    expect(readFileSync(join(process.cwd(), ".githooks", "pre-push"), "utf-8")).toContain(
+      "node scripts/enforce-local-verify.mjs pre-push"
+    )
+    expect(
+      execFileSync("git", ["ls-files", "--error-unmatch", ".githooks/pre-commit"], {
+        cwd: process.cwd(),
+        encoding: "utf-8"
+      }).trim()
+    ).toBe(".githooks/pre-commit")
     expect(
       execFileSync("git", ["ls-files", "--error-unmatch", ".githooks/pre-push"], {
         cwd: process.cwd(),

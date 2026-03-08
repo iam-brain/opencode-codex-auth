@@ -75,6 +75,7 @@ npm run verify
 
 `npm run verify` is the default pre-release check.
 
+- Treat `npm run verify` as required before both commits and PR/push updates. Local hooks should enforce it, and manual verification is still required if hooks are bypassed.
 - After changing tests, test helpers, or TypeScript-only fixture shapes, run `npm run typecheck:test` before pushing. `npm test` and `npm run typecheck` do not cover the test TypeScript project on their own.
 
 ## Module sizing

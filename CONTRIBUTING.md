@@ -10,21 +10,24 @@ npm run hooks:install
 npm run verify
 ```
 
-`npm run prepush` is the recommended local gate before pushing a branch. It runs:
+Local hooks enforce `npm run verify` before both commits and pushes once you run `npm run hooks:install`.
+The commit hook accepts staged-only commit-ready changes, while the push hook requires a clean tree so it validates the exact commits being pushed.
 
-- `npm run format:check`
-- `npm run typecheck`
-- `npm run typecheck:test`
-- `npm test`
+`npm run verify:local` is the recommended manual gate. It runs `npm run verify`, but skips reruns when the current tree already passed locally.
 
 `npm run verify` is the baseline full gate and runs:
 
-- `npm run prepush`
+- `npm run check:esm-imports`
+- `npm run lint`
+- `npm run format:check`
+- `npm run typecheck`
+- `npm run typecheck:test`
 - `npm run test:anti-mock`
 - `npm run test:coverage`
 - `npm run check:coverage-ratchet`
 - `npm run check:docs`
 - `npm run build`
+- `npm run check:dist-esm-imports`
 - `npm run smoke:cli:dist`
 
 ## Pull requests
