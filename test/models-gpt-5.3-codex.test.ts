@@ -143,7 +143,7 @@ describe("codex-native model allowlist", () => {
     vi.resetModules()
   })
 
-  it("clears provider models when both the endpoint and github fallback are unavailable", async () => {
+  it("preserves existing provider models when both the endpoint and github fallback are unavailable", async () => {
     vi.resetModules()
 
     await withIsolatedHome(async () => {
@@ -169,9 +169,9 @@ describe("codex-native model allowlist", () => {
 
       await loader(async () => ({ type: "oauth", refresh: "", access: "", expires: 0 }) as any, provider as any)
 
-      expect(provider.models["gpt-5.2-codex"]).toBeUndefined()
+      expect(provider.models["gpt-5.2-codex"]).toEqual({ instructions: "TEMPLATE" })
       expect(provider.models["gpt-5.3-codex"]).toBeUndefined()
-      expect(provider.models["o3-mini"]).toBeUndefined()
+      expect(provider.models["o3-mini"]).toEqual({ id: "o3-mini" })
     })
   })
 
@@ -316,6 +316,7 @@ describe("codex-native model allowlist", () => {
       }
       await hooks["chat.params"]?.(
         {
+          sessionID: "ses_switch_scope",
           model: {
             ...(provider.models["gpt-5.3-codex"] as Record<string, unknown>),
             id: "gpt-5.3-codex",
@@ -494,6 +495,7 @@ describe("codex-native model allowlist", () => {
       }
       await hooks["chat.params"]?.(
         {
+          sessionID: "ses_switch_scope",
           model: {
             ...(provider.models["gpt-5.3-codex"] as Record<string, unknown>),
             id: "gpt-5.3-codex",
@@ -547,6 +549,7 @@ describe("codex-native model allowlist", () => {
       }
       await hooks["chat.params"]?.(
         {
+          sessionID: "ses_switch_scope",
           model: {
             ...(provider.models["gpt-5.3-codex"] as Record<string, unknown>),
             id: "gpt-5.3-codex",
@@ -935,6 +938,7 @@ describe("codex-native model allowlist", () => {
       }
       await hooks["chat.params"]?.(
         {
+          sessionID: "ses_switch_scope_refresh_fail",
           model: {
             ...(provider.models["gpt-5.3-codex"] as Record<string, unknown>),
             id: "gpt-5.3-codex",

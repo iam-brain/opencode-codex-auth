@@ -49,6 +49,16 @@ function section(title: string, body: string | undefined): string[] {
   return [`## ${title}`, body, ""]
 }
 
+function renderCoreContractSection(): string[] {
+  return [
+    "## Core Assistant Contract",
+    ...CORE_POLICY_LINES.map((line) => `- ${line}`),
+    "",
+    "This section is required and should remain intact for any derived personality.",
+    ""
+  ]
+}
+
 export function renderPersonalityMarkdown(input: {
   key: string
   inspiration?: string
@@ -65,15 +75,7 @@ export function renderPersonalityMarkdown(input: {
   const constraints = normalizeText(input.constraints)
   const examples = normalizeText(input.examples)
 
-  const lines: string[] = [
-    `# Personality: ${input.key}`,
-    "",
-    "## Core Assistant Contract",
-    ...CORE_POLICY_LINES.map((line) => `- ${line}`),
-    "",
-    "This section is required and should remain intact for any derived personality.",
-    ""
-  ]
+  const lines: string[] = [`# Personality: ${input.key}`, "", ...renderCoreContractSection()]
 
   lines.push(...section("Inspiration", inspiration))
   lines.push(...section("Tone", tone))
@@ -84,6 +86,27 @@ export function renderPersonalityMarkdown(input: {
 
   if (lines.at(-1) !== "") lines.push("")
   return lines.join("\n")
+}
+
+function ensureCoreContractMarkdown(key: string, markdown: string): string {
+  const trimmed = markdown.trim()
+  if (!trimmed) return `${renderPersonalityMarkdown({ key }).trimEnd()}\n`
+
+  const hasCoreContract = CORE_POLICY_LINES.every((line) => trimmed.includes(line))
+  if (hasCoreContract) {
+    return `${trimmed}\n`
+  }
+
+  const titleMatch = trimmed.match(/^#\s+.+$/m)
+  const title = titleMatch?.[0] ?? `# Personality: ${key}`
+  const bodyWithoutTitle =
+    titleMatch && titleMatch.index === 0 ? trimmed.slice(titleMatch[0].length).trimStart() : trimmed
+
+  const lines = [title, "", ...renderCoreContractSection()]
+  if (bodyWithoutTitle) {
+    lines.push(bodyWithoutTitle)
+  }
+  return `${lines.join("\n").trimEnd()}\n`
 }
 
 export function resolvePersonalityFilePath(input: {
@@ -122,7 +145,7 @@ export async function createPersonalityFile(input: CreatePersonalityInput): Prom
     constraints: input.constraints,
     examples: input.examples
   })
-  const finalContent = input.markdown?.trim() ? `${input.markdown.trim()}\n` : `${content}\n`
+  const finalContent = input.markdown?.trim() ? ensureCoreContractMarkdown(key, input.markdown) : `${content}\n`
 
   let created = true
   try {

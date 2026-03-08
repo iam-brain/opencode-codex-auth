@@ -28,7 +28,7 @@ npm run release -- <patch|minor|major>
 4. Confirms latest `ci.yml` push run for `HEAD` is green and required jobs succeeded.
 5. Runs `npm run verify`.
 6. Runs `npm version <bump> -m "release: v%s"`.
-7. Pushes default branch plus tags (`git push origin <default-branch> --follow-tags`).
+7. Pushes the default branch commit plus the release tag atomically (`git push --atomic origin <default-branch> <tag>`).
 8. Waits for GitHub Release visibility.
 
 Remote CI gate notes:
@@ -38,7 +38,7 @@ Remote CI gate notes:
 
 Failure behavior:
 
-- If the GitHub release workflow fails after the tag is pushed, the script may auto-rollback by reverting the tagged commit on the default branch and deleting the remote tag.
+- If the GitHub release workflow fails after the atomic branch+tag push succeeds, the script may auto-rollback by reverting the tagged commit on the default branch and deleting the remote tag.
 - Auto-rollback is skipped when npm publish already succeeded, publish status is unknown, or the failure happened before the release-workflow phase.
 
 ## Required checks before release

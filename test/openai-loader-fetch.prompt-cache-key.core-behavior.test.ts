@@ -32,11 +32,6 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
     vi.doMock("../lib/codex-native/acquire-auth", () => ({
       acquireOpenAIAuth
     }))
-    vi.doMock("../lib/codex-status-storage", () => ({
-      saveSnapshots: vi.fn(
-        async (_path: string, update: (current: Record<string, unknown>) => Record<string, unknown>) => update({})
-      )
-    }))
 
     const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
     const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
@@ -274,7 +269,88 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
     expect(stickySessionState.bySessionKey.get("ses_subagent")).toBe(auth.identityKey)
     expect(hybridSessionState.bySessionKey.get("ses_parent")).toBe(auth.identityKey)
     expect(hybridSessionState.bySessionKey.get("ses_subagent")).toBe(auth.identityKey)
+    expect(acquireOpenAIAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isSubagentRequest: true
+      })
+    )
     expect(persistSessionAffinityState).not.toHaveBeenCalled()
+  })
+
+  it("ignores spoofed x-openai-subagent headers without internal collaboration markers", async () => {
+    vi.resetModules()
+
+    const auth = {
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus",
+      email: "user@example.com",
+      plan: "plus",
+      accountLabel: "user@example.com (plus)"
+    }
+
+    const acquireOpenAIAuth = vi.fn(async () => auth)
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({
+      acquireOpenAIAuth
+    }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    let forwardedSubagentHeader: string | null = null
+    stubGlobalForTest(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const request = input as Request
+        forwardedSubagentHeader = request.headers.get("x-openai-subagent")
+        return new Response("ok", { status: 200 })
+      })
+    )
+
+    const persistSessionAffinityState = vi.fn()
+    const handler = createOpenAIFetchHandler({
+      authMode: "native",
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth: async () => undefined,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    await handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-openai-subagent": "plan",
+        session_id: "ses_spoofed_subagent"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "hi" })
+    })
+
+    expect(acquireOpenAIAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isSubagentRequest: false
+      })
+    )
+    expect(forwardedSubagentHeader).toBeNull()
+    expect(persistSessionAffinityState).toHaveBeenCalled()
   })
 
   it("includes selection telemetry in snapshots when header transform debug is enabled", async () => {

@@ -677,7 +677,14 @@ describe("catalog-scoped payload cleanup", () => {
 
     const transformed = await stripStaleCatalogScopedDefaultsFromRequest({
       request,
-      previousCatalogModels
+      previousCatalogModels,
+      previousCatalogDefaultFields: [
+        "instructions",
+        "reasoningEffort",
+        "reasoningSummary",
+        "textVerbosity",
+        "parallelToolCalls"
+      ]
     })
 
     expect(transformed.changed).toBe(false)
@@ -711,7 +718,14 @@ describe("catalog-scoped payload cleanup", () => {
 
     const transformed = await stripStaleCatalogScopedDefaultsFromRequest({
       request,
-      previousCatalogModels
+      previousCatalogModels,
+      previousCatalogDefaultFields: [
+        "instructions",
+        "reasoningEffort",
+        "reasoningSummary",
+        "textVerbosity",
+        "parallelToolCalls"
+      ]
     })
 
     expect(transformed.changed).toBe(false)
@@ -745,7 +759,14 @@ describe("catalog-scoped payload cleanup", () => {
 
     const transformed = await stripStaleCatalogScopedDefaultsFromRequest({
       request,
-      previousCatalogModels
+      previousCatalogModels,
+      previousCatalogDefaultFields: [
+        "instructions",
+        "reasoningEffort",
+        "reasoningSummary",
+        "textVerbosity",
+        "parallelToolCalls"
+      ]
     })
 
     expect(transformed.changed).toBe(true)
@@ -791,6 +812,13 @@ describe("catalog-scoped payload cleanup", () => {
       promptCacheKeyOverrideEnabled: false,
       requestCatalogScopeChanged: true,
       previousCatalogModels,
+      previousCatalogDefaultFields: [
+        "instructions",
+        "reasoningEffort",
+        "reasoningSummary",
+        "textVerbosity",
+        "parallelToolCalls"
+      ],
       catalogModels: [
         {
           slug: "gpt-5.3-codex",
@@ -821,6 +849,63 @@ describe("catalog-scoped payload cleanup", () => {
     expect(body.include).toEqual(["reasoning.encrypted_content", "web_search_call.action.sources"])
   })
 
+  it("preserves explicit request values that merely match prior catalog defaults when no provenance was recorded", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        instructions: "Account A instructions",
+        reasoning: {
+          effort: "high",
+          summary: "auto"
+        },
+        text: {
+          verbosity: "medium"
+        },
+        parallel_tool_calls: true,
+        include: ["reasoning.encrypted_content", "web_search_call.action.sources"],
+        input: "hello"
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      requestCatalogScopeChanged: true,
+      previousCatalogModels,
+      previousCatalogDefaultFields: [],
+      catalogModels: [
+        {
+          slug: "gpt-5.3-codex",
+          default_reasoning_level: "low",
+          supports_reasoning_summaries: true,
+          reasoning_summary_format: "concise",
+          default_verbosity: "low",
+          supports_parallel_tool_calls: false,
+          model_messages: {
+            instructions_template: "Account B instructions"
+          }
+        }
+      ]
+    })
+
+    expect(transformed.changed).toBe(false)
+    const body = JSON.parse(await transformed.request.text()) as {
+      instructions?: string
+      reasoning?: { effort?: string; summary?: string }
+      text?: { verbosity?: string }
+      parallel_tool_calls?: boolean
+    }
+    expect(body.instructions).toBe("Account A instructions")
+    expect(body.reasoning).toEqual({ effort: "high", summary: "auto" })
+    expect(body.text).toEqual({ verbosity: "medium" })
+    expect(body.parallel_tool_calls).toBe(true)
+  })
+
   it("strips stale catalog instructions when the next account no longer renders safe instructions", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
@@ -849,6 +934,13 @@ describe("catalog-scoped payload cleanup", () => {
       promptCacheKeyOverrideEnabled: false,
       requestCatalogScopeChanged: true,
       previousCatalogModels,
+      previousCatalogDefaultFields: [
+        "instructions",
+        "reasoningEffort",
+        "reasoningSummary",
+        "textVerbosity",
+        "parallelToolCalls"
+      ],
       catalogModels: [
         {
           slug: "gpt-5.3-codex",
@@ -907,6 +999,13 @@ describe("catalog-scoped payload cleanup", () => {
       promptCacheKeyOverrideEnabled: false,
       requestCatalogScopeChanged: true,
       previousCatalogModels,
+      previousCatalogDefaultFields: [
+        "instructions",
+        "reasoningEffort",
+        "reasoningSummary",
+        "textVerbosity",
+        "parallelToolCalls"
+      ],
       catalogModels: [
         {
           slug: "gpt-5.3-codex",

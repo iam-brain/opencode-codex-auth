@@ -22,6 +22,16 @@ describe("session-messages helpers", () => {
     await expect(readSessionMessageRows(client, "ses_error")).resolves.toEqual([])
   })
 
+  it("requests a deeper message window for long-running sessions", async () => {
+    const messages = async (input: unknown) => {
+      expect(input).toMatchObject({ sessionID: "ses_limit", limit: 1000 })
+      return { data: [] }
+    }
+    const client = { session: { messages } } as never
+
+    await expect(readSessionMessageRows(client, "ses_limit")).resolves.toEqual([])
+  })
+
   it("infers OpenAI provider from latest user message", async () => {
     const client = {
       session: {
@@ -54,5 +64,22 @@ describe("session-messages helpers", () => {
     if (!info) throw new Error("missing info")
     expect(getMessageProviderID(info)).toBe("openai")
     await expect(readSessionMessageInfo(client, "ses_lookup", "missing")).resolves.toBeUndefined()
+  })
+
+  it("prefers direct message lookup when the session API exposes it", async () => {
+    const client = {
+      session: {
+        message: async () => ({
+          info: { id: "m-direct", role: "assistant", model: { providerID: "openai" } }
+        }),
+        messages: async () => {
+          throw new Error("should not fall back")
+        }
+      }
+    } as never
+
+    const info = await readSessionMessageInfo(client, "ses_lookup", "m-direct")
+    expect(info).toBeDefined()
+    expect(getMessageProviderID(info ?? {})).toBe("openai")
   })
 })

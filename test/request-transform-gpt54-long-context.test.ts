@@ -120,6 +120,46 @@ describe("GPT-5.4 long-context request clamps", () => {
     expect(body.max_output_tokens).toBe(128_000)
   })
 
+  it("applies GPT-5.4 clamps to custom aliases that target GPT-5.4", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "openai/my-frontier-alias",
+        model_context_window: 2_000_000,
+        model_auto_compact_token_limit: 2_000_000,
+        max_output_tokens: 200_000,
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      selectedModelSlug: "openai/my-frontier-alias",
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      behaviorSettings: PRIORITY_BEHAVIOR_SETTINGS,
+      customModels: {
+        "openai/my-frontier-alias": {
+          targetModel: "gpt-5.4"
+        }
+      }
+    })
+
+    const body = JSON.parse(await transformed.request.text()) as {
+      model_context_window?: number
+      model_auto_compact_token_limit?: number
+      max_output_tokens?: number
+    }
+
+    expect(transformed.changed).toBe(true)
+    expect(body.model_context_window).toBe(1_050_000)
+    expect(body.model_auto_compact_token_limit).toBe(922_000)
+    expect(body.max_output_tokens).toBe(128_000)
+  })
+
   it("keeps wrapper transforms scoped instead of silently applying GPT-5.4 clamps", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",

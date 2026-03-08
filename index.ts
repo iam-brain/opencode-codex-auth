@@ -60,12 +60,12 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
       console.warn(`[opencode-codex-auth] bootstrap: ensureDefaultConfigFile failed: ${error.message}`)
     }
   })
-  await installCreatePersonalityCommand({ force: true }).catch((error) => {
+  await installCreatePersonalityCommand().catch((error) => {
     if (error instanceof Error) {
       console.warn(`[opencode-codex-auth] bootstrap: installCreatePersonalityCommand failed: ${error.message}`)
     }
   })
-  await installPersonalityBuilderSkill({ force: true }).catch((error) => {
+  await installPersonalityBuilderSkill().catch((error) => {
     if (error instanceof Error) {
       console.warn(`[opencode-codex-auth] bootstrap: installPersonalityBuilderSkill failed: ${error.message}`)
     }

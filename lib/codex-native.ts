@@ -66,6 +66,7 @@ export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const INTERNAL_COLLABORATION_AGENT_HEADER = "x-opencode-collaboration-agent-kind"
 const INTERNAL_CATALOG_SCOPE_HEADER = "x-opencode-catalog-scope-key"
+const INTERNAL_CATALOG_DEFAULTS_HEADER = "x-opencode-catalog-default-fields"
 const INTERNAL_SELECTED_MODEL_HEADER = "x-opencode-selected-model-slug"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
 const REASONING_VARIANT_KEYS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const
@@ -360,7 +361,10 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     log: opts.log
   })
   const catalogModelsByScope = new Map<string, CodexModelInfo[]>()
-  const catalogScopeKeyBySession = new Map<string, string>()
+  const catalogRequestMetadataBySession = new Map<
+    string,
+    Array<{ catalogScopeKey?: string; injectedCatalogDefaultFields: string[] }>
+  >()
   let activeCatalogScopeKey: string | undefined
   let activeCatalogModels: CodexModelInfo[] | undefined
   let providerModelsForCatalogSync: Record<string, Record<string, unknown>> | undefined
@@ -374,6 +378,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       providerModels: providerModelsForCatalogSync,
       catalogModels: activeCatalogModels,
       personality: opts.personality,
+      projectRoot: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
       customModels: opts.customModels,
       warn: (message) => console.warn(message)
     })
@@ -394,6 +399,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       providerModels: providerModelsForCatalogSync,
       catalogModels: activeCatalogModels,
       personality: opts.personality,
+      projectRoot: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
       customModels: opts.customModels,
       warn: (message) => console.warn(message)
     })
@@ -579,12 +585,13 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     "chat.params": async (hookInput, output) => {
       const requestCatalogModels = activeCatalogModels
       const requestCatalogScopeKey = activeCatalogScopeKey
-      await handleChatParamsHook({
+      const paramsResult = await handleChatParamsHook({
         hookInput,
         output,
         lastCatalogModels: requestCatalogModels,
         behaviorSettings: opts.behaviorSettings,
         fallbackPersonality: opts.personality,
+        projectRoot: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
         spoofMode,
         collaborationProfileEnabled,
         orchestratorSubagentsEnabled
@@ -592,27 +599,38 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
 
       const sessionID = typeof (hookInput as { sessionID?: unknown }).sessionID === "string" ? hookInput.sessionID : ""
       if (!sessionID) return
-      if (hookInput.model.providerID !== "openai" || !requestCatalogScopeKey) {
-        catalogScopeKeyBySession.delete(sessionID)
+      if (hookInput.model.providerID !== "openai") {
+        catalogRequestMetadataBySession.delete(sessionID)
         return
       }
-      catalogScopeKeyBySession.set(sessionID, requestCatalogScopeKey)
+      const queue = catalogRequestMetadataBySession.get(sessionID) ?? []
+      queue.push({
+        catalogScopeKey: requestCatalogScopeKey,
+        injectedCatalogDefaultFields: paramsResult.injectedCatalogDefaultFields
+      })
+      catalogRequestMetadataBySession.set(sessionID, queue)
     },
     "chat.headers": async (hookInput, output) => {
-      const requestCatalogScopeKey = catalogScopeKeyBySession.get(hookInput.sessionID) ?? activeCatalogScopeKey
+      const queue = catalogRequestMetadataBySession.get(hookInput.sessionID)
+      const queuedMetadata = queue?.shift()
+      if (queue && queue.length === 0) {
+        catalogRequestMetadataBySession.delete(hookInput.sessionID)
+      }
+      const requestCatalogScopeKey = queuedMetadata?.catalogScopeKey ?? activeCatalogScopeKey
       await handleChatHeadersHook({
         hookInput,
         output,
         spoofMode,
         requestCatalogScopeKey,
+        injectedCatalogDefaultFields: queuedMetadata?.injectedCatalogDefaultFields,
         internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
+        internalCatalogDefaultsHeader: INTERNAL_CATALOG_DEFAULTS_HEADER,
         internalSelectedModelHeader: INTERNAL_SELECTED_MODEL_HEADER,
         internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
         internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
         collaborationProfileEnabled,
         orchestratorSubagentsEnabled
       })
-      catalogScopeKeyBySession.delete(hookInput.sessionID)
     },
     "experimental.session.compacting": async (hookInput, output) => {
       await handleSessionCompactingHook({

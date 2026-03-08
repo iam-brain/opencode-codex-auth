@@ -76,9 +76,11 @@ export type CreateOpenAIFetchHandlerInput = {
 
 export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
   const internalCatalogScopeHeader = input.internalCatalogScopeHeader ?? "x-opencode-catalog-scope-key"
+  const internalCatalogDefaultsHeader = "x-opencode-catalog-default-fields"
   const internalSelectedModelHeader = input.internalSelectedModelHeader ?? "x-opencode-selected-model-slug"
   const internalCollaborationAgentHeader =
     input.internalCollaborationAgentHeader ?? "x-opencode-collaboration-agent-kind"
+  const trustedSubagentValues = new Set(["review", "compact", "collab_spawn"])
   const quotaTrackerByIdentity = new Map<string, QuotaThresholdTrackerState>()
   const quotaRefreshAtByIdentity = new Map<string, number>()
   const catalogSyncByScope = new Map<string, CatalogSyncState>()
@@ -146,14 +148,30 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       outbound.headers.set("user-agent", resolveRequestUserAgent(input.spoofMode, outboundOriginator))
     }
 
+    const collaborationModeHeader = outbound.headers.get(input.internalCollaborationModeHeader)?.trim()
+    const collaborationAgentHeader = outbound.headers.get(internalCollaborationAgentHeader)?.trim()
+    const subagentHeader = outbound.headers.get("x-openai-subagent")?.trim()
+    const trustedSubagentHeader =
+      typeof subagentHeader === "string" && trustedSubagentValues.has(subagentHeader.toLowerCase())
+        ? subagentHeader
+        : undefined
+    const isSubagentRequest =
+      internalCollaborationAgentHeader === "x-openai-subagent"
+        ? Boolean(subagentHeader)
+        : Boolean(trustedSubagentHeader)
     if (outbound.headers.has(input.internalCollaborationModeHeader)) {
       outbound.headers.delete(input.internalCollaborationModeHeader)
     }
     if (outbound.headers.has(internalCollaborationAgentHeader)) {
       outbound.headers.delete(internalCollaborationAgentHeader)
     }
-    const subagentHeader = outbound.headers.get("x-openai-subagent")?.trim()
-    const isSubagentRequest = Boolean(subagentHeader)
+    const shouldForwardSubagentHeader =
+      internalCollaborationAgentHeader === "x-openai-subagent"
+        ? Boolean(subagentHeader)
+        : Boolean(collaborationModeHeader && collaborationAgentHeader && trustedSubagentHeader)
+    if (!shouldForwardSubagentHeader && outbound.headers.has("x-openai-subagent")) {
+      outbound.headers.delete("x-openai-subagent")
+    }
 
     let selectedIdentityKey: string | undefined
     let selectedAuthForQuota: { access: string; accountId?: string; identityKey?: string } | undefined
@@ -266,11 +284,18 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         const selectedModelSlug = request.headers.get(internalSelectedModelHeader)?.trim() || undefined
         const requestCatalogScopeKey =
           request.headers.get(internalCatalogScopeHeader)?.trim() || selectedPreviousCatalogScopeKey
+        const previousCatalogDefaultFields = (request.headers.get(internalCatalogDefaultsHeader) ?? "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean)
         if (request.headers.has(internalSelectedModelHeader)) {
           request.headers.delete(internalSelectedModelHeader)
         }
         if (request.headers.has(internalCatalogScopeHeader)) {
           request.headers.delete(internalCatalogScopeHeader)
+        }
+        if (request.headers.has(internalCatalogDefaultsHeader)) {
+          request.headers.delete(internalCatalogDefaultsHeader)
         }
         const selectedCatalogScopeKey = resolveCatalogScopeKey(auth)
         const requestCatalogModels = requestCatalogScopeKey ? input.getCatalogModels(requestCatalogScopeKey) : undefined
@@ -287,7 +312,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           promptCacheKeyOverride,
           catalogModels: selectedCatalogModels,
           previousCatalogModels: requestCatalogModels,
+          previousCatalogDefaultFields,
           requestCatalogScopeChanged,
+          projectRoot: input.projectPath,
           fallbackPersonality: input.personality,
           behaviorSettings: input.behaviorSettings,
           customModels: input.customModels

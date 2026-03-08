@@ -92,4 +92,66 @@ describe("codex-native account helpers", () => {
     expect(new Set(rows.map((row) => row.index))).toEqual(new Set([0, 1]))
     expect(rows.every((row) => row.authTypes?.length === 1)).toBe(true)
   })
+
+  it("keeps same-mode identityless refresh-only accounts as separate actionable rows", () => {
+    const native: OpenAIOAuthDomain = {
+      accounts: [
+        {
+          enabled: true,
+          refresh: "rt_1"
+        },
+        {
+          enabled: true,
+          refresh: "rt_2"
+        }
+      ]
+    }
+
+    const rows = buildAuthMenuAccounts({ native, activeMode: "native" })
+
+    expect(rows).toHaveLength(2)
+    expect(rows[0]?.sourceIndices?.native).toBe(0)
+    expect(rows[1]?.sourceIndices?.native).toBe(1)
+    expect(findDomainAccountIndex(native, rows[0]!)).toBe(0)
+    expect(findDomainAccountIndex(native, rows[1]!)).toBe(1)
+  })
+
+  it("prefers the requested auth mode source index for merged account rows", () => {
+    const native: OpenAIOAuthDomain = {
+      accounts: [
+        {
+          identityKey: "acc_shared|user@example.com|plus",
+          enabled: true,
+          refresh: "rt_native_0"
+        },
+        {
+          identityKey: "acc_other|other@example.com|plus",
+          enabled: true,
+          refresh: "rt_native_1"
+        }
+      ]
+    }
+    const codex: OpenAIOAuthDomain = {
+      accounts: [
+        {
+          identityKey: "acc_other|other@example.com|plus",
+          enabled: true,
+          refresh: "rt_codex_0"
+        },
+        {
+          identityKey: "acc_shared|user@example.com|plus",
+          enabled: true,
+          refresh: "rt_codex_1"
+        }
+      ]
+    }
+
+    const row = buildAuthMenuAccounts({ native, codex, activeMode: "native" }).find(
+      (account) => account.identityKey === "acc_shared|user@example.com|plus"
+    )
+
+    expect(row).toBeDefined()
+    expect(findDomainAccountIndex(native, row!, "native")).toBe(0)
+    expect(findDomainAccountIndex(codex, row!, "codex")).toBe(1)
+  })
 })

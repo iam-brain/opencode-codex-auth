@@ -113,6 +113,8 @@ export type ApplyCodexCatalogInput = {
   providerModels: Record<string, Record<string, unknown>>
   catalogModels?: CodexModelInfo[]
   personality?: PersonalityOption
+  projectRoot?: string
+  configRoot?: string
   customModels?: Record<string, CustomModelBehaviorConfig>
   warn?: (message: string) => void
 }

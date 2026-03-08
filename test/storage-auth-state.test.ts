@@ -96,6 +96,41 @@ describe("storage auth-state normalization", () => {
     expect(openai.activeIdentityKey).toBe("acc_2|two@example.com|pro")
   })
 
+  it("does not preserve or reselect disabled domain accounts as active", () => {
+    const openai = normalizeOpenAIOAuthState({
+      type: "oauth",
+      accounts: [],
+      native: {
+        accounts: [
+          {
+            accountId: "acc_1",
+            email: "one@example.com",
+            plan: "plus",
+            access: "at_1",
+            refresh: "rt_1",
+            expires: 1_000,
+            enabled: false,
+            authTypes: ["native"]
+          },
+          {
+            accountId: "acc_2",
+            email: "two@example.com",
+            plan: "pro",
+            access: "at_2",
+            refresh: "rt_2",
+            expires: 2_000,
+            enabled: true,
+            authTypes: ["native"]
+          }
+        ],
+        activeIdentityKey: "acc_1|one@example.com|plus"
+      }
+    } as never)
+
+    expect(openai.native?.activeIdentityKey).toBe("acc_2|two@example.com|pro")
+    expect(openai.activeIdentityKey).toBe("acc_2|two@example.com|pro")
+  })
+
   it("assigns deterministic fallback identities when strict identity is unavailable", () => {
     const openai = normalizeOpenAIOAuthState({
       type: "oauth",

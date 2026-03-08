@@ -140,7 +140,19 @@ describe("model catalog provider model mapping", () => {
 
   it("creates new catalog-only provider entries without cross-slug inheritance", () => {
     const providerModels: Record<string, Record<string, unknown>> = {
-      "gpt-5.3-codex": makeBaselineModel("gpt-5.3-codex")
+      "gpt-5.3-codex": {
+        ...makeBaselineModel("gpt-5.3-codex"),
+        providerID: "custom-openai",
+        api: {
+          id: "gpt-5.3-codex",
+          url: "https://example.invalid/custom",
+          npm: "@custom/provider"
+        },
+        status: "deprecated",
+        headers: {
+          "x-test-header": "legacy"
+        }
+      }
     }
 
     applyCodexCatalogToProviderModels({
@@ -160,6 +172,14 @@ describe("model catalog provider model mapping", () => {
     expect(providerModels["gpt-5.4"].name).toBe("GPT-5.4")
     expect(providerModels["gpt-5.4"].displayName).toBe("GPT-5.4")
     expect(providerModels["gpt-5.4"].display_name).toBe("GPT-5.4")
+    expect(providerModels["gpt-5.4"].providerID).toBe("openai")
+    expect(providerModels["gpt-5.4"].api).toEqual({
+      id: "gpt-5.4",
+      url: "https://chatgpt.com/backend-api/codex",
+      npm: "@ai-sdk/openai"
+    })
+    expect(providerModels["gpt-5.4"].status).toBe("active")
+    expect(providerModels["gpt-5.4"].headers).toEqual({})
     expect(providerModels["gpt-5.4"].family).toBe("gpt-5")
     expect(providerModels["gpt-5.4"].release_date).toBe("")
     expect(providerModels["gpt-5.4"].limit).toEqual({
@@ -182,6 +202,19 @@ describe("model catalog provider model mapping", () => {
       high: { reasoningEffort: "high" },
       xhigh: { reasoningEffort: "xhigh" }
     })
+  })
+
+  it("preserves provider models when the catalog is temporarily unavailable", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.3-codex": makeBaselineModel("gpt-5.3-codex")
+    }
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: undefined
+    })
+
+    expect(providerModels["gpt-5.3-codex"]).toBeDefined()
   })
 
   it("replaces existing provider variants with the selected catalog source variants", () => {
@@ -455,7 +488,7 @@ describe("model catalog provider model mapping", () => {
     ).toBe("Use the safe base")
   })
 
-  it("clears provider models instead of synthesizing a fallback model set when no catalog is available", () => {
+  it("preserves provider models instead of clearing them when no catalog is available", () => {
     const providerModels: Record<string, Record<string, unknown>> = {
       "gpt-5.4": makeBaselineModel("gpt-5.4"),
       "gpt-5.3-codex": makeBaselineModel("gpt-5.3-codex")
@@ -466,6 +499,6 @@ describe("model catalog provider model mapping", () => {
       catalogModels: undefined
     })
 
-    expect(providerModels).toEqual({})
+    expect(Object.keys(providerModels).sort()).toEqual(["gpt-5.3-codex", "gpt-5.4"])
   })
 })

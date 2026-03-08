@@ -80,11 +80,13 @@ function ensureDomainAccountHealth(domain: OpenAIOAuthDomain, authMode: OpenAIAu
 
   if (
     domain.activeIdentityKey &&
-    !domain.accounts.some((account) => account.identityKey === domain.activeIdentityKey)
+    domain.accounts.some((account) => account.identityKey === domain.activeIdentityKey && account.enabled !== false)
   ) {
-    const fallback = domain.accounts.find((account) => account.identityKey)
-    domain.activeIdentityKey = fallback?.identityKey
+    return
   }
+
+  const fallback = domain.accounts.find((account) => account.enabled !== false && account.identityKey)
+  domain.activeIdentityKey = fallback?.identityKey
 }
 
 function splitAccountsByAuthMode(accounts: AccountRecord[]): Record<OpenAIAuthMode, AccountRecord[]> {

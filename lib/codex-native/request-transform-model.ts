@@ -547,20 +547,28 @@ export function applyResolvedCodexRuntimeDefaults(input: {
   }
   modelId?: string
   preferCodexInstructions: boolean
-}): void {
+}): {
+  injectedFields: Array<"instructions" | "reasoningEffort" | "reasoningSummary" | "textVerbosity" | "parallelToolCalls">
+} {
   const options = input.options
   const defaults = input.defaults ?? {}
   const codexInstructions = asString(input.codexInstructions)
+  const injectedFields = new Set<
+    "instructions" | "reasoningEffort" | "reasoningSummary" | "textVerbosity" | "parallelToolCalls"
+  >()
 
   if (codexInstructions && (input.preferCodexInstructions || asString(options.instructions) === undefined)) {
     options.instructions = codexInstructions
+    injectedFields.add("instructions")
   }
 
   if (asString(options.reasoningEffort) === undefined) {
     if (input.resolvedBehavior.reasoningEffort) {
       options.reasoningEffort = input.resolvedBehavior.reasoningEffort
+      injectedFields.add("reasoningEffort")
     } else if (defaults.defaultReasoningEffort) {
       options.reasoningEffort = defaults.defaultReasoningEffort
+      injectedFields.add("reasoningEffort")
     }
   }
 
@@ -580,6 +588,9 @@ export function applyResolvedCodexRuntimeDefaults(input: {
   })
   if (reasoningSummary.value) {
     options.reasoningSummary = reasoningSummary.value
+    if (rawReasoningSummary === undefined) {
+      injectedFields.add("reasoningSummary")
+    }
   } else if (
     rawReasoningSummary?.trim().toLowerCase() === "none" ||
     input.resolvedBehavior.reasoningSummary === "none"
@@ -602,9 +613,11 @@ export function applyResolvedCodexRuntimeDefaults(input: {
     if (verbositySetting === "default") {
       if (defaults.defaultVerbosity) {
         options.textVerbosity = defaults.defaultVerbosity
+        injectedFields.add("textVerbosity")
       }
     } else {
       options.textVerbosity = verbositySetting
+      injectedFields.add("textVerbosity")
     }
   }
 
@@ -615,10 +628,13 @@ export function applyResolvedCodexRuntimeDefaults(input: {
   if (typeof options.parallelToolCalls !== "boolean") {
     if (input.resolvedBehavior.parallelToolCalls !== undefined) {
       options.parallelToolCalls = input.resolvedBehavior.parallelToolCalls
+      injectedFields.add("parallelToolCalls")
     } else if (defaults.supportsParallelToolCalls !== undefined) {
       options.parallelToolCalls = defaults.supportsParallelToolCalls
+      injectedFields.add("parallelToolCalls")
     } else if (input.modelToolCallCapable !== undefined) {
       options.parallelToolCalls = input.modelToolCallCapable
+      injectedFields.add("parallelToolCalls")
     }
   }
 
@@ -638,6 +654,10 @@ export function applyResolvedCodexRuntimeDefaults(input: {
     const include = asStringArray(options.include) ?? []
     options.include = mergeUnique([...include, "reasoning.encrypted_content"])
   }
+
+  return {
+    injectedFields: Array.from(injectedFields)
+  }
 }
 
 export function applyCodexRuntimeDefaultsToParams(input: {
@@ -653,9 +673,11 @@ export function applyCodexRuntimeDefaultsToParams(input: {
   preferCodexInstructions: boolean
   modelId?: string
   output: ChatParamsOutput
-}): void {
+}): {
+  injectedFields: Array<"instructions" | "reasoningEffort" | "reasoningSummary" | "textVerbosity" | "parallelToolCalls">
+} {
   const modelOptions = input.modelOptions
-  applyResolvedCodexRuntimeDefaults({
+  return applyResolvedCodexRuntimeDefaults({
     options: input.output.options,
     codexInstructions: asString(modelOptions.codexInstructions),
     defaults: readModelRuntimeDefaults(modelOptions),

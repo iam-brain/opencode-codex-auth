@@ -120,7 +120,7 @@ describe("codex-native session affinity persistence", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-openai-subagent": "plan",
+        "x-openai-subagent": "review",
         session_id: "ses_subagent_1"
       },
       body: JSON.stringify({

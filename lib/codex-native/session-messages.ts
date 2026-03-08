@@ -23,7 +23,7 @@ export async function readSessionMessageRows(
   if (!sessionApi || typeof sessionApi.messages !== "function") return []
 
   try {
-    const response = await sessionApi.messages({ sessionID, limit: 100 })
+    const response = await sessionApi.messages({ sessionID, limit: 1000 })
     return isRecord(response) && Array.isArray(response.data) ? response.data : []
   } catch (error) {
     if (error instanceof Error) {
@@ -56,6 +56,23 @@ export async function readSessionMessageInfo(
   sessionID: string,
   messageID: string
 ): Promise<Record<string, unknown> | undefined> {
+  const sessionApi = client?.session as { message?: (input: unknown) => Promise<unknown> } | undefined
+  if (sessionApi?.message && typeof sessionApi.message === "function") {
+    try {
+      const response = await sessionApi.message({ sessionID, messageID })
+      if (isRecord(response) && isRecord(response.info)) {
+        return response.info
+      }
+      if (isRecord(response) && isRecord(response.data) && isRecord(response.data.info)) {
+        return response.data.info
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        // best-effort message lookup
+      }
+    }
+  }
+
   const rows = await readSessionMessageRows(client, sessionID)
   for (let index = rows.length - 1; index >= 0; index -= 1) {
     const row = rows[index]

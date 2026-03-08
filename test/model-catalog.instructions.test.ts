@@ -121,4 +121,31 @@ describe("model catalog instruction rendering", () => {
       process.chdir(prev)
     }
   })
+
+  it("resolves custom personalities from the provided project root even when cwd differs", async () => {
+    const root = await makeCacheDir()
+    const projectRoot = path.join(root, "workspace")
+    const personalityDir = path.join(projectRoot, ".opencode", "personalities")
+    await fs.mkdir(personalityDir, { recursive: true })
+    await fs.writeFile(path.join(personalityDir, "Operator.md"), "Workspace operator voice", "utf8")
+
+    const prev = process.cwd()
+    process.chdir(root)
+    try {
+      const instructions = resolveInstructionsForModel(
+        {
+          slug: "gpt-5.4-codex",
+          model_messages: {
+            instructions_template: "Base {{ personality }}"
+          }
+        },
+        "operator",
+        { projectRoot }
+      )
+
+      expect(instructions).toBe("Base Workspace operator voice")
+    } finally {
+      process.chdir(prev)
+    }
+  })
 })

@@ -75,6 +75,11 @@ function collectTouchedWorkingTreeFiles() {
 }
 
 function collectTouchedFiles() {
+  const explicitTouchedFiles = process.env.COVERAGE_RATCHET_TOUCHED_FILES
+  if (explicitTouchedFiles?.trim()) {
+    return parseTouchedFiles(explicitTouchedFiles)
+  }
+
   const rangeCandidates = []
   const explicitRange = process.env.COVERAGE_RATCHET_DIFF_RANGE?.trim()
   if (explicitRange) rangeCandidates.push(explicitRange)

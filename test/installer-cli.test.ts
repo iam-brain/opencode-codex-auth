@@ -31,14 +31,13 @@ describe("installer cli", () => {
 
   it("runs full install by default: plugin config + personality workflows", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-"))
-    const agentsDir = path.join(root, "agents")
     const configPath = path.join(root, "opencode.json")
     const capture = captureIo()
     const previousXdg = process.env.XDG_CONFIG_HOME
     process.env.XDG_CONFIG_HOME = root
 
     try {
-      const code = await runInstallerCli(["--dir", agentsDir, "--config", configPath], capture.io)
+      const code = await runInstallerCli(["--config", configPath], capture.io)
       expect(code).toBe(0)
       const output = capture.out.join("\n")
       expect(output).toContain("Plugin specifier: @iam-brain/opencode-codex-auth@latest")
@@ -83,13 +82,25 @@ describe("installer cli", () => {
   }, 15_000)
 
   it("rejects removed install-agents command", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-"))
-    const agentsDir = path.join(root, "agents")
     const capture = captureIo()
 
-    const code = await runInstallerCli(["install-agents", "--dir", agentsDir], capture.io)
+    const code = await runInstallerCli(["install-agents"], capture.io)
     expect(code).toBe(1)
     expect(capture.err.join("\n")).toContain("Unknown command: install-agents")
+  })
+
+  it("rejects unknown options", async () => {
+    const capture = captureIo()
+    const code = await runInstallerCli(["--dir", "/tmp/agents"], capture.io)
+    expect(code).toBe(1)
+    expect(capture.err.join("\n")).toContain("Unknown option: --dir")
+  })
+
+  it("rejects missing option values", async () => {
+    const capture = captureIo()
+    const code = await runInstallerCli(["--config"], capture.io)
+    expect(code).toBe(1)
+    expect(capture.err.join("\n")).toContain("Missing value for --config")
   })
 
   it("shows orchestrator agent in codex mode", async () => {
@@ -121,6 +132,36 @@ describe("installer cli", () => {
         delete process.env.OPENCODE_OPENAI_MULTI_MODE
       } else {
         process.env.OPENCODE_OPENAI_MULTI_MODE = previousMode
+      }
+    }
+  })
+
+  it("preserves customized command and skill files on rerun", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-custom-"))
+    const configPath = path.join(root, "opencode.json")
+    const capture = captureIo()
+    const previousXdg = process.env.XDG_CONFIG_HOME
+    process.env.XDG_CONFIG_HOME = root
+
+    try {
+      expect(await runInstallerCli(["--config", configPath], capture.io)).toBe(0)
+
+      const commandPath = path.join(root, "opencode", "commands", "create-personality.md")
+      const skillPath = path.join(root, "opencode", "skills", "personality-builder", "SKILL.md")
+      await fs.writeFile(commandPath, "custom command\n", "utf8")
+      await fs.writeFile(skillPath, "custom skill\n", "utf8")
+
+      const secondCapture = captureIo()
+      expect(await runInstallerCli(["--config", configPath], secondCapture.io)).toBe(0)
+      expect(await fs.readFile(commandPath, "utf8")).toBe("custom command\n")
+      expect(await fs.readFile(skillPath, "utf8")).toBe("custom skill\n")
+      expect(secondCapture.out.join("\n")).toContain("/create-personality synchronized: unchanged")
+      expect(secondCapture.out.join("\n")).toContain("personality-builder skill synchronized: unchanged")
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg
       }
     }
   })

@@ -40,7 +40,63 @@ function summarizePaths(paths) {
   return `${preview}${suffix}`
 }
 
-function resolveHookTarget(repoRoot, hookName) {
+function readStdinText() {
+  try {
+    return readFileSync(0, "utf8")
+  } catch {
+    return ""
+  }
+}
+
+function parseTouchedPaths(output) {
+  return output
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+function parsePrePushUpdates(stdinText) {
+  return stdinText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [localRef, localSha, remoteRef, remoteSha] = line.split(/\s+/)
+      return { localRef, localSha, remoteRef, remoteSha }
+    })
+    .filter((update) => update.localRef && update.localSha && update.remoteRef && update.remoteSha)
+}
+
+function isAllZeroRef(value) {
+  return typeof value === "string" && /^[0]+$/.test(value)
+}
+
+function resolvePrePushTouchedFiles(repoRoot, stdinText) {
+  const updates = parsePrePushUpdates(stdinText)
+  if (updates.length === 0) return []
+
+  const touched = new Set()
+  for (const update of updates) {
+    if (isAllZeroRef(update.localSha)) continue
+
+    const commits = !isAllZeroRef(update.remoteSha)
+      ? runGit(["rev-list", `${update.remoteSha}..${update.localSha}`], { cwd: repoRoot })
+      : runGit(["rev-list", update.localSha, "--not", "--remotes=origin"], { cwd: repoRoot })
+
+    for (const commit of parseTouchedPaths(commits)) {
+      const changed = runGit(["diff-tree", "--no-commit-id", "--name-only", "-r", "--diff-filter=ACMRTUXB", commit], {
+        cwd: repoRoot
+      })
+      for (const filePath of parseTouchedPaths(changed)) {
+        touched.add(filePath)
+      }
+    }
+  }
+
+  return Array.from(touched).sort((a, b) => a.localeCompare(b))
+}
+
+function resolveHookTarget(repoRoot, hookName, stdinText = "") {
   const stagedPaths = listGitPaths(repoRoot, ["diff", "--cached", "--name-only", "-z"])
   const unstagedPaths = listGitPaths(repoRoot, ["diff", "--name-only", "-z"])
   const untrackedPaths = listGitPaths(repoRoot, ["ls-files", "--others", "--exclude-standard", "-z"])
@@ -54,7 +110,10 @@ function resolveHookTarget(repoRoot, hookName) {
     }
 
     const headTree = runGit(["rev-parse", "HEAD^{tree}"], { cwd: repoRoot }).trim()
-    return `head:${headTree}`
+    const touchedFingerprint = createHash("sha256")
+      .update(resolvePrePushTouchedFiles(repoRoot, stdinText).join("\0"))
+      .digest("hex")
+    return `head:${headTree}:${touchedFingerprint}`
   }
 
   if (unstagedPaths.length > 0 || untrackedPaths.length > 0) {
@@ -87,7 +146,8 @@ function writeStamp(stampPath, payload) {
 
 const repoRoot = resolveRepoRoot()
 const hookName = process.argv[2] ?? "manual"
-const fingerprint = resolveHookTarget(repoRoot, hookName)
+const stdinText = hookName === "pre-push" ? readStdinText() : ""
+const fingerprint = resolveHookTarget(repoRoot, hookName, stdinText)
 const stampPath = resolveGitPath(repoRoot, "opencode-codex-auth/verify-stamp.json")
 const stamp = readStamp(stampPath)
 
@@ -98,8 +158,17 @@ if (stamp?.fingerprint === fingerprint) {
 
 console.log(`Running npm run verify for ${hookName}...`)
 
+const verifyEnv = { ...process.env }
+if (hookName === "pre-push") {
+  const touchedFiles = resolvePrePushTouchedFiles(repoRoot, stdinText)
+  if (touchedFiles.length > 0) {
+    verifyEnv.COVERAGE_RATCHET_TOUCHED_FILES = touchedFiles.join("\n")
+  }
+}
+
 const verifyResult = spawnSync("npm", ["run", "verify"], {
   cwd: repoRoot,
+  env: verifyEnv,
   stdio: "inherit"
 })
 
@@ -108,7 +177,7 @@ if (verifyResult.status !== 0) {
 }
 
 writeStamp(stampPath, {
-  fingerprint: resolveHookTarget(repoRoot, hookName),
+  fingerprint: resolveHookTarget(repoRoot, hookName, stdinText),
   hookName,
   verifiedAt: new Date().toISOString()
 })

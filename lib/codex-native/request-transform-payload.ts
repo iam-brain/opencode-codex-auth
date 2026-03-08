@@ -43,45 +43,90 @@ function asFiniteNumber(value: unknown): number | undefined {
 }
 
 export function applyGpt54LongContextClampsToPayload(payload: Record<string, unknown>): boolean {
-  const modelSlug = asString(payload.model)
-  if (!modelSlug) return false
+  return applyGpt54LongContextClampsToPayloadWithContext({ payload })
+}
 
-  const modelCandidates = getModelLookupCandidates({
-    id: modelSlug,
-    api: { id: modelSlug }
+function applyGpt54LongContextClampsToPayloadWithContext(input: {
+  payload: Record<string, unknown>
+  selectedModelSlug?: string
+  customModels?: Record<string, CustomModelConfig>
+}): boolean {
+  const modelCandidates = resolvePayloadModelCandidatesForClamps({
+    payload: input.payload,
+    selectedModelSlug: input.selectedModelSlug,
+    customModels: input.customModels
   })
   const isGpt54 = modelCandidates.some((candidate) => candidate.trim().toLowerCase().startsWith("gpt-5.4"))
   if (!isGpt54) return false
 
   let changed = false
 
-  const contextWindow = asFiniteNumber(payload.model_context_window)
+  const contextWindow = asFiniteNumber(input.payload.model_context_window)
   if (contextWindow !== undefined && contextWindow > GPT_5_4_MAX_CONTEXT_WINDOW) {
-    payload.model_context_window = GPT_5_4_MAX_CONTEXT_WINDOW
+    input.payload.model_context_window = GPT_5_4_MAX_CONTEXT_WINDOW
     changed = true
   }
 
   const effectiveContextWindowMax = Math.min(
     GPT_5_4_MAX_CONTEXT_WINDOW,
-    asFiniteNumber(payload.model_context_window) ?? GPT_5_4_MAX_CONTEXT_WINDOW
+    asFiniteNumber(input.payload.model_context_window) ?? GPT_5_4_MAX_CONTEXT_WINDOW
   )
   const autoCompactMax = Math.max(
     0,
     Math.min(GPT_5_4_MAX_PRACTICAL_INPUT_TOKENS, effectiveContextWindowMax - GPT_5_4_MAX_OUTPUT_TOKENS)
   )
-  const autoCompact = asFiniteNumber(payload.model_auto_compact_token_limit)
+  const autoCompact = asFiniteNumber(input.payload.model_auto_compact_token_limit)
   if (autoCompact !== undefined && autoCompact > autoCompactMax) {
-    payload.model_auto_compact_token_limit = autoCompactMax
+    input.payload.model_auto_compact_token_limit = autoCompactMax
     changed = true
   }
 
-  const maxOutputTokens = asFiniteNumber(payload.max_output_tokens)
+  const maxOutputTokens = asFiniteNumber(input.payload.max_output_tokens)
   if (maxOutputTokens !== undefined && maxOutputTokens > GPT_5_4_MAX_OUTPUT_TOKENS) {
-    payload.max_output_tokens = GPT_5_4_MAX_OUTPUT_TOKENS
+    input.payload.max_output_tokens = GPT_5_4_MAX_OUTPUT_TOKENS
     changed = true
   }
 
   return changed
+}
+
+function resolvePayloadModelCandidatesForClamps(input: {
+  payload: Record<string, unknown>
+  selectedModelSlug?: string
+  customModels?: Record<string, CustomModelConfig>
+}): string[] {
+  const payloadModelSlug = asString(input.payload.model)
+  const candidates = getModelLookupCandidates({
+    id: payloadModelSlug ?? input.selectedModelSlug,
+    api: { id: payloadModelSlug ?? input.selectedModelSlug }
+  })
+  const queue = [...candidates]
+  const seen = new Set(queue.map((candidate) => candidate.trim().toLowerCase()))
+
+  while (queue.length > 0) {
+    const candidate = queue.shift()
+    if (!candidate) continue
+    const normalizedCandidate = candidate.trim().toLowerCase()
+    for (const [alias, config] of Object.entries(input.customModels ?? {})) {
+      const aliasCandidates = getModelLookupCandidates({
+        id: alias,
+        api: { id: alias }
+      })
+      if (!aliasCandidates.some((entry) => entry.trim().toLowerCase() === normalizedCandidate)) continue
+      for (const targetCandidate of getModelLookupCandidates({
+        id: config.targetModel,
+        api: { id: config.targetModel }
+      })) {
+        const normalizedTarget = targetCandidate.trim().toLowerCase()
+        if (seen.has(normalizedTarget)) continue
+        seen.add(normalizedTarget)
+        queue.push(targetCandidate)
+        candidates.push(targetCandidate)
+      }
+    }
+  }
+
+  return candidates
 }
 
 type OutboundRequestPayloadTransformInput = {
@@ -95,7 +140,9 @@ type OutboundRequestPayloadTransformInput = {
   promptCacheKeyOverride?: string
   catalogModels?: CodexModelInfo[]
   previousCatalogModels?: CodexModelInfo[]
+  previousCatalogDefaultFields?: string[]
   requestCatalogScopeChanged?: boolean
+  projectRoot?: string
   fallbackPersonality?: PersonalityOption
   behaviorSettings?: BehaviorSettings
   customModels?: Record<string, CustomModelConfig>
@@ -294,12 +341,19 @@ export async function transformOutboundRequestPayload(
   const selectedCatalogScopeSyncChanged = applySelectedCatalogScopeToPayload(finalPayload, {
     catalogModels: input.catalogModels,
     previousCatalogModels: input.previousCatalogModels,
+    previousCatalogDefaultFields: input.previousCatalogDefaultFields,
     requestCatalogScopeChanged: input.requestCatalogScopeChanged === true,
     behaviorSettings: input.behaviorSettings,
     fallbackPersonality: input.fallbackPersonality
   })
   const gpt54LongContextClampChanged =
-    input.gpt54LongContextClampEnabled !== false ? applyGpt54LongContextClampsToPayload(finalPayload) : false
+    input.gpt54LongContextClampEnabled !== false
+      ? applyGpt54LongContextClampsToPayloadWithContext({
+          payload: finalPayload,
+          selectedModelSlug: input.selectedModelSlug,
+          customModels: input.customModels
+        })
+      : false
   const serviceTier = disabledServiceTier
   const reasoningSummaryValidation = validateReasoningSummaryPayload({
     payload: finalPayload,
@@ -367,6 +421,8 @@ export async function applyPromptCacheKeyOverrideToRequest(input: {
 export async function stripStaleCatalogScopedDefaultsFromRequest(input: {
   request: Request
   previousCatalogModels?: CodexModelInfo[]
+  previousCatalogDefaultFields?: string[]
+  projectRoot?: string
   behaviorSettings?: BehaviorSettings
   fallbackPersonality?: PersonalityOption
 }): Promise<{ request: Request; changed: boolean }> {
@@ -386,7 +442,9 @@ export async function stripStaleCatalogScopedDefaultsFromRequest(input: {
   const changed = applySelectedCatalogScopeToPayload(payload, {
     catalogModels: undefined,
     previousCatalogModels: input.previousCatalogModels,
+    previousCatalogDefaultFields: input.previousCatalogDefaultFields,
     requestCatalogScopeChanged: true,
+    projectRoot: input.projectRoot,
     behaviorSettings: input.behaviorSettings,
     fallbackPersonality: input.fallbackPersonality
   })
@@ -592,7 +650,9 @@ function applySelectedCatalogScopeToPayload(
   input: {
     catalogModels?: CodexModelInfo[]
     previousCatalogModels?: CodexModelInfo[]
+    previousCatalogDefaultFields?: string[]
     requestCatalogScopeChanged: boolean
+    projectRoot?: string
     behaviorSettings?: BehaviorSettings
     fallbackPersonality?: PersonalityOption
   }
@@ -620,30 +680,34 @@ function applySelectedCatalogScopeToPayload(
     variantCandidates,
     fallback: input.fallbackPersonality
   })
-  const previousInstructions = resolveInstructionsForModel(previousCatalogModel, effectivePersonality)
+  const previousInstructions = resolveInstructionsForModel(previousCatalogModel, effectivePersonality, {
+    projectRoot: input.projectRoot
+  })
   const previousRuntimeDefaults = getRuntimeDefaultsForModel(previousCatalogModel)
   if (!nextCatalogModel) {
     return clearPreviousCatalogScopedFields(payload, {
       previousInstructions,
-      previousRuntimeDefaults
+      previousRuntimeDefaults,
+      previousCatalogDefaultFields: input.previousCatalogDefaultFields
     })
   }
 
-  const nextInstructions = resolveInstructionsForModel(nextCatalogModel, effectivePersonality)
+  const nextInstructions = resolveInstructionsForModel(nextCatalogModel, effectivePersonality, {
+    projectRoot: input.projectRoot
+  })
   const nextRuntimeDefaults = getRuntimeDefaultsForModel(nextCatalogModel)
+  const previousCatalogDefaultFields = new Set(input.previousCatalogDefaultFields ?? [])
 
   let changed = false
 
   const currentInstructions = typeof payload.instructions === "string" ? payload.instructions : undefined
-  const nextScopedInstructions = replaceCatalogInstructionPrefix(
-    currentInstructions,
-    previousInstructions,
-    nextInstructions
-  )
+  const nextScopedInstructions = previousCatalogDefaultFields.has("instructions")
+    ? replaceCatalogInstructionPrefix(currentInstructions, previousInstructions, nextInstructions)
+    : undefined
   if (nextScopedInstructions && nextScopedInstructions !== currentInstructions) {
     payload.instructions = nextScopedInstructions
     changed = true
-  } else if (!nextInstructions) {
+  } else if (!nextInstructions && previousCatalogDefaultFields.has("instructions")) {
     const remainingInstructions = stripCatalogInstructionPrefix(currentInstructions, previousInstructions)
     if (remainingInstructions !== undefined) {
       if (remainingInstructions) {
@@ -660,6 +724,7 @@ function applySelectedCatalogScopeToPayload(
   const reasoningSummaryBefore = asString(reasoning?.summary)
   let reasoningChanged = false
   if (
+    previousCatalogDefaultFields.has("reasoningEffort") &&
     reasoning &&
     reasoningEffortBefore &&
     previousRuntimeDefaults?.defaultReasoningEffort &&
@@ -679,6 +744,7 @@ function applySelectedCatalogScopeToPayload(
   const nextReasoningSummary = resolveDefaultReasoningSummary(nextRuntimeDefaults)
   if (reasoning) {
     if (
+      previousCatalogDefaultFields.has("reasoningSummary") &&
       reasoningSummaryBefore &&
       previousReasoningSummary &&
       reasoningSummaryBefore === previousReasoningSummary &&
@@ -692,6 +758,7 @@ function applySelectedCatalogScopeToPayload(
       changed = true
       reasoningChanged = true
     } else if (
+      previousCatalogDefaultFields.has("reasoningSummary") &&
       reasoningSummaryBefore === undefined &&
       previousReasoningSummary === undefined &&
       nextReasoningSummary &&
@@ -711,6 +778,7 @@ function applySelectedCatalogScopeToPayload(
   const text = isRecord(payload.text) ? payload.text : undefined
   const textVerbosity = asString(text?.verbosity)
   if (
+    previousCatalogDefaultFields.has("textVerbosity") &&
     text &&
     textVerbosity &&
     previousRuntimeDefaults?.defaultVerbosity &&
@@ -729,6 +797,7 @@ function applySelectedCatalogScopeToPayload(
   }
 
   if (
+    previousCatalogDefaultFields.has("parallelToolCalls") &&
     typeof payload.parallel_tool_calls === "boolean" &&
     typeof previousRuntimeDefaults?.supportsParallelToolCalls === "boolean" &&
     payload.parallel_tool_calls === previousRuntimeDefaults.supportsParallelToolCalls &&
@@ -773,21 +842,25 @@ function clearPreviousCatalogScopedFields(
   input: {
     previousInstructions?: string
     previousRuntimeDefaults?: ReturnType<typeof getRuntimeDefaultsForModel>
+    previousCatalogDefaultFields?: string[]
   }
 ): boolean {
   let changed = false
+  const previousCatalogDefaultFields = new Set(input.previousCatalogDefaultFields ?? [])
 
-  const remainingInstructions = stripCatalogInstructionPrefix(
-    typeof payload.instructions === "string" ? payload.instructions : undefined,
-    input.previousInstructions
-  )
-  if (remainingInstructions !== undefined) {
-    if (remainingInstructions) {
-      payload.instructions = remainingInstructions
-    } else {
-      delete payload.instructions
+  if (previousCatalogDefaultFields.has("instructions")) {
+    const remainingInstructions = stripCatalogInstructionPrefix(
+      typeof payload.instructions === "string" ? payload.instructions : undefined,
+      input.previousInstructions
+    )
+    if (remainingInstructions !== undefined) {
+      if (remainingInstructions) {
+        payload.instructions = remainingInstructions
+      } else {
+        delete payload.instructions
+      }
+      changed = true
     }
-    changed = true
   }
 
   const reasoning = isRecord(payload.reasoning) ? payload.reasoning : undefined
@@ -795,6 +868,7 @@ function clearPreviousCatalogScopedFields(
   const reasoningSummaryBefore = asString(reasoning?.summary)
   let reasoningChanged = false
   if (
+    previousCatalogDefaultFields.has("reasoningEffort") &&
     reasoning &&
     reasoningEffortBefore &&
     input.previousRuntimeDefaults?.defaultReasoningEffort &&
@@ -807,6 +881,7 @@ function clearPreviousCatalogScopedFields(
 
   const previousReasoningSummary = resolveDefaultReasoningSummary(input.previousRuntimeDefaults)
   if (
+    previousCatalogDefaultFields.has("reasoningSummary") &&
     reasoning &&
     reasoningSummaryBefore &&
     previousReasoningSummary &&
@@ -824,6 +899,7 @@ function clearPreviousCatalogScopedFields(
   const text = isRecord(payload.text) ? payload.text : undefined
   const textVerbosity = asString(text?.verbosity)
   if (
+    previousCatalogDefaultFields.has("textVerbosity") &&
     text &&
     textVerbosity &&
     input.previousRuntimeDefaults?.defaultVerbosity &&
@@ -837,6 +913,7 @@ function clearPreviousCatalogScopedFields(
   }
 
   if (
+    previousCatalogDefaultFields.has("parallelToolCalls") &&
     typeof payload.parallel_tool_calls === "boolean" &&
     typeof input.previousRuntimeDefaults?.supportsParallelToolCalls === "boolean" &&
     payload.parallel_tool_calls === input.previousRuntimeDefaults.supportsParallelToolCalls

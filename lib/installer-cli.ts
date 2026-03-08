@@ -23,37 +23,65 @@ const DEFAULT_IO: InstallerIo = {
   err: (message) => process.stderr.write(`${message}\n`)
 }
 
-function parseArgs(args: string[]): {
-  command: string
-  configPath?: string
-  pluginSpecifier?: string
-} {
-  const command = args[0] && !args[0].startsWith("-") ? args[0] : "install"
-  const tail = command === "install" ? args.slice(1) : args
+function parseArgs(args: string[]):
+  | {
+      ok: true
+      command: string
+      configPath?: string
+      pluginSpecifier?: string
+    }
+  | {
+      ok: false
+      error: string
+    } {
+  const hasCommand = Boolean(args[0] && !args[0].startsWith("-"))
+  const command = hasCommand ? args[0] : "install"
+  const tail = hasCommand ? args.slice(1) : args
   let configPath: string | undefined
   let pluginSpecifier: string | undefined
   for (let i = 0; i < tail.length; i += 1) {
     const token = tail[i]
+    if (!token) continue
     if (token === "--config") {
-      configPath = tail[i + 1]
+      const value = tail[i + 1]
+      if (!value) {
+        return { ok: false, error: "Missing value for --config" }
+      }
+      configPath = value
       i += 1
       continue
     }
     if (token.startsWith("--config=")) {
-      configPath = token.slice("--config=".length)
+      const value = token.slice("--config=".length)
+      if (!value) {
+        return { ok: false, error: "Missing value for --config" }
+      }
+      configPath = value
       continue
     }
     if (token === "--plugin") {
-      pluginSpecifier = tail[i + 1]
+      const value = tail[i + 1]
+      if (!value) {
+        return { ok: false, error: "Missing value for --plugin" }
+      }
+      pluginSpecifier = value
       i += 1
       continue
     }
     if (token.startsWith("--plugin=")) {
-      pluginSpecifier = token.slice("--plugin=".length)
+      const value = token.slice("--plugin=".length)
+      if (!value) {
+        return { ok: false, error: "Missing value for --plugin" }
+      }
+      pluginSpecifier = value
       continue
     }
+    if (token.startsWith("-")) {
+      return { ok: false, error: `Unknown option: ${token}` }
+    }
+    return { ok: false, error: `Unexpected argument: ${token}` }
   }
-  return { command, configPath, pluginSpecifier }
+  return { ok: true, command, configPath, pluginSpecifier }
 }
 
 function helpText(): string {
@@ -79,6 +107,12 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
   }
 
   const parsed = parseArgs(args)
+  if (!parsed.ok) {
+    io.err(parsed.error)
+    io.err("")
+    io.err(helpText())
+    return 1
+  }
   if (parsed.command !== "install") {
     io.err(`Unknown command: ${parsed.command}`)
     io.err("")
@@ -101,7 +135,7 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
   io.out(`Codex config: ${defaultConfig.filePath}`)
   io.out(`Codex config created: ${defaultConfig.created ? "yes" : "no"}`)
 
-  const commandResult = await installCreatePersonalityCommand({ force: true })
+  const commandResult = await installCreatePersonalityCommand()
   io.out(`Commands directory: ${commandResult.commandsDir}`)
   io.out(
     `/create-personality synchronized: ${
@@ -109,7 +143,7 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
     }`
   )
 
-  const skillResult = await installPersonalityBuilderSkill({ force: true })
+  const skillResult = await installPersonalityBuilderSkill()
   io.out(`Skills directory: ${skillResult.skillsDir}`)
   io.out(
     `personality-builder skill synchronized: ${

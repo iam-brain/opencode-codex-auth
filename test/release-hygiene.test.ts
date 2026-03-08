@@ -100,6 +100,7 @@ describe("release hygiene", () => {
       'return filePath === "index.ts" || (filePath.startsWith("lib/") && filePath.endsWith(".ts"))'
     )
     expect(script).toContain("Compared ${comparedFiles} touched existing source file(s).")
+    expect(script).toContain("process.env.COVERAGE_RATCHET_TOUCHED_FILES")
     expect(script).not.toContain("const globalThresholds = config.globalThresholds")
     expect(script).not.toContain("Global ")
     expect(script).not.toContain("missing coverage baseline entry")
@@ -138,6 +139,7 @@ describe("release hygiene", () => {
     expect(releaseScript).toContain('"ls-remote", "--symref", "origin", "HEAD"')
     expect(releaseScript).toContain("const maxAttempts = 240")
     expect(releaseScript).toContain("release workflow may still be running")
+    expect(releaseScript).toContain('["push", "--atomic", "origin", defaultBranch, tag]')
     for (const job of REQUIRED_RELEASE_RUNTIME_CI_JOBS) {
       expect(releaseScript).toContain(job)
     }
@@ -177,6 +179,7 @@ describe("release hygiene", () => {
     const secretScanWorkflow = readFileSync(join(process.cwd(), ".github", "workflows", "secret-scan.yml"), "utf-8")
     expect(dependencyReviewWorkflow).toMatch(/on:\s*\n\s+pull_request:/)
     expect(dependencyReviewWorkflow).toContain("name: Dependency Review")
+    expect(dependencyReviewWorkflow).toContain("exit 1")
     expect(secretScanWorkflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:/)
     expect(secretScanWorkflow).toContain("name: Secret Scan")
     expect(secretScanWorkflow).toContain("name: Gitleaks")

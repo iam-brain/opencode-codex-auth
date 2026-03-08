@@ -98,7 +98,7 @@ function resolveProviderTransport(
   providerModels: Record<string, Record<string, unknown>>,
   existingModel?: Record<string, unknown>
 ): ProviderTransport {
-  const source = existingModel ?? Object.values(providerModels)[0] ?? {}
+  const source = existingModel ?? {}
   const api = asRecord(source.api)
 
   return {
@@ -285,13 +285,17 @@ function buildCustomProviderModel(input: {
   return nextModel
 }
 
-function resolvePersonalityText(model: CodexModelInfo, personality: PersonalityOption | undefined): string | undefined {
+function resolvePersonalityText(
+  model: CodexModelInfo,
+  personality: PersonalityOption | undefined,
+  options: { projectRoot?: string; configRoot?: string } = {}
+): string | undefined {
   const vars = model.model_messages?.instructions_variables
 
   const normalized = (personality ?? "none").trim().toLowerCase()
   if (!normalized) return undefined
   if (normalized !== "none") {
-    const fromFile = resolveCustomPersonalityDescription(normalized)
+    const fromFile = resolveCustomPersonalityDescription(normalized, options)
     if (typeof fromFile === "string" && fromFile.trim()) {
       return fromFile
     }
@@ -339,7 +343,8 @@ function normalizeSafeInstructions(value: string | undefined): string | undefine
 
 export function resolveInstructionsForModel(
   model: CodexModelInfo,
-  personality?: PersonalityOption
+  personality?: PersonalityOption,
+  options: { projectRoot?: string; configRoot?: string } = {}
 ): string | undefined {
   const template = model.model_messages?.instructions_template?.trim()
   const base = model.base_instructions?.trim()
@@ -350,7 +355,7 @@ export function resolveInstructionsForModel(
     return normalizeSafeInstructions(template) ?? safeBase
   }
 
-  const personalityText = resolvePersonalityText(model, personality) ?? ""
+  const personalityText = resolvePersonalityText(model, personality, options) ?? ""
   const rendered = template
     .replace(/\{\{\s*personality\s*\}\}/gi, personalityText)
     .replace(/\n{3,}/g, "\n\n")
@@ -450,7 +455,10 @@ export function getRuntimeDefaultsForSlug(
 }
 
 export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput): void {
-  const catalogModels = input.catalogModels ?? []
+  const catalogModels = input.catalogModels
+  if (catalogModels === undefined) {
+    return
+  }
   if (catalogModels.length === 0) {
     for (const modelId of Object.keys(input.providerModels)) {
       delete input.providerModels[modelId]
@@ -476,7 +484,10 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
     input.providerModels[slug] = nextModel
 
     const options = ensureModelOptions(input.providerModels[slug])
-    const instructions = resolveInstructionsForModel(catalogModel, input.personality)
+    const instructions = resolveInstructionsForModel(catalogModel, input.personality, {
+      projectRoot: input.projectRoot,
+      configRoot: input.configRoot
+    })
     options.codexCatalogModel = catalogModel
     if (instructions) {
       input.providerModels[slug].instructions = instructions

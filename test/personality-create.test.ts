@@ -69,4 +69,19 @@ describe("personality creation", () => {
     expect(rendered).toContain("## Guardrails")
     expect(rendered).toContain("## Examples")
   })
+
+  it("injects the required core contract into caller-supplied markdown", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-create-personality-"))
+    const result = await createPersonalityFile({
+      name: "pirate",
+      scope: "global",
+      configRoot: root,
+      markdown: "# Agent Specification\n\nTalk like a pirate.\n",
+      overwrite: true
+    })
+
+    const content = await fs.readFile(result.filePath, "utf8")
+    expect(content).toContain("## Core Assistant Contract")
+    expect(content).toContain("Talk like a pirate.")
+  })
 })

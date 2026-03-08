@@ -10,6 +10,7 @@ export interface AccountInfo {
   email?: string
   plan?: string
   accountId?: string
+  sourceIndices?: Partial<Record<AccountAuthType, number>>
   authTypes?: readonly AccountAuthType[]
   index: number
   addedAt?: number

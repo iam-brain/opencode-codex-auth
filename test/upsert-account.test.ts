@@ -215,4 +215,35 @@ describe("upsertAccount", () => {
     expect(stored.refresh).toBe("new-refresh")
     expect(stored.access).toBe("new-access")
   })
+
+  it("upgrades a refresh-only legacy record when relogin reveals the strict identity", () => {
+    const openai: OpenAIMultiOauthAuth = {
+      type: "oauth",
+      accounts: [
+        {
+          identityKey: "legacy|_|_|_",
+          enabled: true,
+          refresh: "shared-refresh",
+          access: "old-access",
+          expires: 1
+        }
+      ],
+      activeIdentityKey: "legacy|_|_|_"
+    }
+
+    const stored = upsertAccount(openai, {
+      enabled: true,
+      refresh: "shared-refresh",
+      access: "new-access",
+      expires: 2,
+      accountId: "acc_1",
+      email: "user@example.com",
+      plan: "plus"
+    })
+
+    expect(openai.accounts).toHaveLength(1)
+    expect(stored.identityKey).toBe("acc_1|user@example.com|plus")
+    expect(stored.refresh).toBe("shared-refresh")
+    expect(stored.access).toBe("new-access")
+  })
 })

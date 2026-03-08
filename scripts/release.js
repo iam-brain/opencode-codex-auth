@@ -441,8 +441,8 @@ function main() {
   releaseAttemptState.tag = tag
   const releaseHead = runCapture("git", ["rev-parse", "HEAD"])
   releaseAttemptState.releaseHead = releaseHead
-  process.stdout.write(`Created ${tag}. Pushing ${defaultBranch} and tags...\n`)
-  run("git", ["push", "origin", defaultBranch, "--follow-tags"])
+  process.stdout.write(`Created ${tag}. Pushing ${defaultBranch} and ${tag} atomically...\n`)
+  run("git", ["push", "--atomic", "origin", defaultBranch, tag])
   releaseAttemptState.pushed = true
 
   if (!hasGhCli() || !hasGhAuth()) {

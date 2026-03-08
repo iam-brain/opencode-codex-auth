@@ -208,7 +208,7 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
             for (const mode of authTypes) {
               const domain = getOpenAIOAuthDomain(authFile, mode)
               if (!domain) continue
-              const idx = findDomainAccountIndex(domain, account)
+              const idx = findDomainAccountIndex(domain, account, mode)
               if (idx < 0) continue
               const target = domain.accounts[idx]
               if (!target) continue
@@ -239,7 +239,7 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
             await saveAuthStorage(undefined, (authFile) => {
               const domain = getOpenAIOAuthDomain(authFile, mode)
               if (!domain) return authFile
-              const idx = findDomainAccountIndex(domain, account)
+              const idx = findDomainAccountIndex(domain, account, mode)
               if (idx < 0) return authFile
               const target = domain.accounts[idx]
               if (!target || target.enabled === false || !target.refresh || !target.identityKey) return authFile
@@ -334,7 +334,7 @@ export async function runInteractiveAuthMenu(input: RunInteractiveAuthMenuInput)
             for (const mode of targets) {
               const domain = getOpenAIOAuthDomain(authFile, mode)
               if (!domain) continue
-              const idx = findDomainAccountIndex(domain, account)
+              const idx = findDomainAccountIndex(domain, account, mode)
               if (idx < 0) continue
               domain.accounts.splice(idx, 1)
               reconcileActiveIdentityKey(domain)

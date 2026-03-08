@@ -29,6 +29,8 @@ export async function persistOAuthTokensForMode(tokens: TokenResponse, authMode:
     }
     const domain = ensureOpenAIOAuthDomain(authFile, authMode)
     const stored = upsertAccount(domain, { ...account, authTypes: [authMode] })
+    delete stored.refreshLeaseUntil
+    delete stored.cooldownUntil
     if (stored.identityKey) {
       domain.activeIdentityKey = stored.identityKey
     }

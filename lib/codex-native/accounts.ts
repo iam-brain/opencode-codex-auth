@@ -28,16 +28,28 @@ export function upsertAccount(openai: OpenAIOAuthDomain, incoming: AccountRecord
 
   let match: AccountRecord | undefined
   let matchedByRefreshFallback = false
+  let allowIdentityUpgrade = false
 
   if (strictMatch) {
     match = strictMatch
-  } else if (!strictIdentityKey) {
+  } else {
     const incomingRefresh = incoming.refresh?.trim()
     if (incomingRefresh) {
       const refreshMatches = openai.accounts.filter((existing) => existing.refresh?.trim() === incomingRefresh)
       if (refreshMatches.length === 1) {
-        match = refreshMatches[0]
-        matchedByRefreshFallback = true
+        const candidate = refreshMatches[0]
+        const candidateStrictIdentity = buildIdentityKey({
+          accountId: candidate.accountId?.trim(),
+          email: normalizeEmail(candidate.email),
+          plan: normalizePlan(candidate.plan)
+        })
+        const canUpgradeLegacyRecord =
+          !strictIdentityKey || !candidateStrictIdentity || candidateStrictIdentity === strictIdentityKey
+        if (canUpgradeLegacyRecord) {
+          match = candidate
+          matchedByRefreshFallback = true
+          allowIdentityUpgrade = !candidateStrictIdentity && Boolean(strictIdentityKey)
+        }
       }
     }
   }
@@ -47,7 +59,7 @@ export function upsertAccount(openai: OpenAIOAuthDomain, incoming: AccountRecord
     openai.accounts.push(target)
   }
 
-  if (!matchedByRefreshFallback) {
+  if (!matchedByRefreshFallback || allowIdentityUpgrade) {
     if (normalizedAccountId) target.accountId = normalizedAccountId
     if (normalizedEmail) target.email = normalizedEmail
     if (normalizedPlan) target.plan = normalizedPlan
@@ -105,7 +117,22 @@ export function reconcileActiveIdentityKey(openai: OpenAIOAuthDomain): void {
   openai.activeIdentityKey = fallback?.identityKey
 }
 
-export function findDomainAccountIndex(domain: OpenAIOAuthDomain, account: AccountInfo): number {
+export function findDomainAccountIndex(
+  domain: OpenAIOAuthDomain,
+  account: AccountInfo,
+  preferredAuthMode?: OpenAIAuthMode
+): number {
+  const sourceIndices = account.sourceIndices
+  if (sourceIndices) {
+    const orderedAuthTypes: OpenAIAuthMode[] = preferredAuthMode
+      ? [preferredAuthMode, ...(preferredAuthMode === "native" ? (["codex"] as const) : (["native"] as const))]
+      : ["native", "codex"]
+    for (const authType of orderedAuthTypes) {
+      const sourceIndex = sourceIndices[authType]
+      if (typeof sourceIndex !== "number" || !Number.isInteger(sourceIndex) || sourceIndex < 0) continue
+      if (domain.accounts[sourceIndex]) return sourceIndex
+    }
+  }
   if (account.identityKey) {
     const byIdentity = domain.accounts.findIndex((entry) => entry.identityKey === account.identityKey)
     if (byIdentity >= 0) return byIdentity
@@ -128,18 +155,18 @@ export function buildAuthMenuAccounts(input: {
 
   const mergeFromDomain = (authMode: OpenAIAuthMode, domain?: OpenAIOAuthDomain) => {
     if (!domain) return
-    for (const account of domain.accounts) {
+    for (const [sourceIndex, account] of domain.accounts.entries()) {
       ensureAccountAuthTypes(account)
-      const identity =
+      const strictIdentity =
         account.identityKey ??
         buildIdentityKey({
           accountId: account.accountId,
           email: normalizeEmail(account.email),
           plan: normalizePlan(account.plan)
-        }) ??
-        `${authMode}:${account.accountId ?? account.email ?? account.plan ?? "unknown"}`
+        })
+      const rowKey = strictIdentity ?? `${authMode}:source-index:${sourceIndex}`
 
-      const existing = rows.get(identity)
+      const existing = rows.get(rowKey)
       const currentStatus: AccountInfo["status"] = hasActiveCooldown(account, now)
         ? "rate-limited"
         : typeof account.expires === "number" && Number.isFinite(account.expires) && account.expires <= now
@@ -149,13 +176,15 @@ export function buildAuthMenuAccounts(input: {
       if (!existing) {
         const isCurrentAccount =
           authMode === input.activeMode &&
+          account.enabled !== false &&
           Boolean(domain.activeIdentityKey && account.identityKey === domain.activeIdentityKey)
-        rows.set(identity, {
+        rows.set(rowKey, {
           identityKey: account.identityKey,
           index: rows.size,
           accountId: account.accountId,
           email: account.email,
           plan: account.plan,
+          sourceIndices: { [authMode]: sourceIndex },
           authTypes: [authMode],
           lastUsed: account.lastUsed,
           enabled: account.enabled,
@@ -166,6 +195,10 @@ export function buildAuthMenuAccounts(input: {
       }
 
       existing.authTypes = normalizeAccountAuthTypes([...(existing.authTypes ?? []), authMode])
+      existing.sourceIndices = {
+        ...(existing.sourceIndices ?? {}),
+        [authMode]: sourceIndex
+      }
       if (typeof account.lastUsed === "number" && (!existing.lastUsed || account.lastUsed > existing.lastUsed)) {
         existing.lastUsed = account.lastUsed
       }
@@ -179,6 +212,7 @@ export function buildAuthMenuAccounts(input: {
       }
       const isCurrentAccount =
         authMode === input.activeMode &&
+        account.enabled !== false &&
         Boolean(domain.activeIdentityKey && account.identityKey === domain.activeIdentityKey)
       if (isCurrentAccount) {
         existing.isCurrentAccount = true

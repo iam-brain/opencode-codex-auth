@@ -85,11 +85,13 @@ export async function handleChatParamsHook(input: {
   lastCatalogModels: CodexModelInfo[] | undefined
   behaviorSettings?: BehaviorSettings
   fallbackPersonality?: PersonalityOption
+  projectRoot?: string
   spoofMode: CodexSpoofMode
   collaborationProfileEnabled: boolean
   orchestratorSubagentsEnabled: boolean
-}): Promise<void> {
-  if (input.hookInput.model.providerID !== "openai") return
+}): Promise<{ injectedCatalogDefaultFields: string[] }> {
+  const emptyResult = { injectedCatalogDefaultFields: [] }
+  if (input.hookInput.model.providerID !== "openai") return emptyResult
   const modelOptions = isRecord(input.hookInput.model.options) ? input.hookInput.model.options : {}
   const selectedModelCandidates = getSelectedModelLookupCandidates({
     id: input.hookInput.model.id
@@ -158,14 +160,18 @@ export async function handleChatParamsHook(input: {
     ? (modelOptions.codexCatalogModel as CodexModelInfo)
     : undefined
   let renderedCatalogInstructions = catalogModelFromOptions
-    ? resolveInstructionsForModel(catalogModelFromOptions, effectivePersonality)
+    ? resolveInstructionsForModel(catalogModelFromOptions, effectivePersonality, {
+        projectRoot: input.projectRoot
+      })
     : undefined
 
   if (!renderedCatalogInstructions && catalogModelFallback) {
     if (!catalogModelFromOptions) {
       modelOptions.codexCatalogModel = catalogModelFallback
     }
-    renderedCatalogInstructions = resolveInstructionsForModel(catalogModelFallback, effectivePersonality)
+    renderedCatalogInstructions = resolveInstructionsForModel(catalogModelFallback, effectivePersonality, {
+      projectRoot: input.projectRoot
+    })
     const defaults = getRuntimeDefaultsForModel(catalogModelFallback)
     if (defaults) {
       modelOptions.codexRuntimeDefaults = defaults
@@ -198,7 +204,7 @@ export async function handleChatParamsHook(input: {
   const preserveOrchestratorInstructions =
     profile.isOrchestrator === true && isOrchestratorInstructions(asString(input.output.options.instructions))
 
-  applyCodexRuntimeDefaultsToParams({
+  const runtimeDefaultsResult = applyCodexRuntimeDefaultsToParams({
     modelOptions,
     modelToolCallCapable: input.hookInput.model.capabilities?.toolcall,
     resolvedBehavior: {
@@ -215,7 +221,9 @@ export async function handleChatParamsHook(input: {
     output: input.output
   })
 
-  if (input.spoofMode !== "codex") return
+  if (input.spoofMode !== "codex") {
+    return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
+  }
 
   const normalizedAgentName = resolveHookAgentName(input.hookInput.agent)?.trim().toLowerCase()
   if (normalizedAgentName === "build") {
@@ -224,19 +232,25 @@ export async function handleChatParamsHook(input: {
     if (replaced) {
       input.output.options.instructions = replaced
     }
-    return
+    return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
   }
 
-  if (!input.collaborationProfileEnabled) return
+  if (!input.collaborationProfileEnabled) {
+    return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
+  }
 
-  if (!profile.enabled || !profile.kind) return
+  if (!profile.enabled || !profile.kind) {
+    return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
+  }
 
   if (profile.instructionPreset === "plan") {
     const replacedPlan =
       replaceCodexToolCallsForOpenCode(getCodexPlanModeInstructions()) ?? getCodexPlanModeInstructions()
     input.output.options.instructions = mergeInstructions(asString(input.output.options.instructions), replacedPlan)
-    return
+    return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
   }
+
+  return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
 }
 
 export async function handleChatHeadersHook(input: {
@@ -244,7 +258,9 @@ export async function handleChatHeadersHook(input: {
   output: { headers: Record<string, unknown> }
   spoofMode: CodexSpoofMode
   requestCatalogScopeKey?: string
+  injectedCatalogDefaultFields?: string[]
   internalCatalogScopeHeader: string
+  internalCatalogDefaultsHeader: string
   internalSelectedModelHeader: string
   internalCollaborationModeHeader: string
   internalCollaborationAgentHeader: string
@@ -267,6 +283,11 @@ export async function handleChatHeadersHook(input: {
     input.output.headers[input.internalCatalogScopeHeader] = input.requestCatalogScopeKey
   } else {
     delete input.output.headers[input.internalCatalogScopeHeader]
+  }
+  if (input.injectedCatalogDefaultFields && input.injectedCatalogDefaultFields.length > 0) {
+    input.output.headers[input.internalCatalogDefaultsHeader] = input.injectedCatalogDefaultFields.join(",")
+  } else {
+    delete input.output.headers[input.internalCatalogDefaultsHeader]
   }
 
   if (!input.collaborationProfileEnabled) {
