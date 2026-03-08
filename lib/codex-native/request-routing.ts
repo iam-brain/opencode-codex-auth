@@ -41,7 +41,9 @@ export function assertAllowedOutboundUrl(url: URL): void {
         "This plugin only proxies HTTPS requests to OpenAI/ChatGPT backends.",
       status: 400,
       type: "disallowed_outbound_protocol",
-      param: "request"
+      param: "request",
+      source: "request.url.protocol",
+      hint: "Use an https:// OpenAI or ChatGPT backend URL."
     })
   }
 
@@ -52,7 +54,9 @@ export function assertAllowedOutboundUrl(url: URL): void {
         "This plugin only proxies OpenAI/ChatGPT backend traffic without URL credentials.",
       status: 400,
       type: "disallowed_outbound_credentials",
-      param: "request"
+      param: "request",
+      source: "request.url",
+      hint: "Remove username/password credentials from the request URL."
     })
   }
 
@@ -64,7 +68,9 @@ export function assertAllowedOutboundUrl(url: URL): void {
         "This plugin only proxies OpenAI/ChatGPT backend traffic over the default HTTPS port.",
       status: 400,
       type: "disallowed_outbound_port",
-      param: "request"
+      param: "request",
+      source: "request.url.port",
+      hint: "Use the default HTTPS port or omit the explicit port."
     })
   }
 
@@ -75,6 +81,8 @@ export function assertAllowedOutboundUrl(url: URL): void {
       `Blocked outbound request to "${url.hostname}". ` + "This plugin only proxies OpenAI/ChatGPT backend traffic.",
     status: 400,
     type: "disallowed_outbound_host",
-    param: "request"
+    param: "request",
+    source: "request.url.host",
+    hint: "Use an OpenAI or ChatGPT backend host such as api.openai.com or chatgpt.com."
   })
 }

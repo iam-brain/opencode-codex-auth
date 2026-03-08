@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 
-import { existsSync, readFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 const REQUIRED_RELEASE_RUNTIME_CI_JOBS = [
@@ -10,12 +11,16 @@ const REQUIRED_RELEASE_RUNTIME_CI_JOBS = [
   "Security Audit"
 ]
 const REQUIRED_WORKFLOW_STATIC_JOB_NAMES = ["Package Smoke Test", "Windows Compatibility Smoke", "Security Audit"]
+const REQUIRED_PR_CI_JOB_NAMES = ["Verify (Node.js 22.x)", "Package Smoke Test", "Windows Compatibility Smoke"]
 
 describe("release hygiene", () => {
   it("package.json has verify script", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
     const verifyScript = String(pkg.scripts?.verify ?? "")
+    expect(pkg.scripts?.["verify:local"]).toBe("node scripts/enforce-local-verify.mjs manual")
+    expect(pkg.scripts?.prepush).toBe("npm run verify:local")
+    expect(pkg.scripts?.["hooks:install"]).toBe("node scripts/install-git-hooks.mjs")
     const verifyOrder = [
       "npm run check:esm-imports",
       "npm run lint",
@@ -48,10 +53,34 @@ describe("release hygiene", () => {
     expect(pkg.scripts?.build).toBe("npm run patch:plugin-dts && npm run clean:dist && tsc")
     expect(pkg.scripts?.["clean:dist"]).toBe("node scripts/clean-dist.js")
     expect(existsSync(join(process.cwd(), "scripts", "clean-dist.js"))).toBe(true)
+    expect(existsSync(join(process.cwd(), "scripts", "enforce-local-verify.mjs"))).toBe(true)
+    expect(existsSync(join(process.cwd(), "scripts", "install-git-hooks.mjs"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "check-esm-import-specifiers.mjs"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "check-dist-esm-import-specifiers.mjs"))).toBe(false)
     expect(existsSync(join(process.cwd(), "scripts", "check-file-size.mjs"))).toBe(false)
     expect(existsSync(join(process.cwd(), "scripts", "file-size-allowlist.json"))).toBe(false)
+    expect(existsSync(join(process.cwd(), ".githooks", "pre-commit"))).toBe(true)
+    expect(existsSync(join(process.cwd(), ".githooks", "pre-push"))).toBe(true)
+    expect((statSync(join(process.cwd(), ".githooks", "pre-commit")).mode & 0o111) !== 0).toBe(true)
+    expect((statSync(join(process.cwd(), ".githooks", "pre-push")).mode & 0o111) !== 0).toBe(true)
+    expect(readFileSync(join(process.cwd(), ".githooks", "pre-commit"), "utf-8")).toContain(
+      "node scripts/enforce-local-verify.mjs pre-commit"
+    )
+    expect(readFileSync(join(process.cwd(), ".githooks", "pre-push"), "utf-8")).toContain(
+      "node scripts/enforce-local-verify.mjs pre-push"
+    )
+    expect(
+      execFileSync("git", ["ls-files", "--error-unmatch", ".githooks/pre-commit"], {
+        cwd: process.cwd(),
+        encoding: "utf-8"
+      }).trim()
+    ).toBe(".githooks/pre-commit")
+    expect(
+      execFileSync("git", ["ls-files", "--error-unmatch", ".githooks/pre-push"], {
+        cwd: process.cwd(),
+        encoding: "utf-8"
+      }).trim()
+    ).toBe(".githooks/pre-push")
   })
 
   it("declares the Node engine aligned with CI", () => {
@@ -99,6 +128,35 @@ describe("release hygiene", () => {
     for (const job of REQUIRED_WORKFLOW_STATIC_JOB_NAMES) {
       expect(workflow).toContain(job)
     }
+  })
+
+  it("keeps PR CI lean while retaining security audit on main pushes", () => {
+    const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
+    const workflow = readFileSync(workflowPath, "utf-8")
+    expect(workflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:/)
+    for (const job of REQUIRED_PR_CI_JOB_NAMES) {
+      expect(workflow).toContain(job)
+    }
+    const securityAuditBlock = workflow
+      .split(/\n/)
+      .slice(workflow.split(/\n/).findIndex((line) => line.includes("security-audit:")))
+      .join("\n")
+    expect(securityAuditBlock).toContain("name: Security Audit")
+    expect(securityAuditBlock).toContain("if: github.event_name == 'push'")
+    expect(securityAuditBlock).toContain("npm audit --audit-level=high")
+  })
+
+  it("keeps dependency review and secret scanning on pull requests", () => {
+    const dependencyReviewWorkflow = readFileSync(
+      join(process.cwd(), ".github", "workflows", "dependency-review.yml"),
+      "utf-8"
+    )
+    const secretScanWorkflow = readFileSync(join(process.cwd(), ".github", "workflows", "secret-scan.yml"), "utf-8")
+    expect(dependencyReviewWorkflow).toMatch(/on:\s*\n\s+pull_request:/)
+    expect(dependencyReviewWorkflow).toContain("name: Dependency Review")
+    expect(secretScanWorkflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:/)
+    expect(secretScanWorkflow).toContain("name: Secret Scan")
+    expect(secretScanWorkflow).toContain("name: Gitleaks")
   })
 
   it("release workflow validates tag/package version parity and idempotent publish", () => {
@@ -199,6 +257,7 @@ describe("package publish surface", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
     expect(workflow).toContain("Audit dependencies (including dev toolchain)")
+    expect(workflow).toContain("if: github.event_name == 'push'")
     expect(workflow).toContain("npm audit --audit-level=high")
     expect(workflow).not.toContain("npm audit --omit=dev")
   })

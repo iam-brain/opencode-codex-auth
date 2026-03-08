@@ -3,7 +3,7 @@
 ## Quick checks
 
 1. Confirm plugin is installed in resolved `<config-root>/opencode.json` (`$XDG_CONFIG_HOME/opencode` when set, otherwise `~/.config/opencode`).
-2. Confirm config exists at the resolved path (`OPENCODE_OPENAI_MULTI_CONFIG_PATH` when set, otherwise exactly one default path: `$XDG_CONFIG_HOME/opencode/codex-config.json` when `XDG_CONFIG_HOME` is set, else `~/.config/opencode/codex-config.json`).
+2. Confirm config exists at the resolved path (`OPENCODE_OPENAI_MULTI_CONFIG_PATH` when set, otherwise the canonical default path `$XDG_CONFIG_HOME/opencode/codex-config.jsonc` when `XDG_CONFIG_HOME` is set, else `~/.config/opencode/codex-config.jsonc`; commented legacy `codex-config.json` is still accepted as a fallback).
 3. Confirm auth files exist:
    - required runtime store: resolved `<config-root>/codex-accounts.json`
    - optional legacy transfer source: resolved `<config-root>/openai-codex-accounts.json`

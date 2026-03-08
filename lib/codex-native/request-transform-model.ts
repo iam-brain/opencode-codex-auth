@@ -1,6 +1,7 @@
-import type { BehaviorSettings, PersonalityOption } from "../config.js"
-import type { CodexModelInfo } from "../model-catalog.js"
+import type { BehaviorSettings, CustomModelConfig, ModelBehaviorOverride, PersonalityOption } from "../config.js"
+import type { CodexModelInfo, CustomModelBehaviorConfig } from "../model-catalog.js"
 import { isRecord } from "../util.js"
+import { resolveReasoningSummaryValue } from "./reasoning-summary.js"
 
 const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
 
@@ -15,11 +16,9 @@ function asStringArray(value: unknown): string[] | undefined {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
 }
 
-function normalizeReasoningSummaryOption(value: unknown): "auto" | "concise" | "detailed" | undefined {
-  const normalized = asString(value)?.toLowerCase()
-  if (!normalized || normalized === "none") return undefined
-  if (normalized === "auto" || normalized === "concise" || normalized === "detailed") return normalized
-  return undefined
+function normalizeCustomIncludeOptions(value: unknown): CustomModelBehaviorConfig["include"] | undefined {
+  const include = asStringArray(value)
+  return include as CustomModelBehaviorConfig["include"] | undefined
 }
 
 function normalizeTextVerbosity(value: unknown): "low" | "medium" | "high" | undefined {
@@ -29,10 +28,16 @@ function normalizeTextVerbosity(value: unknown): "low" | "medium" | "high" | und
   return undefined
 }
 
-function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | undefined {
+function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | "none" | undefined {
   const normalized = asString(value)?.toLowerCase()
   if (!normalized) return undefined
-  if (normalized === "default" || normalized === "low" || normalized === "medium" || normalized === "high") {
+  if (
+    normalized === "default" ||
+    normalized === "low" ||
+    normalized === "medium" ||
+    normalized === "high" ||
+    normalized === "none"
+  ) {
     return normalized
   }
   return undefined
@@ -94,6 +99,82 @@ function normalizePersonalityKey(value: unknown): string | undefined {
   return normalized
 }
 
+function readCustomModelConfig(options: Record<string, unknown>): CustomModelBehaviorConfig | undefined {
+  const raw = options.codexCustomModelConfig
+  if (!isRecord(raw)) return undefined
+  const targetModel = asString(raw.targetModel)
+  if (!targetModel) return undefined
+  const variants = isRecord(raw.variants) ? (raw.variants as Record<string, ModelBehaviorOverride>) : undefined
+
+  return {
+    targetModel,
+    ...(asString(raw.name) ? { name: asString(raw.name) } : {}),
+    ...(normalizePersonalityKey(raw.personality) ? { personality: normalizePersonalityKey(raw.personality) } : {}),
+    ...(asString(raw.reasoningEffort) ? { reasoningEffort: asString(raw.reasoningEffort) } : {}),
+    ...(normalizeVerbositySetting(raw.textVerbosity)
+      ? { textVerbosity: normalizeVerbositySetting(raw.textVerbosity) }
+      : {}),
+    ...(typeof raw.serviceTier === "string" &&
+    (raw.serviceTier === "auto" || raw.serviceTier === "priority" || raw.serviceTier === "flex")
+      ? { serviceTier: raw.serviceTier }
+      : {}),
+    ...(Array.isArray(raw.include) ? { include: normalizeCustomIncludeOptions(raw.include) } : {}),
+    ...(typeof raw.parallelToolCalls === "boolean" ? { parallelToolCalls: raw.parallelToolCalls } : {}),
+    ...(typeof raw.reasoningSummary === "string" &&
+    (raw.reasoningSummary === "auto" ||
+      raw.reasoningSummary === "concise" ||
+      raw.reasoningSummary === "detailed" ||
+      raw.reasoningSummary === "none")
+      ? { reasoningSummary: raw.reasoningSummary }
+      : {}),
+    ...(variants ? { variants } : {})
+  }
+}
+
+function getCustomModelBehaviorOverrideValue<T>(
+  options: Record<string, unknown>,
+  variantCandidates: string[],
+  selector: (entry: ModelBehaviorOverride) => T | undefined
+): T | undefined {
+  const config = readCustomModelConfig(options)
+  if (!config) return undefined
+
+  for (const variantCandidate of variantCandidates) {
+    const variantEntry = resolveCaseInsensitiveEntry(config.variants, variantCandidate)
+    if (!variantEntry) continue
+    const variantValue = selector(variantEntry)
+    if (variantValue !== undefined) return variantValue
+  }
+
+  return selector(config)
+}
+
+export function getConfiguredCustomModelBehaviorOverrideValue<T>(
+  customModels: Record<string, CustomModelConfig> | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[],
+  selector: (entry: ModelBehaviorOverride) => T | undefined
+): T | undefined {
+  if (!customModels) return undefined
+
+  for (const candidate of getModelLookupCandidatesWithEffortFallback(modelCandidates)) {
+    const entry = resolveCaseInsensitiveEntry(customModels, candidate)
+    if (!entry) continue
+
+    for (const variantCandidate of variantCandidates) {
+      const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
+      if (!variantEntry) continue
+      const variantValue = selector(variantEntry)
+      if (variantValue !== undefined) return variantValue
+    }
+
+    const modelValue = selector(entry)
+    if (modelValue !== undefined) return modelValue
+  }
+
+  return undefined
+}
+
 export function getModelLookupCandidates(model: { id?: string; api?: { id?: string } }): string[] {
   const out: string[] = []
   const seen = new Set<string>()
@@ -109,6 +190,23 @@ export function getModelLookupCandidates(model: { id?: string; api?: { id?: stri
   add(model.api?.id)
   add(model.id?.split("/").pop())
   add(model.api?.id?.split("/").pop())
+
+  return out
+}
+
+export function getSelectedModelLookupCandidates(model: { id?: string }): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const add = (value: string | undefined) => {
+    const trimmed = value?.trim()
+    if (!trimmed) return
+    if (seen.has(trimmed)) return
+    seen.add(trimmed)
+    out.push(trimmed)
+  }
+
+  add(model.id)
+  add(model.id?.split("/").pop())
 
   return out
 }
@@ -181,56 +279,108 @@ function resolveCaseInsensitiveEntry<T>(entries: Record<string, T> | undefined, 
   return undefined
 }
 
-function getModelPersonalityOverride(
+function getModelLookupCandidatesWithEffortFallback(modelCandidates: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const add = (value: string | undefined) => {
+    const trimmed = value?.trim()
+    if (!trimmed || seen.has(trimmed)) return
+    seen.add(trimmed)
+    out.push(trimmed)
+  }
+
+  for (const candidate of modelCandidates) {
+    add(candidate)
+    add(stripEffortSuffix(candidate))
+  }
+
+  return out
+}
+
+function getModelBehaviorOverrideValue<T>(
   behaviorSettings: BehaviorSettings | undefined,
   modelCandidates: string[],
-  variantCandidates: string[]
-): string | undefined {
+  variantCandidates: string[],
+  selector: (entry: ModelBehaviorOverride) => T | undefined
+): T | undefined {
   const models = behaviorSettings?.perModel
   if (!models) return undefined
 
-  for (const candidate of modelCandidates) {
+  for (const candidate of getModelLookupCandidatesWithEffortFallback(modelCandidates)) {
     const entry = resolveCaseInsensitiveEntry(models, candidate)
     if (!entry) continue
 
     for (const variantCandidate of variantCandidates) {
       const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
-      const variantPersonality = normalizePersonalityKey(variantEntry?.personality)
-      if (variantPersonality) return variantPersonality
+      if (!variantEntry) continue
+      const variantValue = selector(variantEntry)
+      if (variantValue !== undefined) return variantValue
     }
 
-    const modelPersonality = normalizePersonalityKey(entry.personality)
-    if (modelPersonality) return modelPersonality
+    const modelValue = selector(entry)
+    if (modelValue !== undefined) return modelValue
   }
 
   return undefined
 }
 
-export function getModelThinkingSummariesOverride(
+function getModelPersonalityOverride(
+  behaviorSettings: BehaviorSettings | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): string | undefined {
+  return getModelBehaviorOverrideValue(behaviorSettings, modelCandidates, variantCandidates, (entry) =>
+    normalizePersonalityKey(entry.personality)
+  )
+}
+
+export function getModelReasoningEffortOverride(
+  behaviorSettings: BehaviorSettings | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): string | undefined {
+  return getModelBehaviorOverrideValue(behaviorSettings, modelCandidates, variantCandidates, (entry) =>
+    asString(entry.reasoningEffort)
+  )
+}
+
+export function getModelReasoningSummaryOverride(
+  behaviorSettings: BehaviorSettings | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): "auto" | "concise" | "detailed" | "none" | undefined {
+  return getModelBehaviorOverrideValue(behaviorSettings, modelCandidates, variantCandidates, (entry) => {
+    const normalized = asString(entry.reasoningSummary)?.toLowerCase()
+    if (normalized === "auto" || normalized === "concise" || normalized === "detailed" || normalized === "none") {
+      return normalized
+    }
+    if (typeof entry.reasoningSummaries === "boolean") {
+      return entry.reasoningSummaries ? "auto" : "none"
+    }
+    return undefined
+  })
+}
+
+export function getModelReasoningSummariesOverride(
   behaviorSettings: BehaviorSettings | undefined,
   modelCandidates: string[],
   variantCandidates: string[]
 ): boolean | undefined {
-  const models = behaviorSettings?.perModel
-  if (!models) return undefined
+  const summary = getModelReasoningSummaryOverride(behaviorSettings, modelCandidates, variantCandidates)
+  return summary === undefined ? undefined : summary !== "none"
+}
 
-  for (const candidate of modelCandidates) {
-    const entry = resolveCaseInsensitiveEntry(models, candidate)
-    if (!entry) continue
-
-    for (const variantCandidate of variantCandidates) {
-      const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
-      if (typeof variantEntry?.thinkingSummaries === "boolean") {
-        return variantEntry.thinkingSummaries
-      }
-    }
-
-    if (typeof entry.thinkingSummaries === "boolean") {
-      return entry.thinkingSummaries
-    }
-  }
-
-  return undefined
+export function getModelTextVerbosityOverride(
+  behaviorSettings: BehaviorSettings | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): "default" | "low" | "medium" | "high" | "none" | undefined {
+  return getModelBehaviorOverrideValue(behaviorSettings, modelCandidates, variantCandidates, (entry) => {
+    const textVerbosity = normalizeVerbositySetting(entry.textVerbosity)
+    if (textVerbosity) return textVerbosity
+    if (typeof entry.verbosityEnabled === "boolean" && entry.verbosityEnabled === false) return "none"
+    return normalizeVerbositySetting(entry.verbosity)
+  })
 }
 
 export function getModelVerbosityEnabledOverride(
@@ -238,26 +388,8 @@ export function getModelVerbosityEnabledOverride(
   modelCandidates: string[],
   variantCandidates: string[]
 ): boolean | undefined {
-  const models = behaviorSettings?.perModel
-  if (!models) return undefined
-
-  for (const candidate of modelCandidates) {
-    const entry = resolveCaseInsensitiveEntry(models, candidate)
-    if (!entry) continue
-
-    for (const variantCandidate of variantCandidates) {
-      const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
-      if (typeof variantEntry?.verbosityEnabled === "boolean") {
-        return variantEntry.verbosityEnabled
-      }
-    }
-
-    if (typeof entry.verbosityEnabled === "boolean") {
-      return entry.verbosityEnabled
-    }
-  }
-
-  return undefined
+  const textVerbosity = getModelTextVerbosityOverride(behaviorSettings, modelCandidates, variantCandidates)
+  return textVerbosity === undefined ? undefined : textVerbosity !== "none"
 }
 
 export function getModelVerbosityOverride(
@@ -265,28 +397,112 @@ export function getModelVerbosityOverride(
   modelCandidates: string[],
   variantCandidates: string[]
 ): "default" | "low" | "medium" | "high" | undefined {
-  const models = behaviorSettings?.perModel
-  if (!models) return undefined
+  const textVerbosity = getModelTextVerbosityOverride(behaviorSettings, modelCandidates, variantCandidates)
+  if (!textVerbosity || textVerbosity === "none") return undefined
+  return textVerbosity
+}
 
-  for (const candidate of modelCandidates) {
-    const entry = resolveCaseInsensitiveEntry(models, candidate)
-    if (!entry) continue
+export function getModelIncludeOverride(
+  behaviorSettings: BehaviorSettings | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): string[] | undefined {
+  return getModelBehaviorOverrideValue(behaviorSettings, modelCandidates, variantCandidates, (entry) => {
+    const include = asStringArray(entry.include)
+    return include && include.length > 0 ? include : undefined
+  })
+}
 
-    for (const variantCandidate of variantCandidates) {
-      const variantEntry = resolveCaseInsensitiveEntry(entry.variants, variantCandidate)
-      const variantVerbosity = normalizeVerbositySetting(variantEntry?.verbosity)
-      if (variantVerbosity) return variantVerbosity
+export function getModelParallelToolCallsOverride(
+  behaviorSettings: BehaviorSettings | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): boolean | undefined {
+  return getModelBehaviorOverrideValue(behaviorSettings, modelCandidates, variantCandidates, (entry) =>
+    typeof entry.parallelToolCalls === "boolean" ? entry.parallelToolCalls : undefined
+  )
+}
+
+export function getCustomModelReasoningEffortOverride(
+  options: Record<string, unknown>,
+  variantCandidates: string[]
+): string | undefined {
+  return getCustomModelBehaviorOverrideValue(options, variantCandidates, (entry) => asString(entry.reasoningEffort))
+}
+
+export function getCustomModelReasoningSummaryOverride(
+  options: Record<string, unknown>,
+  variantCandidates: string[]
+): "auto" | "concise" | "detailed" | "none" | undefined {
+  return getCustomModelBehaviorOverrideValue(options, variantCandidates, (entry) => {
+    const normalized = asString(entry.reasoningSummary)?.toLowerCase()
+    if (normalized === "auto" || normalized === "concise" || normalized === "detailed" || normalized === "none") {
+      return normalized
     }
+    return undefined
+  })
+}
 
-    const modelVerbosity = normalizeVerbositySetting(entry.verbosity)
-    if (modelVerbosity) return modelVerbosity
-  }
+export function getConfiguredCustomModelReasoningSummaryOverride(
+  customModels: Record<string, CustomModelConfig> | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): "auto" | "concise" | "detailed" | "none" | undefined {
+  return getConfiguredCustomModelBehaviorOverrideValue(customModels, modelCandidates, variantCandidates, (entry) => {
+    const normalized = asString(entry.reasoningSummary)?.toLowerCase()
+    if (normalized === "auto" || normalized === "concise" || normalized === "detailed" || normalized === "none") {
+      return normalized
+    }
+    if (typeof entry.reasoningSummaries === "boolean") {
+      return entry.reasoningSummaries ? "auto" : "none"
+    }
+    return undefined
+  })
+}
 
-  return undefined
+export function getCustomModelTextVerbosityOverride(
+  options: Record<string, unknown>,
+  variantCandidates: string[]
+): "default" | "low" | "medium" | "high" | "none" | undefined {
+  return getCustomModelBehaviorOverrideValue(options, variantCandidates, (entry) => {
+    const textVerbosity = normalizeVerbositySetting(entry.textVerbosity)
+    if (textVerbosity) return textVerbosity
+    if (typeof entry.verbosityEnabled === "boolean" && entry.verbosityEnabled === false) return "none"
+    return normalizeVerbositySetting(entry.verbosity)
+  })
+}
+
+export function getCustomModelIncludeOverride(
+  options: Record<string, unknown>,
+  variantCandidates: string[]
+): string[] | undefined {
+  return getCustomModelBehaviorOverrideValue(options, variantCandidates, (entry) => {
+    const include = asStringArray(entry.include)
+    return include && include.length > 0 ? include : undefined
+  })
+}
+
+export function getCustomModelParallelToolCallsOverride(
+  options: Record<string, unknown>,
+  variantCandidates: string[]
+): boolean | undefined {
+  return getCustomModelBehaviorOverrideValue(options, variantCandidates, (entry) =>
+    typeof entry.parallelToolCalls === "boolean" ? entry.parallelToolCalls : undefined
+  )
+}
+
+export function getCustomModelPersonalityOverride(
+  options: Record<string, unknown>,
+  variantCandidates: string[]
+): string | undefined {
+  return getCustomModelBehaviorOverrideValue(options, variantCandidates, (entry) =>
+    normalizePersonalityKey(entry.personality)
+  )
 }
 
 export function resolvePersonalityForModel(input: {
   behaviorSettings?: BehaviorSettings
+  modelOptions?: Record<string, unknown>
   modelCandidates: string[]
   variantCandidates: string[]
   fallback?: PersonalityOption
@@ -297,6 +513,11 @@ export function resolvePersonalityForModel(input: {
     input.variantCandidates
   )
   if (modelOverride) return modelOverride
+
+  const customModelOverride = input.modelOptions
+    ? getCustomModelPersonalityOverride(input.modelOptions, input.variantCandidates)
+    : undefined
+  if (customModelOverride) return customModelOverride
 
   const globalOverride = normalizePersonalityKey(input.behaviorSettings?.global?.personality)
   if (globalOverride) return globalOverride
@@ -317,9 +538,14 @@ export function applyResolvedCodexRuntimeDefaults(input: {
     supportsVerbosity?: boolean
   }
   modelToolCallCapable: boolean | undefined
-  thinkingSummariesOverride: boolean | undefined
-  verbosityEnabledOverride: boolean | undefined
-  verbosityOverride: "default" | "low" | "medium" | "high" | undefined
+  resolvedBehavior: {
+    reasoningEffort?: string
+    reasoningSummary?: "auto" | "concise" | "detailed" | "none"
+    textVerbosity?: "default" | "low" | "medium" | "high" | "none"
+    include?: string[]
+    parallelToolCalls?: boolean
+  }
+  modelId?: string
   preferCodexInstructions: boolean
 }): void {
   const options = input.options
@@ -330,34 +556,35 @@ export function applyResolvedCodexRuntimeDefaults(input: {
     options.instructions = codexInstructions
   }
 
-  if (asString(options.reasoningEffort) === undefined && defaults.defaultReasoningEffort) {
-    options.reasoningEffort = defaults.defaultReasoningEffort
+  if (asString(options.reasoningEffort) === undefined) {
+    if (input.resolvedBehavior.reasoningEffort) {
+      options.reasoningEffort = input.resolvedBehavior.reasoningEffort
+    } else if (defaults.defaultReasoningEffort) {
+      options.reasoningEffort = defaults.defaultReasoningEffort
+    }
   }
 
   const reasoningEffort = asString(options.reasoningEffort)
   const hasReasoning = reasoningEffort !== undefined && reasoningEffort !== "none"
   const rawReasoningSummary = asString(options.reasoningSummary)
-  const hadExplicitReasoningSummary = rawReasoningSummary !== undefined
-  const currentReasoningSummary = normalizeReasoningSummaryOption(rawReasoningSummary)
-  if (rawReasoningSummary !== undefined) {
-    if (currentReasoningSummary) {
-      options.reasoningSummary = currentReasoningSummary
-    } else {
-      delete options.reasoningSummary
-    }
-  }
-  if (!hadExplicitReasoningSummary && currentReasoningSummary === undefined) {
-    if (hasReasoning && (defaults.supportsReasoningSummaries === true || input.thinkingSummariesOverride === true)) {
-      if (input.thinkingSummariesOverride === false) {
-        delete options.reasoningSummary
-      } else {
-        if (defaults.reasoningSummaryFormat?.toLowerCase() === "none") {
-          delete options.reasoningSummary
-        } else {
-          options.reasoningSummary = defaults.reasoningSummaryFormat ?? "auto"
-        }
-      }
-    }
+  const reasoningSummary = resolveReasoningSummaryValue({
+    explicitValue: rawReasoningSummary,
+    explicitSource: "options.reasoningSummary",
+    hasReasoning,
+    configuredValue: input.resolvedBehavior.reasoningSummary,
+    configuredSource: "config.reasoningSummary",
+    supportsReasoningSummaries: defaults.supportsReasoningSummaries,
+    defaultReasoningSummaryFormat: defaults.reasoningSummaryFormat,
+    defaultReasoningSummarySource: "codexRuntimeDefaults.reasoningSummaryFormat",
+    model: input.modelId
+  })
+  if (reasoningSummary.value) {
+    options.reasoningSummary = reasoningSummary.value
+  } else if (
+    rawReasoningSummary?.trim().toLowerCase() === "none" ||
+    input.resolvedBehavior.reasoningSummary === "none"
+  ) {
+    delete options.reasoningSummary
   }
 
   const rawTextVerbosity = asString(options.textVerbosity)
@@ -366,11 +593,10 @@ export function applyResolvedCodexRuntimeDefaults(input: {
     delete options.textVerbosity
   }
 
-  const verbosityEnabled = input.verbosityEnabledOverride ?? true
-  const verbositySetting = input.verbosityOverride ?? "default"
   const supportsVerbosity = defaults.supportsVerbosity !== false
+  const verbositySetting = input.resolvedBehavior.textVerbosity ?? "default"
 
-  if (!supportsVerbosity || !verbosityEnabled) {
+  if (!supportsVerbosity || verbositySetting === "none") {
     delete options.textVerbosity
   } else if (normalizeTextVerbosity(options.textVerbosity) === undefined) {
     if (verbositySetting === "default") {
@@ -387,11 +613,19 @@ export function applyResolvedCodexRuntimeDefaults(input: {
   }
 
   if (typeof options.parallelToolCalls !== "boolean") {
-    if (defaults.supportsParallelToolCalls !== undefined) {
+    if (input.resolvedBehavior.parallelToolCalls !== undefined) {
+      options.parallelToolCalls = input.resolvedBehavior.parallelToolCalls
+    } else if (defaults.supportsParallelToolCalls !== undefined) {
       options.parallelToolCalls = defaults.supportsParallelToolCalls
     } else if (input.modelToolCallCapable !== undefined) {
       options.parallelToolCalls = input.modelToolCallCapable
     }
+  }
+
+  const configuredInclude = input.resolvedBehavior.include ?? []
+  if (configuredInclude.length > 0) {
+    const include = asStringArray(options.include) ?? []
+    options.include = mergeUnique([...include, ...configuredInclude])
   }
 
   const shouldIncludeReasoning =
@@ -409,10 +643,15 @@ export function applyResolvedCodexRuntimeDefaults(input: {
 export function applyCodexRuntimeDefaultsToParams(input: {
   modelOptions: Record<string, unknown>
   modelToolCallCapable: boolean | undefined
-  thinkingSummariesOverride: boolean | undefined
-  verbosityEnabledOverride: boolean | undefined
-  verbosityOverride: "default" | "low" | "medium" | "high" | undefined
+  resolvedBehavior: {
+    reasoningEffort?: string
+    reasoningSummary?: "auto" | "concise" | "detailed" | "none"
+    textVerbosity?: "default" | "low" | "medium" | "high" | "none"
+    include?: string[]
+    parallelToolCalls?: boolean
+  }
   preferCodexInstructions: boolean
+  modelId?: string
   output: ChatParamsOutput
 }): void {
   const modelOptions = input.modelOptions
@@ -421,9 +660,8 @@ export function applyCodexRuntimeDefaultsToParams(input: {
     codexInstructions: asString(modelOptions.codexInstructions),
     defaults: readModelRuntimeDefaults(modelOptions),
     modelToolCallCapable: input.modelToolCallCapable,
-    thinkingSummariesOverride: input.thinkingSummariesOverride,
-    verbosityEnabledOverride: input.verbosityEnabledOverride,
-    verbosityOverride: input.verbosityOverride,
+    resolvedBehavior: input.resolvedBehavior,
+    modelId: input.modelId,
     preferCodexInstructions: input.preferCodexInstructions
   })
 }

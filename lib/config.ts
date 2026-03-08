@@ -1,16 +1,21 @@
 export {
   CONFIG_FILE,
+  type CustomModelConfig,
   DEFAULT_CODEX_CONFIG,
   DEFAULT_CODEX_CONFIG_TEMPLATE,
+  LEGACY_CONFIG_FILE,
   type BehaviorSettings,
   type CodexSpoofMode,
+  type IncludeOption,
   type ModelBehaviorOverride,
   type ModelConfigOverride,
   type PersonalityOption,
   type PluginConfig,
   type PluginRuntimeMode,
   type PromptCacheKeyStrategy,
+  type ReasoningSummaryOption,
   type ServiceTierOption,
+  type TextVerbosityOption,
   type VerbosityOption
 } from "./config/types.js"
 
@@ -20,6 +25,7 @@ export {
   loadConfigFile,
   normalizePersonalityOption,
   normalizeServiceTierOption,
+  normalizeTextVerbosityOption,
   normalizeVerbosityOption,
   parseConfigFileObject,
   parseConfigJsonWithComments,
@@ -30,6 +36,7 @@ export {
   parseRuntimeMode,
   parseSpoofMode,
   resolveDefaultConfigPath,
+  resolveLegacyDefaultConfigPath,
   type EnsureDefaultConfigFileResult,
   validateConfigFileObject
 } from "./config/file.js"
@@ -41,6 +48,7 @@ export {
   getCodexCompactionOverrideEnabled,
   getCollaborationProfileEnabled,
   getCompatInputSanitizerEnabled,
+  getCustomModels,
   getDebugEnabled,
   getHeaderSnapshotBodiesEnabled,
   getHeaderSnapshotsEnabled,
@@ -53,6 +61,8 @@ export {
   getProactiveRefreshEnabled,
   getPromptCacheKeyStrategy,
   getQuietMode,
+  getReasoningSummaryOverride,
+  getReasoningSummariesOverride,
   getRemapDeveloperMessagesToUserEnabled,
   getRotationStrategy,
   getSpoofMode,

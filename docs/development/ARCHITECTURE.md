@@ -5,7 +5,7 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
 ## Runtime overview
 
 1. OpenCode initializes plugin hooks (`index.ts`).
-2. Config is resolved from `codex-config.json` + env overrides through `lib/config.ts` (stable barrel over `lib/config/types.ts`, `lib/config/file.ts`, and `lib/config/resolve.ts`).
+2. Config is resolved from `codex-config.jsonc` + env overrides through `lib/config.ts` (stable barrel over `lib/config/types.ts`, `lib/config/file.ts`, and `lib/config/resolve.ts`). Commented legacy `codex-config.json` is still accepted as a compatibility fallback.
 3. Auth loader selects a healthy account through `lib/storage.ts` + `lib/rotation.ts`, with storage normalization/migration helpers consolidated in `lib/storage/auth-state.ts`.
 4. `CodexAuthPlugin` wires focused auth/request helpers under `lib/codex-native/` and routes Codex backend requests.
 5. Failures (`429`, refresh/auth) trigger cooldown/disable semantics and retry orchestration (`lib/fetch-orchestrator.ts`).

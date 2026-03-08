@@ -3,7 +3,13 @@ import { PluginFatalError, isPluginFatalError, toSyntheticErrorResponse } from "
 import type { Logger } from "../logger.js"
 import type { CodexModelInfo } from "../model-catalog.js"
 import type { RotationStrategy } from "../types.js"
-import type { BehaviorSettings, CodexSpoofMode, PersonalityOption, PromptCacheKeyStrategy } from "../config.js"
+import type {
+  BehaviorSettings,
+  CodexSpoofMode,
+  CustomModelConfig,
+  PersonalityOption,
+  PromptCacheKeyStrategy
+} from "../config.js"
 import type { OpenAIAuthMode } from "../types.js"
 import type { QuotaThresholdTrackerState } from "../quota-threshold-alerts.js"
 import { acquireOpenAIAuth } from "./acquire-auth.js"
@@ -16,6 +22,7 @@ import {
   type OutboundRequestPayloadTransformResult,
   transformOutboundRequestPayload
 } from "./request-transform-payload.js"
+import { toReasoningSummaryPluginFatalError } from "./reasoning-summary.js"
 import type { SessionAffinityRuntimeState } from "./session-affinity-state.js"
 import { scheduleQuotaRefresh } from "./openai-loader-fetch-quota.js"
 import {
@@ -36,6 +43,7 @@ export type CreateOpenAIFetchHandlerInput = {
   spoofMode: CodexSpoofMode
   remapDeveloperMessagesToUserEnabled: boolean
   behaviorSettings?: BehaviorSettings
+  customModels?: Record<string, CustomModelConfig>
   personality?: PersonalityOption
   promptCacheKeyStrategy?: PromptCacheKeyStrategy
   projectPath?: string
@@ -46,6 +54,7 @@ export type CreateOpenAIFetchHandlerInput = {
   headerTransformDebug: boolean
   compatInputSanitizerEnabled: boolean
   internalCatalogScopeHeader?: string
+  internalSelectedModelHeader?: string
   internalCollaborationModeHeader: string
   internalCollaborationAgentHeader?: string
   requestSnapshots: SnapshotRecorder
@@ -67,6 +76,7 @@ export type CreateOpenAIFetchHandlerInput = {
 
 export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
   const internalCatalogScopeHeader = input.internalCatalogScopeHeader ?? "x-opencode-catalog-scope-key"
+  const internalSelectedModelHeader = input.internalSelectedModelHeader ?? "x-opencode-selected-model-slug"
   const internalCollaborationAgentHeader =
     input.internalCollaborationAgentHeader ?? "x-opencode-collaboration-agent-kind"
   const quotaTrackerByIdentity = new Map<string, QuotaThresholdTrackerState>()
@@ -92,7 +102,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           message: "Outbound request validation failed before preparing OpenAI request.",
           status: 400,
           type: "disallowed_outbound_request",
-          param: "request"
+          param: "request",
+          source: "request.url",
+          hint: "Check the outbound URL and request target before calling the OpenAI provider."
         })
       )
     }
@@ -106,7 +118,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           message: "Outbound request could not be prepared for OpenAI backend.",
           status: 400,
           type: "disallowed_outbound_request",
-          param: "request"
+          param: "request",
+          source: "request",
+          hint: "Ensure the outbound request can be constructed with a valid URL, method, headers, and body."
         })
       )
     }
@@ -249,8 +263,12 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       maxRedirects: 3,
       showToast: input.showToast,
       onAttemptRequest: async ({ attempt, maxAttempts, attemptReasonCode, request, auth, sessionKey }) => {
+        const selectedModelSlug = request.headers.get(internalSelectedModelHeader)?.trim() || undefined
         const requestCatalogScopeKey =
           request.headers.get(internalCatalogScopeHeader)?.trim() || selectedPreviousCatalogScopeKey
+        if (request.headers.has(internalSelectedModelHeader)) {
+          request.headers.delete(internalSelectedModelHeader)
+        }
         if (request.headers.has(internalCatalogScopeHeader)) {
           request.headers.delete(internalCatalogScopeHeader)
         }
@@ -261,6 +279,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           (selectedCatalogModels === undefined && Boolean(requestCatalogModels))
         const payloadTransform: OutboundRequestPayloadTransformResult = await transformOutboundRequestPayload({
           request,
+          selectedModelSlug,
           stripReasoningReplayEnabled: true,
           remapDeveloperMessagesToUserEnabled: input.remapDeveloperMessagesToUserEnabled,
           compatInputSanitizerEnabled: input.compatInputSanitizerEnabled,
@@ -270,8 +289,13 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           previousCatalogModels: requestCatalogModels,
           requestCatalogScopeChanged,
           fallbackPersonality: input.personality,
-          behaviorSettings: input.behaviorSettings
+          behaviorSettings: input.behaviorSettings,
+          customModels: input.customModels
         })
+
+        if (payloadTransform.reasoningSummaryValidation) {
+          throw toReasoningSummaryPluginFatalError(payloadTransform.reasoningSummaryValidation)
+        }
 
         if (input.headerTransformDebug) {
           await input.requestSnapshots.captureRequest("after-header-transform", payloadTransform.request, {
@@ -367,7 +391,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           message: "Outbound request validation failed before sending to OpenAI backend.",
           status: 400,
           type: "disallowed_outbound_request",
-          param: "request"
+          param: "request",
+          source: "request.url",
+          hint: "Check the rewritten outbound URL and request target before the request is sent."
         })
       )
     }
@@ -392,7 +418,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           message: "OpenAI request failed unexpectedly. Retry once, and if it persists run `opencode auth login`.",
           status: 502,
           type: "plugin_fetch_failed",
-          param: "request"
+          param: "request",
+          source: "request",
+          hint: "If retries keep failing, refresh auth state with `opencode auth login` and inspect plugin debug logs."
         })
       )
     }

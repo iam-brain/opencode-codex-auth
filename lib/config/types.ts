@@ -4,19 +4,33 @@ export type PersonalityOption = string
 export type CodexSpoofMode = "native" | "codex"
 export type PluginRuntimeMode = "native" | "codex"
 export type VerbosityOption = "default" | "low" | "medium" | "high"
-export type ServiceTierOption = "default" | "priority" | "flex"
+export type TextVerbosityOption = VerbosityOption | "none"
+export type ReasoningSummaryOption = "auto" | "concise" | "detailed" | "none"
+export type IncludeOption = "reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs"
+export type ServiceTierOption = "auto" | "priority" | "flex"
 export type PromptCacheKeyStrategy = "default" | "project"
 
 export type ModelBehaviorOverride = {
   personality?: PersonalityOption
+  reasoningEffort?: string
+  reasoningSummary?: ReasoningSummaryOption
+  reasoningSummaries?: boolean
   thinkingSummaries?: boolean
+  textVerbosity?: TextVerbosityOption
   verbosityEnabled?: boolean
   verbosity?: VerbosityOption
   serviceTier?: ServiceTierOption
+  include?: IncludeOption[]
+  parallelToolCalls?: boolean
 }
 
 export type ModelConfigOverride = ModelBehaviorOverride & {
   variants?: Record<string, ModelBehaviorOverride>
+}
+
+export type CustomModelConfig = ModelConfigOverride & {
+  targetModel: string
+  name?: string
 }
 
 export type BehaviorSettings = {
@@ -47,9 +61,11 @@ export type PluginConfig = {
   orchestratorSubagents?: boolean
   orchestratorSubagentsEnabled?: boolean
   behaviorSettings?: BehaviorSettings
+  customModels?: Record<string, CustomModelConfig>
 }
 
-export const CONFIG_FILE = "codex-config.json"
+export const CONFIG_FILE = "codex-config.jsonc"
+export const LEGACY_CONFIG_FILE = "codex-config.json"
 
 export const DEFAULT_CODEX_CONFIG = {
   $schema: "https://schemas.iam-brain.dev/opencode-codex-auth/codex-config.schema.json",
@@ -72,9 +88,11 @@ export const DEFAULT_CODEX_CONFIG = {
   },
   global: {
     personality: "pragmatic",
-    verbosityEnabled: true,
-    verbosity: "default"
+    reasoningEffort: "high",
+    reasoningSummary: "auto",
+    textVerbosity: "default"
   },
+  customModels: {},
   perModel: {}
 } as const
 
@@ -131,6 +149,11 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // default: "default"
     "promptCacheKeyStrategy": "default",
 
+    // Codex-rs compaction/profile override.
+    // options: true | false
+    // mode default: false in "native", true in "codex"
+    // "codexCompactionOverride": true,
+
     // Write request header snapshots to plugin logs.
     // options: true | false
     // default: false
@@ -146,14 +169,20 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // default: false
     "headerTransformDebug": false,
 
+    // Collaboration profile toggles.
+    // options: true | false
+    // mode default: false in "native", true in "codex"
+    // "collaborationProfile": true,
+
+    // Subagent header hints.
+    // options: true | false
+    // default: inherits collaborationProfile
+    // "orchestratorSubagents": true,
+
     // Session-aware offset for account selection.
     // options: true | false
     // default: false
     "pidOffset": false
-
-    // Experimental collaboration controls (optional):
-    // "collaborationProfile": true,
-    // "orchestratorSubagents": true
   },
 
   "global": {
@@ -163,29 +192,59 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // default: "pragmatic"
     "personality": "pragmatic",
 
-    // Thinking summaries behavior:
-    // true  => force on
-    // false => force off
-    // omit  => use model default from catalog cache (recommended)
-    // "thinkingSummaries": true
+    // Reasoning effort override.
+    // examples: "minimal", "low", "medium", "high"
+    // omit => use the selected model/catalog default
+    "reasoningEffort": "high",
 
-    // Text verbosity behavior:
-    // verbosityEnabled: true  => apply verbosity setting/default
-    // verbosityEnabled: false => do not send textVerbosity
-    // default: true
-    "verbosityEnabled": true,
+    // Reasoning summary format sent upstream as reasoning.summary.
+    // options: "auto" | "concise" | "detailed" | "none"
+    // "none" disables reasoning summaries entirely.
+    // deprecated aliases: reasoningSummaries, thinkingSummaries
+    "reasoningSummary": "auto",
 
-    // options: "default" | "low" | "medium" | "high"
-    // "default" uses each model's catalog default verbosity.
-    // default: "default"
-    "verbosity": "default"
-
-    // Service tier / fast-mode behavior:
-    // "default"  => do not force a service_tier override
+    // Fast Mode behavior (serviceTier):
+    // "auto"     => do not force a service_tier override
     // "priority" => fast mode for GPT-5.4* requests only
     // "flex"     => pass through service_tier: "flex"
     // omit       => leave request body unchanged (recommended)
-    // "serviceTier": "priority"
+    // "serviceTier": "priority",
+
+    // Text verbosity behavior sent upstream as text.verbosity.
+    // options: "default" | "low" | "medium" | "high" | "none"
+    // "default" uses each model's catalog default verbosity.
+    // "none" disables text verbosity entirely.
+    "textVerbosity": "default"
+
+    // Optional extra response includes.
+    // allowed: "reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs"
+    // "include": ["file_search_call.results"],
+
+    // Whether to allow multiple tool calls in parallel.
+    // options: true | false
+    // omit => use the selected model/catalog default
+    // "parallelToolCalls": true
+  },
+
+  // Optional custom selectable model aliases.
+  // The config key becomes the model slug users select, while targetModel stays the backend-facing model id.
+  "customModels": {
+    // "my-fast-codex": {
+    //   "targetModel": "gpt-5.3-codex",
+    //   "name": "My Fast Codex",
+    //   "reasoningEffort": "low",
+    //   "reasoningSummary": "concise",
+    //   "textVerbosity": "medium",
+    //   "serviceTier": "auto",
+    //   "include": ["file_search_call.results"],
+    //   "parallelToolCalls": true,
+    //   "variants": {
+    //     "high": {
+    //       "reasoningEffort": "high",
+    //       "reasoningSummary": "detailed"
+    //     }
+    //   }
+    // }
   },
 
   // Optional model-specific overrides.
@@ -193,16 +252,17 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
   "perModel": {
      // "gpt-5.3-codex": {
      //   "personality": "friendly",
-     //   "thinkingSummaries": true,
-     //   "verbosityEnabled": true,
-     //   "verbosity": "default",
+     //   "reasoningEffort": "medium",
+     //   "reasoningSummary": "concise",
+     //   "textVerbosity": "medium",
      //   "serviceTier": "priority",
+     //   "include": ["file_search_call.results"],
+     //   "parallelToolCalls": false,
      //   "variants": {
      //     "high": {
      //       "personality": "pragmatic",
-     //       "thinkingSummaries": false,
-      //       "verbosityEnabled": true,
-     //       "verbosity": "high",
+     //       "reasoningSummary": "detailed",
+     //       "textVerbosity": "high",
      //       "serviceTier": "flex"
      //     }
      //   }

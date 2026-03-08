@@ -3,12 +3,16 @@ export type PluginFatalErrorInput = {
   status?: number
   type?: string
   param?: string
+  source?: string
+  hint?: string
 }
 
 export class PluginFatalError extends Error {
   readonly status: number
   readonly type: string
   readonly param?: string
+  readonly source?: string
+  readonly hint?: string
 
   constructor(input: PluginFatalErrorInput) {
     super(input.message)
@@ -16,6 +20,8 @@ export class PluginFatalError extends Error {
     this.status = input.status ?? 400
     this.type = input.type ?? "hard_stop"
     this.param = input.param
+    this.source = input.source
+    this.hint = input.hint
   }
 }
 
@@ -27,9 +33,11 @@ export function createSyntheticErrorResponse(
   message: string,
   status = 400,
   type = "hard_stop",
-  param?: string
+  param?: string,
+  source?: string,
+  hint?: string
 ): Response {
-  const errorPayload: { error: { message: string; type: string; param?: string } } = {
+  const errorPayload: { error: { message: string; type: string; param?: string; source?: string; hint?: string } } = {
     error: {
       message,
       type
@@ -39,6 +47,12 @@ export function createSyntheticErrorResponse(
   if (param) {
     errorPayload.error.param = param
   }
+  if (source) {
+    errorPayload.error.source = source
+  }
+  if (hint) {
+    errorPayload.error.hint = hint
+  }
 
   return new Response(JSON.stringify(errorPayload), {
     status,
@@ -47,7 +61,7 @@ export function createSyntheticErrorResponse(
 }
 
 export function toSyntheticErrorResponse(error: PluginFatalError): Response {
-  return createSyntheticErrorResponse(error.message, error.status, error.type, error.param)
+  return createSyntheticErrorResponse(error.message, error.status, error.type, error.param, error.source, error.hint)
 }
 
 export function formatWaitTime(ms: number): string {

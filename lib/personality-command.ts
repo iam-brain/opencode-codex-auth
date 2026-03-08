@@ -32,7 +32,7 @@ Workflow:
      - \`name\`, \`sourceText\`, \`targetStyle\`, \`voiceFidelity\`, \`competenceStrictness\`, \`domain\`
    - Then persist file with \`scope\` and \`overwrite\` as needed.
 4. Confirm the resulting key + path, then show how to activate:
-   - set \`global.personality\` in \`codex-config.json\`
+   - set \`global.personality\` in \`codex-config.jsonc\`
    - or set \`perModel.<model>.personality\`
 
 Initial user context (if any):

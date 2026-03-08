@@ -92,7 +92,7 @@
       "stubGlobal": 0
     },
     "test/openai-loader-fetch.prompt-cache-key.core-behavior.test.ts": {
-      "doMock": 4,
+      "doMock": 5,
       "mock": 0,
       "stubGlobal": 0
     },

@@ -1,6 +1,7 @@
 import { resolveCustomPersonalityDescription } from "../personalities.js"
 import {
   type ApplyCodexCatalogInput,
+  type CustomModelBehaviorConfig,
   type CodexModelInfo,
   type CodexModelRuntimeDefaults,
   compareModelSlugs,
@@ -154,6 +155,38 @@ function buildVariants(model: CodexModelInfo): Record<string, Record<string, unk
   return Object.fromEntries(efforts.map((effort) => [effort, { reasoningEffort: effort }]))
 }
 
+function cloneValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneValue(entry)) as T
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, cloneValue(entry)])
+    ) as T
+  }
+  return value
+}
+
+function mergeVariantMaps(
+  baseVariants: Record<string, Record<string, unknown>> | undefined,
+  overlayVariants: CustomModelBehaviorConfig["variants"] | undefined
+): Record<string, Record<string, unknown>> | undefined {
+  const nextVariants: Record<string, Record<string, unknown>> = {}
+
+  for (const [variantName, variantValue] of Object.entries(baseVariants ?? {})) {
+    nextVariants[variantName] = cloneValue(variantValue)
+  }
+
+  for (const [variantName, variantValue] of Object.entries(overlayVariants ?? {})) {
+    nextVariants[variantName] = {
+      ...(nextVariants[variantName] ?? {}),
+      ...cloneValue(variantValue ?? {})
+    }
+  }
+
+  return Object.keys(nextVariants).length > 0 ? nextVariants : undefined
+}
+
 function buildProviderModelFromCatalog(
   model: CodexModelInfo,
   providerModels: Record<string, Record<string, unknown>>,
@@ -213,6 +246,43 @@ function buildProviderModelFromCatalog(
     release_date: "",
     variants
   }
+}
+
+function buildCustomProviderModel(input: {
+  slug: string
+  config: CustomModelBehaviorConfig
+  targetModel: Record<string, unknown>
+}): Record<string, unknown> {
+  const nextModel = cloneValue(input.targetModel)
+  nextModel.id = input.slug
+  nextModel.slug = input.slug
+  nextModel.model = input.slug
+
+  if (input.config.name) {
+    nextModel.name = input.config.name
+    nextModel.displayName = input.config.name
+    nextModel.display_name = input.config.name
+  }
+
+  const api =
+    typeof nextModel.api === "object" && nextModel.api !== null && !Array.isArray(nextModel.api)
+      ? (nextModel.api as Record<string, unknown>)
+      : {}
+  api.id = input.config.targetModel
+  nextModel.api = api
+
+  nextModel.variants = mergeVariantMaps(
+    asRecord(nextModel.variants) as Record<string, Record<string, unknown>> | undefined,
+    input.config.variants
+  )
+
+  const options = ensureModelOptions(nextModel)
+  options.codexCustomModelConfig = cloneValue({
+    slug: input.slug,
+    ...input.config
+  })
+
+  return nextModel
 }
 
 function resolvePersonalityText(model: CodexModelInfo, personality: PersonalityOption | undefined): string | undefined {
@@ -391,6 +461,7 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
   const allowedSlugs = Array.from(new Set(catalogModels.map((model) => model.slug))).sort(compareModelSlugs)
   const allowed = new Set(allowedSlugs)
   const bySlug = new Map(catalogModels.map((model) => [model.slug, model]))
+  const customTargetBySlug = new Map<string, string>()
 
   for (const slug of allowedSlugs) {
     const catalogModel = bySlug.get(slug)
@@ -424,6 +495,26 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
     }
   }
 
+  for (const [slug, customModel] of Object.entries(input.customModels ?? {})) {
+    const targetSlug = customModel.targetModel.trim().toLowerCase()
+    const targetModel = input.providerModels[targetSlug]
+    if (!targetModel) {
+      input.warn?.(
+        `[opencode-codex-auth] customModels.${slug}.targetModel points to ${JSON.stringify(customModel.targetModel)}, but that model was not present in the active Codex catalog. Skipping custom model synthesis.`
+      )
+      delete input.providerModels[slug]
+      continue
+    }
+
+    input.providerModels[slug] = buildCustomProviderModel({
+      slug,
+      config: customModel,
+      targetModel
+    })
+    allowed.add(slug)
+    customTargetBySlug.set(slug, targetSlug)
+  }
+
   for (const modelId of Object.keys(input.providerModels)) {
     if (!allowed.has(modelId)) {
       delete input.providerModels[modelId]
@@ -431,8 +522,8 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
   }
 
   const orderedModelIds = Object.keys(input.providerModels).sort((a, b) => {
-    const aPriority = bySlug.get(a)?.priority
-    const bPriority = bySlug.get(b)?.priority
+    const aPriority = bySlug.get(a)?.priority ?? bySlug.get(customTargetBySlug.get(a) ?? "")?.priority
+    const bPriority = bySlug.get(b)?.priority ?? bySlug.get(customTargetBySlug.get(b) ?? "")?.priority
     const normalizedAPriority =
       typeof aPriority === "number" && Number.isFinite(aPriority) ? aPriority : Number.POSITIVE_INFINITY
     const normalizedBPriority =

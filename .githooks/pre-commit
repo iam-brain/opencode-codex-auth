@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "Ensuring local verify passed before commit..."
+node scripts/enforce-local-verify.mjs pre-commit

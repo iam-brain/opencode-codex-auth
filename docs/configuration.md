@@ -3,8 +3,8 @@
 This plugin uses one runtime config file:
 
 - resolved config path:
-  - `$XDG_CONFIG_HOME/opencode/codex-config.json` when `XDG_CONFIG_HOME` is set
-  - otherwise `~/.config/opencode/codex-config.json`
+  - `$XDG_CONFIG_HOME/opencode/codex-config.jsonc` when `XDG_CONFIG_HOME` is set
+  - otherwise `~/.config/opencode/codex-config.jsonc`
 
 If the default config path does not exist, installer/bootstrap flows create it with defaults.
 
@@ -24,7 +24,7 @@ Known exceptions:
 
 Use these schemas for validation/autocomplete:
 
-- `schemas/codex-config.schema.json` -> `codex-config.json`
+- `schemas/codex-config.schema.json` -> `codex-config.jsonc`
 - `schemas/opencode.schema.json` -> `opencode.json`
 - `schemas/codex-accounts.schema.json` -> `codex-accounts.json` (advanced/manual recovery only)
 
@@ -34,16 +34,17 @@ The plugin loads config in this order:
 
 1. `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
 2. Resolved default config path:
-   - `$XDG_CONFIG_HOME/opencode/codex-config.json` when `XDG_CONFIG_HOME` is set
-   - otherwise `~/.config/opencode/codex-config.json`
+   - `$XDG_CONFIG_HOME/opencode/codex-config.jsonc` when `XDG_CONFIG_HOME` is set
+   - otherwise `~/.config/opencode/codex-config.jsonc`
+   - compatibility fallback: `codex-config.json` if the canonical `.jsonc` file is absent
 
-`codex-config.json` supports JSON comments (`//` and `/* ... */`) for readability.
+`codex-config.jsonc` supports JSON comments (`//` and `/* ... */`) for readability. The loader also accepts commented legacy `codex-config.json` files.
 
 Known-field type validation is applied on load. If a known field has an invalid type/value, the plugin ignores that config file and logs an actionable warning.
 
 ## Default generated config
 
-```json
+```jsonc
 {
   "$schema": "https://schemas.iam-brain.dev/opencode-codex-auth/codex-config.schema.json",
   "debug": false,
@@ -65,9 +66,11 @@ Known-field type validation is applied on load. If a known field has an invalid 
   },
   "global": {
     "personality": "pragmatic",
-    "verbosityEnabled": true,
-    "verbosity": "default"
+    "reasoningEffort": "high",
+    "reasoningSummary": "auto",
+    "textVerbosity": "default"
   },
+  "customModels": {},
   "perModel": {}
 }
 ```
@@ -144,45 +147,68 @@ Mode-derived runtime defaults when omitted:
 
 - `global.personality: string`
   - Personality key applied to all models unless overridden.
-- `global.thinkingSummaries: boolean`
-  - Global thinking-summary preference. Omit to use model/catalog default.
-- `global.verbosityEnabled: boolean`
-  - Enables/disables `textVerbosity` injection globally (`true` default).
-- `global.verbosity: "default" | "low" | "medium" | "high"`
-  - Verbosity preference (`"default"` uses each model catalog default).
-- `global.serviceTier: "default" | "priority" | "flex"`
-  - Global service tier preference.
+- `global.reasoningEffort: string`
+  - Global reasoning effort override forwarded upstream when the request does not already set one.
+- `global.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
+  - Global reasoning summary format override forwarded upstream as `reasoning.summary`.
+  - `"none"` disables reasoning summaries.
+  - Deprecated boolean aliases still load:
+    - `reasoningSummaries: true` => `"auto"`
+    - `reasoningSummaries: false` => `"none"`
+    - `thinkingSummaries` behaves the same way and warns on load.
+- `global.textVerbosity: "default" | "low" | "medium" | "high" | "none"`
+  - Global text verbosity override forwarded upstream as `text.verbosity`.
+  - `"default"` uses each model catalog default.
+  - `"none"` disables text verbosity.
+  - Deprecated aliases still load:
+    - `verbosityEnabled: false` => `"none"`
+    - `verbosity: "medium"` => `textVerbosity: "medium"`
+- `global.serviceTier: "auto" | "priority" | "flex"`
+  - Global Fast Mode preference (`serviceTier`).
   - `"priority"` maps to request-body `service_tier: "priority"` only for `gpt-5.4*`.
   - `"flex"` passes through `service_tier: "flex"`.
-  - `"default"` or omission leaves `service_tier` unset unless the request body already sets it.
+  - `"auto"` or omission leaves `service_tier` unset unless the request body already sets it.
+  - Deprecated alias: `"default"` => `"auto"`.
+- `global.include: ("reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs")[]`
+  - Global response include values merged into host-provided `include`.
+- `global.parallelToolCalls: boolean`
+  - Global override for `parallel_tool_calls` when the request does not already set one.
+- `customModels.<slug>.targetModel: string`
+  - Required target model slug inherited by the selectable custom model alias.
+- `customModels.<slug>.name: string`
+  - Optional display name for the custom selectable model.
+- `customModels.<slug>.personality`, `customModels.<slug>.reasoningEffort`, `customModels.<slug>.reasoningSummary`, `customModels.<slug>.textVerbosity`, `customModels.<slug>.serviceTier`, `customModels.<slug>.include`, `customModels.<slug>.parallelToolCalls`
+  - Defaults applied when that custom slug is selected.
+- `customModels.<slug>.variants.<variant>.personality`
+  - Variant-level override for the selected custom slug.
+- `customModels.<slug>.variants.<variant>.reasoningEffort`, `customModels.<slug>.variants.<variant>.reasoningSummary`, `customModels.<slug>.variants.<variant>.textVerbosity`, `customModels.<slug>.variants.<variant>.serviceTier`, `customModels.<slug>.variants.<variant>.include`, `customModels.<slug>.variants.<variant>.parallelToolCalls`
+  - Variant-level overrides for the selected custom slug.
 - `perModel.<model>.personality: string`
   - Model-specific personality override.
-- `perModel.<model>.thinkingSummaries: boolean`
-  - Model-specific summary override (`true` force-on, `false` force-off).
-- `perModel.<model>.verbosityEnabled: boolean`
-  - Model-specific enable/disable for `textVerbosity`.
-- `perModel.<model>.verbosity: "default" | "low" | "medium" | "high"`
-  - Model-specific verbosity setting.
-- `perModel.<model>.serviceTier: "default" | "priority" | "flex"`
-  - Model-specific service tier override.
+- `perModel.<model>.reasoningEffort`, `perModel.<model>.reasoningSummary`, `perModel.<model>.textVerbosity`, `perModel.<model>.serviceTier`, `perModel.<model>.include`, `perModel.<model>.parallelToolCalls`
+  - Model-specific overrides with the same semantics as `global.*`.
 - `perModel.<model>.variants.<variant>.personality: string`
   - Variant-level personality override.
-- `perModel.<model>.variants.<variant>.thinkingSummaries: boolean`
-  - Variant-level summary override (`true` force-on, `false` force-off).
-- `perModel.<model>.variants.<variant>.verbosityEnabled: boolean`
-  - Variant-level enable/disable for `textVerbosity`.
-- `perModel.<model>.variants.<variant>.verbosity: "default" | "low" | "medium" | "high"`
-  - Variant-level verbosity setting.
-- `perModel.<model>.variants.<variant>.serviceTier: "default" | "priority" | "flex"`
-  - Variant-level service tier override.
+- `perModel.<model>.variants.<variant>.reasoningEffort`, `perModel.<model>.variants.<variant>.reasoningSummary`, `perModel.<model>.variants.<variant>.textVerbosity`, `perModel.<model>.variants.<variant>.serviceTier`, `perModel.<model>.variants.<variant>.include`, `perModel.<model>.variants.<variant>.parallelToolCalls`
+  - Variant-level overrides with the same semantics as `global.*`.
 
 If a model reports `supportsVerbosity=false` in catalog/runtime defaults, verbosity overrides are ignored.
 
-Precedence for `personality`, `thinkingSummaries`, verbosity, and `serviceTier` settings:
+Precedence for `personality`, `reasoningEffort`, `reasoningSummary`, `textVerbosity`, `serviceTier`, `include`, and `parallelToolCalls` settings:
 
 1. `perModel.<model>.variants.<variant>`
 2. `perModel.<model>`
-3. `global`
+3. `customModels.<selected-slug>.variants.<variant>`
+4. `customModels.<selected-slug>`
+5. `global`
+
+Custom model notes:
+
+- `customModels` creates selectable aliases like `openai/my-fast-codex`.
+- The selected custom slug inherits instructions, runtime defaults, capabilities, limits, and supported variants from `targetModel`.
+- The backend request still uses `targetModel` as the API model id.
+- If `targetModel` is not present in the active catalog/provider, the plugin warns and skips that custom model instead of inventing metadata.
+- `reasoningSummaryFormat` remains internal-only. Users control request summaries with `reasoningSummary`; internal catalog defaults may still populate `reasoning.summary` when no explicit config override is set.
 
 ### GPT-5.4 fast mode and long context
 
@@ -238,7 +264,7 @@ Flow:
 2. The assistant interviews you (inspiration, tone, coding style, guardrails, examples).
 3. The assistant calls `create-personality`.
 4. A new profile is written under `personalities/<key>.md`.
-5. Set the key in `codex-config.json` via `global.personality` or `perModel`.
+5. Set the key in `codex-config.jsonc` via `global.personality` or `perModel`.
 
 Advanced path:
 
@@ -247,7 +273,7 @@ Advanced path:
 
 ## Why `runtime.mode` exists (and no `identityMode`)
 
-- `runtime.mode` is the canonical persisted mode setting in `codex-config.json`.
+- `runtime.mode` is the canonical persisted mode setting in `codex-config.jsonc`.
 - Identity behavior is derived from mode:
   - `native` -> native identity
   - `codex` -> codex identity
@@ -258,6 +284,8 @@ Advanced path:
 ### Config/mode overrides
 
 - `OPENCODE_OPENAI_MULTI_CONFIG_PATH`: explicit config file path (absolute path recommended).
+- `OPENCODE_OPENAI_MULTI_REASONING_SUMMARIES`: global reasoning-summary env override.
+- `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`: deprecated alias for `OPENCODE_OPENAI_MULTI_REASONING_SUMMARIES`.
 - `OPENCODE_OPENAI_MULTI_MODE`: `native|codex`.
 - `OPENCODE_OPENAI_MULTI_SPOOF_MODE`: advanced temporary identity override (`native|codex`).
   - If `OPENCODE_OPENAI_MULTI_MODE` is set, runtime mode takes precedence.
@@ -305,7 +333,7 @@ Advanced path:
 
 ## Legacy keys
 
-Legacy behavior keys are no longer parsed from `codex-config.json`.
+Legacy behavior keys are no longer parsed from `codex-config.jsonc`.
 
 - `personality`
 - `customSettings` and all nested `customSettings.*`

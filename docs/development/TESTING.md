@@ -6,16 +6,21 @@ This repo uses Vitest + TypeScript type checks.
 
 ```bash
 npm run typecheck
+npm run typecheck:test
 npm test
 npm run build
 npm run lint
+npm run verify:local
+npm run prepush
 npm run test:anti-mock
 npm run check:coverage-ratchet
 npm run check:docs
 npm run verify
 ```
 
-`npm run verify` is the pre-release gate.
+`npm run verify` is the required local gate before commits, pushes, and PR updates. `npm run verify:local` runs that gate with caching, and the installed git hooks enforce it automatically before `git commit` and `git push`. The commit hook accepts staged-only commit-ready changes; the push hook requires a clean tree so it validates the exact commits being pushed. GitHub Actions still adds extra platform and security jobs beyond the repo-local verify run.
+
+PR GitHub CI is intentionally slimmer than local `verify`: it keeps the clean-room Ubuntu verify job, Linux tarball smoke, Windows smoke, dependency review, and secret scanning. The separate `npm audit` dependency audit remains GitHub-hosted, but it now runs on default-branch pushes instead of every PR.
 
 It now includes strict Biome linting + format checks (including typed promise-safety rules), anti-mock policy checks, coverage ratcheting, docs drift checks, Node ESM regression checks (source + dist import specifiers), and a built CLI smoke run.
 
@@ -23,6 +28,16 @@ It now includes strict Biome linting + format checks (including typed promise-sa
 
 - `npm run lint`
   - Runs Biome lint on source + tests with focused-test bans and typed promise-safety rules.
+- `npm run typecheck:test`
+  - Type-checks the test TypeScript project with `tsconfig.test.json`.
+  - This catches fixture-shape and helper-signature regressions that `npm test` and `npm run typecheck` can miss.
+- `npm run verify:local`
+  - Runs `npm run verify` and records a local success stamp for the current tree.
+  - Re-running it on an unchanged tree skips the full suite, which keeps pre-commit and pre-push hooks from doing duplicate work.
+  - It accepts either a clean tree or staged-only commit-ready changes. Extra unstaged or untracked WIP must be cleaned up before hook enforcement will pass.
+- `npm run prepush`
+  - Alias for `npm run verify:local`.
+  - Kept for compatibility with the earlier local push workflow.
 - `npm run test:anti-mock`
   - Enforces boundary-only mock policy.
   - No new `vi.doMock`/`vi.mock`/direct `vi.stubGlobal` usage beyond the tracked baseline in `scripts/test-mocking-allowlist.json`.

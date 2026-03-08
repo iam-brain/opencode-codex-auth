@@ -118,7 +118,7 @@ Primary actions:
 - Add new account
 - Check quotas
 - Manage accounts (enable/disable)
-- Configure models in `codex-config.json`
+- Configure models in `codex-config.jsonc`
 - Delete all accounts
 
 Per-account actions:

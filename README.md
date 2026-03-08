@@ -38,7 +38,7 @@ opencode run "say hi" --model=openai/gpt-5
 
 ## Configuration
 
-Keep plugin install/enablement in `opencode.json`, and runtime behavior in `codex-config.json`.
+Keep plugin install/enablement in `opencode.json`, and runtime behavior in `codex-config.jsonc`. The plugin still accepts commented legacy `codex-config.json` files for compatibility.
 
 - Config reference: [docs/configuration.md](docs/configuration.md)
 - Multi-account behavior: [docs/multi-account.md](docs/multi-account.md)
@@ -56,18 +56,23 @@ Keep plugin install/enablement in `opencode.json`, and runtime behavior in `code
 
 ```bash
 npm install
+npm run hooks:install
 npm run verify
 ```
 
 Helpful local commands:
 
 ```bash
+npm run verify:local
+npm run prepush
 npm run lint
 npm run test:coverage
 npm run check:docs
 ```
 
-`npm run verify` is the primary quality gate and includes lint, formatting, type-checking, anti-mock, coverage/ratchet, docs drift checks, build validation, and CLI smoke checks.
+Local git hooks now enforce `npm run verify` before both `git commit` and `git push`. The commit hook accepts staged-only commit-ready changes, and the push hook requires a clean tree so it verifies the exact commits being pushed. `npm run verify:local` runs the same enforcement manually, with a cache so unchanged trees do not rerun the full suite twice in a row.
+
+Pull request CI stays intentionally lean: GitHub still runs clean-room verify, tarball smoke, Windows smoke, dependency review, and secret scanning. Dependency vulnerability auditing via `npm audit` now runs on default-branch pushes instead of every PR.
 
 ## Usage Note
 

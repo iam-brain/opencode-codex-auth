@@ -1,11 +1,12 @@
 import { readFile } from "node:fs/promises"
 
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
   applyCodexCatalogToProviderModels,
   getRuntimeDefaultsForSlug,
-  parseCatalogResponse
+  parseCatalogResponse,
+  resolveInstructionsForModel
 } from "../lib/model-catalog"
 
 function makeBaselineModel(id: string): Record<string, unknown> {
@@ -231,6 +232,113 @@ describe("model catalog provider model mapping", () => {
     }
   })
 
+  it("synthesizes selectable custom models from active catalog targets", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {}
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [
+        {
+          slug: "gpt-5.3-codex",
+          display_name: "GPT-5.3 Codex",
+          context_window: 272000,
+          input_modalities: ["text", "image"] as const,
+          model_messages: {
+            instructions_template: "Base {{ personality }}",
+            instructions_variables: { personality_default: "Default voice" }
+          },
+          default_reasoning_level: "medium",
+          supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
+          supports_reasoning_summaries: true,
+          reasoning_summary_format: "auto",
+          supports_parallel_tool_calls: false,
+          support_verbosity: true,
+          default_verbosity: "high"
+        }
+      ],
+      customModels: {
+        "openai/my-fast-codex": {
+          targetModel: "gpt-5.3-codex",
+          name: "My Fast Codex",
+          reasoningSummary: "concise",
+          variants: {
+            high: {
+              reasoningSummary: "detailed"
+            }
+          }
+        }
+      }
+    })
+
+    expect(providerModels["gpt-5.3-codex"]).toBeDefined()
+    expect(providerModels["openai/my-fast-codex"]).toMatchObject({
+      id: "openai/my-fast-codex",
+      slug: "openai/my-fast-codex",
+      model: "openai/my-fast-codex",
+      name: "My Fast Codex",
+      displayName: "My Fast Codex",
+      display_name: "My Fast Codex",
+      api: {
+        id: "gpt-5.3-codex"
+      }
+    })
+    expect(providerModels["openai/my-fast-codex"].options).toMatchObject({
+      codexCatalogModel: {
+        slug: "gpt-5.3-codex"
+      },
+      codexInstructions: "Base Default voice",
+      codexRuntimeDefaults: {
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: ["low", "high"],
+        supportsReasoningSummaries: true,
+        reasoningSummaryFormat: "auto",
+        supportsParallelToolCalls: false,
+        supportsVerbosity: true,
+        defaultVerbosity: "high"
+      },
+      codexCustomModelConfig: {
+        slug: "openai/my-fast-codex",
+        targetModel: "gpt-5.3-codex",
+        reasoningSummary: "concise"
+      }
+    })
+    expect(providerModels["openai/my-fast-codex"].instructions).toBe("Base Default voice")
+    expect(providerModels["openai/my-fast-codex"].limit).toEqual(providerModels["gpt-5.3-codex"].limit)
+    expect(providerModels["openai/my-fast-codex"].capabilities).toEqual(providerModels["gpt-5.3-codex"].capabilities)
+    expect(providerModels["openai/my-fast-codex"].codexRuntimeDefaults).toEqual(
+      providerModels["gpt-5.3-codex"].codexRuntimeDefaults
+    )
+    expect(providerModels["openai/my-fast-codex"].variants).toEqual({
+      low: { reasoningEffort: "low" },
+      high: { reasoningEffort: "high", reasoningSummary: "detailed" }
+    })
+  })
+
+  it("warns and skips custom models whose target is missing from the active catalog", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {}
+    const warn = vi.fn()
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [
+        {
+          slug: "gpt-5.3-codex",
+          context_window: 272000,
+          input_modalities: ["text"]
+        }
+      ],
+      customModels: {
+        "openai/missing-target": {
+          targetModel: "gpt-5.4"
+        }
+      },
+      warn
+    })
+
+    expect(providerModels["openai/missing-target"]).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("customModels.openai/missing-target.targetModel"))
+  })
+
   it("uses richer catalog display names when provided", () => {
     const providerModels: Record<string, Record<string, unknown>> = {
       "gpt-5.4": makeBaselineModel("gpt-5.4")
@@ -324,6 +432,27 @@ describe("model catalog provider model mapping", () => {
       }
     })
     expect((providerModels["gpt-5.4"].options as Record<string, unknown>).codexInstructions).toBeUndefined()
+  })
+
+  it("falls back to safe base instructions when rendered templates contain stale bridge markers", () => {
+    expect(
+      resolveInstructionsForModel(
+        {
+          slug: "gpt-5.4",
+          context_window: 272000,
+          base_instructions: "Use the safe base",
+          model_messages: {
+            instructions_template: "Use {{ personality }} with multi_tool_use.parallel",
+            instructions_variables: {
+              personalities: {
+                default: "Default tone"
+              }
+            }
+          }
+        },
+        undefined
+      )
+    ).toBe("Use the safe base")
   })
 
   it("clears provider models instead of synthesizing a fallback model set when no catalog is available", () => {

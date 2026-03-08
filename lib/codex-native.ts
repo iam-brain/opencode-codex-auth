@@ -8,6 +8,7 @@ import type { OpenAIAuthMode, RotationStrategy } from "./types.js"
 import type {
   BehaviorSettings,
   CodexSpoofMode,
+  CustomModelConfig,
   PersonalityOption,
   PluginRuntimeMode,
   PromptCacheKeyStrategy
@@ -65,6 +66,7 @@ export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from
 const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
 const INTERNAL_COLLABORATION_AGENT_HEADER = "x-opencode-collaboration-agent-kind"
 const INTERNAL_CATALOG_SCOPE_HEADER = "x-opencode-catalog-scope-key"
+const INTERNAL_SELECTED_MODEL_HEADER = "x-opencode-selected-model-slug"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
 const REASONING_VARIANT_KEYS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const
 
@@ -150,6 +152,7 @@ export type CodexAuthPluginOptions = {
   log?: Logger
   personality?: PersonalityOption
   behaviorSettings?: BehaviorSettings
+  customModels?: Record<string, CustomModelConfig>
   mode?: PluginRuntimeMode
   quietMode?: boolean
   pidOffsetEnabled?: boolean
@@ -172,12 +175,24 @@ type ConfigWithProviderVariants = Config & {
     {
       models?: Record<
         string,
-        {
+        Record<string, unknown> & {
           variants?: Record<string, Record<string, unknown>>
         }
       >
     }
   >
+}
+
+function cloneConfigValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneConfigValue(entry)) as T
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, cloneConfigValue(entry)])
+    ) as T
+  }
+  return value
 }
 
 function getSupportedReasoningEfforts(model: CodexModelInfo): string[] {
@@ -227,6 +242,73 @@ function applyCatalogVariantOverridesToConfig(config: Config, catalogModels: Cod
       ...(modelEntry.variants ?? {}),
       ...overrides
     }
+  }
+}
+
+function applyCustomModelsToConfig(
+  config: Config,
+  customModels: Record<string, CustomModelConfig> | undefined,
+  warn?: (message: string) => void
+): void {
+  if (!customModels || Object.keys(customModels).length === 0) return
+
+  const nextConfig = config as ConfigWithProviderVariants
+  const provider = (nextConfig.provider ??= {})
+  const openai = (provider.openai ??= {})
+  const models = (openai.models ??= {})
+
+  for (const [slug, customModel] of Object.entries(customModels)) {
+    const target = customModel.targetModel.trim()
+    const targetEntry = models[target]
+    if (!targetEntry) {
+      warn?.(
+        `[opencode-codex-auth] customModels.${slug}.targetModel points to ${JSON.stringify(target)}, but that model is not available in the current provider config. Skipping custom model synthesis.`
+      )
+      delete models[slug]
+      continue
+    }
+
+    const nextEntry = cloneConfigValue(targetEntry)
+    nextEntry.id = slug
+    nextEntry.slug = slug
+    nextEntry.model = slug
+    if (customModel.name) {
+      nextEntry.name = customModel.name
+      nextEntry.displayName = customModel.name
+      nextEntry.display_name = customModel.name
+    }
+
+    const nextApi =
+      typeof nextEntry.api === "object" && nextEntry.api !== null && !Array.isArray(nextEntry.api)
+        ? (nextEntry.api as Record<string, unknown>)
+        : {}
+    nextApi.id = target
+    nextEntry.api = nextApi
+
+    const baseVariants =
+      typeof nextEntry.variants === "object" && nextEntry.variants !== null && !Array.isArray(nextEntry.variants)
+        ? (nextEntry.variants as Record<string, Record<string, unknown>>)
+        : {}
+    const overlayVariants = Object.fromEntries(
+      Object.entries(customModel.variants ?? {}).map(([variantName, variantValue]) => [
+        variantName,
+        cloneConfigValue(variantValue ?? {})
+      ])
+    )
+    nextEntry.variants = {
+      ...baseVariants,
+      ...Object.fromEntries(
+        Object.entries(overlayVariants).map(([variantName, variantValue]) => [
+          variantName,
+          {
+            ...(baseVariants[variantName] ?? {}),
+            ...variantValue
+          }
+        ])
+      )
+    }
+
+    models[slug] = nextEntry
   }
 }
 
@@ -291,7 +373,9 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     applyCodexCatalogToProviderModels({
       providerModels: providerModelsForCatalogSync,
       catalogModels: activeCatalogModels,
-      personality: opts.personality
+      personality: opts.personality,
+      customModels: opts.customModels,
+      warn: (message) => console.warn(message)
     })
   }
   const setCatalogModels = (scopeKey: string | undefined, models: CodexModelInfo[] | undefined): void => {
@@ -309,7 +393,9 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     applyCodexCatalogToProviderModels({
       providerModels: providerModelsForCatalogSync,
       catalogModels: activeCatalogModels,
-      personality: opts.personality
+      personality: opts.personality,
+      customModels: opts.customModels,
+      warn: (message) => console.warn(message)
     })
   }
   const getCatalogModels = (scopeKey?: string): CodexModelInfo[] | undefined => {
@@ -371,6 +457,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           onEvent: (event) => opts.log?.debug("codex model catalog", event)
         })
         applyCatalogVariantOverridesToConfig(config, catalogModels)
+        applyCustomModelsToConfig(config, opts.customModels, (message) => console.warn(message))
       } catch (error) {
         if (error instanceof Error) {
           opts.log?.debug("config variant override failed", { error: error.message })
@@ -422,6 +509,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           projectPath: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
           remapDeveloperMessagesToUserEnabled,
           behaviorSettings: opts.behaviorSettings,
+          customModels: opts.customModels,
           personality: opts.personality,
           log: opts.log,
           quietMode: opts.quietMode === true,
@@ -430,6 +518,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           headerTransformDebug: opts.headerTransformDebug === true,
           compatInputSanitizerEnabled: opts.compatInputSanitizer === true,
           internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
+          internalSelectedModelHeader: INTERNAL_SELECTED_MODEL_HEADER,
           internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
           internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
           requestSnapshots,
@@ -517,6 +606,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         spoofMode,
         requestCatalogScopeKey,
         internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
+        internalSelectedModelHeader: INTERNAL_SELECTED_MODEL_HEADER,
         internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
         internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
         collaborationProfileEnabled,

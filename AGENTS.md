@@ -29,14 +29,16 @@ Current planning docs:
 ## Current storage and config
 
 Canonical files:
-- Plugin config: `~/.config/opencode/codex-config.json`
+- Plugin config: `~/.config/opencode/codex-config.jsonc`
 - Plugin accounts: `~/.config/opencode/codex-accounts.json`
 - OpenCode provider auth marker: `${XDG_DATA_HOME:-~/.local/share}/opencode/auth.json`
 - Optional request snapshots/logs: `<config-root>/logs/codex-plugin/`
 
 Important:
 - `opencode.json` should only contain plugin installation/enablement.
-- Runtime flags and behavior go in `codex-config.json`.
+- Runtime flags and behavior go in `codex-config.jsonc`.
+- Legacy `codex-config.json` is compatibility-only; prefer `.jsonc` in code, docs, examples, and tests.
+- Keep internal catalog/runtime defaults (for example `codexRuntimeDefaults.reasoningSummaryFormat`) out of public config unless schema, loader, examples, and docs are intentionally updated together.
 
 ## Modes
 
@@ -72,6 +74,9 @@ npm run verify
 ```
 
 `npm run verify` is the default pre-release check.
+
+- Treat `npm run verify` as required before both commits and PR/push updates. Local hooks should enforce it, and manual verification is still required if hooks are bypassed.
+- After changing tests, test helpers, or TypeScript-only fixture shapes, run `npm run typecheck:test` before pushing. `npm test` and `npm run typecheck` do not cover the test TypeScript project on their own.
 
 ## Module sizing
 

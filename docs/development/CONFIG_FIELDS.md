@@ -5,8 +5,9 @@ Canonical source: `lib/config.ts`
 ## File location
 
 - `OPENCODE_OPENAI_MULTI_CONFIG_PATH`
-- fallback: `$XDG_CONFIG_HOME/opencode/codex-config.json`
-- fallback (no `XDG_CONFIG_HOME`): `~/.config/opencode/codex-config.json`
+- fallback: `$XDG_CONFIG_HOME/opencode/codex-config.jsonc`
+- fallback (no `XDG_CONFIG_HOME`): `~/.config/opencode/codex-config.jsonc`
+- compatibility fallback: `codex-config.json`
 - parser accepts JSON with comments (`//`, `/* ... */`)
 
 ## Canonical JSON keys
@@ -32,25 +33,52 @@ Top-level:
 - `runtime.collaborationProfile: boolean`
 - `runtime.orchestratorSubagents: boolean`
 - `global.personality: string`
-- `global.thinkingSummaries: boolean`
-- `global.verbosityEnabled: boolean`
-- `global.verbosity: "default" | "low" | "medium" | "high"`
-- `global.serviceTier: "default" | "priority" | "flex"`
+- `global.reasoningEffort: string`
+- `global.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
+- `global.textVerbosity: "default" | "low" | "medium" | "high" | "none"`
+- `global.serviceTier: "auto" | "priority" | "flex"`
+- `global.include: ("reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs")[]`
+- `global.parallelToolCalls: boolean`
+- `customModels.<slug>.targetModel: string`
+- `customModels.<slug>.name: string`
+- `customModels.<slug>.personality: string`
+- `customModels.<slug>.reasoningEffort: string`
+- `customModels.<slug>.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
+- `customModels.<slug>.textVerbosity: "default" | "low" | "medium" | "high" | "none"`
+- `customModels.<slug>.serviceTier: "auto" | "priority" | "flex"`
+- `customModels.<slug>.include: ("reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs")[]`
+- `customModels.<slug>.parallelToolCalls: boolean`
+- `customModels.<slug>.variants.<variant>.personality: string`
+- `customModels.<slug>.variants.<variant>.reasoningEffort: string`
+- `customModels.<slug>.variants.<variant>.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
+- `customModels.<slug>.variants.<variant>.textVerbosity: "default" | "low" | "medium" | "high" | "none"`
+- `customModels.<slug>.variants.<variant>.serviceTier: "auto" | "priority" | "flex"`
+- `customModels.<slug>.variants.<variant>.include: ("reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs")[]`
+- `customModels.<slug>.variants.<variant>.parallelToolCalls: boolean`
+- deprecated aliases still accepted:
+  - `global.reasoningSummaries: boolean`
+  - `global.thinkingSummaries: boolean`
+  - `global.verbosityEnabled: boolean`
+  - `global.verbosity: "default" | "low" | "medium" | "high"`
 - `perModel.<model>.personality: string`
-- `perModel.<model>.thinkingSummaries: boolean`
-- `perModel.<model>.verbosityEnabled: boolean`
-- `perModel.<model>.verbosity: "default" | "low" | "medium" | "high"`
-- `perModel.<model>.serviceTier: "default" | "priority" | "flex"`
+- `perModel.<model>.reasoningEffort: string`
+- `perModel.<model>.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
+- `perModel.<model>.textVerbosity: "default" | "low" | "medium" | "high" | "none"`
+- `perModel.<model>.serviceTier: "auto" | "priority" | "flex"`
+- `perModel.<model>.include: ("reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs")[]`
+- `perModel.<model>.parallelToolCalls: boolean`
 - `perModel.<model>.variants.<variant>.personality: string`
-- `perModel.<model>.variants.<variant>.thinkingSummaries: boolean`
-- `perModel.<model>.variants.<variant>.verbosityEnabled: boolean`
-- `perModel.<model>.variants.<variant>.verbosity: "default" | "low" | "medium" | "high"`
-- `perModel.<model>.variants.<variant>.serviceTier: "default" | "priority" | "flex"`
+- `perModel.<model>.variants.<variant>.reasoningEffort: string`
+- `perModel.<model>.variants.<variant>.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
+- `perModel.<model>.variants.<variant>.textVerbosity: "default" | "low" | "medium" | "high" | "none"`
+- `perModel.<model>.variants.<variant>.serviceTier: "auto" | "priority" | "flex"`
+- `perModel.<model>.variants.<variant>.include: ("reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs")[]`
+- `perModel.<model>.variants.<variant>.parallelToolCalls: boolean`
 
 Canonical user-edited file set:
 
 - `<config-root>/opencode.json` (plugin registration)
-- `<config-root>/codex-config.json` (runtime behavior)
+- `<config-root>/codex-config.jsonc` (runtime behavior; `codex-config.json` remains a compatibility fallback)
 - `<config-root>/codex-accounts.json` (advanced/manual recovery only)
   - `<config-root>` resolves to `$XDG_CONFIG_HOME/opencode` when `XDG_CONFIG_HOME` is set, otherwise `~/.config/opencode`
 - `.opencode/personalities/*.md` or `<config-root>/personalities/*.md` (custom personalities)
@@ -74,8 +102,10 @@ Default generated values:
 - `runtime.collaborationProfile`: mode-derived when unset (`true` in `codex`, `false` in `native`)
 - `runtime.orchestratorSubagents`: inherits `runtime.collaborationProfile` effective value when unset
 - `global.personality: "pragmatic"`
-- `global.verbosityEnabled: true`
-- `global.verbosity: "default"`
+- `global.reasoningEffort: "high"`
+- `global.reasoningSummary: "auto"`
+- `global.textVerbosity: "default"`
+- `customModels: {}`
 - `perModel: {}`
 
 ## Legacy compatibility keys
@@ -113,7 +143,8 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_ROTATION_STRATEGY`
 - `OPENCODE_OPENAI_MULTI_PROMPT_CACHE_KEY_STRATEGY`
 - `OPENCODE_OPENAI_MULTI_PERSONALITY`
-- `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`
+- `OPENCODE_OPENAI_MULTI_REASONING_SUMMARIES`
+- `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES` (deprecated alias)
 - `OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED`
 - `OPENCODE_OPENAI_MULTI_VERBOSITY`
 - `OPENCODE_OPENAI_MULTI_SERVICE_TIER`

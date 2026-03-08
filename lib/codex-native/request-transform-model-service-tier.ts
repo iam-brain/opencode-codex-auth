@@ -1,4 +1,5 @@
-import type { BehaviorSettings, ServiceTierOption } from "../config.js"
+import type { BehaviorSettings, ModelBehaviorOverride, ServiceTierOption } from "../config.js"
+import type { CustomModelBehaviorConfig } from "../model-catalog.js"
 import { isRecord } from "../util.js"
 
 const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
@@ -30,7 +31,10 @@ function resolveCaseInsensitiveEntry<T>(entries: Record<string, T> | undefined, 
 
 function normalizeServiceTierSetting(value: unknown): ServiceTierOption | undefined {
   const normalized = asString(value)?.toLowerCase()
-  if (normalized === "default" || normalized === "priority" || normalized === "flex") {
+  if (normalized === "default" || normalized === "auto") {
+    return "auto"
+  }
+  if (normalized === "priority" || normalized === "flex") {
     return normalized
   }
   return undefined
@@ -38,6 +42,35 @@ function normalizeServiceTierSetting(value: unknown): ServiceTierOption | undefi
 
 function stripEffortSuffix(value: string): string {
   return value.replace(EFFORT_SUFFIX_REGEX, "")
+}
+
+function readCustomModelConfig(options: Record<string, unknown>): CustomModelBehaviorConfig | undefined {
+  const raw = options.codexCustomModelConfig
+  if (!isRecord(raw)) return undefined
+  const targetModel = asString(raw.targetModel)
+  if (!targetModel) return undefined
+  return {
+    targetModel,
+    ...(asString(raw.name) ? { name: asString(raw.name) } : {}),
+    ...(typeof raw.serviceTier === "string" ? { serviceTier: raw.serviceTier as ServiceTierOption } : {}),
+    ...(isRecord(raw.variants) ? { variants: raw.variants as Record<string, ModelBehaviorOverride> } : {})
+  }
+}
+
+export function getCustomModelServiceTierOverride(
+  modelOptions: Record<string, unknown>,
+  variantCandidates: string[]
+): ServiceTierOption | undefined {
+  const customModel = readCustomModelConfig(modelOptions)
+  if (!customModel) return undefined
+
+  for (const variantCandidate of variantCandidates) {
+    const variantEntry = resolveCaseInsensitiveEntry(customModel.variants, variantCandidate)
+    const variantServiceTier = normalizeServiceTierSetting(variantEntry?.serviceTier)
+    if (variantServiceTier) return variantServiceTier
+  }
+
+  return normalizeServiceTierSetting(customModel.serviceTier)
 }
 
 export function getRequestBodyVariantCandidates(input: { body: Record<string, unknown>; modelSlug: string }): string[] {
@@ -102,6 +135,7 @@ export function getModelServiceTierOverride(
 
 export function resolveServiceTierForModel(input: {
   behaviorSettings?: BehaviorSettings
+  modelOptions?: Record<string, unknown>
   modelCandidates: string[]
   variantCandidates: string[]
 }): ServiceTierOption | undefined {
@@ -111,6 +145,11 @@ export function resolveServiceTierForModel(input: {
     input.variantCandidates
   )
   if (modelOverride) return modelOverride
+
+  const customModelOverride = input.modelOptions
+    ? getCustomModelServiceTierOverride(input.modelOptions, input.variantCandidates)
+    : undefined
+  if (customModelOverride) return customModelOverride
 
   return normalizeServiceTierSetting(input.behaviorSettings?.global?.serviceTier)
 }

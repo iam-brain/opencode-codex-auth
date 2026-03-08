@@ -2,6 +2,7 @@ import type { RotationStrategy } from "../types.js"
 import {
   normalizePersonalityOption,
   normalizeServiceTierOption,
+  normalizeTextVerbosityOption,
   normalizeVerbosityOption,
   parseEnvBoolean,
   parseEnvNumber,
@@ -13,6 +14,7 @@ import {
 import type {
   BehaviorSettings,
   CodexSpoofMode,
+  CustomModelConfig,
   ModelBehaviorOverride,
   PersonalityOption,
   PluginConfig,
@@ -23,6 +25,23 @@ import type {
 function cloneBehaviorOverride<T extends Record<string, unknown>>(input: T | undefined): T | undefined {
   if (!input) return undefined
   return { ...input }
+}
+
+function cloneCustomModelConfig(input: CustomModelConfig | undefined): CustomModelConfig | undefined {
+  if (!input) return undefined
+  return {
+    ...input,
+    ...(input.variants
+      ? {
+          variants: Object.fromEntries(
+            Object.entries(input.variants).map(([variantKey, variantValue]) => [
+              variantKey,
+              cloneBehaviorOverride(variantValue) ?? {}
+            ])
+          )
+        }
+      : {})
+  }
 }
 
 export function cloneBehaviorSettings(input: BehaviorSettings | undefined): BehaviorSettings | undefined {
@@ -59,9 +78,10 @@ export function cloneBehaviorSettings(input: BehaviorSettings | undefined): Beha
 export function buildResolvedBehaviorSettings(input: {
   fileBehavior: BehaviorSettings | undefined
   envPersonality: PersonalityOption | undefined
-  envThinkingSummaries: boolean | undefined
+  envReasoningSummaries: boolean | undefined
   envVerbosityEnabled: boolean | undefined
   envVerbosity: ModelBehaviorOverride["verbosity"]
+  envTextVerbosity: ModelBehaviorOverride["textVerbosity"]
   envServiceTier: ModelBehaviorOverride["serviceTier"]
 }): BehaviorSettings | undefined {
   const behaviorSettings = cloneBehaviorSettings(input.fileBehavior) ?? {}
@@ -72,14 +92,28 @@ export function buildResolvedBehaviorSettings(input: {
   if (input.envPersonality) {
     globalBehavior.personality = input.envPersonality
   }
-  if (input.envThinkingSummaries !== undefined) {
-    globalBehavior.thinkingSummaries = input.envThinkingSummaries
+  if (input.envReasoningSummaries !== undefined) {
+    globalBehavior.reasoningSummary = input.envReasoningSummaries ? "auto" : "none"
+    globalBehavior.reasoningSummaries = input.envReasoningSummaries
   }
-  if (input.envVerbosityEnabled !== undefined) {
-    globalBehavior.verbosityEnabled = input.envVerbosityEnabled
-  }
-  if (input.envVerbosity) {
-    globalBehavior.verbosity = input.envVerbosity
+  if (input.envTextVerbosity) {
+    globalBehavior.textVerbosity = input.envTextVerbosity
+    globalBehavior.verbosityEnabled = input.envTextVerbosity !== "none"
+    globalBehavior.verbosity = input.envTextVerbosity === "none" ? undefined : input.envTextVerbosity
+  } else {
+    if (input.envVerbosityEnabled === false) {
+      globalBehavior.textVerbosity = "none"
+      globalBehavior.verbosityEnabled = false
+      globalBehavior.verbosity = undefined
+    } else if (input.envVerbosity) {
+      globalBehavior.textVerbosity = input.envVerbosity
+      globalBehavior.verbosityEnabled = true
+      globalBehavior.verbosity = input.envVerbosity
+    } else if (input.envVerbosityEnabled === true) {
+      globalBehavior.textVerbosity = "default"
+      globalBehavior.verbosityEnabled = true
+      globalBehavior.verbosity = "default"
+    }
   }
   if (input.envServiceTier) {
     globalBehavior.serviceTier = input.envServiceTier
@@ -87,7 +121,9 @@ export function buildResolvedBehaviorSettings(input: {
 
   if (
     globalBehavior.personality !== undefined ||
-    globalBehavior.thinkingSummaries !== undefined ||
+    globalBehavior.reasoningSummary !== undefined ||
+    globalBehavior.reasoningSummaries !== undefined ||
+    globalBehavior.textVerbosity !== undefined ||
     globalBehavior.verbosityEnabled !== undefined ||
     globalBehavior.verbosity !== undefined ||
     globalBehavior.serviceTier !== undefined
@@ -96,6 +132,13 @@ export function buildResolvedBehaviorSettings(input: {
   }
 
   return behaviorSettings.global !== undefined || behaviorSettings.perModel !== undefined ? behaviorSettings : undefined
+}
+
+export function getCustomModels(cfg: PluginConfig): Record<string, CustomModelConfig> | undefined {
+  if (!cfg.customModels) return undefined
+  return Object.fromEntries(
+    Object.entries(cfg.customModels).map(([slug, config]) => [slug, cloneCustomModelConfig(config) ?? config])
+  )
 }
 
 export function resolveConfig(input: {
@@ -118,9 +161,25 @@ export function resolveConfig(input: {
     parsePromptCacheKeyStrategy(env.OPENCODE_OPENAI_MULTI_PROMPT_CACHE_KEY_STRATEGY) ?? file.promptCacheKeyStrategy
 
   const envPersonality = normalizePersonalityOption(env.OPENCODE_OPENAI_MULTI_PERSONALITY)
-  const envThinkingSummaries = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES)
+  if (
+    env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES !== undefined &&
+    env.OPENCODE_OPENAI_MULTI_REASONING_SUMMARIES === undefined
+  ) {
+    console.warn(
+      "[opencode-codex-auth] Deprecated env var `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES` is set. Use `OPENCODE_OPENAI_MULTI_REASONING_SUMMARIES` instead."
+    )
+  }
+  const envReasoningSummaries =
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_REASONING_SUMMARIES) ??
+    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES)
   const envVerbosityEnabled = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED)
   const envVerbosity = normalizeVerbosityOption(env.OPENCODE_OPENAI_MULTI_VERBOSITY)
+  const envTextVerbosity = normalizeTextVerbosityOption(env.OPENCODE_OPENAI_MULTI_TEXT_VERBOSITY)
+  if (env.OPENCODE_OPENAI_MULTI_SERVICE_TIER?.trim().toLowerCase() === "default") {
+    console.warn(
+      "[opencode-codex-auth] Deprecated env value `OPENCODE_OPENAI_MULTI_SERVICE_TIER=default` is set. Use `auto` instead."
+    )
+  }
   const envServiceTier = normalizeServiceTierOption(env.OPENCODE_OPENAI_MULTI_SERVICE_TIER)
   const spoofModeFromEnv = parseSpoofMode(env.OPENCODE_OPENAI_MULTI_SPOOF_MODE)
   const modeFromEnv = parseRuntimeMode(env.OPENCODE_OPENAI_MULTI_MODE)
@@ -139,9 +198,10 @@ export function resolveConfig(input: {
   const resolvedBehaviorSettings = buildResolvedBehaviorSettings({
     fileBehavior,
     envPersonality,
-    envThinkingSummaries,
+    envReasoningSummaries,
     envVerbosityEnabled,
     envVerbosity,
+    envTextVerbosity,
     envServiceTier
   })
 
@@ -279,6 +339,16 @@ export function getBehaviorSettings(cfg: PluginConfig): BehaviorSettings | undef
   return cfg.behaviorSettings
 }
 
+export function getReasoningSummariesOverride(cfg: PluginConfig): boolean | undefined {
+  const summary = cfg.behaviorSettings?.global?.reasoningSummary
+  if (summary !== undefined) return summary !== "none"
+  return cfg.behaviorSettings?.global?.reasoningSummaries
+}
+
 export function getThinkingSummariesOverride(cfg: PluginConfig): boolean | undefined {
-  return cfg.behaviorSettings?.global?.thinkingSummaries
+  return getReasoningSummariesOverride(cfg)
+}
+
+export function getReasoningSummaryOverride(cfg: PluginConfig): ModelBehaviorOverride["reasoningSummary"] | undefined {
+  return cfg.behaviorSettings?.global?.reasoningSummary
 }

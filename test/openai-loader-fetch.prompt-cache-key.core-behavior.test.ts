@@ -110,6 +110,88 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
     expect(outboundAttemptMeta?.selectionRefreshLeaseCount).toBeUndefined()
   })
 
+  it("returns a synthetic plugin error when a selected catalog default has an invalid reasoning summary format", async () => {
+    vi.resetModules()
+
+    const auth = {
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus",
+      email: "user@example.com",
+      plan: "plus",
+      accountLabel: "user@example.com (plus)"
+    }
+
+    const acquireOpenAIAuth = vi.fn(async () => auth)
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({
+      acquireOpenAIAuth
+    }))
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }))
+    stubGlobalForTest("fetch", fetchMock)
+
+    const handler = createOpenAIFetchHandler({
+      authMode: "native",
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState: () => {}
+      },
+      getCatalogModels: () => [
+        {
+          slug: "gpt-5.3-codex",
+          default_reasoning_level: "high",
+          supports_reasoning_summaries: true,
+          reasoning_summary_format: "experimental"
+        }
+      ],
+      syncCatalogFromAuth: async () => undefined,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    const response = await handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        session_id: "ses_reasoning_validation"
+      },
+      body: JSON.stringify({
+        model: "gpt-5.3-codex",
+        reasoning: { effort: "high" },
+        input: "hello"
+      })
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        message:
+          "Invalid reasoning summary setting source: selected model catalog default `codexRuntimeDefaults.reasoningSummaryFormat` for `gpt-5.3-codex` is `experimental`. Supported values are `auto`, `concise`, `detailed`, `none`.",
+        type: "invalid_reasoning_summary",
+        param: "reasoning.summary",
+        source: "codexRuntimeDefaults.reasoningSummaryFormat",
+        hint: 'This source is internal, not a user config key. Disable summaries with `reasoningSummary: "none"` if you need a workaround.'
+      }
+    })
+  })
+
   it("does not mutate shared affinity maps for subagent-marked requests", async () => {
     vi.resetModules()
 

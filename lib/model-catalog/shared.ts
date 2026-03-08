@@ -1,4 +1,27 @@
 export type PersonalityOption = string
+export type CustomModelBehaviorConfig = {
+  targetModel: string
+  name?: string
+  personality?: string
+  reasoningEffort?: string
+  reasoningSummary?: "auto" | "concise" | "detailed" | "none"
+  textVerbosity?: "default" | "low" | "medium" | "high" | "none"
+  serviceTier?: "auto" | "priority" | "flex"
+  include?: Array<"reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs">
+  parallelToolCalls?: boolean
+  variants?: Record<
+    string,
+    {
+      personality?: string
+      reasoningEffort?: string
+      reasoningSummary?: "auto" | "concise" | "detailed" | "none"
+      textVerbosity?: "default" | "low" | "medium" | "high" | "none"
+      serviceTier?: "auto" | "priority" | "flex"
+      include?: Array<"reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs">
+      parallelToolCalls?: boolean
+    }
+  >
+}
 
 type ModelInstructionsVariables = {
   personality?: string | null
@@ -90,6 +113,8 @@ export type ApplyCodexCatalogInput = {
   providerModels: Record<string, Record<string, unknown>>
   catalogModels?: CodexModelInfo[]
   personality?: PersonalityOption
+  customModels?: Record<string, CustomModelBehaviorConfig>
+  warn?: (message: string) => void
 }
 
 export const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"

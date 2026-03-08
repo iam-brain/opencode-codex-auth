@@ -33,7 +33,7 @@ Use this skill when a user wants to create or refine a personality profile for O
 2. Keep the personality grounded in terminal coding-agent behavior.
 3. If a source document is provided, read \`references/personality-patterns.md\` and map voice cues into constraints.
 4. Call \`create-personality\` with structured fields when ready.
-5. Confirm resulting key/path and activation path in \`codex-config.json\`.
+5. Confirm resulting key/path and activation path in \`codex-config.jsonc\`.
 
 ## Tool Contract
 

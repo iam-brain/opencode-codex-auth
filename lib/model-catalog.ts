@@ -2,6 +2,7 @@ export {
   type ApplyCodexCatalogInput,
   CACHE_TTL_MS,
   type CodexModelCatalogEvent,
+  type CustomModelBehaviorConfig,
   type CodexModelInfo,
   type CodexModelRuntimeDefaults,
   type CodexModelsCache,
