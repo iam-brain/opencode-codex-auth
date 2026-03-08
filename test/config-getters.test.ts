@@ -56,6 +56,7 @@ describe("config", () => {
         envReasoningSummaries: undefined,
         envVerbosityEnabled: undefined,
         envVerbosity: undefined,
+        envTextVerbosity: undefined,
         envServiceTier: undefined
       })
     ).toEqual({

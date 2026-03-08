@@ -8,15 +8,16 @@ import { resetStubbedGlobals, stubGlobalForTest } from "./helpers/mock-policy"
 
 type VariantConfigMap = Record<string, Record<string, unknown>>
 
+type ModelConfigEntry = {
+  name?: string
+  api?: { id?: string }
+  variants: VariantConfigMap
+}
+
 type PluginConfigLike = {
   provider: {
     openai: {
-      models: Record<
-        string,
-        {
-          variants: VariantConfigMap
-        }
-      >
+      models: Record<string, ModelConfigEntry>
     }
   }
 }
