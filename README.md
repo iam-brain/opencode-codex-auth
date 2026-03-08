@@ -56,18 +56,20 @@ Keep plugin install/enablement in `opencode.json`, and runtime behavior in `code
 
 ```bash
 npm install
+npm run hooks:install
 npm run verify
 ```
 
 Helpful local commands:
 
 ```bash
+npm run prepush
 npm run lint
 npm run test:coverage
 npm run check:docs
 ```
 
-`npm run verify` is the primary quality gate and includes lint, formatting, type-checking, anti-mock, coverage/ratchet, docs drift checks, build validation, and CLI smoke checks.
+`npm run prepush` is the lightweight local gate for PR updates and pushes. It runs formatting, main TypeScript checks, test-project TypeScript checks, and the full Vitest suite. `npm run verify` is the primary quality gate and adds anti-mock, coverage/ratchet, docs drift, build validation, and CLI smoke checks.
 
 ## Usage Note
 

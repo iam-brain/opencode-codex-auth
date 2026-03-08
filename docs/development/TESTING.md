@@ -6,16 +6,18 @@ This repo uses Vitest + TypeScript type checks.
 
 ```bash
 npm run typecheck
+npm run typecheck:test
 npm test
 npm run build
 npm run lint
+npm run prepush
 npm run test:anti-mock
 npm run check:coverage-ratchet
 npm run check:docs
 npm run verify
 ```
 
-`npm run verify` is the pre-release gate.
+`npm run prepush` is the recommended local gate before branch pushes. `npm run verify` matches the main repo-local verify job, but GitHub Actions still adds extra platform and security jobs.
 
 It now includes strict Biome linting + format checks (including typed promise-safety rules), anti-mock policy checks, coverage ratcheting, docs drift checks, Node ESM regression checks (source + dist import specifiers), and a built CLI smoke run.
 
@@ -23,6 +25,12 @@ It now includes strict Biome linting + format checks (including typed promise-sa
 
 - `npm run lint`
   - Runs Biome lint on source + tests with focused-test bans and typed promise-safety rules.
+- `npm run typecheck:test`
+  - Type-checks the test TypeScript project with `tsconfig.test.json`.
+  - This catches fixture-shape and helper-signature regressions that `npm test` and `npm run typecheck` can miss.
+- `npm run prepush`
+  - Runs `format:check`, `typecheck`, `typecheck:test`, and `npm test`.
+  - Install the optional local git hook once with `npm run hooks:install` to run this automatically on `git push`.
 - `npm run test:anti-mock`
   - Enforces boundary-only mock policy.
   - No new `vi.doMock`/`vi.mock`/direct `vi.stubGlobal` usage beyond the tracked baseline in `scripts/test-mocking-allowlist.json`.

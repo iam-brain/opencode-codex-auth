@@ -1,0 +1,6 @@
+#!/bin/sh
+
+set -eu
+
+echo "Running local pre-push checks..."
+npm run prepush

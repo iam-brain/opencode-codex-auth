@@ -75,6 +75,8 @@ npm run verify
 
 `npm run verify` is the default pre-release check.
 
+- After changing tests, test helpers, or TypeScript-only fixture shapes, run `npm run typecheck:test` before pushing. `npm test` and `npm run typecheck` do not cover the test TypeScript project on their own.
+
 ## Module sizing
 
 - There is no hard max-lines or max-file-size rule in this repo.
