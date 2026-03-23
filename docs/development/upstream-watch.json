@@ -3,42 +3,42 @@
     {
       "id": "opencode",
       "repo": "anomalyco/opencode",
-      "baselineTag": "v1.2.18",
-      "updatedAt": "2026-03-05T19:28:23.006Z",
+      "baselineTag": "v1.3.0",
+      "updatedAt": "2026-03-23T16:25:00.338Z",
       "files": [
         {
           "path": "packages/opencode/src/plugin/codex.ts",
-          "sha256": "b8b9d2ee27b4eafd0971d3a9c213b4c9a6ded050d7e3a5ec2aa94872de7f2fa5",
+          "sha256": "2f7ddda4b6d8619c883ac227832614f0c2a4dac2cabfe31c737fcd006666752e",
           "localArea": "lib/codex-native/",
           "reason": "Codex OAuth/auth headers/request routing parity"
         },
         {
           "path": "packages/opencode/src/plugin/index.ts",
-          "sha256": "826c32adf6e9f570758bda353cc969066f81980092e3e2c38ec8c9681b4a2212",
+          "sha256": "c3aa395685bceeae29b93b1eb740e762f4449a6834fcc2e6863dd9d1a53a0abe",
           "localArea": "index.ts",
           "reason": "Built-in plugin boot order affects auth integration behavior"
         },
         {
           "path": "packages/opencode/src/provider/provider.ts",
-          "sha256": "b0e044c68bd64494fe8b1da577e048154a63d7998ee07c685db8da42c8028544",
+          "sha256": "53bd3146d0ad5c06f5ae62d9e4c088385c221ab31e8f6a6bba15144dfe5b737c",
           "localArea": "lib/model-catalog.ts",
           "reason": "OpenAI model surface and provider model wiring parity"
         },
         {
           "path": "packages/opencode/src/provider/auth.ts",
-          "sha256": "8667a7fbc2ed4a8f7a1a98630b541118a4dd67578db0824b81f947b8f7ba42c5",
+          "sha256": "ec8be328fcfe43b9129949ceaf93acc6e30f4daaf9c3e280c5ac64b4419e08c4",
           "localArea": "lib/storage.ts",
           "reason": "OpenAI auth structure/parsing parity signals"
         },
         {
           "path": "packages/opencode/src/provider/transform.ts",
-          "sha256": "1f3fb8cd7761dd11fd35b48a90e72e7c3d16df22d84df45dba3734518c53db59",
+          "sha256": "398f78dde2876aa4ba2e23a35a35d6d6cbff663db033c4eb69715c363d683134",
           "localArea": "lib/codex-native/request-transform*.ts",
           "reason": "Request transform behavior changes affecting auth/model requests"
         },
         {
           "path": "packages/opencode/src/provider/error.ts",
-          "sha256": "b7977ca752896f7096b546ee3e0c65a4b06ea646d7d417738d36f2eb71bb654e",
+          "sha256": "23be550ec590ac18b10bf2b6c00abdf68badc2c5e207926da59869aaf4b1c65c",
           "localArea": "lib/codex-native/openai-loader-fetch.ts",
           "reason": "OpenAI/Codex error semantics and retry-stop signals"
         },
@@ -50,7 +50,7 @@
         },
         {
           "path": "packages/opencode/src/session/message-v2.ts",
-          "sha256": "f796a51c9dbaee650295bea267c662197ad413ac6f5f678621c5b5c3eca43d22",
+          "sha256": "1d3c1d014c398cec06fb95e81fa5d2961370e548afa1784886d13fe6e94ee332",
           "localArea": "lib/fetch-orchestrator.ts",
           "reason": "Streaming error handling and retry behavior parity"
         }
@@ -59,36 +59,36 @@
     {
       "id": "codex-rs",
       "repo": "openai/codex",
-      "baselineTag": "rust-v0.111.0",
-      "updatedAt": "2026-03-05T19:28:23.656Z",
+      "baselineTag": "rust-v0.116.0",
+      "updatedAt": "2026-03-23T16:25:00.407Z",
       "files": [
         {
           "path": "codex-rs/core/models.json",
-          "sha256": "9ce0f440d5aecd193212cae9244c03faaf8a6de4e71dac0a5186a1439647c788",
+          "sha256": "5e6bb2e7e1628967407be673f70ffefe4744711bc856cb12d4fba041203ae22f",
           "localArea": "lib/model-catalog.ts",
           "reason": "Model catalog defaults and capabilities parity"
         },
         {
           "path": "codex-rs/core/src/auth.rs",
-          "sha256": "ae9fc33ffe109798f6a4933371f32b789224d53c40f62ce20e3ab776ca8add0e",
+          "sha256": "4778717d5c53fc65db59e88ae45ba40d1d64478cd3e4fd5bfa2781028916bcd0",
           "localArea": "lib/codex-native/oauth-*.ts",
           "reason": "OAuth flow constants and auth semantics parity"
         },
         {
           "path": "codex-rs/core/src/client.rs",
-          "sha256": "32e14e364a6607ff1e057cae16b59fd8f6d48cb3a5ed4932e0527e5932285298",
+          "sha256": "928da12079d3c0aa3200212ea33be6f950230bab38326eb15f7cc290499d03d1",
           "localArea": "lib/codex-native/chat-hooks.ts",
           "reason": "Request header/user-agent and endpoint behavior parity"
         },
         {
           "path": "codex-rs/core/src/codex.rs",
-          "sha256": "da8084e81e46be18e3895fdc5e9470412ddc0b464c837c4ebcbef688101b1ca2",
+          "sha256": "00b1bf975735d776fbd5b684e8271108cd78df38130add972ae7d50f3901ca62",
           "localArea": "lib/codex-native/openai-loader-fetch.ts",
           "reason": "Core Codex request/runtime behavior parity"
         },
         {
           "path": "codex-rs/core/src/compact.rs",
-          "sha256": "6d2cc48d6e0bda2a1d552741aee365d91a8e8a321d0990d279076de03335d3e8",
+          "sha256": "bb4d0787c7a841b4c99e0deed9256dd1f92e7de5db0b383e8fa14b4a91c92dc1",
           "localArea": "lib/codex-native.ts",
           "reason": "Compaction prompt and handoff semantics parity"
         }

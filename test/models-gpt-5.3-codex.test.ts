@@ -402,7 +402,7 @@ describe("codex-native model allowlist", () => {
             const instructions =
               accountId === secondAccountId ? "Instructions for account B" : "Instructions for account A"
             const defaultReasoningLevel = accountId === secondAccountId ? "low" : "high"
-            const reasoningSummaryFormat = accountId === secondAccountId ? "concise" : "auto"
+            const defaultReasoningSummary = accountId === secondAccountId ? "concise" : "auto"
             const defaultVerbosity = accountId === secondAccountId ? "low" : "medium"
             const supportsParallelToolCalls = accountId !== secondAccountId
             return new Response(
@@ -413,8 +413,9 @@ describe("codex-native model allowlist", () => {
                     context_window: 272000,
                     input_modalities: ["text"],
                     default_reasoning_level: defaultReasoningLevel,
+                    default_reasoning_summary: defaultReasoningSummary,
                     supports_reasoning_summaries: true,
-                    reasoning_summary_format: reasoningSummaryFormat,
+                    reasoning_summary_format: "experimental",
                     default_verbosity: defaultVerbosity,
                     supports_parallel_tool_calls: supportsParallelToolCalls,
                     model_messages: {
@@ -621,7 +622,7 @@ describe("codex-native model allowlist", () => {
             const instructions =
               accountId === secondAccountId ? "Instructions for account B" : "Instructions for account A"
             const defaultReasoningLevel = accountId === secondAccountId ? "low" : "high"
-            const reasoningSummaryFormat = accountId === secondAccountId ? "concise" : "auto"
+            const defaultReasoningSummary = accountId === secondAccountId ? "concise" : "auto"
             const defaultVerbosity = accountId === secondAccountId ? "low" : "medium"
             const supportsParallelToolCalls = accountId !== secondAccountId
             return new Response(
@@ -632,8 +633,9 @@ describe("codex-native model allowlist", () => {
                     context_window: 272000,
                     input_modalities: ["text"],
                     default_reasoning_level: defaultReasoningLevel,
+                    default_reasoning_summary: defaultReasoningSummary,
                     supports_reasoning_summaries: true,
-                    reasoning_summary_format: reasoningSummaryFormat,
+                    reasoning_summary_format: "experimental",
                     default_verbosity: defaultVerbosity,
                     supports_parallel_tool_calls: supportsParallelToolCalls,
                     model_messages: {

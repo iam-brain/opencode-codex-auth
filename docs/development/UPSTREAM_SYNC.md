@@ -4,25 +4,28 @@ Track the OpenCode and Codex releases this plugin is aligned to, and how to keep
 
 ## Current baseline
 
-- OpenCode release: `v1.2.18`
+- OpenCode release: `v1.3.0`
 - Upstream repo: `https://github.com/anomalyco/opencode`
 - Baseline tag commit: tracked in `docs/development/upstream-watch.json`
 - Upstream HEAD inspected: GitHub latest release/tag via `npm run check:upstream`
 - Native Codex reference file: `packages/opencode/src/plugin/codex.ts`
 - Codex upstream repo: `https://github.com/openai/codex`
-- Codex upstream release track: `rust-v0.111.0`
+- Codex upstream release track: `rust-v0.116.0`
 - Local dependency target:
-  - `@opencode-ai/plugin`: `^1.2.18`
-  - `@opencode-ai/sdk`: `^1.2.18`
+  - `@opencode-ai/plugin`: `^1.3.0`
+  - `@opencode-ai/sdk`: `^1.3.0`
 
-## Latest parity audit (2026-03-05)
+## Latest parity audit (2026-03-23)
 
 - Verified OAuth constants and authorize URL semantics against upstream `codex.ts`.
 - Verified native callback URI now uses `http://localhost:1455/auth/callback`.
 - Verified native headless device-auth requests use `User-Agent: opencode/<version>`.
 - Verified request routing parity for `/v1/responses` and `/chat/completions` to Codex responses endpoint.
-- Verified live Codex model payload now includes `gpt-5.4`, `gpt-5.3-codex-spark`, `display_name`, `priority`, and `supports_parallel_tool_calls`.
-- Verified GPT-5.4 fast mode is represented by request-body `service_tier: "priority"`.
+- Verified live Codex model payload now includes `default_reasoning_summary` and newer GPT-5.4-era catalog metadata in addition to `display_name`, `priority`, and `supports_parallel_tool_calls`.
+- Verified default prompt caching remains upstream-owned: OpenCode sets `promptCacheKey` from `sessionID`, and Codex sends `prompt_cache_key` from the active conversation ID.
+- Verified GPT-5.4 fast mode remains request-body `service_tier: "priority"`; no new HTTP priority header is used on the normal request path.
+- Verified normal HTTP request parity for both `native` and `codex` modes continues to use `session_id` and excludes websocket-only `OpenAI-Beta` headers.
+- Verified the plugin now uses Codex `default_reasoning_summary` instead of treating `reasoning_summary_format` as the default summary value.
 - Parity tests live in `test/codex-native-oauth-parity.test.ts`.
 
 ## Sync checklist

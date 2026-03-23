@@ -42,7 +42,7 @@ export function resolveReasoningSummaryValue(input: {
   configuredValue?: unknown
   configuredSource?: string
   supportsReasoningSummaries?: boolean
-  defaultReasoningSummaryFormat?: string
+  defaultReasoningSummary?: string
   defaultReasoningSummarySource: string
   model?: string
 }): { value?: ReasoningSummaryValue; diagnostic?: ReasoningSummaryValidationDiagnostic } {
@@ -88,7 +88,7 @@ export function resolveReasoningSummaryValue(input: {
     return {}
   }
 
-  const defaultValue = inspectReasoningSummaryValue(input.defaultReasoningSummaryFormat)
+  const defaultValue = inspectReasoningSummaryValue(input.defaultReasoningSummary)
   if (defaultValue.state === "invalid" && defaultValue.raw) {
     return {
       diagnostic: {

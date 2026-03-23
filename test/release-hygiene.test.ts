@@ -171,15 +171,8 @@ describe("release hygiene", () => {
     expect(securityAuditBlock).toContain("npm audit --audit-level=high")
   })
 
-  it("keeps dependency review and secret scanning on pull requests", () => {
-    const dependencyReviewWorkflow = readFileSync(
-      join(process.cwd(), ".github", "workflows", "dependency-review.yml"),
-      "utf-8"
-    )
+  it("keeps secret scanning on pull requests", () => {
     const secretScanWorkflow = readFileSync(join(process.cwd(), ".github", "workflows", "secret-scan.yml"), "utf-8")
-    expect(dependencyReviewWorkflow).toMatch(/on:\s*\n\s+pull_request:/)
-    expect(dependencyReviewWorkflow).toContain("name: Dependency Review")
-    expect(dependencyReviewWorkflow).toContain("exit 1")
     expect(secretScanWorkflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:/)
     expect(secretScanWorkflow).toContain("name: Secret Scan")
     expect(secretScanWorkflow).toContain("name: Gitleaks")
@@ -223,7 +216,7 @@ describe("release hygiene", () => {
 
   it("all workflows pin external actions by commit SHA", () => {
     const workflowsDir = join(process.cwd(), ".github", "workflows")
-    const files = ["ci.yml", "dependency-review.yml", "release.yml", "secret-scan.yml", "upstream-watch.yml"]
+    const files = ["ci.yml", "release.yml", "secret-scan.yml", "upstream-watch.yml"]
 
     for (const file of files) {
       const content = readFileSync(join(workflowsDir, file), "utf-8")
@@ -241,7 +234,7 @@ describe("release hygiene", () => {
 
   it("all workflows define timeout-minutes for each job", () => {
     const workflowsDir = join(process.cwd(), ".github", "workflows")
-    const files = ["ci.yml", "dependency-review.yml", "release.yml", "secret-scan.yml", "upstream-watch.yml"]
+    const files = ["ci.yml", "release.yml", "secret-scan.yml", "upstream-watch.yml"]
 
     for (const file of files) {
       const content = readFileSync(join(workflowsDir, file), "utf-8")

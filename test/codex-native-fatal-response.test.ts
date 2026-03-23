@@ -331,6 +331,58 @@ describe("codex-native fatal responses", () => {
     expect(body.error.message).toContain("reauthenticate")
   })
 
+  it("treats nested Codex refresh_token_reused failures as terminal refresh guidance", async () => {
+    stubGlobalForTest(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const requestUrl = url.toString()
+        if (requestUrl.includes("/oauth/token")) {
+          return new Response(
+            JSON.stringify({
+              error: {
+                code: "refresh_token_reused",
+                message: "Your refresh token has already been used to generate a new access token."
+              }
+            }),
+            {
+              status: 401,
+              headers: { "content-type": "application/json; charset=utf-8" }
+            }
+          )
+        }
+        return new Response("ok", { status: 200 })
+      })
+    )
+
+    const { loaded } = await loadPluginForAuth({
+      openai: {
+        type: "oauth",
+        activeIdentityKey: "acc|user@example.com|plus",
+        accounts: [
+          {
+            identityKey: "acc|user@example.com|plus",
+            accountId: "acc",
+            email: "user@example.com",
+            plan: "plus",
+            enabled: true,
+            refresh: "rt",
+            expires: 0
+          }
+        ]
+      }
+    })
+
+    const response = await loaded.fetch?.("https://api.openai.com/v1/responses", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-5.2-codex", input: "hi" })
+    })
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error.type).toBe("refresh_invalid_grant")
+    expect(body.error.message).toContain("reauthenticate")
+  })
+
   it("fails over to another enabled account when one refresh token is invalid_grant", async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
       const requestUrl = url.toString()

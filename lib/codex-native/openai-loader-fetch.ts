@@ -80,7 +80,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
   const internalSelectedModelHeader = input.internalSelectedModelHeader ?? "x-opencode-selected-model-slug"
   const internalCollaborationAgentHeader =
     input.internalCollaborationAgentHeader ?? "x-opencode-collaboration-agent-kind"
-  const trustedSubagentValues = new Set(["review", "compact", "collab_spawn"])
+  const trustedSubagentValues = new Set(["review", "compact", "memory_consolidation", "collab_spawn"])
   const quotaTrackerByIdentity = new Map<string, QuotaThresholdTrackerState>()
   const quotaRefreshAtByIdentity = new Map<string, number>()
   const catalogSyncByScope = new Map<string, CatalogSyncState>()

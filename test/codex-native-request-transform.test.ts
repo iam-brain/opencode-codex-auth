@@ -587,7 +587,7 @@ describe("reasoning summary validation diagnostics", () => {
           slug: "gpt-5.3-codex",
           default_reasoning_level: "high",
           supports_reasoning_summaries: true,
-          reasoning_summary_format: "experimental"
+          default_reasoning_summary: "experimental"
         }
       ]
     })
@@ -595,7 +595,7 @@ describe("reasoning summary validation diagnostics", () => {
     expect(transformed.reasoningSummaryValidation).toEqual({
       actual: "experimental",
       model: "gpt-5.3-codex",
-      source: "codexRuntimeDefaults.reasoningSummaryFormat",
+      source: "codexRuntimeDefaults.defaultReasoningSummary",
       sourceType: "catalog_default"
     })
   })
@@ -625,7 +625,7 @@ describe("reasoning summary validation diagnostics", () => {
           slug: "gpt-5.3-codex",
           default_reasoning_level: "high",
           supports_reasoning_summaries: true,
-          reasoning_summary_format: "experimental"
+          default_reasoning_summary: "experimental"
         }
       ],
       customModels: {
@@ -645,6 +645,7 @@ describe("catalog-scoped payload cleanup", () => {
     {
       slug: "gpt-5.3-codex",
       default_reasoning_level: "high",
+      default_reasoning_summary: "auto",
       supports_reasoning_summaries: true,
       reasoning_summary_format: "auto",
       default_verbosity: "medium",
@@ -823,6 +824,7 @@ describe("catalog-scoped payload cleanup", () => {
         {
           slug: "gpt-5.3-codex",
           default_reasoning_level: "low",
+          default_reasoning_summary: "concise",
           supports_reasoning_summaries: true,
           reasoning_summary_format: "concise",
           default_verbosity: "low",
@@ -882,6 +884,7 @@ describe("catalog-scoped payload cleanup", () => {
         {
           slug: "gpt-5.3-codex",
           default_reasoning_level: "low",
+          default_reasoning_summary: "concise",
           supports_reasoning_summaries: true,
           reasoning_summary_format: "concise",
           default_verbosity: "low",
@@ -945,6 +948,7 @@ describe("catalog-scoped payload cleanup", () => {
         {
           slug: "gpt-5.3-codex",
           default_reasoning_level: "low",
+          default_reasoning_summary: "concise",
           supports_reasoning_summaries: true,
           reasoning_summary_format: "concise",
           default_verbosity: "low",

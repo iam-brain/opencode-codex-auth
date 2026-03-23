@@ -47,6 +47,7 @@ describe("mode smoke: native vs codex", () => {
           codexRuntimeDefaults: {
             defaultReasoningEffort: "high",
             supportsReasoningSummaries: true,
+            defaultReasoningSummary: "auto",
             reasoningSummaryFormat: "experimental",
             defaultVerbosity: "medium"
           }
@@ -96,8 +97,8 @@ describe("mode smoke: native vs codex", () => {
     expect(codexWithHost.options.instructions).toBe("Catalog Codex Instructions")
     expect(nativeNoHost.options.instructions).toBe("Catalog Codex Instructions")
     expect(codexNoHost.options.instructions).toBe("Catalog Codex Instructions")
-    expect(nativeNoHost.options.reasoningSummary).toBeUndefined()
-    expect(codexNoHost.options.reasoningSummary).toBeUndefined()
+    expect(nativeNoHost.options.reasoningSummary).toBe("auto")
+    expect(codexNoHost.options.reasoningSummary).toBe("auto")
     expect(nativeNoHost.options.textVerbosity).toBe("medium")
     expect(codexNoHost.options.textVerbosity).toBe("medium")
     expect(nativeNoHost.options.serviceTier).toBe("priority")
