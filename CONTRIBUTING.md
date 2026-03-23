@@ -15,7 +15,7 @@ The commit hook accepts staged-only commit-ready changes, while the push hook re
 
 `npm run verify:local` is the recommended manual gate. It runs `npm run verify`, but skips reruns when the current tree already passed locally.
 
-Pull request GitHub CI keeps only hosted-value checks: clean-room verify, Linux tarball smoke, Windows smoke, dependency review, and secret scanning. `npm audit` still runs in GitHub, but only on default-branch pushes rather than every PR.
+Pull request GitHub CI keeps only hosted-value checks: clean-room verify, Linux tarball smoke, Windows smoke, and secret scanning. `npm audit` still runs in GitHub, but only on default-branch pushes rather than every PR.
 
 `npm run verify` is the baseline full gate and runs:
 
