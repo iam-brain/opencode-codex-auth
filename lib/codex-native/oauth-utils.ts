@@ -107,6 +107,39 @@ export type TokenResponse = {
 export type OAuthTokenRefreshError = Error & {
   status?: number
   oauthCode?: string
+  oauthMessage?: string
+}
+
+function parseOAuthErrorPayload(raw: string): { code?: string; message?: string } {
+  if (!raw) return {}
+  try {
+    const payload = JSON.parse(raw) as Record<string, unknown>
+    const topLevelError = payload.error
+    if (typeof topLevelError === "string") {
+      return {
+        code: topLevelError,
+        message: typeof payload.error_description === "string" ? payload.error_description : undefined
+      }
+    }
+
+    if (topLevelError && typeof topLevelError === "object" && !Array.isArray(topLevelError)) {
+      const nested = topLevelError as Record<string, unknown>
+      return {
+        code: typeof nested.code === "string" ? nested.code : undefined,
+        message:
+          typeof nested.message === "string"
+            ? nested.message
+            : typeof payload.error_description === "string"
+              ? payload.error_description
+              : undefined
+      }
+    }
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      // Best effort parse only.
+    }
+  }
+  return {}
 }
 
 export async function fetchWithTimeout(
@@ -199,24 +232,15 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
   )
 
   if (!response.ok) {
-    let oauthCode: string | undefined
-    try {
-      const raw = await response.text()
-      if (raw) {
-        const payload = JSON.parse(raw) as Record<string, unknown>
-        if (typeof payload.error === "string") oauthCode = payload.error
-      }
-    } catch (error) {
-      if (!(error instanceof SyntaxError)) {
-        // Best effort parse only.
-      }
-      // Best effort parse only.
-    }
+    const raw = await response.text()
+    const parsedError = parseOAuthErrorPayload(raw)
+    const oauthCode = parsedError.code
 
     const detail = oauthCode ? `${oauthCode}` : `status ${response.status}`
     const error = new Error(`Token refresh failed (${detail})`) as OAuthTokenRefreshError
     error.status = response.status
     error.oauthCode = oauthCode
+    error.oauthMessage = parsedError.message
     throw error
   }
   return (await response.json()) as TokenResponse

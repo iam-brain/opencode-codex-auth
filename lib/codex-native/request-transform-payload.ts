@@ -459,9 +459,10 @@ function resolveDefaultReasoningSummary(
   defaults: ReturnType<typeof getRuntimeDefaultsForModel> | undefined
 ): string | undefined {
   if (defaults?.supportsReasoningSummaries !== true) return undefined
-  const format = defaults.reasoningSummaryFormat?.trim().toLowerCase()
-  if (format === "none") return undefined
-  return defaults.reasoningSummaryFormat ?? "auto"
+  const summary = defaults.defaultReasoningSummary?.trim().toLowerCase()
+  if (!summary) return "auto"
+  if (summary === "none") return undefined
+  return defaults.defaultReasoningSummary
 }
 
 function replaceCatalogInstructionPrefix(
@@ -591,8 +592,8 @@ function validateReasoningSummaryPayload(input: {
     configuredValue: modelReasoningSummaryOverride ?? customModelReasoningSummaryOverride ?? globalReasoningSummary,
     configuredSource: "config.reasoningSummary",
     supportsReasoningSummaries: defaults?.supportsReasoningSummaries,
-    defaultReasoningSummaryFormat: defaults?.reasoningSummaryFormat,
-    defaultReasoningSummarySource: "codexRuntimeDefaults.reasoningSummaryFormat",
+    defaultReasoningSummary: defaults?.defaultReasoningSummary,
+    defaultReasoningSummarySource: "codexRuntimeDefaults.defaultReasoningSummary",
     model: modelSlug ?? selectedModelSlug
   }).diagnostic
 }

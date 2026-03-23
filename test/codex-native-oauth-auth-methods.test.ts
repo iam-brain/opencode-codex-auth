@@ -88,6 +88,47 @@ describe("createBrowserOAuthAuthorize", () => {
       stdout.isTTY = previousOut
     }
   })
+
+  it("defaults empty authorize inputs to the interactive auth menu in tty mode", async () => {
+    const scheduleOAuthServerStop = vi.fn()
+    const persistOAuthTokens = vi.fn()
+    const openAuthUrl = vi.fn()
+    const runInteractiveAuthMenu = vi.fn<(options: { allowExit: boolean }) => Promise<"add" | "exit">>(
+      async () => "exit"
+    )
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const previousIn = stdin.isTTY
+    const previousOut = stdout.isTTY
+    stdin.isTTY = true
+    stdout.isTTY = true
+
+    try {
+      const authorize = createBrowserOAuthAuthorize({
+        authMode: "native",
+        spoofMode: "native",
+        runInteractiveAuthMenu,
+        startOAuthServer: vi.fn(async () => ({ redirectUri: "http://localhost:1455/auth/callback" })),
+        waitForOAuthCallback: vi.fn(async () => {
+          throw new Error("callback failed")
+        }),
+        scheduleOAuthServerStop,
+        persistOAuthTokens,
+        openAuthUrl,
+        shutdownGraceMs: 1_000,
+        shutdownErrorGraceMs: 5_000
+      })
+
+      const payload = await authorize({})
+      expect(payload.url).toBe("")
+      expect(payload.instructions).toBe("Login cancelled.")
+      expect(runInteractiveAuthMenu).toHaveBeenCalledTimes(1)
+    } finally {
+      stdin.isTTY = previousIn
+      stdout.isTTY = previousOut
+    }
+  })
 })
 
 describe("createHeadlessOAuthAuthorize", () => {

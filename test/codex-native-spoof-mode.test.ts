@@ -62,7 +62,7 @@ describe("codex-native spoof + params hooks", () => {
     expect(output.options.include).toEqual(["web_search_call.action.sources", "reasoning.encrypted_content"])
   })
 
-  it("drops invalid model reasoning summary format defaults from chat params", async () => {
+  it("falls back to auto when only the reasoning summary format is non-user-facing", async () => {
     const hooks = await CodexAuthPlugin({} as never)
     const chatParams = hooks["chat.params"]
     expect(chatParams).toBeTypeOf("function")
@@ -93,10 +93,10 @@ describe("codex-native spoof + params hooks", () => {
     }
 
     await chatParams?.(input, output)
-    expect(output.options.reasoningSummary).toBeUndefined()
+    expect(output.options.reasoningSummary).toBe("auto")
   })
 
-  it("treats model reasoning summary format none as disabled", async () => {
+  it("treats model default reasoning summary none as disabled", async () => {
     const hooks = await CodexAuthPlugin({} as never)
     const chatParams = hooks["chat.params"]
     expect(chatParams).toBeTypeOf("function")
@@ -113,6 +113,7 @@ describe("codex-native spoof + params hooks", () => {
           codexRuntimeDefaults: {
             defaultReasoningEffort: "high",
             supportsReasoningSummaries: true,
+            defaultReasoningSummary: "none",
             reasoningSummaryFormat: "none"
           }
         }

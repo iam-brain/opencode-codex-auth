@@ -410,6 +410,11 @@ export function getRuntimeDefaultsForModel(model: CodexModelInfo | undefined): C
     out.defaultReasoningEffort = defaultReasoningEffort
   }
 
+  if (typeof model.default_reasoning_summary === "string") {
+    const next = model.default_reasoning_summary.trim()
+    if (next) out.defaultReasoningSummary = next
+  }
+
   const supportedReasoningEfforts = Array.from(
     new Set(
       (model.supported_reasoning_levels ?? [])

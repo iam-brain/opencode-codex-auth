@@ -20,6 +20,9 @@ function isOAuthTokenRefreshError(value: unknown): value is OAuthTokenRefreshErr
 const TERMINAL_REFRESH_ERROR_CODES = new Set([
   "invalid_grant",
   "invalid_refresh_token",
+  "refresh_token_expired",
+  "refresh_token_reused",
+  "refresh_token_invalidated",
   "refresh_token_revoked",
   "token_revoked"
 ])
@@ -33,12 +36,18 @@ function isTerminalRefreshCredentialError(error: unknown): boolean {
   }
 
   if (error instanceof Error) {
-    const message = error.message.trim().toLowerCase()
+    const oauthMessage =
+      "oauthMessage" in error && typeof error.oauthMessage === "string" ? error.oauthMessage.trim().toLowerCase() : ""
+    const message = `${error.message.trim().toLowerCase()} ${oauthMessage}`.trim()
     if (message.includes("invalid_grant")) return true
-    if (message.includes("refresh token") && (message.includes("invalid") || message.includes("expired"))) {
-      return true
-    }
-    if (message.includes("refresh token") && message.includes("revoked")) {
+    if (
+      message.includes("refresh token") &&
+      (message.includes("invalid") ||
+        message.includes("expired") ||
+        message.includes("reused") ||
+        message.includes("revoked") ||
+        message.includes("invalidated"))
+    ) {
       return true
     }
   }

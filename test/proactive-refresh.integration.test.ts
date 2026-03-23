@@ -218,6 +218,102 @@ describe("proactive refresh", () => {
     expect(refresh).toHaveBeenCalledTimes(1)
   })
 
+  it("disables account when proactive refresh returns refresh_token_reused", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-refresh-"))
+    const p = path.join(dir, "auth.json")
+
+    await saveAuthStorage(p, (cur) => ({
+      ...cur,
+      openai: {
+        type: "oauth",
+        strategy: "round_robin",
+        accounts: [
+          {
+            identityKey: "reused",
+            enabled: true,
+            refresh: "rreused",
+            access: "oldReused",
+            expires: 0,
+            accountId: "7",
+            email: "reused@example.com",
+            plan: "plus"
+          }
+        ]
+      }
+    }))
+
+    const refresh = vi.fn(async () => {
+      const error = new Error("Token refresh failed (refresh_token_reused)")
+      ;(error as Error & { oauthCode?: string }).oauthCode = "refresh_token_reused"
+      throw error
+    })
+
+    await runOneProactiveRefreshTick({
+      authPath: p,
+      now: () => 1_000,
+      bufferMs: 10_000,
+      refresh
+    })
+
+    const stored = await loadAuthStorage(p)
+    const openai = stored.openai
+    if (!openai || !("accounts" in openai)) throw new Error("missing")
+
+    const account = openai.accounts.find((a) => a.identityKey === "reused")
+    expect(account?.enabled).toBe(false)
+    expect(account?.refreshLeaseUntil).toBeUndefined()
+    expect(account?.cooldownUntil).toBeUndefined()
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it("disables account when proactive refresh only reports terminal failure in oauthMessage", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-refresh-"))
+    const p = path.join(dir, "auth.json")
+
+    await saveAuthStorage(p, (cur) => ({
+      ...cur,
+      openai: {
+        type: "oauth",
+        strategy: "round_robin",
+        accounts: [
+          {
+            identityKey: "invalidated",
+            enabled: true,
+            refresh: "rinvalidated",
+            access: "oldInvalidated",
+            expires: 0,
+            accountId: "8",
+            email: "invalidated@example.com",
+            plan: "plus"
+          }
+        ]
+      }
+    }))
+
+    const refresh = vi.fn(async () => {
+      const error = new Error("Token refresh failed")
+      ;(error as Error & { oauthMessage?: string }).oauthMessage = "Refresh token invalidated"
+      throw error
+    })
+
+    await runOneProactiveRefreshTick({
+      authPath: p,
+      now: () => 1_000,
+      bufferMs: 10_000,
+      refresh
+    })
+
+    const stored = await loadAuthStorage(p)
+    const openai = stored.openai
+    if (!openai || !("accounts" in openai)) throw new Error("missing")
+
+    const account = openai.accounts.find((a) => a.identityKey === "invalidated")
+    expect(account?.enabled).toBe(false)
+    expect(account?.refreshLeaseUntil).toBeUndefined()
+    expect(account?.cooldownUntil).toBeUndefined()
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
   it("clears lease and applies cooldown for transient proactive refresh failures", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-refresh-"))
     const p = path.join(dir, "auth.json")

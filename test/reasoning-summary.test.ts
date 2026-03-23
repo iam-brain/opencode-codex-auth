@@ -27,7 +27,7 @@ describe("reasoning summary helpers", () => {
         explicitValue: "experimental",
         explicitSource: "request.reasoning.summary",
         hasReasoning: true,
-        defaultReasoningSummarySource: "codexRuntimeDefaults.reasoningSummaryFormat"
+        defaultReasoningSummarySource: "codexRuntimeDefaults.defaultReasoningSummary"
       })
     ).toEqual({
       diagnostic: {
@@ -43,7 +43,7 @@ describe("reasoning summary helpers", () => {
         hasReasoning: true,
         configuredValue: "invalid",
         configuredSource: "config.reasoningSummary",
-        defaultReasoningSummarySource: "codexRuntimeDefaults.reasoningSummaryFormat"
+        defaultReasoningSummarySource: "codexRuntimeDefaults.defaultReasoningSummary"
       })
     ).toEqual({
       diagnostic: {
@@ -60,15 +60,15 @@ describe("reasoning summary helpers", () => {
         explicitSource: "request.reasoning.summary",
         hasReasoning: true,
         supportsReasoningSummaries: true,
-        defaultReasoningSummaryFormat: "experimental",
-        defaultReasoningSummarySource: "codexRuntimeDefaults.reasoningSummaryFormat",
+        defaultReasoningSummary: "experimental",
+        defaultReasoningSummarySource: "codexRuntimeDefaults.defaultReasoningSummary",
         model: "gpt-5.3-codex"
       })
     ).toEqual({
       diagnostic: {
         actual: "experimental",
         model: "gpt-5.3-codex",
-        source: "codexRuntimeDefaults.reasoningSummaryFormat",
+        source: "codexRuntimeDefaults.defaultReasoningSummary",
         sourceType: "catalog_default"
       }
     })
@@ -78,7 +78,7 @@ describe("reasoning summary helpers", () => {
         explicitSource: "request.reasoning.summary",
         hasReasoning: true,
         supportsReasoningSummaries: true,
-        defaultReasoningSummarySource: "codexRuntimeDefaults.reasoningSummaryFormat"
+        defaultReasoningSummarySource: "codexRuntimeDefaults.defaultReasoningSummary"
       })
     ).toEqual({ value: "auto" })
   })
@@ -95,7 +95,7 @@ describe("reasoning summary helpers", () => {
     const catalogError = toReasoningSummaryPluginFatalError({
       actual: "experimental",
       model: "gpt-5.3-codex",
-      source: "codexRuntimeDefaults.reasoningSummaryFormat",
+      source: "codexRuntimeDefaults.defaultReasoningSummary",
       sourceType: "catalog_default"
     })
     expect(catalogError.message).toContain("selected model catalog default")

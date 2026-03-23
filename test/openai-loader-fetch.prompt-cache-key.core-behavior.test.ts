@@ -152,7 +152,7 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
           slug: "gpt-5.3-codex",
           default_reasoning_level: "high",
           supports_reasoning_summaries: true,
-          reasoning_summary_format: "experimental"
+          default_reasoning_summary: "experimental"
         }
       ],
       syncCatalogFromAuth: async () => undefined,
@@ -178,10 +178,10 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
     await expect(response.json()).resolves.toEqual({
       error: {
         message:
-          "Invalid reasoning summary setting source: selected model catalog default `codexRuntimeDefaults.reasoningSummaryFormat` for `gpt-5.3-codex` is `experimental`. Supported values are `auto`, `concise`, `detailed`, `none`.",
+          "Invalid reasoning summary setting source: selected model catalog default `codexRuntimeDefaults.defaultReasoningSummary` for `gpt-5.3-codex` is `experimental`. Supported values are `auto`, `concise`, `detailed`, `none`.",
         type: "invalid_reasoning_summary",
         param: "reasoning.summary",
-        source: "codexRuntimeDefaults.reasoningSummaryFormat",
+        source: "codexRuntimeDefaults.defaultReasoningSummary",
         hint: 'This source is internal, not a user config key. Disable summaries with `reasoningSummary: "none"` if you need a workaround.'
       }
     })

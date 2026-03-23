@@ -64,6 +64,7 @@ type ChatParamsOutput = {
 type ModelRuntimeDefaults = {
   applyPatchToolType?: string
   defaultReasoningEffort?: string
+  defaultReasoningSummary?: string
   supportsReasoningSummaries?: boolean
   reasoningSummaryFormat?: string
   supportsParallelToolCalls?: boolean
@@ -77,6 +78,7 @@ function readModelRuntimeDefaults(options: Record<string, unknown>): ModelRuntim
   return {
     applyPatchToolType: asString(raw.applyPatchToolType),
     defaultReasoningEffort: asString(raw.defaultReasoningEffort),
+    defaultReasoningSummary: asString(raw.defaultReasoningSummary),
     supportsReasoningSummaries:
       typeof raw.supportsReasoningSummaries === "boolean" ? raw.supportsReasoningSummaries : undefined,
     reasoningSummaryFormat: asString(raw.reasoningSummaryFormat),
@@ -531,6 +533,7 @@ export function applyResolvedCodexRuntimeDefaults(input: {
   defaults?: {
     applyPatchToolType?: string
     defaultReasoningEffort?: string
+    defaultReasoningSummary?: string
     supportsReasoningSummaries?: boolean
     reasoningSummaryFormat?: string
     supportsParallelToolCalls?: boolean
@@ -582,8 +585,8 @@ export function applyResolvedCodexRuntimeDefaults(input: {
     configuredValue: input.resolvedBehavior.reasoningSummary,
     configuredSource: "config.reasoningSummary",
     supportsReasoningSummaries: defaults.supportsReasoningSummaries,
-    defaultReasoningSummaryFormat: defaults.reasoningSummaryFormat,
-    defaultReasoningSummarySource: "codexRuntimeDefaults.reasoningSummaryFormat",
+    defaultReasoningSummary: defaults.defaultReasoningSummary,
+    defaultReasoningSummarySource: "codexRuntimeDefaults.defaultReasoningSummary",
     model: input.modelId
   })
   if (reasoningSummary.value) {

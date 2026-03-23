@@ -58,6 +58,7 @@ export type CodexModelInfo = {
   supports_parallel_tool_calls?: boolean | null
   support_verbosity?: boolean | null
   default_verbosity?: string | null
+  default_reasoning_summary?: string | null
 }
 
 type CodexModelsResponse = {
@@ -73,6 +74,7 @@ export type CodexModelsCache = {
 export type CodexModelRuntimeDefaults = {
   applyPatchToolType?: string
   defaultReasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
+  defaultReasoningSummary?: string
   supportedReasoningEfforts?: Array<"none" | "minimal" | "low" | "medium" | "high" | "xhigh">
   supportsReasoningSummaries?: boolean
   reasoningSummaryFormat?: string
@@ -121,7 +123,7 @@ export type ApplyCodexCatalogInput = {
 
 export const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
 export const CODEX_GITHUB_MODELS_URL_PREFIX = "https://raw.githubusercontent.com/openai/codex"
-export const DEFAULT_CLIENT_VERSION = "0.111.0"
+export const DEFAULT_CLIENT_VERSION = "0.116.0"
 export const CACHE_TTL_MS = 15 * 60 * 1000
 export const FETCH_TIMEOUT_MS = 5000
 export const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
@@ -255,7 +257,9 @@ export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
       supports_parallel_tool_calls:
         typeof item.supports_parallel_tool_calls === "boolean" ? item.supports_parallel_tool_calls : null,
       support_verbosity: typeof item.support_verbosity === "boolean" ? item.support_verbosity : null,
-      default_verbosity: typeof item.default_verbosity === "string" ? item.default_verbosity : null
+      default_verbosity: typeof item.default_verbosity === "string" ? item.default_verbosity : null,
+      default_reasoning_summary:
+        typeof item.default_reasoning_summary === "string" ? item.default_reasoning_summary : null
     })
   }
 

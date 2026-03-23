@@ -77,6 +77,7 @@ describe("model catalog provider model mapping", () => {
         apply_patch_tool_type: null,
         supported_reasoning_levels: null,
         default_reasoning_level: null,
+        default_reasoning_summary: null,
         supports_reasoning_summaries: null,
         reasoning_summary_format: null,
         supports_parallel_tool_calls: true,
@@ -100,6 +101,7 @@ describe("model catalog provider model mapping", () => {
         input_modalities: ["text", "image"] as const,
         apply_patch_tool_type: "apply_patch",
         default_reasoning_level: "medium",
+        default_reasoning_summary: "auto",
         supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }],
         supports_reasoning_summaries: true,
         reasoning_summary_format: "experimental",
@@ -126,6 +128,7 @@ describe("model catalog provider model mapping", () => {
     expect(providerModels["gpt-5.4-codex"].codexRuntimeDefaults).toEqual({
       applyPatchToolType: "apply_patch",
       defaultReasoningEffort: "medium",
+      defaultReasoningSummary: "auto",
       supportedReasoningEfforts: ["low", "medium", "high"],
       supportsReasoningSummaries: true,
       reasoningSummaryFormat: "experimental",
