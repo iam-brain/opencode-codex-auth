@@ -129,6 +129,37 @@ describe("createBrowserOAuthAuthorize", () => {
       stdout.isTTY = previousOut
     }
   })
+
+  it("returns a failed payload when browser oauth server startup fails", async () => {
+    const scheduleOAuthServerStop = vi.fn()
+    const persistOAuthTokens = vi.fn()
+    const openAuthUrl = vi.fn()
+
+    const authorize = createBrowserOAuthAuthorize({
+      authMode: "native",
+      spoofMode: "native",
+      runInteractiveAuthMenu: vi.fn<(options: { allowExit: boolean }) => Promise<"add" | "exit">>(async () => "exit"),
+      startOAuthServer: vi.fn(async () => {
+        throw new Error("listen EADDRINUSE: address already in use ::1:1455")
+      }),
+      waitForOAuthCallback: vi.fn(async () => {
+        throw new Error("callback should not start")
+      }),
+      scheduleOAuthServerStop,
+      persistOAuthTokens,
+      openAuthUrl,
+      shutdownGraceMs: 1_000,
+      shutdownErrorGraceMs: 5_000
+    })
+
+    const payload = await authorize()
+    expect(payload.url).toBe("")
+    expect(payload.instructions).toContain("Failed to start authorization")
+    await expect(payload.callback()).resolves.toEqual({ type: "failed" })
+    expect(openAuthUrl).not.toHaveBeenCalled()
+    expect(persistOAuthTokens).not.toHaveBeenCalled()
+    expect(scheduleOAuthServerStop).not.toHaveBeenCalled()
+  })
 })
 
 describe("createHeadlessOAuthAuthorize", () => {

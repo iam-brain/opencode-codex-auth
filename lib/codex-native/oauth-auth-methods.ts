@@ -40,6 +40,15 @@ type OAuthAuthorizePayload = {
   callback: () => Promise<OAuthCallbackResult>
 }
 
+function oauthStartupFailurePayload(reason: string): OAuthAuthorizePayload {
+  return {
+    url: "",
+    method: "auto",
+    instructions: `Failed to start authorization: ${reason}`,
+    callback: async () => ({ type: "failed" })
+  }
+}
+
 function redactOAuthDisplayUrl(url: string): string {
   try {
     const parsed = new URL(url)
@@ -93,7 +102,14 @@ function toOAuthSuccess(tokens: TokenResponse): OAuthSuccess {
 export function createBrowserOAuthAuthorize(deps: BrowserAuthorizeDeps) {
   return async (inputs?: Record<string, string>): Promise<OAuthAuthorizePayload> => {
     const runSingleBrowserOAuthInline = async (): Promise<TokenResponse | null> => {
-      const { redirectUri } = await deps.startOAuthServer()
+      let redirectUri: string
+      try {
+        ;({ redirectUri } = await deps.startOAuthServer())
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "Failed to start OAuth callback server"
+        process.stdout.write(`\nAuthorization failed: ${reason}\n\n`)
+        return null
+      }
       const pkce = await generatePKCE()
       const state = generateState()
       const authUrl = buildAuthorizeUrl(
@@ -172,7 +188,13 @@ export function createBrowserOAuthAuthorize(deps: BrowserAuthorizeDeps) {
       return runInteractiveBrowserAuthLoop()
     }
 
-    const { redirectUri } = await deps.startOAuthServer()
+    let redirectUri: string
+    try {
+      ;({ redirectUri } = await deps.startOAuthServer())
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Failed to start OAuth callback server"
+      return oauthStartupFailurePayload(reason)
+    }
     const pkce = await generatePKCE()
     const state = generateState()
     const authUrl = buildAuthorizeUrl(
