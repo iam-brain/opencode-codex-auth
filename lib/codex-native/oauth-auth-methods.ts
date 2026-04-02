@@ -1,7 +1,6 @@
 import type { CodexSpoofMode } from "../config.js"
 import type { OpenAIAuthMode } from "../types.js"
 import { resolveRequestUserAgent } from "./client-identity.js"
-import { resolveCodexOriginator } from "./originator.js"
 import {
   buildAuthorizeUrl,
   CLIENT_ID,
@@ -13,10 +12,11 @@ import {
   OAUTH_DEVICE_AUTH_TIMEOUT_MS,
   OAUTH_HTTP_TIMEOUT_MS,
   OAUTH_POLLING_SAFETY_MARGIN_MS,
-  sleep,
   type PkceCodes,
+  sleep,
   type TokenResponse
 } from "./oauth-utils.js"
+import { resolveCodexOriginator } from "./originator.js"
 
 type OAuthSuccess = {
   type: "success"
@@ -101,6 +101,9 @@ function toOAuthSuccess(tokens: TokenResponse): OAuthSuccess {
 
 export function createBrowserOAuthAuthorize(deps: BrowserAuthorizeDeps) {
   return async (inputs?: Record<string, string>): Promise<OAuthAuthorizePayload> => {
+    const shouldUseInteractiveMenu =
+      process.env.OPENCODE_NO_BROWSER !== "1" && process.stdin.isTTY && process.stdout.isTTY
+
     const runSingleBrowserOAuthInline = async (): Promise<TokenResponse | null> => {
       let redirectUri: string
       try {
@@ -184,7 +187,7 @@ export function createBrowserOAuthAuthorize(deps: BrowserAuthorizeDeps) {
       }
     }
 
-    if (inputs && process.env.OPENCODE_NO_BROWSER !== "1" && process.stdin.isTTY && process.stdout.isTTY) {
+    if (shouldUseInteractiveMenu) {
       return runInteractiveBrowserAuthLoop()
     }
 
