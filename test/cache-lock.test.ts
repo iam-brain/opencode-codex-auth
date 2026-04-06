@@ -21,6 +21,10 @@ function mockUnavailableProperLockfile() {
   })
 }
 
+function mockProperLockfileNamespace(lock: (...args: Array<unknown>) => Promise<() => Promise<void>>) {
+  vi.doMock("proper-lockfile", () => ({ lock }))
+}
+
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -104,21 +108,13 @@ describe("cache lock", () => {
   it("uses a CommonJS-style lock export without requiring a default export", async () => {
     vi.resetModules()
     const lock = vi.fn(async () => async () => {})
-    vi.doMock("proper-lockfile", () => ({ lock }))
+    mockProperLockfileNamespace(lock)
 
     const { lockTargetPathForFile, withLockedFile } = await import("../lib/cache-lock")
     const root = await createTempDir("opencode-cache-lock-")
     const filePath = path.join(root, "cache.json")
 
-    let entered = false
-    const result = await withLockedFile(filePath, async () => {
-      entered = true
-      return "ok"
-    })
-
-    expect(result).toBe("ok")
-    expect(entered).toBe(true)
-    expect(lock).toHaveBeenCalledTimes(1)
+    await expect(withLockedFile(filePath, async () => "ok")).resolves.toBe("ok")
     expect(lock).toHaveBeenCalledWith(
       lockTargetPathForFile(filePath),
       expect.objectContaining({
@@ -132,23 +128,24 @@ describe("cache lock", () => {
     )
   })
 
+  it("loads the plugin entry when proper-lockfile resolves to a CommonJS-style namespace", async () => {
+    vi.resetModules()
+    mockProperLockfileNamespace(vi.fn(async () => async () => {}))
+
+    const pluginEntry = await import("../index")
+    expect(typeof pluginEntry.OpenAIMultiAuthPlugin).toBe("function")
+  })
+
   it("locks directories with a resolved lock function", async () => {
     vi.resetModules()
     const release = vi.fn(async () => {})
-    const lock = vi.fn(async () => release)
-    vi.doMock("proper-lockfile", () => ({ lock }))
+    mockProperLockfileNamespace(vi.fn(async () => release))
 
     const { withLockedDirectory } = await import("../lib/cache-lock")
     const root = await createTempDir("opencode-cache-lock-dir-")
     const directoryPath = path.join(root, "nested")
 
     await expect(withLockedDirectory(directoryPath, async () => "dir-ok", { staleMs: 9 })).resolves.toBe("dir-ok")
-    expect(lock).toHaveBeenCalledWith(
-      directoryPath,
-      expect.objectContaining({
-        stale: 9
-      })
-    )
     expect(release).toHaveBeenCalledTimes(1)
   })
 
@@ -165,7 +162,7 @@ describe("cache lock", () => {
 
     const { __cacheLockTest } = await import("../lib/cache-lock")
 
-    await expect(__cacheLockTest.hasDirectoryLockOwner("/tmp/missing-lock", "owner")).rejects.toMatchObject({
+    await expect(__cacheLockTest.hasDirectoryLockOwner("/tmp/missing-lock", "owner-token")).rejects.toMatchObject({
       code: "EPERM"
     })
     expect(readFileSpy).toHaveBeenCalledTimes(1)
@@ -190,6 +187,74 @@ describe("cache lock", () => {
     await expect(fs.access(lockDir)).rejects.toMatchObject({ code: "ENOENT" })
   })
 
+  it("keeps exclusivity instead of reaping a long-held fallback lock", async () => {
+    vi.resetModules()
+    mockUnavailableProperLockfile()
+
+    const { withLockedFile } = await import("../lib/cache-lock")
+    const root = await createTempDir("opencode-cache-lock-")
+    const filePath = path.join(root, "active-target.json")
+
+    let releaseFirst!: () => void
+    const firstDone = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+
+    let firstEntered = false
+    const firstLock = withLockedFile(
+      filePath,
+      async () => {
+        firstEntered = true
+        await firstDone
+      },
+      { staleMs: 20 }
+    )
+
+    while (!firstEntered) {
+      await sleep(5)
+    }
+
+    await sleep(60)
+
+    let secondEntered = false
+    const secondLock = withLockedFile(
+      filePath,
+      async () => {
+        secondEntered = true
+      },
+      { staleMs: 20 }
+    )
+
+    await sleep(60)
+    expect(secondEntered).toBe(false)
+
+    releaseFirst()
+    await firstLock
+    await secondLock
+    expect(secondEntered).toBe(true)
+  })
+
+  it("retries fallback locking until the directory becomes available", async () => {
+    vi.resetModules()
+    mockUnavailableProperLockfile()
+
+    const actualMkdir = fs.mkdir.bind(fs)
+    const root = await createTempDir("opencode-cache-lock-")
+    const targetPath = path.join(root, "retry-target")
+    const mkdirSpy = vi
+      .spyOn(fs, "mkdir")
+      .mockRejectedValueOnce(Object.assign(new Error("busy"), { code: "EEXIST" }))
+      .mockImplementationOnce(actualMkdir)
+
+    const { __cacheLockTest } = await import("../lib/cache-lock")
+    const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
+      retries: { retries: 1, minTimeout: 1, maxTimeout: 1 }
+    })
+
+    expect(mkdirSpy).toHaveBeenCalledTimes(2)
+    await expect(release()).resolves.toBeUndefined()
+  })
+
   it("swallows ENOENT when a fallback lock directory is already gone during release", async () => {
     vi.resetModules()
     mockUnavailableProperLockfile()
@@ -204,23 +269,6 @@ describe("cache lock", () => {
 
     await fs.rm(lockDir, { recursive: true, force: true })
     await expect(release()).resolves.toBeUndefined()
-  })
-
-  it("rethrows non-ENOENT release errors from fallback locks", async () => {
-    vi.resetModules()
-    mockUnavailableProperLockfile()
-
-    const rmSpy = vi.spyOn(fs, "rm").mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "EPERM" }))
-
-    const { __cacheLockTest } = await import("../lib/cache-lock")
-    const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "release-error-target")
-    const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-      retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
-    })
-
-    await expect(release()).rejects.toMatchObject({ code: "EPERM" })
-    expect(rmSpy).toHaveBeenCalledTimes(1)
   })
 
   it("removes a fallback lock directory when writing owner metadata fails", async () => {
@@ -247,232 +295,32 @@ describe("cache lock", () => {
     await expect(fs.access(lockDir)).rejects.toMatchObject({ code: "ENOENT" })
   })
 
-  it("updates the lock heartbeat while holding a fallback lock", async () => {
+  it("rethrows non-ENOENT release errors from fallback locks", async () => {
     vi.resetModules()
     mockUnavailableProperLockfile()
 
-    let heartbeatCallback: (() => void) | undefined
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: TimerHandler) => {
-      heartbeatCallback = callback as () => void
-      return 1 as unknown as ReturnType<typeof setTimeout>
-    }) as unknown as typeof setTimeout)
-    vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {})
-    const utimesSpy = vi.spyOn(fs, "utimes").mockResolvedValueOnce(undefined)
+    const rmSpy = vi.spyOn(fs, "rm").mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "EPERM" }))
 
     const { __cacheLockTest } = await import("../lib/cache-lock")
     const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "heartbeat-target")
+    const targetPath = path.join(root, "release-error-target")
     const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-      stale: 20,
       retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
     })
 
-    heartbeatCallback?.()
-    await vi.waitFor(() => {
-      expect(utimesSpy).toHaveBeenCalledTimes(1)
-    })
-    await expect(release()).resolves.toBeUndefined()
-  })
-
-  it("stops heartbeat writes when utimes sees ENOENT", async () => {
-    vi.resetModules()
-    mockUnavailableProperLockfile()
-
-    const heartbeatCallbacks: Array<() => void> = []
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: TimerHandler) => {
-      heartbeatCallbacks.push(callback as () => void)
-      return heartbeatCallbacks.length as unknown as ReturnType<typeof setTimeout>
-    }) as unknown as typeof setTimeout)
-    vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {})
-    const utimesSpy = vi.spyOn(fs, "utimes").mockRejectedValueOnce(Object.assign(new Error("gone"), { code: "ENOENT" }))
-
-    const { __cacheLockTest } = await import("../lib/cache-lock")
-    const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "heartbeat-enoent-target")
-    const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-      stale: 20,
-      retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
-    })
-
-    heartbeatCallbacks[0]?.()
-    await vi.waitFor(() => {
-      expect(utimesSpy).toHaveBeenCalledTimes(1)
-    })
-    expect(heartbeatCallbacks).toHaveLength(1)
-    await expect(release()).resolves.toBeUndefined()
-  })
-
-  it("stops heartbeat writes after fallback lock ownership changes", async () => {
-    vi.resetModules()
-    mockUnavailableProperLockfile()
-
-    const heartbeatCallbacks: Array<() => void> = []
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: TimerHandler) => {
-      heartbeatCallbacks.push(callback as () => void)
-      return heartbeatCallbacks.length as unknown as ReturnType<typeof setTimeout>
-    }) as unknown as typeof setTimeout)
-    vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {})
-    const readFileSpy = vi.spyOn(fs, "readFile")
-    const utimesSpy = vi.spyOn(fs, "utimes")
-
-    const { __cacheLockTest } = await import("../lib/cache-lock")
-    const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "heartbeat-owner-target")
-    const lockDir = `${targetPath}.lock`
-    const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-      stale: 20,
-      retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
-    })
-
-    await __cacheLockTest.writeDirectoryLockOwner(lockDir, "other-owner")
-    heartbeatCallbacks[0]?.()
-    await vi.waitFor(() => {
-      expect(readFileSpy).toHaveBeenCalled()
-    })
-    expect(utimesSpy).not.toHaveBeenCalled()
-    await expect(release()).resolves.toBeUndefined()
-    await expect(fs.access(lockDir)).resolves.toBeUndefined()
-  })
-
-  it("surfaces non-ENOENT heartbeat failures", async () => {
-    vi.resetModules()
-    mockUnavailableProperLockfile()
-
-    let heartbeatCallback: (() => void) | undefined
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: TimerHandler) => {
-      heartbeatCallback = callback as () => void
-      return 1 as unknown as ReturnType<typeof setTimeout>
-    }) as unknown as typeof setTimeout)
-    vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {})
-    const utimesSpy = vi
-      .spyOn(fs, "utimes")
-      .mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "EPERM" }))
-
-    const { __cacheLockTest } = await import("../lib/cache-lock")
-    const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "heartbeat-error-target")
-    const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-      stale: 20,
-      retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
-    })
-
-    heartbeatCallback?.()
-    await vi.waitFor(() => {
-      expect(utimesSpy).toHaveBeenCalledTimes(1)
-    })
     await expect(release()).rejects.toMatchObject({ code: "EPERM" })
+    expect(rmSpy).toHaveBeenCalledTimes(1)
   })
 
-  it("skips heartbeat work after a fallback lock has already been released", async () => {
-    vi.resetModules()
-    mockUnavailableProperLockfile()
-
-    let heartbeatCallback: (() => void) | undefined
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: TimerHandler) => {
-      heartbeatCallback = callback as () => void
-      return 1 as unknown as ReturnType<typeof setTimeout>
-    }) as unknown as typeof setTimeout)
-    vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {})
-    const utimesSpy = vi.spyOn(fs, "utimes")
-
-    const { __cacheLockTest } = await import("../lib/cache-lock")
-    const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "heartbeat-released-target")
-    const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-      stale: 20,
-      retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
-    })
-
-    const releasePromise = release()
-    heartbeatCallback?.()
-    await expect(releasePromise).resolves.toBeUndefined()
-    expect(utimesSpy).not.toHaveBeenCalled()
-  })
-
-  it("skips heartbeat writes after the fallback lock has already been released", async () => {
-    vi.resetModules()
-    mockUnavailableProperLockfile()
-
-    let heartbeatCallback: (() => void) | undefined
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: TimerHandler) => {
-      heartbeatCallback = callback as () => void
-      return 1 as unknown as ReturnType<typeof setTimeout>
-    }) as unknown as typeof setTimeout)
-    vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {})
-    const utimesSpy = vi.spyOn(fs, "utimes")
-
-    const { __cacheLockTest } = await import("../lib/cache-lock")
-    const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "heartbeat-skip-target")
-    const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-      stale: 20,
-      retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
-    })
-
-    await expect(release()).resolves.toBeUndefined()
-    heartbeatCallback?.()
-    await Promise.resolve()
-    expect(utimesSpy).not.toHaveBeenCalled()
-  })
-
-  it("reclaims stale fallback lock directories before retrying", async () => {
+  it("does not remove a replacement fallback lock owned by someone else", async () => {
     vi.resetModules()
     mockUnavailableProperLockfile()
 
     const { __cacheLockTest } = await import("../lib/cache-lock")
     const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "stale-target")
-    const lockDir = `${targetPath}.lock`
-
-    await fs.mkdir(lockDir)
-    const staleDate = new Date(Date.now() - 5_000)
-    await fs.utimes(lockDir, staleDate, staleDate)
-
-    const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-      stale: 1,
-      retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
-    })
-
-    await expect(fs.access(lockDir)).resolves.toBeUndefined()
-    await release()
-    await expect(fs.access(lockDir)).rejects.toMatchObject({ code: "ENOENT" })
-  })
-
-  it("retries fallback locking when the stale lock disappears during inspection", async () => {
-    vi.resetModules()
-    mockUnavailableProperLockfile()
-
-    const actualMkdir = fs.mkdir.bind(fs)
-    const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "vanished-target")
-    const mkdirSpy = vi
-      .spyOn(fs, "mkdir")
-      .mockRejectedValueOnce(Object.assign(new Error("busy"), { code: "EEXIST" }))
-      .mockImplementationOnce(actualMkdir)
-    const statSpy = vi.spyOn(fs, "stat").mockRejectedValueOnce(Object.assign(new Error("gone"), { code: "ENOENT" }))
-
-    const { __cacheLockTest } = await import("../lib/cache-lock")
-
-    const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-      stale: 1,
-      retries: { retries: 1, minTimeout: 1, maxTimeout: 1 }
-    })
-
-    expect(mkdirSpy).toHaveBeenCalledTimes(2)
-    expect(statSpy).toHaveBeenCalledTimes(1)
-    await release()
-  })
-
-  it("does not remove a fallback lock after ownership has been replaced", async () => {
-    vi.resetModules()
-    mockUnavailableProperLockfile()
-
-    const { __cacheLockTest } = await import("../lib/cache-lock")
-    const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "replaced-owner-target")
+    const targetPath = path.join(root, "replacement-owner-target")
     const lockDir = `${targetPath}.lock`
     const release = await __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-      stale: 20,
       retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
     })
 
@@ -482,74 +330,6 @@ describe("cache lock", () => {
 
     await expect(release()).resolves.toBeUndefined()
     await expect(fs.access(lockDir)).resolves.toBeUndefined()
-  })
-
-  it("rethrows non-ENOENT stale inspection errors", async () => {
-    vi.resetModules()
-    mockUnavailableProperLockfile()
-
-    const root = await createTempDir("opencode-cache-lock-")
-    const targetPath = path.join(root, "stat-error-target")
-    await fs.mkdir(`${targetPath}.lock`)
-
-    const statSpy = vi.spyOn(fs, "stat").mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "EPERM" }))
-
-    const { __cacheLockTest } = await import("../lib/cache-lock")
-
-    await expect(
-      __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-        stale: 1,
-        retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
-      })
-    ).rejects.toMatchObject({ code: "EPERM" })
-    expect(statSpy).toHaveBeenCalledTimes(1)
-  })
-
-  it("does not reclaim an active fallback lock after the stale window elapses", async () => {
-    vi.resetModules()
-    mockUnavailableProperLockfile()
-
-    const { withLockedFile } = await import("../lib/cache-lock")
-    const root = await createTempDir("opencode-cache-lock-")
-    const filePath = path.join(root, "active-target.json")
-
-    let releaseFirst!: () => void
-    const firstDone = new Promise<void>((resolve) => {
-      releaseFirst = resolve
-    })
-
-    let firstEntered = false
-    const firstLock = withLockedFile(
-      filePath,
-      async () => {
-        firstEntered = true
-        await firstDone
-      },
-      { staleMs: 50 }
-    )
-
-    while (!firstEntered) {
-      await sleep(5)
-    }
-
-    await sleep(120)
-
-    let secondEntered = false
-    const secondLock = withLockedFile(
-      filePath,
-      async () => {
-        secondEntered = true
-      },
-      { staleMs: 50 }
-    )
-
-    await sleep(80)
-    expect(secondEntered).toBe(false)
-
-    releaseFirst()
-    await firstLock
-    await secondLock
-    expect(secondEntered).toBe(true)
   })
 
   it("throws fallback errors that are not lock contention", async () => {
@@ -575,7 +355,6 @@ describe("cache lock", () => {
 
     await expect(
       __cacheLockTest.lockWithDirectoryFallback(targetPath, {
-        stale: 100_000,
         retries: { retries: 0, minTimeout: 1, maxTimeout: 1 }
       })
     ).rejects.toMatchObject({ code: "EEXIST" })

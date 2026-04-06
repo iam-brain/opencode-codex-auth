@@ -106,8 +106,6 @@ async function lockWithDirectoryFallback(
 ): Promise<() => Promise<void>> {
   const lockDir = `${targetPath}.lock`
   const retry = toRetryOptions(options?.retries)
-  const staleMs = typeof options?.stale === "number" && Number.isFinite(options.stale) ? Math.max(1, options.stale) : 0
-  const heartbeatMs = staleMs > 0 ? Math.max(1, Math.min(Math.floor(staleMs / 2), 1_000)) : 0
 
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -119,47 +117,7 @@ async function lockWithDirectoryFallback(
         await fs.rm(lockDir, { recursive: true, force: true })
         throw error
       }
-
-      let released = false
-      let timer: ReturnType<typeof setTimeout> | undefined
-      let heartbeat = Promise.resolve()
-      let heartbeatError: unknown
-
-      const scheduleHeartbeat = () => {
-        if (released || heartbeatMs <= 0) return
-        timer = setTimeout(() => {
-          heartbeat = heartbeat.finally(async () => {
-            if (released) return
-            try {
-              if (!(await hasDirectoryLockOwner(lockDir, ownerToken))) {
-                released = true
-                return
-              }
-              const now = new Date()
-              await fs.utimes(lockDir, now, now)
-            } catch (error) {
-              if (!isFsErrorCode(error, "ENOENT")) {
-                heartbeatError = error
-                released = true
-                return
-              }
-              released = true
-              return
-            }
-            scheduleHeartbeat()
-          })
-        }, heartbeatMs)
-      }
-
-      scheduleHeartbeat()
-
       return async () => {
-        released = true
-        if (timer) clearTimeout(timer)
-        await heartbeat
-        if (heartbeatError) {
-          throw heartbeatError
-        }
         if (!(await hasDirectoryLockOwner(lockDir, ownerToken))) {
           return
         }
@@ -174,21 +132,6 @@ async function lockWithDirectoryFallback(
     } catch (error) {
       if (!isFsErrorCode(error, "EEXIST")) {
         throw error
-      }
-
-      if (staleMs > 0) {
-        try {
-          const stat = await fs.stat(lockDir)
-          if (Date.now() - stat.mtimeMs > staleMs) {
-            await fs.rm(lockDir, { recursive: true, force: true })
-            continue
-          }
-        } catch (staleError) {
-          if (!isFsErrorCode(staleError, "ENOENT")) {
-            throw staleError
-          }
-          continue
-        }
       }
 
       if (attempt >= retry.retries) {
