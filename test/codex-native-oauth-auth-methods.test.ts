@@ -130,6 +130,47 @@ describe("createBrowserOAuthAuthorize", () => {
     }
   })
 
+  it("defaults missing authorize inputs to the interactive auth menu in tty mode", async () => {
+    const scheduleOAuthServerStop = vi.fn()
+    const persistOAuthTokens = vi.fn()
+    const openAuthUrl = vi.fn()
+    const runInteractiveAuthMenu = vi.fn<(options: { allowExit: boolean }) => Promise<"add" | "exit">>(
+      async () => "exit"
+    )
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const previousIn = stdin.isTTY
+    const previousOut = stdout.isTTY
+    stdin.isTTY = true
+    stdout.isTTY = true
+
+    try {
+      const authorize = createBrowserOAuthAuthorize({
+        authMode: "native",
+        spoofMode: "native",
+        runInteractiveAuthMenu,
+        startOAuthServer: vi.fn(async () => ({ redirectUri: "http://localhost:1455/auth/callback" })),
+        waitForOAuthCallback: vi.fn(async () => {
+          throw new Error("callback failed")
+        }),
+        scheduleOAuthServerStop,
+        persistOAuthTokens,
+        openAuthUrl,
+        shutdownGraceMs: 1_000,
+        shutdownErrorGraceMs: 5_000
+      })
+
+      const payload = await authorize()
+      expect(payload.url).toBe("")
+      expect(payload.instructions).toBe("Login cancelled.")
+      expect(runInteractiveAuthMenu).toHaveBeenCalledTimes(1)
+    } finally {
+      stdin.isTTY = previousIn
+      stdout.isTTY = previousOut
+    }
+  })
+
   it("returns a failed payload when browser oauth server startup fails", async () => {
     const scheduleOAuthServerStop = vi.fn()
     const persistOAuthTokens = vi.fn()
@@ -159,6 +200,62 @@ describe("createBrowserOAuthAuthorize", () => {
     expect(openAuthUrl).not.toHaveBeenCalled()
     expect(persistOAuthTokens).not.toHaveBeenCalled()
     expect(scheduleOAuthServerStop).not.toHaveBeenCalled()
+  })
+
+  it("skips the interactive auth menu when browser launch is disabled by env", async () => {
+    const scheduleOAuthServerStop = vi.fn()
+    const persistOAuthTokens = vi.fn(async () => {})
+    const openAuthUrl = vi.fn()
+    const runInteractiveAuthMenu = vi.fn<(options: { allowExit: boolean }) => Promise<"add" | "exit">>(
+      async () => "exit"
+    )
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const previousIn = stdin.isTTY
+    const previousOut = stdout.isTTY
+    const previousNoBrowser = process.env.OPENCODE_NO_BROWSER
+    stdin.isTTY = true
+    stdout.isTTY = true
+    process.env.OPENCODE_NO_BROWSER = "1"
+
+    try {
+      const authorize = createBrowserOAuthAuthorize({
+        authMode: "native",
+        spoofMode: "native",
+        runInteractiveAuthMenu,
+        startOAuthServer: vi.fn(async () => ({ redirectUri: "http://localhost:1455/auth/callback" })),
+        waitForOAuthCallback: vi.fn(async () => ({
+          refresh_token: "rt_no_browser",
+          access_token: "at_no_browser",
+          expires_in: 1200
+        })),
+        scheduleOAuthServerStop,
+        persistOAuthTokens,
+        openAuthUrl,
+        shutdownGraceMs: 1_000,
+        shutdownErrorGraceMs: 5_000
+      })
+
+      const payload = await authorize()
+      expect(runInteractiveAuthMenu).not.toHaveBeenCalled()
+      expect(payload.url).toContain("https://auth.openai.com/oauth/authorize")
+      await expect(payload.callback()).resolves.toMatchObject({
+        type: "success",
+        refresh: "rt_no_browser",
+        access: "at_no_browser"
+      })
+      expect(openAuthUrl).toHaveBeenCalledTimes(1)
+      expect(persistOAuthTokens).toHaveBeenCalledTimes(1)
+    } finally {
+      stdin.isTTY = previousIn
+      stdout.isTTY = previousOut
+      if (previousNoBrowser === undefined) {
+        delete process.env.OPENCODE_NO_BROWSER
+      } else {
+        process.env.OPENCODE_NO_BROWSER = previousNoBrowser
+      }
+    }
   })
 })
 
