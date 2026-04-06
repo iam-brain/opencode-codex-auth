@@ -32,7 +32,7 @@
       "stubGlobal": 0
     },
     "test/cache-lock.test.ts": {
-      "doMock": 3,
+      "doMock": 4,
       "mock": 0,
       "stubGlobal": 0
     },

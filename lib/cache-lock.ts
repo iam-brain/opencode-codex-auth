@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 
@@ -10,6 +11,7 @@ type RetryOptions = {
 }
 
 let cachedLockFunction: LockFunction | undefined
+const DIRECTORY_LOCK_OWNER_FILE = ".owner"
 
 function resolveLockFunction(value: unknown, visited = new Set<unknown>()): LockFunction | undefined {
   if (typeof value === "function") {
@@ -78,6 +80,26 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function ownerFilePathForLockDirectory(lockDir: string): string {
+  return path.join(lockDir, DIRECTORY_LOCK_OWNER_FILE)
+}
+
+async function writeDirectoryLockOwner(lockDir: string, ownerToken: string): Promise<void> {
+  await fs.writeFile(ownerFilePathForLockDirectory(lockDir), ownerToken, { mode: 0o600 })
+}
+
+async function hasDirectoryLockOwner(lockDir: string, ownerToken: string): Promise<boolean> {
+  try {
+    const value = await fs.readFile(ownerFilePathForLockDirectory(lockDir), "utf8")
+    return value === ownerToken
+  } catch (error) {
+    if (isFsErrorCode(error, "ENOENT")) {
+      return false
+    }
+    throw error
+  }
+}
+
 async function lockWithDirectoryFallback(
   targetPath: string,
   options?: Record<string, unknown>
@@ -85,11 +107,62 @@ async function lockWithDirectoryFallback(
   const lockDir = `${targetPath}.lock`
   const retry = toRetryOptions(options?.retries)
   const staleMs = typeof options?.stale === "number" && Number.isFinite(options.stale) ? Math.max(1, options.stale) : 0
+  const heartbeatMs = staleMs > 0 ? Math.max(1, Math.min(Math.floor(staleMs / 2), 1_000)) : 0
 
   for (let attempt = 0; ; attempt += 1) {
     try {
       await fs.mkdir(lockDir)
+      const ownerToken = randomUUID()
+      try {
+        await writeDirectoryLockOwner(lockDir, ownerToken)
+      } catch (error) {
+        await fs.rm(lockDir, { recursive: true, force: true })
+        throw error
+      }
+
+      let released = false
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let heartbeat = Promise.resolve()
+      let heartbeatError: unknown
+
+      const scheduleHeartbeat = () => {
+        if (released || heartbeatMs <= 0) return
+        timer = setTimeout(() => {
+          heartbeat = heartbeat.finally(async () => {
+            if (released) return
+            try {
+              if (!(await hasDirectoryLockOwner(lockDir, ownerToken))) {
+                released = true
+                return
+              }
+              const now = new Date()
+              await fs.utimes(lockDir, now, now)
+            } catch (error) {
+              if (!isFsErrorCode(error, "ENOENT")) {
+                heartbeatError = error
+                released = true
+                return
+              }
+              released = true
+              return
+            }
+            scheduleHeartbeat()
+          })
+        }, heartbeatMs)
+      }
+
+      scheduleHeartbeat()
+
       return async () => {
+        released = true
+        if (timer) clearTimeout(timer)
+        await heartbeat
+        if (heartbeatError) {
+          throw heartbeatError
+        }
+        if (!(await hasDirectoryLockOwner(lockDir, ownerToken))) {
+          return
+        }
         try {
           await fs.rm(lockDir, { recursive: true, force: true })
         } catch (error) {
@@ -139,10 +212,7 @@ async function resolveImportedLockFunction(specifier: string): Promise<LockFunct
 async function getLockFunction(): Promise<LockFunction> {
   if (cachedLockFunction) return cachedLockFunction
 
-  cachedLockFunction =
-    (await resolveImportedLockFunction("proper-lockfile")) ??
-    (await resolveImportedLockFunction("proper-lockfile/index.js")) ??
-    lockWithDirectoryFallback
+  cachedLockFunction = (await resolveImportedLockFunction("proper-lockfile")) ?? lockWithDirectoryFallback
 
   return cachedLockFunction
 }
@@ -210,4 +280,18 @@ export async function withLockedFile<T>(
   } finally {
     await release()
   }
+}
+
+// Test-only hooks for focused fallback coverage without widening the runtime behavior surface.
+export const __cacheLockTest = {
+  DIRECTORY_LOCK_OWNER_FILE,
+  getLockFunction,
+  hasDirectoryLockOwner,
+  lockWithDirectoryFallback,
+  ownerFilePathForLockDirectory,
+  resolveImportedLockFunction,
+  resolveLockFunction,
+  resolveLockOptions,
+  toRetryOptions,
+  writeDirectoryLockOwner
 }
