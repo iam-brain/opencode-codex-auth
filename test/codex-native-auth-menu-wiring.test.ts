@@ -282,6 +282,36 @@ describe("codex-native auth menu wiring", () => {
     }
   })
 
+  it("shows interactive menu in tty login flow when authorize inputs are omitted", async () => {
+    const { hooks, runAuthMenuOnce } = await loadPluginWithMenu({
+      offerLegacyTransfer: true,
+      menuResult: "exit"
+    })
+    const browserMethod = hooks.auth?.methods.find((method) => method.label === "ChatGPT Pro/Plus (browser)")
+    expect(browserMethod).toBeDefined()
+    if (!browserMethod || browserMethod.type !== "oauth") throw new Error("Missing browser oauth method")
+
+    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
+    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean }
+    const prevIn = stdin.isTTY
+    const prevOut = stdout.isTTY
+    stdin.isTTY = true
+    stdout.isTTY = true
+
+    try {
+      const flow = await browserMethod.authorize()
+      expect(runAuthMenuOnce).toHaveBeenCalledTimes(1)
+      expect(flow.instructions).toBe("Login cancelled.")
+      expect(flow.method).toBe("auto")
+      expect(flow.url).toBe("")
+      const result = await flow.callback("")
+      expect(result.type).toBe("failed")
+    } finally {
+      stdin.isTTY = prevIn
+      stdout.isTTY = prevOut
+    }
+  })
+
   it("passes transfer availability flag into auth menu runner", async () => {
     const { hooks, runAuthMenuOnce } = await loadPluginWithMenu({
       offerLegacyTransfer: true,
