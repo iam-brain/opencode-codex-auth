@@ -53,6 +53,9 @@
         "codexCompactionOverride": {
           "type": "boolean"
         },
+        "shareableDebug": {
+          "type": "boolean"
+        },
         "headerSnapshots": {
           "type": "boolean"
         },

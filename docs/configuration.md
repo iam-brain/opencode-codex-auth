@@ -116,6 +116,11 @@ Mode-derived runtime defaults when omitted:
   - Enables codex-rs compact prompt + `summary_prefix` handoff behavior for OpenAI sessions.
   - Mode defaults: `true` in `codex`, `false` in `native`.
   - Explicit boolean value overrides mode default.
+- `runtime.shareableDebug: boolean`
+  - Writes privacy-first structured events to `<config-root>/logs/codex-plugin/shareable-debug.jsonl`.
+  - Sensitive identifiers are pseudonymized per process/log bundle instead of logged raw.
+  - Request bodies, tokens, cookies, OAuth secrets, raw emails/account IDs/session IDs, and raw `prompt_cache_key` values are never persisted by this mode.
+  - When enabled, request snapshot logging is suppressed even if `runtime.headerSnapshots` or `runtime.headerTransformDebug` are also set.
 - `runtime.headerSnapshots: boolean`
   - Writes before/after request header snapshots to debug logs.
   - Custom snapshot metadata is stored under a nested `meta` object to prevent collisions with reserved top-level fields.
@@ -316,6 +321,7 @@ Advanced path:
 ### Debug/OAuth controls
 
 - `OPENCODE_OPENAI_MULTI_DEBUG=1`: plugin debug logs.
+- `OPENCODE_OPENAI_MULTI_SHAREABLE_DEBUG=1`: privacy-first shareable structured debug log.
 - `CODEX_IN_VIVO=1`: enables live quota probe tests.
 - `DEBUG_CODEX_PLUGIN=1`: alternate debug flag.
 - `CODEX_AUTH_DEBUG=1`: verbose OAuth lifecycle logging (`oauth-lifecycle.log`).

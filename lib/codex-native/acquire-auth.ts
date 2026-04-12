@@ -8,6 +8,7 @@ import type { AccountRecord, OpenAIAuthMode, RotationStrategy } from "../types.j
 import { parseJwtClaims } from "../claims.js"
 import { formatAccountLabel } from "./accounts.js"
 import { extractAccountId, refreshAccessToken, type OAuthTokenRefreshError } from "./oauth-utils.js"
+import type { ShareableDebugLogger } from "../shareable-debug.js"
 
 const AUTH_REFRESH_FAILURE_COOLDOWN_MS = 30_000
 const AUTH_REFRESH_LEASE_MS = 30_000
@@ -73,6 +74,7 @@ export type AcquireOpenAIAuthInput = {
   pidOffsetEnabled: boolean
   configuredRotationStrategy?: RotationStrategy
   log?: Logger
+  shareableDebug?: ShareableDebugLogger
 }
 
 export function createAcquireOpenAIAuthInputDefaults(): {
@@ -114,6 +116,17 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
   let totalAccounts = 0
   let rotationLogged = false
   let lastSelectionTrace: AccountSelectionTrace | undefined
+  const emitAuthFailure = async (details: { outcome: string; status: number; waitMs?: number }): Promise<void> => {
+    await input.shareableDebug?.emitAuthFailure({
+      authMode: input.authMode,
+      outcome: details.outcome,
+      status: details.status,
+      waitMs: details.waitMs,
+      sessionKey: input.context?.sessionKey,
+      selectedIdentityKey: lastSelectionTrace?.selectedIdentityKey,
+      activeIdentityKey: lastSelectionTrace?.activeIdentityKey
+    })
+  }
 
   try {
     while (true) {
@@ -161,6 +174,14 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
           totalAccounts: domain.accounts.length,
           enabledAccounts: enabled.length,
           mode: input.authMode,
+          sessionKey: input.context?.sessionKey ?? null
+        })
+        await input.shareableDebug?.emitRotationBegin({
+          authMode: input.authMode,
+          rotationStrategy,
+          activeIdentityKey: domain.activeIdentityKey,
+          totalAccounts: domain.accounts.length,
+          enabledAccounts: enabled.length,
           sessionKey: input.context?.sessionKey ?? null
         })
         rotationLogged = true
@@ -211,6 +232,20 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
               ...(event.sessionKey ? { sessionKey: event.sessionKey } : null)
             }
             input.log?.debug("rotation decision", event)
+            void input.shareableDebug?.emitRotationDecision({
+              authMode: input.authMode,
+              rotationStrategy: event.strategy,
+              decision: event.decision,
+              totalCount: event.totalCount,
+              disabledCount: event.disabledCount,
+              cooldownCount: event.cooldownCount,
+              refreshLeaseCount: event.refreshLeaseCount,
+              eligibleCount: event.eligibleCount,
+              attemptedCount: attempted.size + (event.selectedIdentityKey ? 1 : 0),
+              selectedIdentityKey: event.selectedIdentityKey,
+              activeIdentityKey: event.activeIdentityKey,
+              sessionKey: event.sessionKey
+            })
           }
         })
 
@@ -240,6 +275,15 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
               }
 
               input.log?.debug("rotation candidate selected", {
+                attemptKey,
+                selectedIdentityKey: selected.identityKey,
+                selectedIndex,
+                selectedEnabled: selected.enabled !== false,
+                selectedCooldownUntil: selected.cooldownUntil ?? null,
+                selectedExpires: selected.expires ?? null
+              })
+              void input.shareableDebug?.emitRotationCandidateSelected({
+                authMode: input.authMode,
                 attemptKey,
                 selectedIdentityKey: selected.identityKey,
                 selectedIndex,
@@ -474,6 +518,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
       const authSnapshot = await loadAuthStorage(undefined, { lockReads: false })
       const openai = authSnapshot.openai
       if (!openai || openai.type !== "oauth") {
+        await emitAuthFailure({ outcome: "oauth_not_configured", status: 401 })
         throw new PluginFatalError({
           message: "Not authenticated with OpenAI. Run `opencode auth login`.",
           status: 401,
@@ -485,6 +530,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
       const domain = ensureOpenAIOAuthDomain(authSnapshot, input.authMode)
       const enabledAfterAttempts = domain.accounts.filter((account) => account.enabled !== false)
       if (enabledAfterAttempts.length === 0 && sawInvalidGrant) {
+        await emitAuthFailure({ outcome: "refresh_invalid_grant", status: 401 })
         throw new PluginFatalError({
           message:
             "All enabled OpenAI refresh tokens were rejected (invalid_grant). Run `opencode auth login` to reauthenticate.",
@@ -506,6 +552,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
 
       if (nextAvailableAt !== undefined) {
         const waitMs = Math.max(0, nextAvailableAt - now)
+        await emitAuthFailure({ outcome: "all_accounts_cooling_down", status: 429, waitMs })
         throw new PluginFatalError({
           message: `All enabled OpenAI accounts are cooling down. Try again in ${formatWaitTime(waitMs)} or run \`opencode auth login\`.`,
           status: 429,
@@ -515,6 +562,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
       }
 
       if (sawInvalidGrant) {
+        await emitAuthFailure({ outcome: "refresh_invalid_grant", status: 401 })
         throw new PluginFatalError({
           message:
             "OpenAI refresh token was rejected (invalid_grant). Run `opencode auth login` to reauthenticate this account.",
@@ -525,6 +573,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
       }
 
       if (sawMissingRefresh) {
+        await emitAuthFailure({ outcome: "missing_refresh_token", status: 401 })
         throw new PluginFatalError({
           message: "Selected OpenAI account is missing a refresh token. Run `opencode auth login` to reauthenticate.",
           status: 401,
@@ -534,6 +583,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
       }
 
       if (sawMissingIdentity) {
+        await emitAuthFailure({ outcome: "missing_account_identity", status: 401 })
         throw new PluginFatalError({
           message: "Selected OpenAI account is missing identity metadata. Run `opencode auth login` to reauthenticate.",
           status: 401,
@@ -543,6 +593,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
       }
 
       if (sawRefreshFailure) {
+        await emitAuthFailure({ outcome: "refresh_failed", status: 401 })
         throw new PluginFatalError({
           message: "Failed to refresh OpenAI access token. Run `opencode auth login` and try again.",
           status: 401,
@@ -551,6 +602,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
         })
       }
 
+      await emitAuthFailure({ outcome: "no_enabled_accounts", status: 403 })
       throw new PluginFatalError({
         message: `No enabled OpenAI ${input.authMode} accounts available. Enable an account or run \`opencode auth login\`.`,
         status: 403,
@@ -560,6 +612,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
     }
   } catch (error) {
     if (isPluginFatalError(error)) throw error
+    await emitAuthFailure({ outcome: "auth_storage_error", status: 500 })
     throw new PluginFatalError({
       message:
         "Unable to access OpenAI auth storage. Check plugin configuration and run `opencode auth login` if needed.",
@@ -570,6 +623,7 @@ export async function acquireOpenAIAuth(input: AcquireOpenAIAuthInput): Promise<
   }
 
   if (!access) {
+    await emitAuthFailure({ outcome: "no_valid_access_token", status: 401 })
     throw new PluginFatalError({
       message: "No valid OpenAI access token available. Run `opencode auth login`.",
       status: 401,

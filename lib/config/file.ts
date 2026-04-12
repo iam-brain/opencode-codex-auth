@@ -690,6 +690,7 @@ export function validateConfigFileObject(raw: unknown): ConfigValidationResult {
         "sanitizeInputs",
         "developerMessagesToUser",
         "codexCompactionOverride",
+        "shareableDebug",
         "headerSnapshots",
         "headerSnapshotBodies",
         "headerTransformDebug",
@@ -848,6 +849,7 @@ function parseConfigFileObjectWithMetadata(raw: unknown): ParsedConfigFile {
     typeof runtime?.developerMessagesToUser === "boolean" ? runtime.developerMessagesToUser : undefined
   const codexCompactionOverride =
     typeof runtime?.codexCompactionOverride === "boolean" ? runtime.codexCompactionOverride : undefined
+  const shareableDebug = typeof runtime?.shareableDebug === "boolean" ? runtime.shareableDebug : undefined
   const headerSnapshots = typeof runtime?.headerSnapshots === "boolean" ? runtime.headerSnapshots : undefined
   const headerSnapshotBodies =
     typeof runtime?.headerSnapshotBodies === "boolean" ? runtime.headerSnapshotBodies : undefined
@@ -875,6 +877,7 @@ function parseConfigFileObjectWithMetadata(raw: unknown): ParsedConfigFile {
       compatInputSanitizer,
       remapDeveloperMessagesToUser,
       codexCompactionOverride,
+      shareableDebug,
       headerSnapshots,
       headerSnapshotBodies,
       headerTransformDebug,

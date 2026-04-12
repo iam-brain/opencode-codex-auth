@@ -11,7 +11,8 @@ describe("config validation", () => {
   it("returns actionable issues for invalid known fields", () => {
     const result = validateConfigFileObject({
       runtime: {
-        promptCacheKeyStrategy: "bad"
+        promptCacheKeyStrategy: "bad",
+        shareableDebug: "yes"
       },
       global: {
         serviceTier: "turbo"
@@ -19,8 +20,13 @@ describe("config validation", () => {
     })
 
     expect(result.valid).toBe(false)
-    expect(result.issues[0]).toContain("runtime.promptCacheKeyStrategy")
-    expect(result.issues[1]).toContain("global.serviceTier")
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("runtime.promptCacheKeyStrategy"),
+        expect.stringContaining("runtime.shareableDebug"),
+        expect.stringContaining("global.serviceTier")
+      ])
+    )
   })
 
   it("reports precise custom model validation issues", () => {

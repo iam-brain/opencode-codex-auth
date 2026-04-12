@@ -30,6 +30,7 @@ describe("config file loading", () => {
           sanitizeInputs: true,
           developerMessagesToUser: true,
           codexCompactionOverride: true,
+          shareableDebug: true,
           headerSnapshots: true,
           headerSnapshotBodies: true,
           headerTransformDebug: true,
@@ -77,6 +78,7 @@ describe("config file loading", () => {
     expect(loaded.compatInputSanitizer).toBe(true)
     expect(loaded.remapDeveloperMessagesToUser).toBe(true)
     expect(loaded.codexCompactionOverride).toBe(true)
+    expect(loaded.shareableDebug).toBe(true)
     expect(loaded.headerSnapshots).toBe(true)
     expect(loaded.headerSnapshotBodies).toBe(true)
     expect(loaded.headerTransformDebug).toBe(true)
