@@ -36,6 +36,11 @@ type ShareableDebugEventRecord = {
   [key: string]: unknown
 }
 
+type JsonlReadResult = {
+  records: ShareableDebugEventRecord[]
+  hadTruncatedTail: boolean
+}
+
 type TriggerReason = "http_status" | "auth_failure" | "retry_after_429" | "synthetic_fatal_error" | "process_failure"
 
 type IncidentLifecycleReason = "trigger" | "recovered" | "missing_output" | "interrupted"
@@ -54,6 +59,11 @@ type IncidentManifest = {
   status: "open"
   createdAt: string
   updatedAt: string
+}
+
+type ManifestlessRecoveryMarker = {
+  version: 1
+  triggerSeq: number
 }
 
 type ShareableDebugIncidentConfig = {
@@ -243,7 +253,47 @@ function incidentFileReference(filePath: string): string {
   return path.basename(filePath)
 }
 
-async function readJsonlRecords(filePath: string): Promise<ShareableDebugEventRecord[]> {
+function contiguousWindow(
+  rows: ShareableDebugEventRecord[],
+  startSeq: number,
+  maxCount: number
+): {
+  rows: ShareableDebugEventRecord[]
+  hasGapAfterPrefix: boolean
+} {
+  const deduped = Array.from(new Map(rows.map((row) => [row.seq, row] as const)).values()).sort(
+    (left, right) => left.seq - right.seq
+  )
+  const window: ShareableDebugEventRecord[] = []
+  let expectedSeq = startSeq
+
+  for (const row of deduped) {
+    if (window.length >= maxCount) break
+    if (row.seq < expectedSeq) continue
+    if (row.seq > expectedSeq) {
+      return {
+        rows: window,
+        hasGapAfterPrefix: true
+      }
+    }
+    window.push(row)
+    expectedSeq += 1
+  }
+
+  return {
+    rows: window,
+    hasGapAfterPrefix: false
+  }
+}
+
+function parseSegmentStartSeq(filePath: string): number | undefined {
+  const match = /^segment-(\d+)\.jsonl$/u.exec(path.basename(filePath))
+  if (!match) return undefined
+  const value = Number.parseInt(match[1] ?? "", 10)
+  return Number.isFinite(value) && value >= 1 ? value : undefined
+}
+
+async function readJsonlFile(filePath: string): Promise<JsonlReadResult> {
   try {
     const raw = await fs.readFile(filePath, "utf8")
     const lines = raw
@@ -251,25 +301,78 @@ async function readJsonlRecords(filePath: string): Promise<ShareableDebugEventRe
       .map((line) => line.trim())
       .filter(Boolean)
     const records: ShareableDebugEventRecord[] = []
+    let hadTruncatedTail = false
 
     for (const [index, line] of lines.entries()) {
       try {
         records.push(JSON.parse(line) as ShareableDebugEventRecord)
       } catch (error) {
         if (index === lines.length - 1) {
+          hadTruncatedTail = true
           break
         }
         throw error
       }
     }
 
-    return records
+    return {
+      records,
+      hadTruncatedTail
+    }
   } catch (error) {
     if (isFsErrorCode(error, "ENOENT")) {
-      return []
+      return {
+        records: [],
+        hadTruncatedTail: false
+      }
     }
     throw error
   }
+}
+
+function readJsonlFileSync(filePath: string): JsonlReadResult {
+  try {
+    const raw = fsSync.readFileSync(filePath, "utf8")
+    const lines = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+    const records: ShareableDebugEventRecord[] = []
+    let hadTruncatedTail = false
+
+    for (const [index, line] of lines.entries()) {
+      try {
+        records.push(JSON.parse(line) as ShareableDebugEventRecord)
+      } catch (error) {
+        if (index === lines.length - 1) {
+          hadTruncatedTail = true
+          break
+        }
+        throw error
+      }
+    }
+
+    return {
+      records,
+      hadTruncatedTail
+    }
+  } catch (error) {
+    if (isFsErrorCode(error, "ENOENT")) {
+      return {
+        records: [],
+        hadTruncatedTail: false
+      }
+    }
+    throw error
+  }
+}
+
+async function readJsonlRecords(filePath: string): Promise<ShareableDebugEventRecord[]> {
+  return (await readJsonlFile(filePath)).records
+}
+
+function readJsonlRecordsSync(filePath: string): ShareableDebugEventRecord[] {
+  return readJsonlFileSync(filePath).records
 }
 
 async function lastSeqFromSegment(filePath: string): Promise<number> {
@@ -293,6 +396,16 @@ async function writeJsonlLines(filePath: string, lines: string[]): Promise<void>
 function appendJsonlLineSync(filePath: string, line: string): void {
   fsSync.mkdirSync(path.dirname(filePath), { recursive: true })
   fsSync.appendFileSync(filePath, line, { mode: 0o600 })
+  try {
+    fsSync.chmodSync(filePath, 0o600)
+  } catch {
+    // best-effort only in crash path
+  }
+}
+
+function writeJsonlLinesSync(filePath: string, lines: string[]): void {
+  fsSync.mkdirSync(path.dirname(filePath), { recursive: true })
+  fsSync.writeFileSync(filePath, lines.join(""), { mode: 0o600 })
   try {
     fsSync.chmodSync(filePath, 0o600)
   } catch {
@@ -363,6 +476,17 @@ function isIncidentManifest(value: unknown): value is IncidentManifest {
   )
 }
 
+function isManifestlessRecoveryMarker(value: unknown): value is ManifestlessRecoveryMarker {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "version" in value &&
+    value.version === 1 &&
+    "triggerSeq" in value &&
+    typeof value.triggerSeq === "number"
+  )
+}
+
 export function createShareableDebugLogger(input: {
   enabled: boolean
   env?: Record<string, string | undefined>
@@ -379,6 +503,7 @@ export function createShareableDebugLogger(input: {
   const segmentsDir = path.join(stateDir, "segments")
   const incidentsDir = path.join(stateDir, "incidents")
   const manifestPath = path.join(stateDir, "incident-state.json")
+  const manifestlessRecoveryPath = path.join(stateDir, "manifestless-recovery.json")
 
   const summaryMaxBytes = parsePositiveInteger(input.incidentConfig?.summaryMaxBytes, DEFAULT_SUMMARY_MAX_BYTES)
   const summaryMaxFiles = parsePositiveInteger(input.incidentConfig?.summaryMaxFiles, DEFAULT_SUMMARY_MAX_FILES)
@@ -403,8 +528,122 @@ export function createShareableDebugLogger(input: {
   let currentSegmentBytes = 0
   let openIncident: IncidentManifest | undefined
   let pendingWrite = Promise.resolve()
+  let initPromise = Promise.resolve()
   let handlersRegistered = false
   let signalInFlight = false
+
+  const sanitizeJsonlTail = async (targetPath: string): Promise<ShareableDebugEventRecord[]> => {
+    const result = await readJsonlFile(targetPath)
+    if (result.hadTruncatedTail) {
+      await writeJsonlLines(
+        targetPath,
+        result.records.map((record) => `${JSON.stringify(record)}\n`)
+      )
+    }
+    return result.records
+  }
+
+  const appendSummaryLifecycleSync = (event: string, payload: Record<string, unknown>): void => {
+    appendSummaryLineSync(`${JSON.stringify({ timestamp: new Date().toISOString(), event, ...payload })}\n`)
+  }
+
+  const reconcileIncidentFile = async (incident: IncidentManifest): Promise<IncidentManifest | undefined> => {
+    let incidentRecords: ShareableDebugEventRecord[]
+    try {
+      incidentRecords = await sanitizeJsonlTail(incident.outputFilePath)
+    } catch (error) {
+      if (isFsErrorCode(error, "ENOENT")) {
+        incidentRecords = []
+      } else {
+        await sealIncidentIncomplete({
+          incident,
+          reason: "interrupted"
+        })
+        return undefined
+      }
+    }
+
+    const baseRowsFromSegments = await readEventsInRange(incident.preTriggerStartSeq, incident.preTriggerEndSeq)
+    const baseRowsFromIncident = incidentRecords.filter(
+      (row) => typeof row.seq === "number" && row.seq >= incident.preTriggerStartSeq && row.seq <= incident.triggerSeq
+    )
+    const expectedBaseCount = incident.triggerSeq - incident.preTriggerStartSeq + 1
+    const baseWindow = contiguousWindow(
+      [...baseRowsFromIncident, ...baseRowsFromSegments],
+      incident.preTriggerStartSeq,
+      expectedBaseCount
+    )
+
+    if (
+      baseWindow.hasGapAfterPrefix ||
+      baseWindow.rows.length !== expectedBaseCount ||
+      !baseWindow.rows.some((row) => row.seq === incident.triggerSeq && row.event === incident.triggerEvent)
+    ) {
+      await sealIncidentIncomplete({
+        incident,
+        reason: "interrupted"
+      })
+      return undefined
+    }
+
+    const closedRow = incidentRecords.find(
+      (row) => row.event === "incident_closed" && row.incidentId === incident.incidentId
+    )
+    if (closedRow) {
+      await deleteFileIfExists(manifestPath)
+      return undefined
+    }
+
+    const postRowsFromSegments = await readEventsInRange(
+      incident.triggerSeq + 1,
+      incident.triggerSeq + incident.postWindowCount
+    )
+    const recoveredPostWindow = contiguousWindow(
+      [
+        ...incidentRecords.filter(
+          (row) => typeof row.seq === "number" && row.seq > incident.triggerSeq && row.event !== "incident_closed"
+        ),
+        ...postRowsFromSegments
+      ],
+      incident.triggerSeq + 1,
+      incident.postWindowCount
+    )
+    if (recoveredPostWindow.hasGapAfterPrefix) {
+      await sealIncidentIncomplete({
+        incident,
+        reason: "interrupted"
+      })
+      return undefined
+    }
+    const recoveredPostRows = recoveredPostWindow.rows
+
+    await writeJsonlLines(
+      incident.outputFilePath,
+      [...baseWindow.rows, ...recoveredPostRows].map((row) => `${JSON.stringify(row)}\n`)
+    )
+
+    const postRemaining = Math.max(0, incident.postWindowCount - recoveredPostRows.length)
+    const recoveredIncident: IncidentManifest = {
+      ...incident,
+      postRemaining,
+      updatedAt: new Date().toISOString()
+    }
+
+    if (recoveredIncident.postRemaining <= 0) {
+      await closeIncident(recoveredIncident, "recovered")
+      return undefined
+    }
+
+    await writeManifest(recoveredIncident)
+    await appendSummaryLifecycle("incident_recovered", {
+      incidentId: recoveredIncident.incidentId,
+      incidentFile: incidentFileReference(recoveredIncident.outputFilePath),
+      triggerSeq: recoveredIncident.triggerSeq,
+      triggerEvent: recoveredIncident.triggerEvent,
+      postRemaining: recoveredIncident.postRemaining
+    })
+    return recoveredIncident
+  }
 
   const initializeState = async (): Promise<void> => {
     await fs.mkdir(segmentsDir, { recursive: true })
@@ -412,42 +651,71 @@ export function createShareableDebugLogger(input: {
 
     const segmentFiles = sortLexicallyAscending(await fs.readdir(segmentsDir).catch(() => []))
     const latestSegment = segmentFiles.at(-1)
+    let latestSegmentRecord: ShareableDebugEventRecord | undefined
     if (latestSegment) {
       currentSegmentPath = path.join(segmentsDir, latestSegment)
+      const latestSegmentRows = await sanitizeJsonlTail(currentSegmentPath)
       currentSegmentBytes = (await fs.stat(currentSegmentPath)).size
-      nextSeq = (await lastSeqFromSegment(currentSegmentPath)) + 1
+      const segmentStartSeq = parseSegmentStartSeq(currentSegmentPath) ?? 1
+      nextSeq = Math.max(segmentStartSeq, (await lastSeqFromSegment(currentSegmentPath)) + 1)
+      latestSegmentRecord = latestSegmentRows.at(-1)
     }
 
     const manifest = await readJsonFileBestEffort(manifestPath)
+    const manifestlessRecovery = await readJsonFileBestEffort(manifestlessRecoveryPath)
+    if (
+      isManifestlessRecoveryMarker(manifestlessRecovery) &&
+      manifestlessRecovery.triggerSeq !== latestSegmentRecord?.seq
+    ) {
+      await deleteFileIfExists(manifestlessRecoveryPath)
+    }
     if (!isIncidentManifest(manifest)) {
       await deleteFileIfExists(manifestPath)
+      const triggerReason = latestSegmentRecord ? triggerReasonFor(latestSegmentRecord) : undefined
+      if (
+        latestSegmentRecord &&
+        triggerReason &&
+        (!isManifestlessRecoveryMarker(manifestlessRecovery) ||
+          manifestlessRecovery.triggerSeq !== latestSegmentRecord.seq)
+      ) {
+        const incident = createIncidentManifest(latestSegmentRecord, triggerReason)
+        const preTriggerEvents = await readEventsInRange(incident.preTriggerStartSeq, incident.preTriggerEndSeq)
+        const expectedBaseCount = incident.triggerSeq - incident.preTriggerStartSeq + 1
+        const baseWindow = contiguousWindow(preTriggerEvents, incident.preTriggerStartSeq, expectedBaseCount)
+
+        await writeJsonlLines(
+          incident.outputFilePath,
+          baseWindow.rows.map((entry) => `${JSON.stringify(entry)}\n`)
+        )
+        if (baseWindow.hasGapAfterPrefix || baseWindow.rows.length !== expectedBaseCount) {
+          await writeJsonFileAtomic(manifestlessRecoveryPath, {
+            version: 1,
+            triggerSeq: latestSegmentRecord.seq
+          })
+          await sealIncidentIncomplete({
+            incident,
+            reason: "interrupted"
+          })
+          return
+        }
+
+        await writeManifest(incident)
+        await deleteFileIfExists(manifestlessRecoveryPath)
+        await appendSummaryLifecycle("incident_recovered", {
+          incidentId: incident.incidentId,
+          incidentFile: incidentFileReference(incident.outputFilePath),
+          triggerSeq: incident.triggerSeq,
+          triggerEvent: incident.triggerEvent,
+          postRemaining: incident.postRemaining
+        })
+        openIncident = incident
+        await pruneIncidents()
+      }
       return
     }
 
-    openIncident = manifest
-    try {
-      await fs.access(openIncident.outputFilePath)
-      await appendSummaryLifecycle("incident_recovered", {
-        incidentId: openIncident.incidentId,
-        incidentFile: incidentFileReference(openIncident.outputFilePath),
-        triggerSeq: openIncident.triggerSeq,
-        triggerEvent: openIncident.triggerEvent,
-        postRemaining: openIncident.postRemaining
-      })
-    } catch {
-      await sealIncidentIncomplete({
-        incident: openIncident,
-        reason: "missing_output"
-      })
-      openIncident = undefined
-    }
+    openIncident = await reconcileIncidentFile(manifest)
   }
-
-  const initPromise = initializeState().catch((error) => {
-    input.log?.warn("shareable debug initialization failed", {
-      error: error instanceof Error ? error.message : String(error)
-    })
-  })
 
   const runQueued = (work: () => Promise<void>): Promise<void> => {
     pendingWrite = pendingWrite
@@ -586,6 +854,43 @@ export function createShareableDebugLogger(input: {
     return events.sort((left, right) => left.seq - right.seq)
   }
 
+  const readEventsInRangeSync = (startSeq: number, endSeq: number): ShareableDebugEventRecord[] => {
+    const files = sortLexicallyAscending(fsSync.readdirSync(segmentsDir, "utf8"))
+    const events: ShareableDebugEventRecord[] = []
+    for (const name of files) {
+      const rows = readJsonlRecordsSync(path.join(segmentsDir, name))
+      for (const row of rows) {
+        if (typeof row.seq !== "number") continue
+        if (row.seq < startSeq || row.seq > endSeq) continue
+        events.push(row)
+      }
+    }
+    return events.sort((left, right) => left.seq - right.seq)
+  }
+
+  const createIncidentManifest = (
+    record: ShareableDebugEventRecord,
+    triggerReason: TriggerReason
+  ): IncidentManifest => {
+    const incidentId = randomUUID()
+    const timestamp = new Date().toISOString()
+    return {
+      version: 1,
+      incidentId,
+      outputFilePath: path.join(incidentsDir, incidentFileName(incidentId, timestamp)),
+      triggerSeq: record.seq,
+      triggerEvent: record.event,
+      triggerReason,
+      preTriggerStartSeq: Math.max(1, record.seq - preTriggerEventCount),
+      preTriggerEndSeq: record.seq,
+      postWindowCount: postTriggerEventCount,
+      postRemaining: postTriggerEventCount,
+      status: "open",
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  }
+
   const appendIncidentLine = async (incident: IncidentManifest, record: ShareableDebugEventRecord): Promise<void> => {
     await appendJsonlLine(incident.outputFilePath, `${JSON.stringify(record)}\n`)
   }
@@ -647,8 +952,16 @@ export function createShareableDebugLogger(input: {
     incident: IncidentManifest
     reason: IncidentLifecycleReason
   }): Promise<void> => {
-    await writeJsonlLines(inputState.incident.outputFilePath, []).catch(() => {
-      // best-effort file creation
+    try {
+      await sanitizeJsonlTail(inputState.incident.outputFilePath)
+    } catch (error) {
+      if (isFsErrorCode(error, "ENOENT")) {
+        await writeJsonlLines(inputState.incident.outputFilePath, [])
+      }
+    }
+    await writeJsonFileAtomic(manifestlessRecoveryPath, {
+      version: 1,
+      triggerSeq: inputState.incident.triggerSeq
     })
     await appendIncidentLifecycle(inputState.incident, "incident_closed", {
       reason: inputState.reason,
@@ -667,38 +980,111 @@ export function createShareableDebugLogger(input: {
     await deleteFileIfExists(manifestPath)
   }
 
+  const writeManifestSync = (incident: IncidentManifest): void => {
+    fsSync.mkdirSync(path.dirname(manifestPath), { recursive: true })
+    fsSync.writeFileSync(manifestPath, `${JSON.stringify(incident, null, 2)}\n`, { mode: 0o600 })
+    try {
+      fsSync.chmodSync(manifestPath, 0o600)
+    } catch {
+      // best-effort only in crash path
+    }
+  }
+
+  const sealIncidentIncompleteSync = (incident: IncidentManifest, reason: IncidentLifecycleReason): void => {
+    try {
+      fsSync.mkdirSync(path.dirname(manifestlessRecoveryPath), { recursive: true })
+      fsSync.writeFileSync(
+        manifestlessRecoveryPath,
+        `${JSON.stringify({ version: 1, triggerSeq: incident.triggerSeq }, null, 2)}\n`,
+        { mode: 0o600 }
+      )
+      fsSync.chmodSync(manifestlessRecoveryPath, 0o600)
+    } catch {
+      // best-effort only in crash path
+    }
+    appendIncidentLifecycleSync(incident, "incident_closed", {
+      reason,
+      triggerSeq: incident.triggerSeq,
+      triggerEvent: incident.triggerEvent,
+      incomplete: true
+    })
+    appendSummaryLifecycleSync("incident_closed", {
+      incidentId: incident.incidentId,
+      incidentFile: incidentFileReference(incident.outputFilePath),
+      triggerSeq: incident.triggerSeq,
+      triggerEvent: incident.triggerEvent,
+      reason,
+      incomplete: true
+    })
+    try {
+      fsSync.unlinkSync(manifestPath)
+    } catch (error) {
+      if (!isFsErrorCode(error, "ENOENT")) throw error
+    }
+  }
+
+  const openIncidentCaptureSync = (
+    record: ShareableDebugEventRecord,
+    triggerReason: TriggerReason
+  ): IncidentManifest => {
+    const incident = createIncidentManifest(record, triggerReason)
+    writeManifestSync(incident)
+    const preTriggerEvents = readEventsInRangeSync(incident.preTriggerStartSeq, record.seq)
+    const expectedBaseCount = incident.triggerSeq - incident.preTriggerStartSeq + 1
+    const baseWindow = contiguousWindow(preTriggerEvents, incident.preTriggerStartSeq, expectedBaseCount)
+    writeJsonlLinesSync(
+      incident.outputFilePath,
+      baseWindow.rows.map((entry) => `${JSON.stringify(entry)}\n`)
+    )
+    if (baseWindow.hasGapAfterPrefix || baseWindow.rows.length !== expectedBaseCount) {
+      sealIncidentIncompleteSync(incident, "interrupted")
+      return incident
+    }
+    try {
+      fsSync.unlinkSync(manifestlessRecoveryPath)
+    } catch (error) {
+      if (!isFsErrorCode(error, "ENOENT")) throw error
+    }
+    appendSummaryLifecycleSync("incident_opened", {
+      incidentId: incident.incidentId,
+      incidentFile: incidentFileReference(incident.outputFilePath),
+      triggerSeq: record.seq,
+      triggerEvent: record.event,
+      triggerReason
+    })
+    return incident
+  }
+
+  initPromise = initializeState().catch((error) => {
+    input.log?.warn("shareable debug initialization failed", {
+      error: error instanceof Error ? error.message : String(error)
+    })
+  })
+
   const openIncidentCapture = async (
     record: ShareableDebugEventRecord,
     triggerReason: TriggerReason
   ): Promise<void> => {
     if (openIncident) return
-    const incidentId = randomUUID()
-    const timestamp = new Date().toISOString()
-    const preTriggerStartSeq = Math.max(1, record.seq - preTriggerEventCount)
-    const incident: IncidentManifest = {
-      version: 1,
-      incidentId,
-      outputFilePath: path.join(incidentsDir, incidentFileName(incidentId, timestamp)),
-      triggerSeq: record.seq,
-      triggerEvent: record.event,
-      triggerReason,
-      preTriggerStartSeq,
-      preTriggerEndSeq: record.seq,
-      postWindowCount: postTriggerEventCount,
-      postRemaining: postTriggerEventCount,
-      status: "open",
-      createdAt: timestamp,
-      updatedAt: timestamp
-    }
-
+    const incident = createIncidentManifest(record, triggerReason)
     await writeManifest(incident)
-    const preTriggerEvents = await readEventsInRange(preTriggerStartSeq, record.seq)
+    const preTriggerEvents = await readEventsInRange(incident.preTriggerStartSeq, record.seq)
+    const expectedBaseCount = incident.triggerSeq - incident.preTriggerStartSeq + 1
+    const baseWindow = contiguousWindow(preTriggerEvents, incident.preTriggerStartSeq, expectedBaseCount)
     await writeJsonlLines(
       incident.outputFilePath,
-      preTriggerEvents.map((entry) => `${JSON.stringify(entry)}\n`)
+      baseWindow.rows.map((entry) => `${JSON.stringify(entry)}\n`)
     )
+    if (baseWindow.hasGapAfterPrefix || baseWindow.rows.length !== expectedBaseCount) {
+      await sealIncidentIncomplete({
+        incident,
+        reason: "interrupted"
+      })
+      return
+    }
+    await deleteFileIfExists(manifestlessRecoveryPath)
     await appendSummaryLifecycle("incident_opened", {
-      incidentId,
+      incidentId: incident.incidentId,
       incidentFile: incidentFileReference(incident.outputFilePath),
       triggerSeq: record.seq,
       triggerEvent: record.event,
@@ -773,52 +1159,37 @@ export function createShareableDebugLogger(input: {
       appendToSegmentSync(record)
       const triggerReason = triggerReasonFor(record)
       if (triggerReason && !openIncident) {
-        const incidentId = randomUUID()
-        const timestamp = new Date().toISOString()
-        const incident: IncidentManifest = {
-          version: 1,
-          incidentId,
-          outputFilePath: path.join(incidentsDir, incidentFileName(incidentId, timestamp)),
-          triggerSeq: record.seq,
-          triggerEvent: record.event,
-          triggerReason,
-          preTriggerStartSeq: Math.max(1, record.seq - preTriggerEventCount),
-          preTriggerEndSeq: record.seq,
-          postWindowCount: postTriggerEventCount,
-          postRemaining: postTriggerEventCount,
-          status: "open",
-          createdAt: timestamp,
-          updatedAt: timestamp
-        }
-        fsSync.mkdirSync(path.dirname(manifestPath), { recursive: true })
-        fsSync.writeFileSync(manifestPath, `${JSON.stringify(incident, null, 2)}\n`, { mode: 0o600 })
-        appendJsonlLineSync(
-          incident.outputFilePath,
-          `${JSON.stringify({
-            ...record
-          })}\n`
-        )
-        appendIncidentLifecycleSync(incident, "incident_closed", {
-          reason: "interrupted",
-          triggerSeq: incident.triggerSeq,
-          triggerEvent: incident.triggerEvent,
-          incomplete: true
-        })
-        fsSync.unlinkSync(manifestPath)
-        appendSummaryLineSync(
-          `${JSON.stringify({
-            timestamp: new Date().toISOString(),
-            event: "incident_closed",
-            incidentId,
-            incidentFile: incidentFileReference(incident.outputFilePath),
-            triggerSeq: incident.triggerSeq,
-            triggerEvent: incident.triggerEvent,
-            reason: "interrupted",
-            incomplete: true
-          })}\n`
-        )
+        openIncidentCaptureSync(record, triggerReason)
       } else if (openIncident && record.seq > openIncident.triggerSeq) {
         appendJsonlLineSync(openIncident.outputFilePath, `${JSON.stringify(record)}\n`)
+        openIncident = {
+          ...openIncident,
+          postRemaining: Math.max(0, openIncident.postRemaining - 1),
+          updatedAt: new Date().toISOString()
+        }
+        if (openIncident.postRemaining <= 0) {
+          appendIncidentLifecycleSync(openIncident, "incident_closed", {
+            reason: "trigger",
+            triggerSeq: openIncident.triggerSeq,
+            triggerEvent: openIncident.triggerEvent,
+            incomplete: false
+          })
+          try {
+            fsSync.unlinkSync(manifestPath)
+          } catch (error) {
+            if (!isFsErrorCode(error, "ENOENT")) throw error
+          }
+          appendSummaryLifecycleSync("incident_closed", {
+            incidentId: openIncident.incidentId,
+            incidentFile: incidentFileReference(openIncident.outputFilePath),
+            triggerSeq: openIncident.triggerSeq,
+            triggerEvent: openIncident.triggerEvent,
+            reason: "trigger"
+          })
+          openIncident = undefined
+        } else {
+          writeManifestSync(openIncident)
+        }
       }
       appendSummaryLineSync(`${JSON.stringify(record)}\n`)
     } catch {
