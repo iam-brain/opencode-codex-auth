@@ -99,8 +99,20 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       assertAllowedOutboundUrl(new URL(initialRequestUrl))
     } catch (error) {
       if (isPluginFatalError(error)) {
+        await input.shareableDebug?.emitSyntheticFatalError({
+          authMode: input.authMode,
+          outcome: error.type,
+          status: error.status,
+          endpoint: initialRequestUrl
+        })
         return toSyntheticErrorResponse(error)
       }
+      await input.shareableDebug?.emitSyntheticFatalError({
+        authMode: input.authMode,
+        outcome: "disallowed_outbound_request",
+        status: 400,
+        endpoint: initialRequestUrl
+      })
       return toSyntheticErrorResponse(
         new PluginFatalError({
           message: "Outbound request validation failed before preparing OpenAI request.",
@@ -117,6 +129,12 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
     try {
       baseRequest = new Request(requestInput, init)
     } catch {
+      await input.shareableDebug?.emitSyntheticFatalError({
+        authMode: input.authMode,
+        outcome: "disallowed_outbound_request",
+        status: 400,
+        endpoint: initialRequestUrl
+      })
       return toSyntheticErrorResponse(
         new PluginFatalError({
           message: "Outbound request could not be prepared for OpenAI backend.",
@@ -450,8 +468,24 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       assertAllowedOutboundUrl(new URL(outbound.url))
     } catch (error) {
       if (isPluginFatalError(error)) {
+        await input.shareableDebug?.emitSyntheticFatalError({
+          authMode: input.authMode,
+          outcome: error.type,
+          status: error.status,
+          endpoint: outbound.url,
+          selectedIdentityKey,
+          activeIdentityKey: selectedAuthForQuota?.identityKey
+        })
         return toSyntheticErrorResponse(error)
       }
+      await input.shareableDebug?.emitSyntheticFatalError({
+        authMode: input.authMode,
+        outcome: "disallowed_outbound_request",
+        status: 400,
+        endpoint: outbound.url,
+        selectedIdentityKey,
+        activeIdentityKey: selectedAuthForQuota?.identityKey
+      })
       return toSyntheticErrorResponse(
         new PluginFatalError({
           message: "Outbound request validation failed before sending to OpenAI backend.",
@@ -473,11 +507,27 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           type: error.type,
           status: error.status
         })
+        await input.shareableDebug?.emitSyntheticFatalError({
+          authMode: input.authMode,
+          outcome: error.type,
+          status: error.status,
+          endpoint: outbound.url,
+          selectedIdentityKey,
+          activeIdentityKey: selectedAuthForQuota?.identityKey
+        })
         return toSyntheticErrorResponse(error)
       }
 
       input.log?.debug("unexpected fetch failure", {
         error: error instanceof Error ? error.message : String(error)
+      })
+      await input.shareableDebug?.emitSyntheticFatalError({
+        authMode: input.authMode,
+        outcome: "plugin_fetch_failed",
+        status: 502,
+        endpoint: outbound.url,
+        selectedIdentityKey,
+        activeIdentityKey: selectedAuthForQuota?.identityKey
       })
       return toSyntheticErrorResponse(
         new PluginFatalError({

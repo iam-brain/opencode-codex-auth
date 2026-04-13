@@ -48,7 +48,8 @@ describe("acquire auth shareable debug wiring", () => {
       emitFetchAttemptRequest: vi.fn(async () => {}),
       emitFetchAttemptResponse: vi.fn(async () => {}),
       emitRetryAfter429: vi.fn(async () => {}),
-      emitAuthFailure: vi.fn(async () => {})
+      emitAuthFailure: vi.fn(async () => {}),
+      emitSyntheticFatalError: vi.fn(async () => {})
     }
 
     const auth = await acquireOpenAIAuth({

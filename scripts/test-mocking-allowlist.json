@@ -102,7 +102,7 @@
       "stubGlobal": 0
     },
     "test/openai-loader-fetch.shareable-debug.test.ts": {
-      "doMock": 2,
+      "doMock": 6,
       "mock": 0,
       "stubGlobal": 0
     },

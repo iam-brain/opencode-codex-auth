@@ -146,7 +146,9 @@ Optional OAuth debug log rotation:
 Safer issue-reporting path:
 
 - `OPENCODE_OPENAI_MULTI_SHAREABLE_DEBUG=1`
-  - Writes `shareable-debug.jsonl` under the plugin log directory with privacy-first structured events.
+  - Writes a bounded `shareable-debug.jsonl` summary log under the plugin log directory.
+  - Keeps a rolling pseudonymized buffer under `shareable-debug-state/segments/`.
+  - On auth/fatal trigger conditions, writes dedicated incident captures under `shareable-debug-state/incidents/`.
   - Use this when you need logs that are intended to be safe to paste into a public issue.
 
 Sensitive auth headers/tokens are redacted in snapshot logs.

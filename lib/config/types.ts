@@ -156,7 +156,8 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // mode default: false in "native", true in "codex"
     // "codexCompactionOverride": true,
 
-    // Privacy-first structured debug log safe for public sharing.
+    // Privacy-first structured debug logging safe for public sharing.
+    // Writes a bounded summary log plus crash-tolerant incident captures.
     // options: true | false
     // default: false
     "shareableDebug": false,
