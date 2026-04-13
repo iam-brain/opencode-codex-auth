@@ -143,6 +143,14 @@ Optional OAuth debug log rotation:
 
 - `CODEX_AUTH_DEBUG_MAX_BYTES`
 
+Safer issue-reporting path:
+
+- `OPENCODE_OPENAI_MULTI_SHAREABLE_DEBUG=1`
+  - Writes a bounded `shareable-debug.jsonl` summary log under the plugin log directory.
+  - Keeps a rolling pseudonymized buffer under `shareable-debug-state/segments/`.
+  - On auth/fatal trigger conditions, writes dedicated incident captures under `shareable-debug-state/incidents/`.
+  - Use this when you need logs that are intended to be safe to paste into a public issue.
+
 Sensitive auth headers/tokens are redacted in snapshot logs.
 Sensitive account/session metadata keys and URL query values are redacted as well.
 If request body capture is enabled, prompt/tool payload content may still be present.

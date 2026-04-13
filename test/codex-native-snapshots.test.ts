@@ -497,6 +497,48 @@ describe("codex-native snapshots", () => {
     expect(seenInternalHeader).toBe("")
   })
 
+  it("disables request snapshots when shareable debug is enabled", async () => {
+    vi.resetModules()
+
+    const createRequestSnapshots = vi.fn(() => ({
+      captureRequest: vi.fn(async () => {}),
+      captureResponse: vi.fn(async () => {})
+    }))
+    vi.doMock("../lib/request-snapshots", () => ({
+      createRequestSnapshots
+    }))
+
+    const warn = vi.fn()
+    const { CodexAuthPlugin } = await import("../lib/codex-native")
+
+    await CodexAuthPlugin({} as never, {
+      spoofMode: "codex",
+      shareableDebug: true,
+      headerSnapshots: true,
+      headerTransformDebug: true,
+      log: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn,
+        error: vi.fn()
+      }
+    })
+
+    expect(createRequestSnapshots).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: false,
+        captureBodies: false
+      })
+    )
+    expect(warn).toHaveBeenCalledWith(
+      "shareable debug disables request snapshot logging",
+      expect.objectContaining({
+        headerSnapshots: true,
+        headerTransformDebug: true
+      })
+    )
+  })
+
   it("remaps non-permissions developer messages to user in codex mode by default", async () => {
     vi.resetModules()
 

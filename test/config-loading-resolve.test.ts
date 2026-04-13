@@ -9,6 +9,7 @@ import {
   getDebugEnabled,
   getHeaderSnapshotBodiesEnabled,
   getHeaderSnapshotsEnabled,
+  getShareableDebugEnabled,
   getHeaderTransformDebugEnabled,
   getMode,
   getOrchestratorSubagentsEnabled,
@@ -192,6 +193,11 @@ describe("config loading", () => {
   it("enables header snapshot body capture from env flags", () => {
     const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES: "1" } })
     expect(getHeaderSnapshotBodiesEnabled(cfg)).toBe(true)
+  })
+
+  it("enables shareable debug from env flags", () => {
+    const cfg = resolveConfig({ env: { OPENCODE_OPENAI_MULTI_SHAREABLE_DEBUG: "1" } })
+    expect(getShareableDebugEnabled(cfg)).toBe(true)
   })
 
   it("parses collaboration profile gate from env", () => {

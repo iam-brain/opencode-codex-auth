@@ -52,4 +52,16 @@ describe("codex config schema", () => {
     expect(schema.$defs?.customModel?.required).toContain("targetModel")
     expect(schema.$defs?.customModel?.properties).toHaveProperty("variants")
   })
+
+  it("declares runtime.shareableDebug", () => {
+    const schema = JSON.parse(readFileSync(schemaPath, "utf8")) as {
+      properties?: {
+        runtime?: {
+          properties?: Record<string, unknown>
+        }
+      }
+    }
+
+    expect(schema.properties?.runtime?.properties).toHaveProperty("shareableDebug")
+  })
 })

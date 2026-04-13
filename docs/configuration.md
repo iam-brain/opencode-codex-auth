@@ -116,6 +116,14 @@ Mode-derived runtime defaults when omitted:
   - Enables codex-rs compact prompt + `summary_prefix` handoff behavior for OpenAI sessions.
   - Mode defaults: `true` in `codex`, `false` in `native`.
   - Explicit boolean value overrides mode default.
+- `runtime.shareableDebug: boolean`
+  - Writes a bounded privacy-first summary log to `<config-root>/logs/codex-plugin/shareable-debug.jsonl`.
+  - Persists a rolling crash-tolerant event buffer under `<config-root>/logs/codex-plugin/shareable-debug-state/segments/`.
+  - On trigger conditions (`401`, `403`, `429`, auth failures, account-switch retry after failure, and synthetic plugin fatal errors), writes a dedicated incident file under `<config-root>/logs/codex-plugin/shareable-debug-state/incidents/`.
+  - Uses `<config-root>/logs/codex-plugin/shareable-debug-state/incident-state.json` to resume or seal interrupted incident capture after restart.
+  - Sensitive identifiers are pseudonymized per process/log bundle instead of logged raw.
+  - Request bodies, tokens, cookies, OAuth secrets, raw emails/account IDs/session IDs, and raw `prompt_cache_key` values are never persisted by this mode.
+  - When enabled, request snapshot logging is suppressed even if `runtime.headerSnapshots` or `runtime.headerTransformDebug` are also set.
 - `runtime.headerSnapshots: boolean`
   - Writes before/after request header snapshots to debug logs.
   - Custom snapshot metadata is stored under a nested `meta` object to prevent collisions with reserved top-level fields.
@@ -316,6 +324,7 @@ Advanced path:
 ### Debug/OAuth controls
 
 - `OPENCODE_OPENAI_MULTI_DEBUG=1`: plugin debug logs.
+- `OPENCODE_OPENAI_MULTI_SHAREABLE_DEBUG=1`: privacy-first shareable structured debug log.
 - `CODEX_IN_VIVO=1`: enables live quota probe tests.
 - `DEBUG_CODEX_PLUGIN=1`: alternate debug flag.
 - `CODEX_AUTH_DEBUG=1`: verbose OAuth lifecycle logging (`oauth-lifecycle.log`).

@@ -6,6 +6,11 @@
       "mock": 0,
       "stubGlobal": 0
     },
+    "test/acquire-auth-shareable-debug.test.ts": {
+      "doMock": 1,
+      "mock": 0,
+      "stubGlobal": 0
+    },
     "test/acquire-auth-locking.test.ts": {
       "doMock": 10,
       "mock": 0,
@@ -67,7 +72,7 @@
       "stubGlobal": 0
     },
     "test/codex-native-snapshots.test.ts": {
-      "doMock": 12,
+      "doMock": 13,
       "mock": 0,
       "stubGlobal": 0
     },
@@ -92,7 +97,12 @@
       "stubGlobal": 0
     },
     "test/openai-loader-fetch.prompt-cache-key.catalog-refresh.test.ts": {
-      "doMock": 4,
+      "doMock": 6,
+      "mock": 0,
+      "stubGlobal": 0
+    },
+    "test/openai-loader-fetch.shareable-debug.test.ts": {
+      "doMock": 6,
       "mock": 0,
       "stubGlobal": 0
     },

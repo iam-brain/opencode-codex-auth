@@ -25,6 +25,7 @@ import {
 import { toReasoningSummaryPluginFatalError } from "./reasoning-summary.js"
 import type { SessionAffinityRuntimeState } from "./session-affinity-state.js"
 import { scheduleQuotaRefresh } from "./openai-loader-fetch-quota.js"
+import type { ShareableDebugLogger } from "../shareable-debug.js"
 import {
   CATALOG_REFRESH_FAILURE_RETRY_MS,
   CATALOG_REFRESH_TTL_MS,
@@ -53,6 +54,7 @@ export type CreateOpenAIFetchHandlerInput = {
   configuredRotationStrategy?: RotationStrategy
   headerTransformDebug: boolean
   compatInputSanitizerEnabled: boolean
+  shareableDebug?: ShareableDebugLogger
   internalCatalogScopeHeader?: string
   internalSelectedModelHeader?: string
   internalCollaborationModeHeader: string
@@ -97,8 +99,20 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       assertAllowedOutboundUrl(new URL(initialRequestUrl))
     } catch (error) {
       if (isPluginFatalError(error)) {
+        await input.shareableDebug?.emitSyntheticFatalError({
+          authMode: input.authMode,
+          outcome: error.type,
+          status: error.status,
+          endpoint: initialRequestUrl
+        })
         return toSyntheticErrorResponse(error)
       }
+      await input.shareableDebug?.emitSyntheticFatalError({
+        authMode: input.authMode,
+        outcome: "disallowed_outbound_request",
+        status: 400,
+        endpoint: initialRequestUrl
+      })
       return toSyntheticErrorResponse(
         new PluginFatalError({
           message: "Outbound request validation failed before preparing OpenAI request.",
@@ -115,6 +129,12 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
     try {
       baseRequest = new Request(requestInput, init)
     } catch {
+      await input.shareableDebug?.emitSyntheticFatalError({
+        authMode: input.authMode,
+        outcome: "disallowed_outbound_request",
+        status: 400,
+        endpoint: initialRequestUrl
+      })
       return toSyntheticErrorResponse(
         new PluginFatalError({
           message: "Outbound request could not be prepared for OpenAI backend.",
@@ -203,7 +223,8 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           persistSessionAffinityState,
           pidOffsetEnabled: input.pidOffsetEnabled,
           configuredRotationStrategy: input.configuredRotationStrategy,
-          log: input.log
+          log: input.log,
+          shareableDebug: input.shareableDebug
         })
 
         const now = Date.now()
@@ -281,6 +302,30 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       maxRedirects: 3,
       showToast: input.showToast,
       onAttemptRequest: async ({ attempt, maxAttempts, attemptReasonCode, request, auth, sessionKey }) => {
+        await input.shareableDebug?.emitFetchAttemptRequest({
+          authMode: input.authMode,
+          rotationStrategy: auth.selectionTrace?.strategy ?? input.configuredRotationStrategy,
+          attempt: attempt + 1,
+          maxAttempts,
+          attemptReasonCode,
+          request,
+          selectedIdentityKey: auth.identityKey ?? auth.selectionTrace?.selectedIdentityKey,
+          activeIdentityKey: auth.selectionTrace?.activeIdentityKey,
+          sessionKey
+        })
+        if (attemptReasonCode !== "initial_attempt") {
+          await input.shareableDebug?.emitRetryAfter429({
+            authMode: input.authMode,
+            rotationStrategy: auth.selectionTrace?.strategy ?? input.configuredRotationStrategy,
+            attempt: attempt + 1,
+            maxAttempts,
+            attemptReasonCode,
+            selectedIdentityKey: auth.identityKey ?? auth.selectionTrace?.selectedIdentityKey,
+            activeIdentityKey: auth.selectionTrace?.activeIdentityKey,
+            sessionKey
+          })
+        }
+
         const selectedModelSlug = request.headers.get(internalSelectedModelHeader)?.trim() || undefined
         const requestCatalogScopeKey =
           request.headers.get(internalCatalogScopeHeader)?.trim() || selectedPreviousCatalogScopeKey
@@ -396,6 +441,18 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
         return payloadTransform.request
       },
       onAttemptResponse: async ({ attempt, maxAttempts, attemptReasonCode, response, auth, sessionKey }) => {
+        await input.shareableDebug?.emitFetchAttemptResponse({
+          authMode: input.authMode,
+          rotationStrategy: auth.selectionTrace?.strategy ?? input.configuredRotationStrategy,
+          attempt: attempt + 1,
+          maxAttempts,
+          attemptReasonCode,
+          endpoint: response.url || outbound.url,
+          status: response.status,
+          selectedIdentityKey: auth.identityKey ?? auth.selectionTrace?.selectedIdentityKey,
+          activeIdentityKey: auth.selectionTrace?.activeIdentityKey,
+          sessionKey
+        })
         await input.requestSnapshots.captureResponse("outbound-response", response, {
           attempt: attempt + 1,
           maxAttempts,
@@ -411,8 +468,24 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       assertAllowedOutboundUrl(new URL(outbound.url))
     } catch (error) {
       if (isPluginFatalError(error)) {
+        await input.shareableDebug?.emitSyntheticFatalError({
+          authMode: input.authMode,
+          outcome: error.type,
+          status: error.status,
+          endpoint: outbound.url,
+          selectedIdentityKey,
+          activeIdentityKey: selectedAuthForQuota?.identityKey
+        })
         return toSyntheticErrorResponse(error)
       }
+      await input.shareableDebug?.emitSyntheticFatalError({
+        authMode: input.authMode,
+        outcome: "disallowed_outbound_request",
+        status: 400,
+        endpoint: outbound.url,
+        selectedIdentityKey,
+        activeIdentityKey: selectedAuthForQuota?.identityKey
+      })
       return toSyntheticErrorResponse(
         new PluginFatalError({
           message: "Outbound request validation failed before sending to OpenAI backend.",
@@ -434,11 +507,27 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           type: error.type,
           status: error.status
         })
+        await input.shareableDebug?.emitSyntheticFatalError({
+          authMode: input.authMode,
+          outcome: error.type,
+          status: error.status,
+          endpoint: outbound.url,
+          selectedIdentityKey,
+          activeIdentityKey: selectedAuthForQuota?.identityKey
+        })
         return toSyntheticErrorResponse(error)
       }
 
       input.log?.debug("unexpected fetch failure", {
         error: error instanceof Error ? error.message : String(error)
+      })
+      await input.shareableDebug?.emitSyntheticFatalError({
+        authMode: input.authMode,
+        outcome: "plugin_fetch_failed",
+        status: 502,
+        endpoint: outbound.url,
+        selectedIdentityKey,
+        activeIdentityKey: selectedAuthForQuota?.identityKey
       })
       return toSyntheticErrorResponse(
         new PluginFatalError({

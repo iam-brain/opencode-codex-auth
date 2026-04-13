@@ -215,6 +215,7 @@ export function resolveConfig(input: {
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_REMAP_DEVELOPER_MESSAGES_TO_USER) ?? file.remapDeveloperMessagesToUser
   const codexCompactionOverride =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_CODEX_COMPACTION_OVERRIDE) ?? file.codexCompactionOverride
+  const shareableDebug = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_SHAREABLE_DEBUG) ?? file.shareableDebug
   const headerSnapshots = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS) ?? file.headerSnapshots
   const headerSnapshotBodies =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES) ?? file.headerSnapshotBodies
@@ -244,6 +245,7 @@ export function resolveConfig(input: {
     compatInputSanitizer,
     remapDeveloperMessagesToUser,
     codexCompactionOverride,
+    shareableDebug,
     headerSnapshots,
     headerSnapshotBodies,
     headerTransformDebug,
@@ -313,6 +315,10 @@ export function getCodexCompactionOverrideEnabled(cfg: PluginConfig): boolean {
 
 export function getHeaderSnapshotsEnabled(cfg: PluginConfig): boolean {
   return cfg.headerSnapshots === true
+}
+
+export function getShareableDebugEnabled(cfg: PluginConfig): boolean {
+  return cfg.shareableDebug === true
 }
 
 export function getHeaderTransformDebugEnabled(cfg: PluginConfig): boolean {

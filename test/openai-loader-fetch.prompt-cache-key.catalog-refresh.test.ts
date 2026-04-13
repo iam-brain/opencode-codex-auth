@@ -58,6 +58,83 @@ describe("openai loader fetch prompt cache key (catalog refresh)", () => {
     expect(acquireOpenAIAuth).not.toHaveBeenCalled()
   })
 
+  it("returns a synthetic error when rewritten outbound URL validation throws a non-plugin error", async () => {
+    vi.resetModules()
+
+    const acquireOpenAIAuth = vi.fn(async () => ({
+      access: "access-token",
+      accountId: "acc_123",
+      identityKey: "acc_123|user@example.com|plus"
+    }))
+    vi.doMock("../lib/codex-native/acquire-auth", () => ({
+      acquireOpenAIAuth
+    }))
+
+    let validateCount = 0
+    vi.doMock("../lib/codex-native/request-routing", async () => {
+      const actual = await vi.importActual<typeof import("../lib/codex-native/request-routing")>(
+        "../lib/codex-native/request-routing"
+      )
+      return {
+        ...actual,
+        rewriteUrl: vi.fn((request: Request) => request.url),
+        assertAllowedOutboundUrl: vi.fn((_url: URL) => {
+          validateCount += 1
+          if (validateCount === 2) {
+            throw new Error("rewritten url invalid")
+          }
+        })
+      }
+    })
+
+    const { createOpenAIFetchHandler } = await import("../lib/codex-native/openai-loader-fetch")
+    const { createFetchOrchestratorState } = await import("../lib/fetch-orchestrator")
+    const { createStickySessionState } = await import("../lib/rotation")
+
+    const fetchSpy = vi.fn(async () => new Response("ok", { status: 200 }))
+    stubGlobalForTest("fetch", fetchSpy)
+
+    const handler = createOpenAIFetchHandler({
+      authMode: "native",
+      spoofMode: "native",
+      remapDeveloperMessagesToUserEnabled: false,
+      quietMode: true,
+      pidOffsetEnabled: false,
+      headerTransformDebug: false,
+      compatInputSanitizerEnabled: false,
+      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
+      requestSnapshots: {
+        captureRequest: async () => {},
+        captureResponse: async () => {}
+      },
+      sessionAffinityState: {
+        orchestratorState: createFetchOrchestratorState(),
+        stickySessionState: createStickySessionState(),
+        hybridSessionState: createStickySessionState(),
+        persistSessionAffinityState: () => {}
+      },
+      getCatalogModels: () => undefined,
+      syncCatalogFromAuth: async () => undefined,
+      setCooldown: async () => {},
+      showToast: async () => {}
+    })
+
+    const response = await handler("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        session_id: "ses_outbound_validation_1"
+      },
+      body: JSON.stringify({ model: "gpt-5.3-codex", input: "hello" })
+    })
+
+    const payload = (await response.json()) as { error?: { type?: string } }
+    expect(response.status).toBe(400)
+    expect(payload.error?.type).toBe("disallowed_outbound_request")
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(acquireOpenAIAuth).not.toHaveBeenCalled()
+  })
+
   it("dedupes catalog refresh across concurrent requests for the same account scope", async () => {
     vi.resetModules()
 

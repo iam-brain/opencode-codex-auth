@@ -52,6 +52,7 @@ export {
   getDebugEnabled,
   getHeaderSnapshotBodiesEnabled,
   getHeaderSnapshotsEnabled,
+  getShareableDebugEnabled,
   getHeaderTransformDebugEnabled,
   getMode,
   getOrchestratorSubagentsEnabled,

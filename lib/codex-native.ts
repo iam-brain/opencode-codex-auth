@@ -59,6 +59,7 @@ import {
 import { createSessionAffinityRuntimeState } from "./codex-native/session-affinity-state.js"
 import { initializeCatalogSync, selectCatalogAuthCandidate } from "./codex-native/catalog-sync.js"
 import { createOpenAIFetchHandler } from "./codex-native/openai-loader-fetch.js"
+import { createShareableDebugLogger } from "./shareable-debug.js"
 export { browserOpenInvocationFor } from "./codex-native/browser.js"
 export { upsertAccount } from "./codex-native/accounts.js"
 export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from "./codex-native/oauth-utils.js"
@@ -163,6 +164,7 @@ export type CodexAuthPluginOptions = {
   compatInputSanitizer?: boolean
   remapDeveloperMessagesToUser?: boolean
   codexCompactionOverride?: boolean
+  shareableDebug?: boolean
   headerSnapshots?: boolean
   headerSnapshotBodies?: boolean
   headerTransformDebug?: boolean
@@ -355,9 +357,20 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       ...(spoofMode === "native" ? { openaiBeta: "responses=experimental" } : {})
     }
   }
+  const shareableDebugEnabled = opts.shareableDebug === true
+  if (shareableDebugEnabled && (opts.headerSnapshots === true || opts.headerTransformDebug === true)) {
+    opts.log?.warn("shareable debug disables request snapshot logging", {
+      headerSnapshots: opts.headerSnapshots === true,
+      headerTransformDebug: opts.headerTransformDebug === true
+    })
+  }
   const requestSnapshots = createRequestSnapshots({
-    enabled: opts.headerSnapshots === true || opts.headerTransformDebug === true,
+    enabled: !shareableDebugEnabled && (opts.headerSnapshots === true || opts.headerTransformDebug === true),
     captureBodies: opts.headerSnapshotBodies === true,
+    log: opts.log
+  })
+  const shareableDebug = createShareableDebugLogger({
+    enabled: shareableDebugEnabled,
     log: opts.log
   })
   const catalogModelsByScope = new Map<string, CodexModelInfo[]>()
@@ -523,6 +536,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           configuredRotationStrategy: opts.rotationStrategy,
           headerTransformDebug: opts.headerTransformDebug === true,
           compatInputSanitizerEnabled: opts.compatInputSanitizer === true,
+          shareableDebug,
           internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
           internalSelectedModelHeader: INTERNAL_SELECTED_MODEL_HEADER,
           internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,

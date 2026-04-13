@@ -38,6 +38,14 @@
   - pinned prompt cache metadata (`lastChecked`, URLs, ETags)
 - `<config-root>/logs/codex-plugin/` (optional)
   - request/response snapshot logs when enabled
+- `<config-root>/logs/codex-plugin/shareable-debug.jsonl` (optional)
+  - bounded privacy-first structured debug summary log with per-process pseudonyms for account/session correlation
+- `<config-root>/logs/codex-plugin/shareable-debug-state/segments/` (optional)
+  - rolling crash-tolerant pseudonymized event buffer used for pre-incident context
+- `<config-root>/logs/codex-plugin/shareable-debug-state/incidents/` (optional)
+  - dedicated pseudonymized before/after incident captures around error triggers
+- `<config-root>/logs/codex-plugin/shareable-debug-state/incident-state.json` (optional)
+  - recovery manifest for interrupted incident capture
 - `<config-root>/logs/codex-plugin/oauth-lifecycle.log` (optional)
   - OAuth lifecycle debug log when `CODEX_AUTH_DEBUG` is enabled
 
@@ -74,6 +82,9 @@ Recommended additional local ignore patterns (not auto-managed by plugin):
 - Snapshot writer redacts sensitive auth headers/tokens before persistence.
 - Snapshot writer also redacts sensitive account/session metadata keys and sensitive URL query values.
 - Live-headers snapshots redact `prompt_cache_key` values.
+- Shareable debug mode never writes raw tokens, cookies, OAuth secrets, raw emails/account IDs/identity keys/session IDs, raw `prompt_cache_key` values, or raw request bodies.
+- Shareable debug pseudonyms are stable only within a single process/log bundle.
+- Shareable debug incident capture keeps a rolling on-disk pseudonymized buffer so before-error context can survive process exit or crash.
 - If request body capture is enabled, prompt/tool payload content may still be written; use short-lived debugging windows only.
 - OAuth debug lifecycle logs rotate at a configurable size cap.
 

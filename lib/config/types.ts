@@ -52,6 +52,7 @@ export type PluginConfig = {
   compatInputSanitizer?: boolean
   remapDeveloperMessagesToUser?: boolean
   codexCompactionOverride?: boolean
+  shareableDebug?: boolean
   headerSnapshots?: boolean
   headerSnapshotBodies?: boolean
   headerTransformDebug?: boolean
@@ -81,6 +82,7 @@ export const DEFAULT_CODEX_CONFIG = {
     sanitizeInputs: false,
     developerMessagesToUser: true,
     promptCacheKeyStrategy: "default",
+    shareableDebug: false,
     headerSnapshots: false,
     headerSnapshotBodies: false,
     headerTransformDebug: false,
@@ -153,6 +155,12 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // options: true | false
     // mode default: false in "native", true in "codex"
     // "codexCompactionOverride": true,
+
+    // Privacy-first structured debug logging safe for public sharing.
+    // Writes a bounded summary log plus crash-tolerant incident captures.
+    // options: true | false
+    // default: false
+    "shareableDebug": false,
 
     // Write request header snapshots to plugin logs.
     // options: true | false

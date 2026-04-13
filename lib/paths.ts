@@ -5,6 +5,7 @@ export const CODEX_ACCOUNTS_FILE = "codex-accounts.json"
 export const LEGACY_OPENAI_CODEX_ACCOUNTS_FILE = "openai-codex-accounts.json"
 export const CODEX_SESSION_AFFINITY_FILE = "codex-session-affinity.json"
 export const CODEX_SNAPSHOTS_FILE = "codex-snapshots.json"
+export const CODEX_SHAREABLE_DEBUG_FILE = "shareable-debug.jsonl"
 const OPENCODE_AUTH_FILE = "auth.json"
 const OPENCODE_SESSION_STORAGE_DIR = path.join("opencode", "storage", "session")
 
@@ -88,4 +89,8 @@ export function defaultSnapshotsPath(): string {
 
 export function defaultSessionAffinityPath(env: Record<string, string | undefined> = process.env): string {
   return path.join(defaultOpencodeCachePath(env), CODEX_SESSION_AFFINITY_FILE)
+}
+
+export function defaultShareableDebugLogPath(env: Record<string, string | undefined> = process.env): string {
+  return path.join(defaultCodexPluginLogsPath(env), CODEX_SHAREABLE_DEBUG_FILE)
 }
