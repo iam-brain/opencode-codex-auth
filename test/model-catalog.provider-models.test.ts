@@ -100,9 +100,16 @@ describe("model catalog provider model mapping", () => {
         context_window: 272000,
         input_modalities: ["text", "image"] as const,
         apply_patch_tool_type: "apply_patch",
-        default_reasoning_level: "medium",
+        default_reasoning_level: "ultra",
         default_reasoning_summary: "auto",
-        supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }],
+        supported_reasoning_levels: [
+          { effort: "low" },
+          { effort: "medium" },
+          { effort: "high" },
+          { effort: "max" },
+          { effort: "ultra" },
+          { effort: "future-custom" }
+        ],
         supports_reasoning_summaries: true,
         reasoning_summary_format: "experimental",
         supports_parallel_tool_calls: false,
@@ -127,9 +134,9 @@ describe("model catalog provider model mapping", () => {
     expect(providerModels["o3-mini"]).toBeUndefined()
     expect(providerModels["gpt-5.4-codex"].codexRuntimeDefaults).toEqual({
       applyPatchToolType: "apply_patch",
-      defaultReasoningEffort: "medium",
+      defaultReasoningEffort: "ultra",
       defaultReasoningSummary: "auto",
-      supportedReasoningEfforts: ["low", "medium", "high"],
+      supportedReasoningEfforts: ["low", "medium", "high", "max", "ultra", "future-custom"],
       supportsReasoningSummaries: true,
       reasoningSummaryFormat: "experimental",
       supportsParallelToolCalls: false,
@@ -138,7 +145,15 @@ describe("model catalog provider model mapping", () => {
     })
 
     const defaults = getRuntimeDefaultsForSlug("gpt-5.4-codex-high", catalogModels)
-    expect(defaults?.defaultReasoningEffort).toBe("medium")
+    expect(defaults?.defaultReasoningEffort).toBe("ultra")
+    expect(providerModels["gpt-5.4-codex"].variants).toEqual({
+      low: { reasoningEffort: "low" },
+      medium: { reasoningEffort: "medium" },
+      high: { reasoningEffort: "high" },
+      max: { reasoningEffort: "max" },
+      ultra: { reasoningEffort: "ultra" },
+      "future-custom": { reasoningEffort: "future-custom" }
+    })
   })
 
   it("creates new catalog-only provider entries without cross-slug inheritance", () => {

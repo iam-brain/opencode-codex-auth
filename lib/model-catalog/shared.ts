@@ -73,9 +73,9 @@ export type CodexModelsCache = {
 
 export type CodexModelRuntimeDefaults = {
   applyPatchToolType?: string
-  defaultReasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
+  defaultReasoningEffort?: string
   defaultReasoningSummary?: string
-  supportedReasoningEfforts?: Array<"none" | "minimal" | "low" | "medium" | "high" | "xhigh">
+  supportedReasoningEfforts?: string[]
   supportsReasoningSummaries?: boolean
   reasoningSummaryFormat?: string
   supportsParallelToolCalls?: boolean
@@ -126,9 +126,8 @@ export const CODEX_GITHUB_MODELS_URL_PREFIX = "https://raw.githubusercontent.com
 export const DEFAULT_CLIENT_VERSION = "0.116.0"
 export const CACHE_TTL_MS = 15 * 60 * 1000
 export const FETCH_TIMEOUT_MS = 5000
-export const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
+export const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh|max|ultra)$/i
 
-const REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"])
 const TEXT_VERBOSITY = new Set(["low", "medium", "high"])
 const INPUT_MODALITIES = new Set<CatalogInputModality>(["text", "audio", "image", "video", "pdf"])
 
@@ -157,11 +156,8 @@ export function normalizeReasoningEffort(
   value: unknown
 ): CodexModelRuntimeDefaults["defaultReasoningEffort"] | undefined {
   if (typeof value !== "string") return undefined
-  const normalized = value.trim().toLowerCase()
-  if (REASONING_EFFORTS.has(normalized)) {
-    return normalized as CodexModelRuntimeDefaults["defaultReasoningEffort"]
-  }
-  return undefined
+  const normalized = value.trim()
+  return normalized ? normalized : undefined
 }
 
 export function normalizeVerbosity(value: unknown): CodexModelRuntimeDefaults["defaultVerbosity"] | undefined {
@@ -249,7 +245,7 @@ export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
       base_instructions: typeof item.base_instructions === "string" ? item.base_instructions : null,
       apply_patch_tool_type: typeof item.apply_patch_tool_type === "string" ? item.apply_patch_tool_type : null,
       supported_reasoning_levels: parseReasoningLevels(item.supported_reasoning_levels),
-      default_reasoning_level: typeof item.default_reasoning_level === "string" ? item.default_reasoning_level : null,
+      default_reasoning_level: normalizeReasoningEffort(item.default_reasoning_level) ?? null,
       supports_reasoning_summaries:
         typeof item.supports_reasoning_summaries === "boolean" ? item.supports_reasoning_summaries : null,
       reasoning_summary_format:

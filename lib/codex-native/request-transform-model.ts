@@ -3,7 +3,7 @@ import type { CodexModelInfo, CustomModelBehaviorConfig } from "../model-catalog
 import { isRecord } from "../util.js"
 import { resolveReasoningSummaryValue } from "./reasoning-summary.js"
 
-const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i
+const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh|max|ultra)$/i
 
 function asString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined

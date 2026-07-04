@@ -90,7 +90,6 @@ export const DEFAULT_CODEX_CONFIG = {
   },
   global: {
     personality: "pragmatic",
-    reasoningEffort: "high",
     reasoningSummary: "auto",
     textVerbosity: "default"
   },
@@ -200,10 +199,10 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // default: "pragmatic"
     "personality": "pragmatic",
 
-    // Reasoning effort override.
-    // examples: "minimal", "low", "medium", "high"
-    // omit => use the selected model/catalog default
-    "reasoningEffort": "high",
+    // Optional reasoning effort override.
+    // examples: "minimal", "low", "medium", "high", "max", "ultra"
+    // omit => use the selected model's live catalog default_reasoning_level (typically "medium")
+    // "reasoningEffort": "high",
 
     // Reasoning summary format sent upstream as reasoning.summary.
     // options: "auto" | "concise" | "detailed" | "none"

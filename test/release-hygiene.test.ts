@@ -107,10 +107,10 @@ describe("release hygiene", () => {
     expect(script).not.toContain('rangeCandidates.push("origin/main...HEAD")')
   })
 
-  it("declares the Node engine aligned with CI", () => {
+  it("declares the Node engine compatible with CI and current local Node", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
-    expect(pkg.engines?.node).toBe(">=22 <23")
+    expect(pkg.engines?.node).toBe(">=22 <27")
   })
 
   it("includes license and changelog files", () => {

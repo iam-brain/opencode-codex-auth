@@ -282,6 +282,7 @@ describe("config file loading", () => {
     expect(raw).toContain('// options: "auto" | "concise" | "detailed" | "none"')
     expect(raw).toContain('// options: "default" | "low" | "medium" | "high" | "none"')
     expect(written).toEqual(DEFAULT_CODEX_CONFIG)
+    expect(DEFAULT_CODEX_CONFIG.global).not.toHaveProperty("reasoningEffort")
   })
 
   it("does not overwrite existing codex config by default", async () => {

@@ -66,7 +66,6 @@ Known-field type validation is applied on load. If a known field has an invalid 
   },
   "global": {
     "personality": "pragmatic",
-    "reasoningEffort": "high",
     "reasoningSummary": "auto",
     "textVerbosity": "default"
   },
@@ -155,8 +154,10 @@ Mode-derived runtime defaults when omitted:
 
 - `global.personality: string`
   - Personality key applied to all models unless overridden.
-- `global.reasoningEffort: string`
+- `global.reasoningEffort: string` (optional)
   - Global reasoning effort override forwarded upstream when the request does not already set one.
+  - When omitted, the selected model's live catalog `default_reasoning_level` is used, typically `"medium"`.
+  - User config can still override reasoning effort globally, per model, or per variant.
 - `global.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
   - Global reasoning summary format override forwarded upstream as `reasoning.summary`.
   - `"none"` disables reasoning summaries.
@@ -209,6 +210,7 @@ Precedence for `personality`, `reasoningEffort`, `reasoningSummary`, `textVerbos
 3. `customModels.<selected-slug>.variants.<variant>`
 4. `customModels.<selected-slug>`
 5. `global`
+6. selected model live catalog defaults, including `default_reasoning_level` for reasoning effort when no user override is configured
 
 Custom model notes:
 

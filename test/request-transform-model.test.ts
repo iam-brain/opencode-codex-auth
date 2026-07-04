@@ -68,6 +68,33 @@ describe("request transform model helpers", () => {
     expect(findCatalogModelForCandidates(catalogModels, ["gpt-5.3-codex-high"])?.slug).toBe("gpt-5.3-codex")
   })
 
+  it("strips known max and ultra effort suffixes when resolving catalog models", () => {
+    const catalogModels: CodexModelInfo[] = [
+      {
+        slug: "gpt-5.6-sol",
+        context_window: 272000,
+        supported_reasoning_levels: [{ effort: "max" }],
+        input_modalities: ["text"]
+      },
+      {
+        slug: "gpt-5.6-terra",
+        context_window: 272000,
+        supported_reasoning_levels: [{ effort: "ultra" }],
+        input_modalities: ["text"]
+      },
+      {
+        slug: "gpt-5.6-custom-future",
+        context_window: 272000,
+        supported_reasoning_levels: [{ effort: "future" }],
+        input_modalities: ["text"]
+      }
+    ]
+
+    expect(findCatalogModelForCandidates(catalogModels, ["gpt-5.6-sol-max"])?.slug).toBe("gpt-5.6-sol")
+    expect(findCatalogModelForCandidates(catalogModels, ["gpt-5.6-terra-ultra"])?.slug).toBe("gpt-5.6-terra")
+    expect(findCatalogModelForCandidates(catalogModels, ["gpt-5.6-custom-future"])?.slug).toBe("gpt-5.6-custom-future")
+  })
+
   it("reads custom model overrides from codexCustomModelConfig model options", () => {
     const modelOptions = {
       codexCustomModelConfig: {

@@ -33,7 +33,9 @@ Top-level:
 - `runtime.collaborationProfile: boolean`
 - `runtime.orchestratorSubagents: boolean`
 - `global.personality: string`
-- `global.reasoningEffort: string`
+- `global.reasoningEffort: string` (optional)
+  - When omitted, the selected model's live catalog `default_reasoning_level` is used, typically `"medium"`.
+  - User config can still override reasoning effort globally, per model, or per variant.
 - `global.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
 - `global.textVerbosity: "default" | "low" | "medium" | "high" | "none"`
 - `global.serviceTier: "auto" | "priority" | "flex"`
@@ -102,7 +104,6 @@ Default generated values:
 - `runtime.collaborationProfile`: mode-derived when unset (`true` in `codex`, `false` in `native`)
 - `runtime.orchestratorSubagents`: inherits `runtime.collaborationProfile` effective value when unset
 - `global.personality: "pragmatic"`
-- `global.reasoningEffort: "high"`
 - `global.reasoningSummary: "auto"`
 - `global.textVerbosity: "default"`
 - `customModels: {}`

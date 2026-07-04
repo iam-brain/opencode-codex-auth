@@ -53,8 +53,9 @@
     // Custom: personalities/<key>.md
     "personality": "pragmatic",
 
-    // Reasoning effort override forwarded upstream.
-    "reasoningEffort": "high",
+    // Optional reasoning effort override forwarded upstream.
+    // Omit to use the selected model's live catalog default_reasoning_level (typically "medium").
+    // "reasoningEffort": "high",
 
     // Reasoning summary format forwarded upstream as reasoning.summary.
     // options: "auto" | "concise" | "detailed" | "none"

@@ -114,7 +114,10 @@ describe("codex-native config variants", () => {
                       { effort: "low" },
                       { effort: "medium" },
                       { effort: "high" },
-                      { effort: "xhigh" }
+                      { effort: "xhigh" },
+                      { effort: "max" },
+                      { effort: "ultra" },
+                      { effort: "future-custom" }
                     ]
                   },
                   {
@@ -143,6 +146,21 @@ describe("codex-native config variants", () => {
 
       expect(config.provider.openai.models["gpt-5.4"].variants.xhigh).toEqual({
         reasoningEffort: "xhigh",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"]
+      })
+      expect(config.provider.openai.models["gpt-5.4"].variants.max).toEqual({
+        reasoningEffort: "max",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"]
+      })
+      expect(config.provider.openai.models["gpt-5.4"].variants.ultra).toEqual({
+        reasoningEffort: "ultra",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"]
+      })
+      expect(config.provider.openai.models["gpt-5.4"].variants["future-custom"]).toEqual({
+        reasoningEffort: "future-custom",
         reasoningSummary: "auto",
         include: ["reasoning.encrypted_content"]
       })

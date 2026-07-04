@@ -70,7 +70,7 @@ const INTERNAL_CATALOG_SCOPE_HEADER = "x-opencode-catalog-scope-key"
 const INTERNAL_CATALOG_DEFAULTS_HEADER = "x-opencode-catalog-default-fields"
 const INTERNAL_SELECTED_MODEL_HEADER = "x-opencode-selected-model-slug"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
-const REASONING_VARIANT_KEYS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const
+const REASONING_VARIANT_KEYS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] as const
 
 const CODEX_RS_COMPACT_PROMPT = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
 
@@ -212,8 +212,9 @@ function buildVariantConfigOverrides(model: CodexModelInfo): Record<string, Reco
   const supportedEfforts = getSupportedReasoningEfforts(model)
   if (supportedEfforts.length === 0) return undefined
 
+  const variants = new Set<string>([...REASONING_VARIANT_KEYS, ...supportedEfforts])
   return Object.fromEntries(
-    REASONING_VARIANT_KEYS.map((variant) => {
+    Array.from(variants).map((variant) => {
       if (!supportedEfforts.includes(variant)) {
         return [variant, { disabled: true }]
       }
