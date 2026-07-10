@@ -21,7 +21,8 @@ import {
   getSelectedModelLookupCandidates,
   getModelTextVerbosityOverride,
   getVariantLookupCandidates,
-  resolvePersonalityForModel
+  resolvePersonalityForModel,
+  supportsReasoningMode
 } from "./request-transform-model.js"
 import { resolveServiceTierForModel } from "./request-transform-model-service-tier.js"
 import { resolveRequestUserAgent } from "./client-identity.js"
@@ -218,7 +219,9 @@ export async function handleChatParamsHook(input: {
     resolvedBehavior: {
       reasoningEffort:
         modelReasoningEffortOverride ?? customModelReasoningEffortOverride ?? globalBehavior?.reasoningEffort,
-      reasoningMode: modelReasoningModeOverride ?? customModelReasoningModeOverride ?? globalBehavior?.reasoningMode,
+      reasoningMode: supportsReasoningMode(modelCandidates)
+        ? (modelReasoningModeOverride ?? customModelReasoningModeOverride ?? globalBehavior?.reasoningMode)
+        : undefined,
       reasoningSummary: modelReasoningSummaryOverride ?? customModelReasoningSummaryOverride ?? globalReasoningSummary,
       textVerbosity: modelTextVerbosityOverride ?? customModelTextVerbosityOverride ?? globalTextVerbosity,
       include: modelIncludeOverride ?? customModelIncludeOverride ?? globalBehavior?.include,

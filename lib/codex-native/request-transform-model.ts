@@ -197,6 +197,10 @@ export function getModelLookupCandidates(model: { id?: string; api?: { id?: stri
   return out
 }
 
+export function supportsReasoningMode(modelCandidates: string[]): boolean {
+  return modelCandidates.some((candidate) => candidate.trim().toLowerCase().startsWith("gpt-5.6"))
+}
+
 export function getSelectedModelLookupCandidates(model: { id?: string }): string[] {
   const out: string[] = []
   const seen = new Set<string>()

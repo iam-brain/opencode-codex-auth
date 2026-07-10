@@ -287,6 +287,25 @@ describe("GPT-5.6 reasoning mode", () => {
     const explicit = await transform(makeRequest({ effort: "high", mode: "standard" }))
     expect(JSON.parse(await explicit.request.text()).reasoning.mode).toBe("standard")
   })
+
+  it("does not apply a global reasoning mode to older models", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5.4", reasoning: { effort: "high" } })
+    })
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      selectedModelSlug: "gpt-5.4",
+      behaviorSettings: { global: { reasoningMode: "pro" } },
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false
+    })
+
+    expect(JSON.parse(await transformed.request.text()).reasoning).toEqual({ effort: "high" })
+  })
 })
 
 describe("request transform aggregation", () => {

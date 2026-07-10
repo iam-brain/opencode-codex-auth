@@ -10,7 +10,8 @@ import {
   getModelLookupCandidates,
   getModelReasoningSummaryOverride,
   getModelReasoningModeOverride,
-  resolvePersonalityForModel
+  resolvePersonalityForModel,
+  supportsReasoningMode
 } from "./request-transform-model.js"
 import { type ReasoningSummaryValidationDiagnostic, resolveReasoningSummaryValue } from "./reasoning-summary.js"
 import { getRequestBodyVariantCandidates } from "./request-transform-model-service-tier.js"
@@ -351,10 +352,16 @@ export async function transformOutboundRequestPayload(
       variants,
       (entry) => (entry.reasoningMode === "standard" || entry.reasoningMode === "pro" ? entry.reasoningMode : undefined)
     )
-    const mode =
-      getModelReasoningModeOverride(input.behaviorSettings, candidates, variants) ??
-      configuredCustomMode ??
-      (selectedSlug?.toLowerCase().endsWith("-pro") ? "pro" : input.behaviorSettings?.global?.reasoningMode)
+    const resolvedModelCandidates = resolvePayloadModelCandidatesForClamps({
+      payload: finalPayload,
+      selectedModelSlug: selectedSlug,
+      customModels: input.customModels
+    })
+    const mode = supportsReasoningMode(resolvedModelCandidates)
+      ? (getModelReasoningModeOverride(input.behaviorSettings, candidates, variants) ??
+        configuredCustomMode ??
+        (selectedSlug?.toLowerCase().endsWith("-pro") ? "pro" : input.behaviorSettings?.global?.reasoningMode))
+      : undefined
     if (mode) {
       finalPayload.reasoning = { ...(existingReasoning ?? {}), mode }
       changed = true

@@ -105,6 +105,36 @@ describe("codex-native chat hooks instruction source order", () => {
     expect(output.options.parallelToolCalls).toBe(false)
   })
 
+  it("does not apply a global reasoning mode to older models", async () => {
+    const output = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      options: {} as Record<string, unknown>
+    }
+
+    await handleChatParamsHook({
+      hookInput: {
+        model: {
+          id: "gpt-5.4",
+          api: { id: "gpt-5.4" },
+          providerID: "openai",
+          capabilities: { toolcall: true },
+          options: {}
+        } as any,
+        message: {}
+      },
+      output: output as any,
+      lastCatalogModels: undefined,
+      behaviorSettings: { global: { reasoningMode: "pro" } },
+      spoofMode: "codex",
+      collaborationProfileEnabled: false,
+      orchestratorSubagentsEnabled: false
+    })
+
+    expect(output.options.reasoningMode).toBeUndefined()
+  })
+
   it("leaves review subtask agents unchanged", async () => {
     const output = {
       parts: [
