@@ -39,6 +39,8 @@ Top-level:
 - `global.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
 - `global.textVerbosity: "default" | "low" | "medium" | "high" | "none"`
 - `global.serviceTier: "auto" | "priority" | "flex"`
+  - `"auto"` or omission is standard speed.
+  - `"priority"` requests Fast only when the selected active catalog model advertises the `priority` service tier.
 - `global.include: ("reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs")[]`
 - `global.parallelToolCalls: boolean`
 - `customModels.<slug>.targetModel: string`

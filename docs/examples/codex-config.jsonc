@@ -62,8 +62,8 @@
     // "none" disables summaries entirely.
     "reasoningSummary": "auto",
 
-    // Optional Fast Mode (`serviceTier`) override:
-    // "auto" leaves the request unchanged.
+    // Optional speed tier (`serviceTier`) override:
+    // "auto" keeps standard speed; "priority" enables Fast only when the live catalog advertises it.
     // "serviceTier": "priority",
 
     // Text verbosity sent upstream as text.verbosity.

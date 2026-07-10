@@ -40,6 +40,11 @@ type ModelReasoningLevel = {
   effort?: string | null
 }
 
+type ModelServiceTier = {
+  id?: string | null
+  name?: string | null
+}
+
 type CatalogInputModality = "text" | "audio" | "image" | "video" | "pdf"
 
 export type CodexModelInfo = {
@@ -59,6 +64,8 @@ export type CodexModelInfo = {
   support_verbosity?: boolean | null
   default_verbosity?: string | null
   default_reasoning_summary?: string | null
+  service_tiers?: ModelServiceTier[] | null
+  additional_speed_tiers?: string[] | null
 }
 
 type CodexModelsResponse = {
@@ -81,6 +88,7 @@ export type CodexModelRuntimeDefaults = {
   supportsParallelToolCalls?: boolean
   supportsVerbosity?: boolean
   defaultVerbosity?: "low" | "medium" | "high"
+  supportedServiceTiers?: string[]
 }
 
 export type CodexModelCatalogEvent = {
@@ -181,6 +189,27 @@ export function parseReasoningLevels(value: unknown): ModelReasoningLevel[] | nu
   return out.length > 0 ? out : null
 }
 
+function parseServiceTiers(value: unknown): ModelServiceTier[] | null {
+  if (!Array.isArray(value)) return null
+  const out: ModelServiceTier[] = []
+  for (const item of value) {
+    if (!isRecord(item)) continue
+    const id = normalizeModelSlug(item.id)
+    if (!id) continue
+    out.push({ id, name: typeof item.name === "string" ? item.name : null })
+  }
+  return out.length > 0 ? out : null
+}
+
+function parseAdditionalSpeedTiers(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null
+  const tiers = value.flatMap((item) => {
+    const tier = normalizeModelSlug(item)
+    return tier ? [tier] : []
+  })
+  return tiers.length > 0 ? Array.from(new Set(tiers)) : null
+}
+
 function parseInputModalities(value: unknown): CatalogInputModality[] | null {
   if (!Array.isArray(value)) return null
   const out: CatalogInputModality[] = []
@@ -255,7 +284,9 @@ export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
       support_verbosity: typeof item.support_verbosity === "boolean" ? item.support_verbosity : null,
       default_verbosity: typeof item.default_verbosity === "string" ? item.default_verbosity : null,
       default_reasoning_summary:
-        typeof item.default_reasoning_summary === "string" ? item.default_reasoning_summary : null
+        typeof item.default_reasoning_summary === "string" ? item.default_reasoning_summary : null,
+      service_tiers: parseServiceTiers(item.service_tiers),
+      additional_speed_tiers: parseAdditionalSpeedTiers(item.additional_speed_tiers)
     })
   }
 

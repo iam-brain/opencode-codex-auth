@@ -210,9 +210,9 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // deprecated aliases: reasoningSummaries, thinkingSummaries
     "reasoningSummary": "auto",
 
-    // Fast Mode behavior (serviceTier):
+    // Speed tier behavior (serviceTier):
     // "auto"     => do not force a service_tier override
-    // "priority" => fast mode for GPT-5.4* requests only
+    // "priority" => Fast when the selected model's live catalog advertises it
     // "flex"     => pass through service_tier: "flex"
     // omit       => leave request body unchanged (recommended)
     // "serviceTier": "priority",

@@ -173,8 +173,8 @@ Mode-derived runtime defaults when omitted:
     - `verbosityEnabled: false` => `"none"`
     - `verbosity: "medium"` => `textVerbosity: "medium"`
 - `global.serviceTier: "auto" | "priority" | "flex"`
-  - Global Fast Mode preference (`serviceTier`).
-  - `"priority"` maps to request-body `service_tier: "priority"` only for `gpt-5.4*`.
+  - Global speed-tier preference (`serviceTier`).
+  - `"priority"` maps to request-body `service_tier: "priority"` only when the selected model's active catalog entry advertises the `priority` service tier.
   - `"flex"` passes through `service_tier: "flex"`.
   - `"auto"` or omission leaves `service_tier` unset unless the request body already sets it.
   - Deprecated alias: `"default"` => `"auto"`.
@@ -220,11 +220,18 @@ Custom model notes:
 - If `targetModel` is not present in the active catalog/provider, the plugin warns and skips that custom model instead of inventing metadata.
 - `reasoningSummaryFormat` remains internal-only. Users control request summaries with `reasoningSummary`; internal catalog defaults may still populate `reasoning.summary` when no explicit config override is set.
 
-### GPT-5.4 fast mode and long context
+### GPT-5.6 reasoning modes and Fast
 
-- Fast mode is configured with `serviceTier: "priority"`.
+- GPT-5.6 Codex reasoning modes are catalog model slugs and effort metadata, not a separate request-body `pro` flag.
+- Select the GPT-5.6 model exposed by your account (for example `gpt-5.6-sol`, `gpt-5.6-terra`, or `gpt-5.6-luna`) and use one of that model's generated reasoning variants.
+- Omitting `reasoningEffort` uses the model's live `default_reasoning_level`; arbitrary future effort strings remain supported.
+- Standard speed is the default: omit `serviceTier` or set it to `"auto"`.
+- When the active catalog advertises `service_tiers: [{ id: "priority" }]`, `serviceTier: "priority"` is accepted. If it also advertises `additional_speed_tiers: ["fast"]`, the provider exposes a generated `fast` variant.
+- Account-scoped catalog responses remain authoritative. The plugin does not add missing GPT-5.6 slugs or copy Sol/Terra/Luna metadata between models.
+
+### GPT-5.4 long context
+
 - The plugin preserves an explicit request-body `service_tier` if your host already sets one.
-- `serviceTier: "priority"` is intentionally gated to `gpt-5.4*` requests and is omitted for other models instead of failing the request.
 - The plugin preserves request-level `model_context_window`, `model_auto_compact_token_limit`, and `max_output_tokens` fields through all payload rewrites.
 - For `gpt-5.4*`, the plugin clamps those request-level overrides to the currently documented GPT-5.4 long-context limits before sending the request:
   - `model_context_window <= 1,050,000`

@@ -21,6 +21,21 @@ describe("request transform model service tier resolution", () => {
 
     expect(
       resolveServiceTierForModel({
+        behaviorSettings: { global: { serviceTier: "priority" } },
+        modelOptions: {
+          codexCatalogModel: {
+            slug: "gpt-5.6-luna",
+            service_tiers: [{ id: "priority", name: "Fast" }],
+            additional_speed_tiers: []
+          }
+        },
+        modelCandidates: ["gpt-5.6-luna"],
+        variantCandidates: []
+      })
+    ).toBe("priority")
+
+    expect(
+      resolveServiceTierForModel({
         behaviorSettings: {
           global: {
             serviceTier: "flex"
@@ -30,6 +45,75 @@ describe("request transform model service tier resolution", () => {
         variantCandidates: []
       })
     ).toBe("flex")
+  })
+
+  it("only enables priority when the selected catalog model advertises Fast", () => {
+    expect(
+      resolveServiceTierForModel({
+        behaviorSettings: { global: { serviceTier: "priority" } },
+        modelOptions: {
+          codexCatalogModel: {
+            slug: "gpt-5.6-luna",
+            service_tiers: [{ id: "priority", name: "Fast" }],
+            additional_speed_tiers: ["fast"]
+          }
+        },
+        modelCandidates: ["gpt-5.6-luna"],
+        variantCandidates: []
+      })
+    ).toBe("priority")
+
+    expect(
+      resolveServiceTierForModel({
+        behaviorSettings: { global: { serviceTier: "priority" } },
+        modelOptions: {
+          codexCatalogModel: {
+            slug: "gpt-5.6-luna",
+            service_tiers: [],
+            additional_speed_tiers: []
+          }
+        },
+        modelCandidates: ["gpt-5.6-luna"],
+        variantCandidates: []
+      })
+    ).toBeUndefined()
+
+    expect(
+      resolveServiceTierForModel({
+        behaviorSettings: {
+          perModel: {
+            "gpt-5.6-luna": { serviceTier: "priority" }
+          }
+        },
+        modelOptions: {
+          codexCatalogModel: {
+            slug: "gpt-5.6-luna",
+            service_tiers: [],
+            additional_speed_tiers: []
+          }
+        },
+        modelCandidates: ["gpt-5.6-luna"],
+        variantCandidates: []
+      })
+    ).toBeUndefined()
+
+    expect(
+      resolveServiceTierForModel({
+        modelOptions: {
+          codexCatalogModel: {
+            slug: "gpt-5.6-luna",
+            service_tiers: [],
+            additional_speed_tiers: []
+          },
+          codexCustomModelConfig: {
+            targetModel: "gpt-5.6-luna",
+            serviceTier: "priority"
+          }
+        },
+        modelCandidates: ["my-luna"],
+        variantCandidates: []
+      })
+    ).toBeUndefined()
   })
 
   it("resolves variant and per-model overrides before global settings", () => {

@@ -152,7 +152,16 @@ function buildVariants(model: CodexModelInfo): Record<string, Record<string, unk
     )
   )
 
-  return Object.fromEntries(efforts.map((effort) => [effort, { reasoningEffort: effort }]))
+  const variants: Record<string, Record<string, unknown>> = Object.fromEntries(
+    efforts.map((effort) => [effort, { reasoningEffort: effort }])
+  )
+  const supportsFast =
+    model.service_tiers?.some((tier) => tier.id?.trim().toLowerCase() === "priority") === true &&
+    model.additional_speed_tiers?.some((tier) => tier.trim().toLowerCase() === "fast") === true
+  if (supportsFast) {
+    variants.fast = { serviceTier: "priority" }
+  }
+  return variants
 }
 
 function cloneValue<T>(value: T): T {
@@ -446,6 +455,18 @@ export function getRuntimeDefaultsForModel(model: CodexModelInfo | undefined): C
   const defaultVerbosity = normalizeVerbosity(model.default_verbosity)
   if (defaultVerbosity) {
     out.defaultVerbosity = defaultVerbosity
+  }
+
+  const supportedServiceTiers = Array.from(
+    new Set(
+      (model.service_tiers ?? []).flatMap((tier) => {
+        const id = tier.id?.trim().toLowerCase()
+        return id ? [id] : []
+      })
+    )
+  )
+  if (supportedServiceTiers.length > 0) {
+    out.supportedServiceTiers = supportedServiceTiers
   }
 
   return Object.keys(out).length > 0 ? out : undefined

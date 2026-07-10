@@ -40,6 +40,14 @@ function normalizeServiceTierSetting(value: unknown): ServiceTierOption | undefi
   return undefined
 }
 
+function catalogSupportsPriority(modelOptions: Record<string, unknown> | undefined): boolean | undefined {
+  if (!modelOptions) return undefined
+  const catalogModel = modelOptions.codexCatalogModel
+  if (!isRecord(catalogModel)) return undefined
+  const serviceTiers = Array.isArray(catalogModel.service_tiers) ? catalogModel.service_tiers : []
+  return serviceTiers.some((tier) => isRecord(tier) && asString(tier.id)?.toLowerCase() === "priority")
+}
+
 function stripEffortSuffix(value: string): string {
   return value.replace(EFFORT_SUFFIX_REGEX, "")
 }
@@ -144,12 +152,23 @@ export function resolveServiceTierForModel(input: {
     input.modelCandidates,
     input.variantCandidates
   )
-  if (modelOverride) return modelOverride
+  if (modelOverride) {
+    return modelOverride === "priority" && catalogSupportsPriority(input.modelOptions) === false
+      ? undefined
+      : modelOverride
+  }
 
   const customModelOverride = input.modelOptions
     ? getCustomModelServiceTierOverride(input.modelOptions, input.variantCandidates)
     : undefined
-  if (customModelOverride) return customModelOverride
+  if (customModelOverride) {
+    return customModelOverride === "priority" && catalogSupportsPriority(input.modelOptions) === false
+      ? undefined
+      : customModelOverride
+  }
 
-  return normalizeServiceTierSetting(input.behaviorSettings?.global?.serviceTier)
+  const globalOverride = normalizeServiceTierSetting(input.behaviorSettings?.global?.serviceTier)
+  return globalOverride === "priority" && catalogSupportsPriority(input.modelOptions) === false
+    ? undefined
+    : globalOverride
 }

@@ -60,6 +60,8 @@ describe("model catalog provider model mapping", () => {
           priority: 0,
           context_window: 272000,
           input_modalities: ["text", "image"] as const,
+          service_tiers: [{ id: "priority", name: "Fast" }, { id: " FLEX ", name: 42 }, { id: "" }, null],
+          additional_speed_tiers: ["fast", " FAST ", "", null],
           supports_parallel_tool_calls: true
         }
       ]
@@ -72,6 +74,11 @@ describe("model catalog provider model mapping", () => {
         priority: 0,
         context_window: 272000,
         input_modalities: ["text", "image"] as const,
+        service_tiers: [
+          { id: "priority", name: "Fast" },
+          { id: "flex", name: null }
+        ],
+        additional_speed_tiers: ["fast"],
         model_messages: null,
         base_instructions: null,
         apply_patch_tool_type: null,
@@ -115,6 +122,8 @@ describe("model catalog provider model mapping", () => {
         supports_parallel_tool_calls: false,
         support_verbosity: true,
         default_verbosity: "high",
+        service_tiers: [{ id: "priority", name: "Fast" }],
+        additional_speed_tiers: ["fast"],
         model_messages: {
           instructions_template: "Base {{ personality }}",
           instructions_variables: { personality_default: "Default" }
@@ -141,7 +150,8 @@ describe("model catalog provider model mapping", () => {
       reasoningSummaryFormat: "experimental",
       supportsParallelToolCalls: false,
       supportsVerbosity: true,
-      defaultVerbosity: "high"
+      defaultVerbosity: "high",
+      supportedServiceTiers: ["priority"]
     })
 
     const defaults = getRuntimeDefaultsForSlug("gpt-5.4-codex-high", catalogModels)
@@ -152,7 +162,8 @@ describe("model catalog provider model mapping", () => {
       high: { reasoningEffort: "high" },
       max: { reasoningEffort: "max" },
       ultra: { reasoningEffort: "ultra" },
-      "future-custom": { reasoningEffort: "future-custom" }
+      "future-custom": { reasoningEffort: "future-custom" },
+      fast: { serviceTier: "priority" }
     })
   })
 

@@ -109,7 +109,7 @@ Add a `serviceTier` override in `codex-config.jsonc`:
 }
 ```
 
-This maps to request-body `service_tier: "priority"` for `gpt-5.4*` only.
+This maps to request-body `service_tier: "priority"` only when the selected model's active catalog entry advertises Fast support.
 If your host/request already sets `service_tier`, the plugin leaves it alone.
 
 ## 5b) Optional: try GPT-5.4 1M context
