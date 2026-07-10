@@ -5,6 +5,8 @@ import path from "node:path"
 import { describe, expect, it, vi } from "vitest"
 
 import { getCodexModelCatalog, githubModelsUrl, type CodexModelCatalogEvent } from "../lib/model-catalog"
+import { codexModelsSharedCachePath } from "../lib/codex-cache-layout"
+import { readCatalogFromGitHubCache } from "../lib/model-catalog/cache-helpers"
 
 async function makeCacheDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-model-catalog-"))
@@ -18,6 +20,29 @@ describe("model catalog fetch and primary cache", () => {
     expect(githubModelsUrl("0.120.0")).toBe(
       "https://raw.githubusercontent.com/openai/codex/rust-v0.120.0/codex-rs/models-manager/models.json"
     )
+  })
+
+  it("marks GitHub catalog models as non-authoritative fallback data", async () => {
+    const cacheDir = await makeCacheDir()
+    try {
+      await fs.mkdir(path.dirname(codexModelsSharedCachePath(cacheDir)), { recursive: true })
+      await fs.writeFile(
+        codexModelsSharedCachePath(cacheDir),
+        JSON.stringify({
+          fetchedAt: 100,
+          source: "github",
+          models: [{ slug: "gpt-5.6-sol", supported_reasoning_levels: [{ effort: "ultra" }] }]
+        })
+      )
+
+      const cached = await readCatalogFromGitHubCache(cacheDir)
+      expect(cached?.models[0]).toMatchObject({
+        slug: "gpt-5.6-sol",
+        catalog_source: "github_fallback"
+      })
+    } finally {
+      await fs.rm(cacheDir, { recursive: true, force: true })
+    }
   })
 
   it("fetches /codex/models with auth headers", async () => {
@@ -121,7 +146,7 @@ describe("model catalog fetch and primary cache", () => {
           version: "0.98.0",
           tag: "rust-v0.98.0",
           lastChecked: 100,
-          url: "https://raw.githubusercontent.com/openai/codex/rust-v0.98.0/codex-rs/models-manager/models.json"
+          url: "https://raw.githubusercontent.com/openai/codex/rust-v0.98.0/codex-rs/core/models.json"
         },
         null,
         2
@@ -131,9 +156,7 @@ describe("model catalog fetch and primary cache", () => {
 
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
       const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
-      expect(endpoint).toBe(
-        "https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/models-manager/models.json"
-      )
+      expect(endpoint).toBe("https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/core/models.json")
       return new Response(
         JSON.stringify({
           models: [{ slug: "gpt-5.3-codex" }]
@@ -175,9 +198,7 @@ describe("model catalog fetch and primary cache", () => {
     expect(meta.etag).toBe('W/"models-099"')
     expect(meta.tag).toBe("rust-v0.99.0")
     expect(meta.lastChecked).toBe(200)
-    expect(meta.url).toBe(
-      "https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/models-manager/models.json"
-    )
+    expect(meta.url).toBe("https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/core/models.json")
     expect(meta.version).toBeUndefined()
   })
 
@@ -189,7 +210,7 @@ describe("model catalog fetch and primary cache", () => {
         {
           tag: "rust-v0.99.0",
           lastChecked: 100,
-          url: "https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/models-manager/models.json"
+          url: "https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/core/models.json"
         },
         null,
         2
@@ -199,9 +220,7 @@ describe("model catalog fetch and primary cache", () => {
 
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
       const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
-      expect(endpoint).toBe(
-        "https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/models-manager/models.json"
-      )
+      expect(endpoint).toBe("https://raw.githubusercontent.com/openai/codex/rust-v0.99.0/codex-rs/core/models.json")
       return new Response(
         JSON.stringify({
           models: [{ slug: "gpt-5.4-codex", context_window: 272000 }]

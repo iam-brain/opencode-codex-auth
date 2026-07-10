@@ -11,7 +11,7 @@ This plugin treats Ultra as a logical model variant, not as a new inference effo
 | Missing or stale metadata | Ultra is disabled when catalog metadata cannot prove eligibility. A manually configured literal `ultra` is safe-degraded to wire `max` without proactive instructions. |
 | Failure | Missing task tools, disabled collaboration, spawn failure, cancellation, or partial completion do not fail the root turn. The agent continues locally and must not claim delegation that did not happen. |
 
-The live account-scoped catalog is authoritative. GitHub fallback data is parsed through the same schema and is used only when the live source is unavailable. The plugin does not recreate account entitlement or minimum-client enforcement from catalog metadata.
+The live account-scoped catalog is authoritative. GitHub fallback data is parsed through the same schema and remains usable for ordinary model defaults when the live source is unavailable, but it cannot prove Ultra eligibility. The plugin does not recreate account entitlement or minimum-client enforcement from catalog metadata.
 
 ## State lifecycle
 

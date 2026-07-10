@@ -144,15 +144,18 @@ function buildInputCapabilities(model: CodexModelInfo): CapabilityMap {
   }
 }
 
-function buildVariants(model: CodexModelInfo): Record<string, Record<string, unknown>> {
-  const efforts = Array.from(
+function getSupportedReasoningEfforts(model: CodexModelInfo): string[] {
+  return Array.from(
     new Set(
       (model.supported_reasoning_levels ?? [])
         .map((level) => normalizeReasoningEffort(level.effort))
         .filter((value): value is NonNullable<typeof value> => value !== undefined)
-        .filter((effort) => effort !== "ultra" || isUltraEligible(model))
     )
   )
+}
+
+function buildVariants(model: CodexModelInfo): Record<string, Record<string, unknown>> {
+  const efforts = getSupportedReasoningEfforts(model).filter((effort) => effort !== "ultra" || isUltraEligible(model))
 
   return Object.fromEntries(
     efforts.map((effort) => {
@@ -512,13 +515,7 @@ export function getRuntimeDefaultsForModel(model: CodexModelInfo | undefined): C
     if (next) out.defaultReasoningSummary = next
   }
 
-  const supportedReasoningEfforts = Array.from(
-    new Set(
-      (model.supported_reasoning_levels ?? [])
-        .map((level) => normalizeReasoningEffort(level.effort))
-        .filter((value): value is NonNullable<typeof value> => value !== undefined)
-    )
-  )
+  const supportedReasoningEfforts = getSupportedReasoningEfforts(model)
   if (supportedReasoningEfforts.length > 0) {
     out.supportedReasoningEfforts = supportedReasoningEfforts
   }

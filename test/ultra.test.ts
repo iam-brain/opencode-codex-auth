@@ -37,6 +37,7 @@ describe("GPT-5.6 Ultra contract", () => {
     expect(isUltraEligible(eligibleModel({ visibility: "hidden" }))).toBe(false)
     expect(isUltraEligible(eligibleModel({ supported_in_api: undefined }))).toBe(false)
     expect(isUltraEligible(eligibleModel({ visibility: undefined }))).toBe(false)
+    expect(isUltraEligible(eligibleModel({ catalog_source: "github_fallback" }))).toBe(false)
   })
 
   it("parses only valid internal logical-state metadata", () => {

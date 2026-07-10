@@ -52,6 +52,7 @@ type CatalogInputModality = "text" | "audio" | "image" | "video" | "pdf"
 
 export type CodexModelInfo = {
   slug: string
+  catalog_source?: "github_fallback"
   description?: string | null
   display_name?: string | null
   priority?: number | null

@@ -1,8 +1,8 @@
 import type { CodexModelInfo } from "../model-catalog.js"
 
-export const ULTRA_REASONING_EFFORT = "ultra"
-export const ULTRA_WIRE_REASONING_EFFORT = "max"
-export const ULTRA_MULTI_AGENT_VERSION = "v2"
+const ULTRA_REASONING_EFFORT = "ultra"
+const ULTRA_WIRE_REASONING_EFFORT = "max"
+const ULTRA_MULTI_AGENT_VERSION = "v2"
 
 export type UltraDelegationPolicy = "proactive" | "explicit_request_only"
 
@@ -13,6 +13,15 @@ export type UltraEligibilityReason =
   | "missing_multi_agent_v2"
   | "not_supported_in_api"
   | "not_visible"
+
+const ULTRA_ELIGIBILITY_REASONS = new Set<UltraEligibilityReason>([
+  "eligible",
+  "missing_catalog",
+  "missing_ultra_effort",
+  "missing_multi_agent_v2",
+  "not_supported_in_api",
+  "not_visible"
+])
 
 export type UltraResolution = {
   selected: boolean
@@ -48,8 +57,9 @@ function modelIsVisible(model: CodexModelInfo): boolean {
   return visibility === "list"
 }
 
-export function getUltraEligibilityReason(model: CodexModelInfo | undefined): UltraEligibilityReason {
+function getUltraEligibilityReason(model: CodexModelInfo | undefined): UltraEligibilityReason {
   if (!model) return "missing_catalog"
+  if (model.catalog_source === "github_fallback") return "missing_catalog"
   if (!supportsEffort(model, ULTRA_REASONING_EFFORT)) return "missing_ultra_effort"
   if (normalize(model.multi_agent_version) !== ULTRA_MULTI_AGENT_VERSION) return "missing_multi_agent_v2"
   if (model.supported_in_api !== true) return "not_supported_in_api"
@@ -90,6 +100,19 @@ export function normalizeUltraWireEffort(value: unknown): { value: string | unde
   return { value: ULTRA_WIRE_REASONING_EFFORT, changed: true }
 }
 
+function isDelegationPolicy(value: unknown): value is UltraDelegationPolicy {
+  return value === "proactive" || value === "explicit_request_only"
+}
+
+function isEligibilityReason(value: unknown): value is UltraEligibilityReason {
+  return typeof value === "string" && ULTRA_ELIGIBILITY_REASONS.has(value as UltraEligibilityReason)
+}
+
+function optionalStateString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  return value.trim() || undefined
+}
+
 export function parseUltraState(value: string | null | undefined): UltraResolution | undefined {
   if (!value?.trim()) return undefined
   try {
@@ -97,35 +120,24 @@ export function parseUltraState(value: string | null | undefined): UltraResoluti
     if (parsed.selected !== true || parsed.logicalEffort !== ULTRA_REASONING_EFFORT) return undefined
     if (parsed.wireEffort !== ULTRA_WIRE_REASONING_EFFORT) return undefined
     if (typeof parsed.eligible !== "boolean") return undefined
-    if (parsed.delegationPolicy !== "proactive" && parsed.delegationPolicy !== "explicit_request_only") {
-      return undefined
-    }
-    if (
-      parsed.reason !== "eligible" &&
-      parsed.reason !== "missing_catalog" &&
-      parsed.reason !== "missing_ultra_effort" &&
-      parsed.reason !== "missing_multi_agent_v2" &&
-      parsed.reason !== "not_supported_in_api" &&
-      parsed.reason !== "not_visible"
-    ) {
-      return undefined
-    }
+    if (!isDelegationPolicy(parsed.delegationPolicy)) return undefined
+    if (!isEligibilityReason(parsed.reason)) return undefined
     if (parsed.eligible !== (parsed.reason === "eligible")) return undefined
     if (parsed.delegationPolicy === "proactive" && !parsed.eligible) return undefined
-    return {
+
+    const result: UltraResolution = {
       selected: true,
       logicalEffort: ULTRA_REASONING_EFFORT,
       wireEffort: ULTRA_WIRE_REASONING_EFFORT,
       eligible: parsed.eligible,
       delegationPolicy: parsed.delegationPolicy,
-      reason: parsed.reason,
-      ...(typeof parsed.modelSlug === "string" && parsed.modelSlug.trim()
-        ? { modelSlug: parsed.modelSlug.trim() }
-        : {}),
-      ...(typeof parsed.multiAgentVersion === "string" && parsed.multiAgentVersion.trim()
-        ? { multiAgentVersion: parsed.multiAgentVersion.trim() }
-        : {})
+      reason: parsed.reason
     }
+    const modelSlug = optionalStateString(parsed.modelSlug)
+    const multiAgentVersion = optionalStateString(parsed.multiAgentVersion)
+    if (modelSlug) result.modelSlug = modelSlug
+    if (multiAgentVersion) result.multiAgentVersion = multiAgentVersion
+    return result
   } catch {
     return undefined
   }

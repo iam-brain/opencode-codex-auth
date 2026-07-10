@@ -160,7 +160,7 @@ export async function readCatalogFromGitHubCache(cacheDir: string): Promise<Code
   if (models.length === 0) return undefined
   return {
     fetchedAt: parsed.fetchedAt,
-    models
+    models: models.map((model) => ({ ...model, catalog_source: "github_fallback" }))
   }
 }
 
