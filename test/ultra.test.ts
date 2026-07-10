@@ -30,6 +30,30 @@ function chatOutput(): { temperature: number; topP: number; topK: number; option
 }
 
 describe("GPT-5.6 Ultra contract", () => {
+  it("resolves session lineage only for Ultra requests", async () => {
+    let calls = 0
+    const output = chatOutput()
+    output.options.reasoningEffort = "high"
+    await handleChatParamsHook({
+      hookInput: {
+        model: { id: "gpt-5.6-sol", providerID: "openai", options: {} },
+        agent: "build",
+        message: {}
+      },
+      output,
+      lastCatalogModels: [eligibleModel()],
+      spoofMode: "codex",
+      collaborationProfileEnabled: false,
+      orchestratorSubagentsEnabled: false,
+      resolveAgentExecution: async () => {
+        calls += 1
+        return { role: "root", reason: "session_root" }
+      }
+    })
+
+    expect(calls).toBe(0)
+  })
+
   it("requires Ultra, V2, visible status, and explicit API support", () => {
     expect(isUltraEligible(eligibleModel())).toBe(true)
     expect(isUltraEligible(eligibleModel({ multi_agent_version: "v1" }))).toBe(false)
@@ -69,7 +93,8 @@ describe("GPT-5.6 Ultra contract", () => {
       lastCatalogModels: [eligibleModel()],
       spoofMode: "codex",
       collaborationProfileEnabled: false,
-      orchestratorSubagentsEnabled: false
+      orchestratorSubagentsEnabled: false,
+      agentExecution: { role: "root", reason: "session_root", agentName: "build" }
     })
 
     expect(output.options.reasoningEffort).toBe("ultra")
@@ -123,11 +148,42 @@ describe("GPT-5.6 Ultra contract", () => {
       lastCatalogModels: [eligibleModel()],
       spoofMode: "codex",
       collaborationProfileEnabled: true,
-      orchestratorSubagentsEnabled: true
+      orchestratorSubagentsEnabled: true,
+      agentExecution: { role: "child", reason: "session_parent", agentName: "general" }
     })
     expect(childOutput.options.instructions).toContain(ULTRA_EXPLICIT_ONLY_INSTRUCTIONS)
     expect(childOutput.options.instructions).not.toContain(ULTRA_PROACTIVE_INSTRUCTIONS)
     expect(childResult.ultra?.delegationPolicy).toBe("explicit_request_only")
+    expect(childResult.ultra?.agentRole).toBe("child")
+  })
+
+  it("does not inject delegation policy into OpenCode auxiliary turns", async () => {
+    for (const agentName of ["title", "summary", "compaction"]) {
+      const output = chatOutput()
+      const result = await handleChatParamsHook({
+        hookInput: {
+          model: {
+            id: "gpt-5.6-sol",
+            providerID: "openai",
+            options: {
+              codexCatalogModel: eligibleModel(),
+              codexRuntimeDefaults: { defaultReasoningEffort: "ultra" }
+            }
+          },
+          agent: agentName,
+          message: {}
+        },
+        output,
+        lastCatalogModels: [eligibleModel()],
+        spoofMode: "codex",
+        collaborationProfileEnabled: true,
+        orchestratorSubagentsEnabled: true,
+        agentExecution: { role: "auxiliary", reason: "builtin_auxiliary", agentName }
+      })
+
+      expect(output.options.instructions).toBeUndefined()
+      expect(result.ultra).toMatchObject({ agentRole: "auxiliary", delegationPolicy: "disabled" })
+    }
   })
 
   it("normalizes logical Ultra to wire Max at the final request boundary", async () => {
@@ -222,6 +278,30 @@ describe("GPT-5.6 Ultra contract", () => {
     })
 
     expect(transformed.ultra?.delegationPolicy).toBe("explicit_request_only")
+  })
+
+  it("retains disabled auxiliary policy across retries", async () => {
+    const state = resolveUltraSelection({
+      reasoningEffort: "ultra",
+      model: eligibleModel(),
+      agentExecution: { role: "auxiliary", reason: "builtin_auxiliary", agentName: "summary" }
+    })
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-5.6-sol", reasoning: { effort: "max" } })
+    })
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      selectedModelSlug: "gpt-5.6-sol",
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      catalogModels: [eligibleModel()],
+      ultraState: state
+    })
+
+    expect(transformed.ultra).toMatchObject({ agentRole: "auxiliary", delegationPolicy: "disabled" })
   })
 
   it("degrades an Ultra selection without authoritative V2 metadata to wire Max only", async () => {

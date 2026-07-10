@@ -365,7 +365,14 @@ export async function transformOutboundRequestPayload(
       ? input.ultraState.logicalEffort
       : (existingReasoning?.effort ?? input.ultraState?.logicalEffort),
     model: selectedCatalogModel,
-    childTask: input.ultraChildTask === true || input.ultraState?.delegationPolicy === "explicit_request_only"
+    agentExecution: input.ultraState
+      ? {
+          role: input.ultraState.agentRole,
+          reason: input.ultraState.agentReason,
+          ...(input.ultraState.agentName ? { agentName: input.ultraState.agentName } : {})
+        }
+      : undefined,
+    childTask: input.ultraState ? undefined : input.ultraChildTask === true
   })
   let ultraChanged = false
   if (ultra.selected && existingReasoning) {

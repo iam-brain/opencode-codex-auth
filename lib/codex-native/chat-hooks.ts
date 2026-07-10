@@ -2,6 +2,7 @@ import type { PluginInput } from "@opencode-ai/plugin"
 
 import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config.js"
 import type { CodexModelInfo } from "../model-catalog.js"
+import type { AgentExecution } from "./agent-execution.js"
 import { getRuntimeDefaultsForModel, resolveInstructionsForModel } from "../model-catalog.js"
 import {
   applyCodexRuntimeDefaultsToParams,
@@ -98,6 +99,8 @@ export async function handleChatParamsHook(input: {
   spoofMode: CodexSpoofMode
   collaborationProfileEnabled: boolean
   orchestratorSubagentsEnabled: boolean
+  agentExecution?: AgentExecution
+  resolveAgentExecution?: () => Promise<AgentExecution>
 }): Promise<{ injectedCatalogDefaultFields: string[]; ultra?: UltraResolution }> {
   const emptyResult = { injectedCatalogDefaultFields: [] }
   if (input.hookInput.model.providerID !== "openai") return emptyResult
@@ -239,12 +242,22 @@ export async function handleChatParamsHook(input: {
     output: input.output
   })
 
+  const ultraSelected = asString(input.output.options.reasoningEffort)?.trim().toLowerCase() === "ultra"
+  const agentExecution =
+    input.agentExecution ??
+    (ultraSelected && input.resolveAgentExecution ? await input.resolveAgentExecution() : undefined)
   const ultraResolution = resolveUltraSelection({
     reasoningEffort: input.output.options.reasoningEffort,
     model: catalogModelFromOptions ?? catalogModelFallback,
-    childTask: resolveSubagentHeaderValue(input.hookInput.agent) !== undefined
+    agentExecution,
+    childTask: agentExecution ? undefined : resolveSubagentHeaderValue(input.hookInput.agent) !== undefined
   })
-  if (input.spoofMode === "codex" && ultraResolution.selected && ultraResolution.eligible) {
+  if (
+    input.spoofMode === "codex" &&
+    ultraResolution.selected &&
+    ultraResolution.eligible &&
+    ultraResolution.delegationPolicy !== "disabled"
+  ) {
     const ultraInstructions =
       ultraResolution.delegationPolicy === "proactive" ? ULTRA_PROACTIVE_INSTRUCTIONS : ULTRA_EXPLICIT_ONLY_INSTRUCTIONS
     input.output.options.instructions = mergeInstructions(

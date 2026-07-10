@@ -65,6 +65,7 @@ import { initializeCatalogSync, selectCatalogAuthCandidate } from "./codex-nativ
 import { createOpenAIFetchHandler } from "./codex-native/openai-loader-fetch.js"
 import { createShareableDebugLogger } from "./shareable-debug.js"
 import { isUltraEligible, type UltraResolution } from "./codex-native/ultra.js"
+import { createAgentExecutionResolver, deletedSessionIDFromEvent } from "./codex-native/agent-execution.js"
 export { browserOpenInvocationFor } from "./codex-native/browser.js"
 export { upsertAccount } from "./codex-native/accounts.js"
 export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from "./codex-native/oauth-utils.js"
@@ -409,6 +410,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   let activeCatalogScopeKey: string | undefined
   let activeCatalogModels: CodexModelInfo[] | undefined
   let providerModelsForCatalogSync: Record<string, Record<string, unknown>> | undefined
+  const agentExecutionResolver = createAgentExecutionResolver({ client: input.client })
   const quotaFetchCooldownByIdentity = new Map<string, number>()
   const aliasSettingsFor = (authType: "oauth" | "api") => ({
     fast: opts.modelAliases?.fast !== false,
@@ -497,7 +499,14 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   }
 
   return {
+    event: async ({ event }) => {
+      const sessionID = deletedSessionIDFromEvent(event)
+      if (!sessionID) return
+      agentExecutionResolver.deleteSession(sessionID)
+      catalogRequestMetadataBySession.delete(sessionID)
+    },
     async config(config) {
+      agentExecutionResolver.updateConfig(config)
       try {
         const catalogAuth = await selectCatalogAuthCandidate(
           authMode,
@@ -652,7 +661,12 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         projectRoot: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
         spoofMode,
         collaborationProfileEnabled,
-        orchestratorSubagentsEnabled
+        orchestratorSubagentsEnabled,
+        resolveAgentExecution: () =>
+          agentExecutionResolver.resolve({
+            sessionID: typeof hookInput.sessionID === "string" ? hookInput.sessionID : undefined,
+            agentName: hookInput.agent
+          })
       })
 
       const sessionID = typeof (hookInput as { sessionID?: unknown }).sessionID === "string" ? hookInput.sessionID : ""
