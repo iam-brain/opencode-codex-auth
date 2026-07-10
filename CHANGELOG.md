@@ -25,6 +25,12 @@ All notable changes to this project will be documented in this file.
 - Replaced silent catches with explicit error handling throughout codebase.
 - Reduced read contention and catalog fallback IO in storage paths.
 
+## 1.8.0 - 2026-07-04
+
+- Added opt-in shareable debug logging with redacted sensitive metadata and crash-tolerant incident capture and recovery.
+- Updated live Codex model catalog handling for GPT-5.6-era reasoning levels, preserving `max`, `ultra`, and future non-empty catalog values while allowing omitted config to follow each model's live default.
+- Expanded supported Node.js versions to `>=22 <27`.
+
 ## 1.5.1 - 2026-03-06
 
 - Fixed model catalog shaping to preserve source-faithful live catalog variants, including `gpt-5.4` `xhigh`, instead of field-merging GitHub fallback metadata into successful live responses.
