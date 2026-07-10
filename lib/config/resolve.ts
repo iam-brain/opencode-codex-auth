@@ -141,6 +141,14 @@ export function getCustomModels(cfg: PluginConfig): Record<string, CustomModelCo
   )
 }
 
+export function getModelAliasSettings(cfg: PluginConfig): PluginConfig["modelAliases"] {
+  return {
+    fast: cfg.modelAliases?.fast !== false,
+    extendedContext: cfg.modelAliases?.extendedContext !== false,
+    ...(typeof cfg.modelAliases?.pro === "boolean" ? { pro: cfg.modelAliases.pro } : {})
+  }
+}
+
 export function resolveConfig(input: {
   env: Record<string, string | undefined>
   file?: Partial<PluginConfig>

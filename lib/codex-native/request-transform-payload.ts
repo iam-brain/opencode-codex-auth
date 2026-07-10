@@ -6,8 +6,10 @@ import { isRecord } from "../util.js"
 import {
   findCatalogModelForCandidates,
   getConfiguredCustomModelReasoningSummaryOverride,
+  getConfiguredCustomModelBehaviorOverrideValue,
   getModelLookupCandidates,
   getModelReasoningSummaryOverride,
+  getModelReasoningModeOverride,
   resolvePersonalityForModel
 } from "./request-transform-model.js"
 import { type ReasoningSummaryValidationDiagnostic, resolveReasoningSummaryValue } from "./reasoning-summary.js"
@@ -338,6 +340,26 @@ export async function transformOutboundRequestPayload(
     : disabledCompatSanitizer
 
   const finalPayload = compatSanitizedPayload?.payload ?? payload
+  const existingReasoning = isRecord(finalPayload.reasoning) ? finalPayload.reasoning : undefined
+  if (asString(existingReasoning?.mode) === undefined) {
+    const selectedSlug = asString(input.selectedModelSlug)
+    const candidates = selectedSlug ? getModelLookupCandidates({ id: selectedSlug, api: { id: selectedSlug } }) : []
+    const variants = getRequestBodyVariantCandidates({ body: finalPayload, modelSlug: selectedSlug ?? "" })
+    const configuredCustomMode = getConfiguredCustomModelBehaviorOverrideValue(
+      input.customModels,
+      candidates,
+      variants,
+      (entry) => (entry.reasoningMode === "standard" || entry.reasoningMode === "pro" ? entry.reasoningMode : undefined)
+    )
+    const mode =
+      getModelReasoningModeOverride(input.behaviorSettings, candidates, variants) ??
+      configuredCustomMode ??
+      (selectedSlug?.toLowerCase().endsWith("-pro") ? "pro" : input.behaviorSettings?.global?.reasoningMode)
+    if (mode) {
+      finalPayload.reasoning = { ...(existingReasoning ?? {}), mode }
+      changed = true
+    }
+  }
   const selectedCatalogScopeSyncChanged = applySelectedCatalogScopeToPayload(finalPayload, {
     catalogModels: input.catalogModels,
     previousCatalogModels: input.previousCatalogModels,

@@ -36,6 +36,7 @@ export type EnsureDefaultConfigFileResult = {
 type ModelBehaviorSettings = {
   personality?: PersonalityOption
   reasoningEffort?: string
+  reasoningMode?: "standard" | "pro"
   reasoningSummary?: ReasoningSummaryOption
   reasoningSummaries?: boolean
   verbosityEnabled?: boolean
@@ -261,6 +262,8 @@ function normalizeModelBehaviorSettings(raw: unknown): ModelBehaviorSettings | u
 
   const reasoningEffort = normalizeNonEmptyString(raw.reasoningEffort)
   if (reasoningEffort) out.reasoningEffort = reasoningEffort
+  const reasoningMode = normalizeNonEmptyString(raw.reasoningMode)?.toLowerCase()
+  if (reasoningMode === "standard" || reasoningMode === "pro") out.reasoningMode = reasoningMode
 
   const reasoningSummary = normalizeReasoningSummaryOption(raw.reasoningSummary)
   if (reasoningSummary) {
@@ -302,6 +305,7 @@ function normalizeModelBehaviorSettings(raw: unknown): ModelBehaviorSettings | u
   if (
     !out.personality &&
     !out.reasoningEffort &&
+    !out.reasoningMode &&
     out.reasoningSummary === undefined &&
     out.reasoningSummaries === undefined &&
     out.textVerbosity === undefined &&
@@ -332,6 +336,7 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
       variantMap[variantName] = {
         ...(normalized.personality ? { personality: normalized.personality } : {}),
         ...(normalized.reasoningEffort ? { reasoningEffort: normalized.reasoningEffort } : {}),
+        ...(normalized.reasoningMode ? { reasoningMode: normalized.reasoningMode } : {}),
         ...(normalized.reasoningSummary ? { reasoningSummary: normalized.reasoningSummary } : {}),
         ...(normalized.reasoningSummaries !== undefined ? { reasoningSummaries: normalized.reasoningSummaries } : {}),
         ...(normalized.textVerbosity ? { textVerbosity: normalized.textVerbosity } : {}),
@@ -354,6 +359,7 @@ function normalizeModelConfigOverride(raw: unknown): ModelConfigOverride | undef
   return {
     ...(modelBehavior?.personality ? { personality: modelBehavior.personality } : {}),
     ...(modelBehavior?.reasoningEffort ? { reasoningEffort: modelBehavior.reasoningEffort } : {}),
+    ...(modelBehavior?.reasoningMode ? { reasoningMode: modelBehavior.reasoningMode } : {}),
     ...(modelBehavior?.reasoningSummary ? { reasoningSummary: modelBehavior.reasoningSummary } : {}),
     ...(modelBehavior?.reasoningSummaries !== undefined
       ? { reasoningSummaries: modelBehavior.reasoningSummaries }
@@ -438,6 +444,16 @@ function validateModelBehaviorShape(value: unknown, pathPrefix: string, issues: 
       expected: "string",
       actual: value.reasoningEffort
     })
+  }
+  if ("reasoningMode" in value) {
+    const mode = typeof value.reasoningMode === "string" ? value.reasoningMode.trim().toLowerCase() : ""
+    if (mode !== "standard" && mode !== "pro") {
+      pushValidationIssue(issues, {
+        path: `${pathPrefix}.reasoningMode`,
+        expected: '"standard" | "pro"',
+        actual: value.reasoningMode
+      })
+    }
   }
   if ("reasoningSummary" in value) {
     const reasoningSummary = value.reasoningSummary
@@ -710,6 +726,22 @@ export function validateConfigFileObject(raw: unknown): ConfigValidationResult {
     }
   }
 
+  if ("modelAliases" in raw) {
+    if (!isRecord(raw.modelAliases)) {
+      pushValidationIssue(issues, { path: "modelAliases", expected: "object", actual: raw.modelAliases })
+    } else {
+      for (const key of ["fast", "extendedContext", "pro"] as const) {
+        if (key in raw.modelAliases && typeof raw.modelAliases[key] !== "boolean") {
+          pushValidationIssue(issues, {
+            path: `modelAliases.${key}`,
+            expected: "boolean",
+            actual: raw.modelAliases[key]
+          })
+        }
+      }
+    }
+  }
+
   if ("global" in raw) {
     validateModelBehaviorShape(raw.global, "global", issues)
   }
@@ -833,6 +865,15 @@ function parseConfigFileObjectWithMetadata(raw: unknown): ParsedConfigFile {
   const customModels = normalizeCustomModels(raw)
   const personalityFromBehavior = behaviorSettings?.global?.personality
   const runtime = isRecord(raw.runtime) ? raw.runtime : undefined
+  const modelAliases = isRecord(raw.modelAliases)
+    ? {
+        ...(typeof raw.modelAliases.fast === "boolean" ? { fast: raw.modelAliases.fast } : {}),
+        ...(typeof raw.modelAliases.extendedContext === "boolean"
+          ? { extendedContext: raw.modelAliases.extendedContext }
+          : {}),
+        ...(typeof raw.modelAliases.pro === "boolean" ? { pro: raw.modelAliases.pro } : {})
+      }
+    : undefined
 
   const debug = typeof raw.debug === "boolean" ? raw.debug : undefined
   const proactiveRefresh =
@@ -886,7 +927,8 @@ function parseConfigFileObjectWithMetadata(raw: unknown): ParsedConfigFile {
       orchestratorSubagents: orchestratorSubagentsEnabled,
       orchestratorSubagentsEnabled,
       behaviorSettings,
-      customModels
+      customModels,
+      modelAliases
     },
     deprecatedKeys: collectDeprecatedModelBehaviorKeys(raw)
   }

@@ -15,6 +15,7 @@ describe("config validation", () => {
         shareableDebug: "yes"
       },
       global: {
+        reasoningMode: "PRO",
         serviceTier: "turbo"
       }
     })
@@ -57,11 +58,13 @@ describe("config validation", () => {
   it("normalizes canonical config fields and custom model aliases", () => {
     const parsed = parseConfigFileObject({
       global: {
+        reasoningMode: "PRO",
         textVerbosity: "HIGH",
         serviceTier: "default",
         include: ["FILE_SEARCH_CALL.RESULTS", "bad"],
         parallelToolCalls: false
       },
+      modelAliases: { fast: false, extendedContext: true, pro: true },
       customModels: {
         " OpenAI/My-Fast-Codex ": {
           targetModel: " gpt-5.3-codex ",
@@ -82,6 +85,7 @@ describe("config validation", () => {
     })
 
     expect(parsed.behaviorSettings?.global).toEqual({
+      reasoningMode: "pro",
       textVerbosity: "high",
       verbosityEnabled: true,
       verbosity: "high",
@@ -89,6 +93,7 @@ describe("config validation", () => {
       include: ["file_search_call.results"],
       parallelToolCalls: false
     })
+    expect(parsed.modelAliases).toEqual({ fast: false, extendedContext: true, pro: true })
     expect(parsed.customModels?.["openai/my-fast-codex"]).toEqual({
       targetModel: "gpt-5.3-codex",
       reasoningSummary: "none",

@@ -6,6 +6,7 @@ export type PluginRuntimeMode = "native" | "codex"
 export type VerbosityOption = "default" | "low" | "medium" | "high"
 export type TextVerbosityOption = VerbosityOption | "none"
 export type ReasoningSummaryOption = "auto" | "concise" | "detailed" | "none"
+export type ReasoningModeOption = "standard" | "pro"
 export type IncludeOption = "reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs"
 export type ServiceTierOption = "auto" | "priority" | "flex"
 export type PromptCacheKeyStrategy = "default" | "project"
@@ -13,6 +14,7 @@ export type PromptCacheKeyStrategy = "default" | "project"
 export type ModelBehaviorOverride = {
   personality?: PersonalityOption
   reasoningEffort?: string
+  reasoningMode?: ReasoningModeOption
   reasoningSummary?: ReasoningSummaryOption
   reasoningSummaries?: boolean
   thinkingSummaries?: boolean
@@ -63,6 +65,7 @@ export type PluginConfig = {
   orchestratorSubagentsEnabled?: boolean
   behaviorSettings?: BehaviorSettings
   customModels?: Record<string, CustomModelConfig>
+  modelAliases?: { fast?: boolean; extendedContext?: boolean; pro?: boolean }
 }
 
 export const CONFIG_FILE = "codex-config.jsonc"
@@ -94,6 +97,7 @@ export const DEFAULT_CODEX_CONFIG = {
     textVerbosity: "default"
   },
   customModels: {},
+  modelAliases: { fast: true, extendedContext: true },
   perModel: {}
 } as const
 
@@ -252,6 +256,14 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     //     }
     //   }
     // }
+  },
+
+  // Generated provider-model aliases. Fast and 1M default on.
+  // Pro defaults off for ChatGPT OAuth and on for API-key auth.
+  "modelAliases": {
+    "fast": true,
+    "extendedContext": true
+    // "pro": true
   },
 
   // Optional model-specific overrides.

@@ -55,6 +55,7 @@ export {
   getShareableDebugEnabled,
   getHeaderTransformDebugEnabled,
   getMode,
+  getModelAliasSettings,
   getOrchestratorSubagentsEnabled,
   getPersonality,
   getPidOffsetEnabled,

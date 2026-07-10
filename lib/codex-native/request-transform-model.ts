@@ -113,6 +113,7 @@ function readCustomModelConfig(options: Record<string, unknown>): CustomModelBeh
     ...(asString(raw.name) ? { name: asString(raw.name) } : {}),
     ...(normalizePersonalityKey(raw.personality) ? { personality: normalizePersonalityKey(raw.personality) } : {}),
     ...(asString(raw.reasoningEffort) ? { reasoningEffort: asString(raw.reasoningEffort) } : {}),
+    ...(raw.reasoningMode === "standard" || raw.reasoningMode === "pro" ? { reasoningMode: raw.reasoningMode } : {}),
     ...(normalizeVerbositySetting(raw.textVerbosity)
       ? { textVerbosity: normalizeVerbositySetting(raw.textVerbosity) }
       : {}),
@@ -432,6 +433,25 @@ export function getCustomModelReasoningEffortOverride(
   return getCustomModelBehaviorOverrideValue(options, variantCandidates, (entry) => asString(entry.reasoningEffort))
 }
 
+export function getCustomModelReasoningModeOverride(
+  options: Record<string, unknown>,
+  variantCandidates: string[]
+): "standard" | "pro" | undefined {
+  return getCustomModelBehaviorOverrideValue(options, variantCandidates, (entry) =>
+    entry.reasoningMode === "standard" || entry.reasoningMode === "pro" ? entry.reasoningMode : undefined
+  )
+}
+
+export function getModelReasoningModeOverride(
+  behaviorSettings: BehaviorSettings | undefined,
+  modelCandidates: string[],
+  variantCandidates: string[]
+): "standard" | "pro" | undefined {
+  return getModelBehaviorOverrideValue(behaviorSettings, modelCandidates, variantCandidates, (entry) =>
+    entry.reasoningMode === "standard" || entry.reasoningMode === "pro" ? entry.reasoningMode : undefined
+  )
+}
+
 export function getCustomModelReasoningSummaryOverride(
   options: Record<string, unknown>,
   variantCandidates: string[]
@@ -543,6 +563,7 @@ export function applyResolvedCodexRuntimeDefaults(input: {
   modelToolCallCapable: boolean | undefined
   resolvedBehavior: {
     reasoningEffort?: string
+    reasoningMode?: "standard" | "pro"
     reasoningSummary?: "auto" | "concise" | "detailed" | "none"
     textVerbosity?: "default" | "low" | "medium" | "high" | "none"
     include?: string[]
@@ -551,13 +572,15 @@ export function applyResolvedCodexRuntimeDefaults(input: {
   modelId?: string
   preferCodexInstructions: boolean
 }): {
-  injectedFields: Array<"instructions" | "reasoningEffort" | "reasoningSummary" | "textVerbosity" | "parallelToolCalls">
+  injectedFields: Array<
+    "instructions" | "reasoningEffort" | "reasoningMode" | "reasoningSummary" | "textVerbosity" | "parallelToolCalls"
+  >
 } {
   const options = input.options
   const defaults = input.defaults ?? {}
   const codexInstructions = asString(input.codexInstructions)
   const injectedFields = new Set<
-    "instructions" | "reasoningEffort" | "reasoningSummary" | "textVerbosity" | "parallelToolCalls"
+    "instructions" | "reasoningEffort" | "reasoningMode" | "reasoningSummary" | "textVerbosity" | "parallelToolCalls"
   >()
 
   if (codexInstructions && (input.preferCodexInstructions || asString(options.instructions) === undefined)) {
@@ -573,6 +596,10 @@ export function applyResolvedCodexRuntimeDefaults(input: {
       options.reasoningEffort = defaults.defaultReasoningEffort
       injectedFields.add("reasoningEffort")
     }
+  }
+  if (asString(options.reasoningMode) === undefined && input.resolvedBehavior.reasoningMode) {
+    options.reasoningMode = input.resolvedBehavior.reasoningMode
+    injectedFields.add("reasoningMode")
   }
 
   const reasoningEffort = asString(options.reasoningEffort)
@@ -668,6 +695,7 @@ export function applyCodexRuntimeDefaultsToParams(input: {
   modelToolCallCapable: boolean | undefined
   resolvedBehavior: {
     reasoningEffort?: string
+    reasoningMode?: "standard" | "pro"
     reasoningSummary?: "auto" | "concise" | "detailed" | "none"
     textVerbosity?: "default" | "low" | "medium" | "high" | "none"
     include?: string[]
@@ -677,7 +705,9 @@ export function applyCodexRuntimeDefaultsToParams(input: {
   modelId?: string
   output: ChatParamsOutput
 }): {
-  injectedFields: Array<"instructions" | "reasoningEffort" | "reasoningSummary" | "textVerbosity" | "parallelToolCalls">
+  injectedFields: Array<
+    "instructions" | "reasoningEffort" | "reasoningMode" | "reasoningSummary" | "textVerbosity" | "parallelToolCalls"
+  >
 } {
   const modelOptions = input.modelOptions
   return applyResolvedCodexRuntimeDefaults({

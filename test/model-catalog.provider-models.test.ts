@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest"
 
 import {
   applyCodexCatalogToProviderModels,
+  applyGeneratedAliasesToProviderModels,
   getRuntimeDefaultsForSlug,
   parseCatalogResponse,
   resolveInstructionsForModel
@@ -73,6 +74,7 @@ describe("model catalog provider model mapping", () => {
         display_name: "gpt-5.4",
         priority: 0,
         context_window: 272000,
+        max_context_window: null,
         input_modalities: ["text", "image"] as const,
         service_tiers: [
           { id: "priority", name: "Fast" },
@@ -162,8 +164,7 @@ describe("model catalog provider model mapping", () => {
       high: { reasoningEffort: "high" },
       max: { reasoningEffort: "max" },
       ultra: { reasoningEffort: "ultra" },
-      "future-custom": { reasoningEffort: "future-custom" },
-      fast: { serviceTier: "priority" }
+      "future-custom": { reasoningEffort: "future-custom" }
     })
   })
 
@@ -231,6 +232,109 @@ describe("model catalog provider model mapping", () => {
       high: { reasoningEffort: "high" },
       xhigh: { reasoningEffort: "xhigh" }
     })
+  })
+
+  it("creates separate Fast, 1M, and Pro provider aliases without combinations", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {}
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [
+        {
+          slug: "gpt-5.6-luna",
+          display_name: "GPT-5.6 Luna",
+          context_window: 372000,
+          max_context_window: 1050000,
+          service_tiers: [{ id: "priority", name: "Fast" }],
+          additional_speed_tiers: ["fast"],
+          supported_reasoning_levels: [{ effort: "high" }, { effort: "max" }]
+        }
+      ],
+      aliasSettings: { fast: true, extendedContext: true, pro: true }
+    })
+    expect(Object.keys(providerModels).sort()).toEqual([
+      "gpt-5.6-luna",
+      "gpt-5.6-luna-1m",
+      "gpt-5.6-luna-fast",
+      "gpt-5.6-luna-pro"
+    ])
+    expect(providerModels["gpt-5.6-luna-fast"]).toMatchObject({
+      name: "GPT-5.6 Luna Fast",
+      api: { id: "gpt-5.6-luna" },
+      variants: { high: { reasoningEffort: "high" }, max: { reasoningEffort: "max" } },
+      options: { codexCustomModelConfig: { targetModel: "gpt-5.6-luna", serviceTier: "priority" } }
+    })
+    expect(providerModels["gpt-5.6-luna-1m"]).toMatchObject({
+      name: "GPT-5.6 Luna 1M",
+      api: { id: "gpt-5.6-luna" },
+      limit: { context: 1050000, input: 922000, output: 128000 }
+    })
+    expect(providerModels["gpt-5.6-luna-pro"]).toMatchObject({
+      name: "GPT-5.6 Luna Pro",
+      api: { id: "gpt-5.6-luna" },
+      options: { codexCustomModelConfig: { targetModel: "gpt-5.6-luna", reasoningMode: "pro" } }
+    })
+  })
+
+  it("shapes API-key provider metadata without taking over authentication", () => {
+    const providerModels = {
+      "gpt-5.6-sol": {
+        id: "gpt-5.6-sol",
+        name: "GPT-5.6 Sol",
+        api: { id: "gpt-5.6-sol" },
+        variants: { high: { reasoningEffort: "high" } },
+        service_tiers: [{ id: "priority" }],
+        additional_speed_tiers: ["fast"]
+      }
+    }
+    applyGeneratedAliasesToProviderModels({
+      providerModels,
+      settings: { fast: true, extendedContext: true, pro: true }
+    })
+    expect(providerModels).toHaveProperty("gpt-5.6-sol-fast")
+    expect(providerModels).toHaveProperty("gpt-5.6-sol-1m")
+    expect(providerModels).toHaveProperty("gpt-5.6-sol-pro")
+  })
+
+  it("refreshes owned aliases and removes aliases disabled on a later refresh", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {}
+    const catalog = (effort: string) => [
+      {
+        slug: "gpt-5.6-luna",
+        display_name: "GPT-5.6 Luna",
+        context_window: 372000,
+        max_context_window: 1050000,
+        service_tiers: [{ id: "priority", name: "Fast" }],
+        additional_speed_tiers: ["fast"],
+        supported_reasoning_levels: [{ effort }]
+      }
+    ]
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: catalog("high"),
+      aliasSettings: { fast: true, extendedContext: true, pro: true }
+    })
+    expect(providerModels["gpt-5.6-luna-fast"]?.variants).toEqual({ high: { reasoningEffort: "high" } })
+
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: catalog("max"),
+      aliasSettings: { fast: true, extendedContext: false, pro: false }
+    })
+    expect(providerModels["gpt-5.6-luna-fast"]?.variants).toEqual({ max: { reasoningEffort: "max" } })
+    expect(providerModels).not.toHaveProperty("gpt-5.6-luna-1m")
+    expect(providerModels).not.toHaveProperty("gpt-5.6-luna-pro")
+  })
+
+  it("does not overwrite an independently supplied suffix collision", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.6-luna": { id: "gpt-5.6-luna", name: "GPT-5.6 Luna" },
+      "gpt-5.6-luna-pro": { id: "gpt-5.6-luna-pro", name: "Independent Pro Model" }
+    }
+    applyGeneratedAliasesToProviderModels({
+      providerModels,
+      settings: { fast: false, extendedContext: false, pro: true }
+    })
+    expect(providerModels["gpt-5.6-luna-pro"]?.name).toBe("Independent Pro Model")
   })
 
   it("preserves provider models when the catalog is temporarily unavailable", () => {

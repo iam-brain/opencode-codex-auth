@@ -23,6 +23,7 @@ import {
   getShareableDebugEnabled,
   getOrchestratorSubagentsEnabled,
   getMode,
+  getModelAliasSettings,
   getRemapDeveloperMessagesToUserEnabled,
   getRotationStrategy,
   getPromptCacheKeyStrategy,
@@ -161,7 +162,8 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     collaborationProfileEnabled,
     orchestratorSubagentsEnabled: getOrchestratorSubagentsEnabled(cfg),
     behaviorSettings: getBehaviorSettings(cfg),
-    customModels: getCustomModels(cfg)
+    customModels: getCustomModels(cfg),
+    modelAliases: getModelAliasSettings(cfg)
   })
 
   const z = tool.schema

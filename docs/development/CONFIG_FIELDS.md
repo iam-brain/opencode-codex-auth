@@ -36,6 +36,11 @@ Top-level:
 - `global.reasoningEffort: string` (optional)
   - When omitted, the selected model's live catalog `default_reasoning_level` is used, typically `"medium"`.
   - User config can still override reasoning effort globally, per model, or per variant.
+- `global.reasoningMode: "standard" | "pro"`
+  - Independent GPT-5.6 reasoning mode; request-level values win.
+- `modelAliases.fast: boolean` (default `true`)
+- `modelAliases.extendedContext: boolean` (default `true`)
+- `modelAliases.pro: boolean` (default API `true`, OAuth `false`)
 - `global.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
 - `global.textVerbosity: "default" | "low" | "medium" | "high" | "none"`
 - `global.serviceTier: "auto" | "priority" | "flex"`

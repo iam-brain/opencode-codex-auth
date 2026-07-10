@@ -143,6 +143,30 @@ describe("codex-native model allowlist", () => {
     vi.resetModules()
   })
 
+  it("adds auth-aware GPT-5.6 aliases for API-key provider models without replacing auth", async () => {
+    await withIsolatedHome(async () => {
+      const { CodexAuthPlugin } = await import("../lib/codex-native")
+      const hooks = await CodexAuthPlugin({} as any)
+      const provider = {
+        models: {
+          "gpt-5.6-luna": {
+            id: "gpt-5.6-luna",
+            name: "GPT-5.6 Luna",
+            api: { id: "gpt-5.6-luna" },
+            service_tiers: [{ id: "priority" }],
+            additional_speed_tiers: ["fast"]
+          }
+        }
+      }
+      const loader = hooks.auth?.loader
+      if (!loader) throw new Error("Missing auth loader")
+      expect(await loader(async () => ({ type: "api", key: "test" }) as any, provider as any)).toEqual({})
+      expect(provider.models).toHaveProperty("gpt-5.6-luna-fast")
+      expect(provider.models).toHaveProperty("gpt-5.6-luna-1m")
+      expect(provider.models).toHaveProperty("gpt-5.6-luna-pro")
+    })
+  })
+
   it("preserves existing provider models when both the endpoint and github fallback are unavailable", async () => {
     vi.resetModules()
 

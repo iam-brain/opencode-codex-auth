@@ -34,6 +34,7 @@ export { getCodexModelCatalog } from "./model-catalog/catalog-fetch.js"
 
 export {
   applyCodexCatalogToProviderModels,
+  applyGeneratedAliasesToProviderModels,
   getRuntimeDefaultsForModel,
   getRuntimeDefaultsForSlug,
   resolveInstructionsForModel

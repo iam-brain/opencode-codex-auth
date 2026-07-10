@@ -14,7 +14,12 @@ import type {
   PromptCacheKeyStrategy
 } from "./config.js"
 import { formatToastMessage } from "./toast.js"
-import { applyCodexCatalogToProviderModels, getCodexModelCatalog, type CodexModelInfo } from "./model-catalog.js"
+import {
+  applyCodexCatalogToProviderModels,
+  applyGeneratedAliasesToProviderModels,
+  getCodexModelCatalog,
+  type CodexModelInfo
+} from "./model-catalog.js"
 import { createRequestSnapshots } from "./request-snapshots.js"
 import { resolveCodexOriginator } from "./codex-native/originator.js"
 import { tryOpenUrlInBrowser as openUrlInBrowser } from "./codex-native/browser.js"
@@ -155,6 +160,7 @@ export type CodexAuthPluginOptions = {
   personality?: PersonalityOption
   behaviorSettings?: BehaviorSettings
   customModels?: Record<string, CustomModelConfig>
+  modelAliases?: { fast?: boolean; extendedContext?: boolean; pro?: boolean }
   mode?: PluginRuntimeMode
   quietMode?: boolean
   pidOffsetEnabled?: boolean
@@ -383,6 +389,11 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   let activeCatalogModels: CodexModelInfo[] | undefined
   let providerModelsForCatalogSync: Record<string, Record<string, unknown>> | undefined
   const quotaFetchCooldownByIdentity = new Map<string, number>()
+  const aliasSettingsFor = (authType: "oauth" | "api") => ({
+    fast: opts.modelAliases?.fast !== false,
+    extendedContext: opts.modelAliases?.extendedContext !== false,
+    pro: opts.modelAliases?.pro ?? authType === "api"
+  })
   const activateCatalogScope = (scopeKey: string | undefined): void => {
     const normalizedScopeKey = scopeKey?.trim() || undefined
     activeCatalogScopeKey = normalizedScopeKey
@@ -394,7 +405,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       personality: opts.personality,
       projectRoot: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
       customModels: opts.customModels,
-      warn: (message) => console.warn(message)
+      warn: (message) => console.warn(message),
+      aliasSettings: aliasSettingsFor("oauth")
     })
   }
   const setCatalogModels = (scopeKey: string | undefined, models: CodexModelInfo[] | undefined): void => {
@@ -415,7 +427,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       personality: opts.personality,
       projectRoot: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
       customModels: opts.customModels,
-      warn: (message) => console.warn(message)
+      warn: (message) => console.warn(message),
+      aliasSettings: aliasSettingsFor("oauth")
     })
   }
   const getCatalogModels = (scopeKey?: string): CodexModelInfo[] | undefined => {
@@ -500,7 +513,15 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
             hasOAuth = false
           }
         }
-        if (!hasOAuth) return {}
+        if (!hasOAuth) {
+          if (auth.type === "api") {
+            applyGeneratedAliasesToProviderModels({
+              providerModels: provider.models as Record<string, Record<string, unknown>>,
+              settings: aliasSettingsFor("api")
+            })
+          }
+          return {}
+        }
 
         const { orchestratorState, stickySessionState, hybridSessionState, persistSessionAffinityState } =
           await createSessionAffinityRuntimeState({

@@ -99,17 +99,17 @@ The plugin now tracks the live Codex catalog, so exact GPT-5-family availability
 
 ## 5a) Optional: enable GPT-5.4 fast mode
 
-Add a `serviceTier` override in `codex-config.jsonc`:
+Fast-capable catalog models automatically receive a separate `[Model Name] Fast` provider entry. To disable generated Fast models, set:
 
 ```json
 {
-  "global": {
-    "serviceTier": "priority"
+  "modelAliases": {
+    "fast": false
   }
 }
 ```
 
-This maps to request-body `service_tier: "priority"` only when the selected model's active catalog entry advertises Fast support.
+Selecting a generated Fast model maps to request-body `service_tier: "priority"`; standard models remain unchanged.
 If your host/request already sets `service_tier`, the plugin leaves it alone.
 
 ## 5b) Optional: try GPT-5.4 1M context

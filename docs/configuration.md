@@ -158,6 +158,9 @@ Mode-derived runtime defaults when omitted:
   - Global reasoning effort override forwarded upstream when the request does not already set one.
   - When omitted, the selected model's live catalog `default_reasoning_level` is used, typically `"medium"`.
   - User config can still override reasoning effort globally, per model, or per variant.
+- `global.reasoningMode: "standard" | "pro"` (optional)
+  - GPT-5.6 reasoning mode, emitted as `reasoning.mode` independently of `reasoning.effort`.
+  - An explicit request value is preserved. The same per-model and per-variant precedence applies.
 - `global.reasoningSummary: "auto" | "concise" | "detailed" | "none"`
   - Global reasoning summary format override forwarded upstream as `reasoning.summary`.
   - `"none"` disables reasoning summaries.
@@ -203,7 +206,7 @@ Mode-derived runtime defaults when omitted:
 
 If a model reports `supportsVerbosity=false` in catalog/runtime defaults, verbosity overrides are ignored.
 
-Precedence for `personality`, `reasoningEffort`, `reasoningSummary`, `textVerbosity`, `serviceTier`, `include`, and `parallelToolCalls` settings:
+Precedence for `personality`, `reasoningEffort`, `reasoningMode`, `reasoningSummary`, `textVerbosity`, `serviceTier`, `include`, and `parallelToolCalls` settings:
 
 1. `perModel.<model>.variants.<variant>`
 2. `perModel.<model>`
@@ -220,14 +223,15 @@ Custom model notes:
 - If `targetModel` is not present in the active catalog/provider, the plugin warns and skips that custom model instead of inventing metadata.
 - `reasoningSummaryFormat` remains internal-only. Users control request summaries with `reasoningSummary`; internal catalog defaults may still populate `reasoning.summary` when no explicit config override is set.
 
-### GPT-5.6 reasoning modes and Fast
+### Generated Fast, 1M, and Pro models
 
-- GPT-5.6 Codex reasoning modes are catalog model slugs and effort metadata, not a separate request-body `pro` flag.
-- Select the GPT-5.6 model exposed by your account (for example `gpt-5.6-sol`, `gpt-5.6-terra`, or `gpt-5.6-luna`) and use one of that model's generated reasoning variants.
-- Omitting `reasoningEffort` uses the model's live `default_reasoning_level`; arbitrary future effort strings remain supported.
-- Standard speed is the default: omit `serviceTier` or set it to `"auto"`.
-- When the active catalog advertises `service_tiers: [{ id: "priority" }]`, `serviceTier: "priority"` is accepted. If it also advertises `additional_speed_tiers: ["fast"]`, the provider exposes a generated `fast` variant.
-- Account-scoped catalog responses remain authoritative. The plugin does not add missing GPT-5.6 slugs or copy Sol/Terra/Luna metadata between models.
+- `modelAliases.fast` defaults to `true`. Any catalog model advertising priority/Fast gets a separate `[Model Name] Fast` provider model routed to the canonical slug with `service_tier: "priority"`.
+- `modelAliases.extendedContext` defaults to `true`. Models advertising a larger `max_context_window` get `[Model Name] 1M`. GPT-5.6 Sol/Terra/Luna use the official 1,050,000 context, 922,000 max input, and 128,000 max output contract even while a Codex catalog reports a smaller normal window.
+- `modelAliases.pro` defaults to `false` for ChatGPT OAuth and `true` for API-key auth. Explicit `true` or `false` overrides the auth-aware default.
+- `[Model Name] Pro` is the same canonical GPT-5.6 Sol/Terra/Luna slug with `reasoning: { mode: "pro" }`; effort remains independently selectable.
+- Fast, 1M, and Pro are three separate aliases. The plugin does not create combination aliases.
+- API-key handling is limited to cloning/routing provider entries; OAuth storage, rotation, refresh, and API-key authentication remain unchanged.
+- Account-scoped catalog responses remain authoritative. The plugin does not copy metadata across canonical slugs.
 
 ### GPT-5.4 long context
 

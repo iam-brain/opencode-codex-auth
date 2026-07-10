@@ -79,6 +79,15 @@
     "global": {
       "$ref": "#/$defs/modelBehavior"
     },
+    "modelAliases": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fast": { "type": "boolean", "default": true },
+        "extendedContext": { "type": "boolean", "default": true },
+        "pro": { "type": "boolean", "description": "Defaults true for API-key auth and false for ChatGPT OAuth." }
+      }
+    },
     "customModels": {
       "type": "object",
       "additionalProperties": {
@@ -134,6 +143,11 @@
           "minLength": 1,
           "description": "Reasoning effort override forwarded upstream."
         },
+        "reasoningMode": {
+          "type": "string",
+          "enum": ["standard", "pro"],
+          "description": "GPT-5.6 reasoning mode, independent of reasoningEffort."
+        },
         "reasoningSummary": {
           "$ref": "#/$defs/reasoningSummary"
         },
@@ -185,6 +199,10 @@
               "type": "string",
               "minLength": 1,
               "description": "Reasoning effort override forwarded upstream."
+            },
+            "reasoningMode": {
+              "type": "string",
+              "enum": ["standard", "pro"]
             },
             "reasoningSummary": {
               "$ref": "#/$defs/reasoningSummary"

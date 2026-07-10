@@ -16,6 +16,24 @@ import {
 } from "../lib/codex-native/request-transform-model.js"
 
 describe("request transform model helpers", () => {
+  it("applies reasoning mode independently without overwriting an explicit option", () => {
+    const base = { options: { reasoningEffort: "high" } } as any
+    applyResolvedCodexRuntimeDefaults({
+      options: base.options,
+      modelToolCallCapable: true,
+      resolvedBehavior: { reasoningMode: "pro" },
+      preferCodexInstructions: false
+    })
+    expect(base.options).toMatchObject({ reasoningEffort: "high", reasoningMode: "pro" })
+    const explicit = { reasoningMode: "standard" }
+    applyResolvedCodexRuntimeDefaults({
+      options: explicit,
+      modelToolCallCapable: true,
+      resolvedBehavior: { reasoningMode: "pro" },
+      preferCodexInstructions: false
+    })
+    expect(explicit.reasoningMode).toBe("standard")
+  })
   it("builds model and variant lookup candidates from ids and slash tails", () => {
     expect(
       getModelLookupCandidates({

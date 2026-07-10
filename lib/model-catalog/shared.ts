@@ -4,6 +4,7 @@ export type CustomModelBehaviorConfig = {
   name?: string
   personality?: string
   reasoningEffort?: string
+  reasoningMode?: "standard" | "pro"
   reasoningSummary?: "auto" | "concise" | "detailed" | "none"
   textVerbosity?: "default" | "low" | "medium" | "high" | "none"
   serviceTier?: "auto" | "priority" | "flex"
@@ -14,6 +15,7 @@ export type CustomModelBehaviorConfig = {
     {
       personality?: string
       reasoningEffort?: string
+      reasoningMode?: "standard" | "pro"
       reasoningSummary?: "auto" | "concise" | "detailed" | "none"
       textVerbosity?: "default" | "low" | "medium" | "high" | "none"
       serviceTier?: "auto" | "priority" | "flex"
@@ -52,6 +54,7 @@ export type CodexModelInfo = {
   display_name?: string | null
   priority?: number | null
   context_window?: number | null
+  max_context_window?: number | null
   input_modalities?: readonly CatalogInputModality[] | null
   model_messages?: ModelMessages | null
   base_instructions?: string | null
@@ -127,6 +130,7 @@ export type ApplyCodexCatalogInput = {
   configRoot?: string
   customModels?: Record<string, CustomModelBehaviorConfig>
   warn?: (message: string) => void
+  aliasSettings?: { fast: boolean; extendedContext: boolean; pro: boolean }
 }
 
 export const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
@@ -239,6 +243,10 @@ export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
       priority: typeof item.priority === "number" && Number.isFinite(item.priority) ? item.priority : null,
       context_window:
         typeof item.context_window === "number" && Number.isFinite(item.context_window) ? item.context_window : null,
+      max_context_window:
+        typeof item.max_context_window === "number" && Number.isFinite(item.max_context_window)
+          ? item.max_context_window
+          : null,
       input_modalities: parseInputModalities(item.input_modalities),
       model_messages: isRecord(item.model_messages)
         ? {

@@ -9,12 +9,14 @@ import {
   getCustomModelIncludeOverride,
   getCustomModelParallelToolCallsOverride,
   getCustomModelReasoningEffortOverride,
+  getCustomModelReasoningModeOverride,
   getCustomModelReasoningSummaryOverride,
   getCustomModelTextVerbosityOverride,
   getModelLookupCandidates,
   getModelIncludeOverride,
   getModelParallelToolCallsOverride,
   getModelReasoningEffortOverride,
+  getModelReasoningModeOverride,
   getModelReasoningSummaryOverride,
   getSelectedModelLookupCandidates,
   getModelTextVerbosityOverride,
@@ -113,11 +115,17 @@ export async function handleChatParamsHook(input: {
     fallback: input.fallbackPersonality
   })
   const customModelReasoningEffortOverride = getCustomModelReasoningEffortOverride(modelOptions, variantCandidates)
+  const customModelReasoningModeOverride = getCustomModelReasoningModeOverride(modelOptions, variantCandidates)
   const customModelReasoningSummaryOverride = getCustomModelReasoningSummaryOverride(modelOptions, variantCandidates)
   const customModelTextVerbosityOverride = getCustomModelTextVerbosityOverride(modelOptions, variantCandidates)
   const customModelIncludeOverride = getCustomModelIncludeOverride(modelOptions, variantCandidates)
   const customModelParallelToolCallsOverride = getCustomModelParallelToolCallsOverride(modelOptions, variantCandidates)
   const modelReasoningEffortOverride = getModelReasoningEffortOverride(
+    input.behaviorSettings,
+    selectedModelCandidates,
+    variantCandidates
+  )
+  const modelReasoningModeOverride = getModelReasoningModeOverride(
     input.behaviorSettings,
     selectedModelCandidates,
     variantCandidates
@@ -210,6 +218,7 @@ export async function handleChatParamsHook(input: {
     resolvedBehavior: {
       reasoningEffort:
         modelReasoningEffortOverride ?? customModelReasoningEffortOverride ?? globalBehavior?.reasoningEffort,
+      reasoningMode: modelReasoningModeOverride ?? customModelReasoningModeOverride ?? globalBehavior?.reasoningMode,
       reasoningSummary: modelReasoningSummaryOverride ?? customModelReasoningSummaryOverride ?? globalReasoningSummary,
       textVerbosity: modelTextVerbosityOverride ?? customModelTextVerbosityOverride ?? globalTextVerbosity,
       include: modelIncludeOverride ?? customModelIncludeOverride ?? globalBehavior?.include,

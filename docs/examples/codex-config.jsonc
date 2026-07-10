@@ -56,6 +56,8 @@
     // Optional reasoning effort override forwarded upstream.
     // Omit to use the selected model's live catalog default_reasoning_level (typically "medium").
     // "reasoningEffort": "high",
+    // GPT-5.6 mode is independent of effort.
+    // "reasoningMode": "standard",
 
     // Reasoning summary format forwarded upstream as reasoning.summary.
     // options: "auto" | "concise" | "detailed" | "none"
@@ -78,6 +80,12 @@
 
     // Whether to allow multiple tool calls in parallel.
     "parallelToolCalls": true
+  },
+
+  "modelAliases": {
+    "fast": true,
+    "extendedContext": true
+    // "pro": true // omitted => API key true, ChatGPT OAuth false
   },
 
   // Optional custom selectable model aliases.

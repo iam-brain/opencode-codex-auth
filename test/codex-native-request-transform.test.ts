@@ -265,6 +265,30 @@ describe("codex reasoning replay stripping", () => {
   })
 })
 
+describe("GPT-5.6 reasoning mode", () => {
+  it("serializes Pro aliases as nested reasoning.mode and preserves explicit mode", async () => {
+    const makeRequest = (reasoning: Record<string, unknown>) =>
+      new Request("https://chatgpt.com/backend-api/codex/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "gpt-5.6-luna", reasoning })
+      })
+    const transform = (request: Request) =>
+      transformOutboundRequestPayload({
+        request,
+        selectedModelSlug: "gpt-5.6-luna-pro",
+        stripReasoningReplayEnabled: false,
+        remapDeveloperMessagesToUserEnabled: false,
+        compatInputSanitizerEnabled: false,
+        promptCacheKeyOverrideEnabled: false
+      })
+    const generated = await transform(makeRequest({ effort: "high" }))
+    expect(JSON.parse(await generated.request.text()).reasoning).toEqual({ effort: "high", mode: "pro" })
+    const explicit = await transform(makeRequest({ effort: "high", mode: "standard" }))
+    expect(JSON.parse(await explicit.request.text()).reasoning.mode).toBe("standard")
+  })
+})
+
 describe("request transform aggregation", () => {
   const priorityBehaviorSettings: BehaviorSettings = {
     global: {

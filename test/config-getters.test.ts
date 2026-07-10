@@ -7,6 +7,7 @@ import {
   getCodexCompactionOverrideEnabled,
   getCompatInputSanitizerEnabled,
   getCustomModels,
+  getModelAliasSettings,
   getOrchestratorSubagentsEnabled,
   getProactiveRefreshBufferMs,
   getProactiveRefreshEnabled,
@@ -17,6 +18,14 @@ import {
 } from "../lib/config"
 
 describe("config", () => {
+  it("resolves generated model alias defaults and overrides", () => {
+    expect(getModelAliasSettings({})).toEqual({ fast: true, extendedContext: true })
+    expect(getModelAliasSettings({ modelAliases: { fast: false, extendedContext: false, pro: true } })).toEqual({
+      fast: false,
+      extendedContext: false,
+      pro: true
+    })
+  })
   it("defaults proactive refresh to false", () => {
     expect(getProactiveRefreshEnabled({})).toBe(false)
   })

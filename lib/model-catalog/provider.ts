@@ -152,16 +152,7 @@ function buildVariants(model: CodexModelInfo): Record<string, Record<string, unk
     )
   )
 
-  const variants: Record<string, Record<string, unknown>> = Object.fromEntries(
-    efforts.map((effort) => [effort, { reasoningEffort: effort }])
-  )
-  const supportsFast =
-    model.service_tiers?.some((tier) => tier.id?.trim().toLowerCase() === "priority") === true &&
-    model.additional_speed_tiers?.some((tier) => tier.trim().toLowerCase() === "fast") === true
-  if (supportsFast) {
-    variants.fast = { serviceTier: "priority" }
-  }
-  return variants
+  return Object.fromEntries(efforts.map((effort) => [effort, { reasoningEffort: effort }]))
 }
 
 function cloneValue<T>(value: T): T {
@@ -292,6 +283,82 @@ function buildCustomProviderModel(input: {
   })
 
   return nextModel
+}
+
+function applyGeneratedAliases(input: {
+  providerModels: Record<string, Record<string, unknown>>
+  catalogModels?: CodexModelInfo[]
+  settings: { fast: boolean; extendedContext: boolean; pro: boolean }
+  allowed?: Set<string>
+}): void {
+  const catalogBySlug = new Map((input.catalogModels ?? []).map((model) => [model.slug, model]))
+  for (const [slug, model] of Object.entries(input.providerModels)) {
+    if (asRecord(model.options)?.codexGeneratedAlias === true) {
+      delete input.providerModels[slug]
+    }
+  }
+  const baseEntries = Object.entries(input.providerModels).filter(([slug]) => !/-(fast|1m|pro)$/i.test(slug))
+  for (const [slug, base] of baseEntries) {
+    const catalog = catalogBySlug.get(slug)
+    const display = asString(base.name) ?? asString(base.displayName) ?? resolveDisplayName(slug, catalog?.display_name)
+    const variants = asRecord(base.variants) as Record<string, Record<string, unknown>> | undefined
+    const add = (suffix: "fast" | "1m" | "pro", behavior: Record<string, unknown>, name: string) => {
+      const aliasSlug = `${slug}-${suffix}`
+      const existingAlias = input.providerModels[aliasSlug]
+      const existingAliasOptions = existingAlias ? asRecord(existingAlias.options) : undefined
+      const isGeneratedAlias = existingAliasOptions?.codexGeneratedAlias === true
+      // A real catalog/provider entry owns its slug. Only refresh aliases that we
+      // generated ourselves; never replace an independently supplied collision.
+      if (catalogBySlug.has(aliasSlug) || (existingAlias && !isGeneratedAlias)) {
+        input.allowed?.add(aliasSlug)
+        return
+      }
+      const alias = cloneValue(base)
+      alias.id = aliasSlug
+      alias.slug = aliasSlug
+      alias.model = aliasSlug
+      alias.name = name
+      alias.displayName = name
+      alias.display_name = name
+      alias.variants = cloneValue(variants ?? {})
+      const api = asRecord(alias.api) ?? {}
+      api.id = slug
+      alias.api = api
+      const options = ensureModelOptions(alias)
+      options.codexGeneratedAlias = true
+      options.codexCustomModelConfig = { slug: aliasSlug, targetModel: slug, ...behavior }
+      input.providerModels[aliasSlug] = alias
+      input.allowed?.add(aliasSlug)
+    }
+    const providerServiceTiers = Array.isArray(base.service_tiers) ? base.service_tiers : []
+    const providerSpeedTiers = Array.isArray(base.additional_speed_tiers) ? base.additional_speed_tiers : []
+    const priority =
+      catalog?.service_tiers?.some((tier) => tier.id?.trim().toLowerCase() === "priority") === true ||
+      providerServiceTiers.some((tier) => asString(asRecord(tier)?.id)?.toLowerCase() === "priority")
+    const fast =
+      catalog?.additional_speed_tiers?.some((tier) => tier.trim().toLowerCase() === "fast") === true ||
+      providerSpeedTiers.some((tier) => asString(tier)?.toLowerCase() === "fast")
+    if (input.settings.fast && priority && fast) add("fast", { serviceTier: "priority" }, `${display} Fast`)
+
+    const officialGpt56 = /^gpt-5\.6-(sol|terra|luna)$/i.test(slug)
+    const maxContext = catalog?.max_context_window ?? (officialGpt56 ? 1_050_000 : undefined)
+    const normalContext = catalog?.context_window ?? asFiniteNumber(asRecord(base.limit)?.context)
+    if (input.settings.extendedContext && maxContext && (!normalContext || maxContext > normalContext)) {
+      add("1m", {}, `${display} 1M`)
+      const alias = input.providerModels[`${slug}-1m`]
+      if (alias)
+        alias.limit = { ...(asRecord(alias.limit) ?? {}), context: maxContext, input: 922_000, output: 128_000 }
+    }
+    if (input.settings.pro && officialGpt56) add("pro", { reasoningMode: "pro" }, `${display} Pro`)
+  }
+}
+
+export function applyGeneratedAliasesToProviderModels(input: {
+  providerModels: Record<string, Record<string, unknown>>
+  catalogModels?: CodexModelInfo[]
+  settings: { fast: boolean; extendedContext: boolean; pro: boolean }
+}): void {
+  applyGeneratedAliases(input)
 }
 
 function resolvePersonalityText(
@@ -550,6 +617,15 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
     })
     allowed.add(slug)
     customTargetBySlug.set(slug, targetSlug)
+  }
+
+  if (input.aliasSettings) {
+    applyGeneratedAliases({
+      providerModels: input.providerModels,
+      catalogModels,
+      settings: input.aliasSettings,
+      allowed
+    })
   }
 
   for (const modelId of Object.keys(input.providerModels)) {
