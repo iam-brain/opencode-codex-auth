@@ -281,6 +281,7 @@ describe("model catalog provider model mapping", () => {
         id: "gpt-5.6-sol",
         name: "GPT-5.6 Sol",
         api: { id: "gpt-5.6-sol" },
+        limit: { context: 1050000, input: 922000, output: 128000 },
         variants: { high: { reasoningEffort: "high" } },
         service_tiers: [{ id: "priority" }],
         additional_speed_tiers: ["fast"]
@@ -293,6 +294,26 @@ describe("model catalog provider model mapping", () => {
     expect(providerModels).toHaveProperty("gpt-5.6-sol-fast")
     expect(providerModels).toHaveProperty("gpt-5.6-sol-1m")
     expect(providerModels).toHaveProperty("gpt-5.6-sol-pro")
+  })
+
+  it("creates the documented 1M alias for the unsuffixed GPT-5.6 API alias", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-5.6": {
+        id: "gpt-5.6",
+        name: "GPT-5.6",
+        api: { id: "gpt-5.6" },
+        limit: { context: 1050000, input: 922000, output: 128000 }
+      }
+    }
+    applyGeneratedAliasesToProviderModels({
+      providerModels,
+      settings: { fast: false, extendedContext: true, pro: false }
+    })
+    expect(providerModels["gpt-5.6-1m"]).toMatchObject({
+      name: "GPT-5.6 1M",
+      api: { id: "gpt-5.6" },
+      limit: { context: 1050000, input: 922000, output: 128000 }
+    })
   })
 
   it("refreshes owned aliases and removes aliases disabled on a later refresh", () => {

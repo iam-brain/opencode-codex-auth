@@ -218,6 +218,59 @@ describe("codex-native config variants", () => {
     })
   })
 
+  it("adds catalog-backed Fast and 1M aliases during config shaping for OAuth model discovery", async () => {
+    await withIsolatedHome(async () => {
+      await seedAuthFixture(Date.now() + 60_000)
+      stubGlobalForTest(
+        "fetch",
+        vi.fn(async (url: string | URL | Request) => {
+          const endpoint =
+            typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
+          if (endpoint.includes("/backend-api/codex/models")) {
+            return new Response(
+              JSON.stringify({
+                models: [
+                  {
+                    slug: "gpt-5.6-luna",
+                    display_name: "GPT-5.6 Luna",
+                    context_window: 1050000,
+                    max_context_window: 1050000,
+                    input_modalities: ["text", "image"],
+                    supported_reasoning_levels: [{ effort: "high" }],
+                    service_tiers: [{ id: "priority", name: "Fast" }],
+                    additional_speed_tiers: ["fast"]
+                  }
+                ]
+              }),
+              { status: 200 }
+            )
+          }
+          if (endpoint.includes("raw.githubusercontent.com/openai/codex/")) {
+            return new Response(JSON.stringify({ models: [] }), { status: 200 })
+          }
+          return new Response("ok", { status: 200 })
+        })
+      )
+
+      const { CodexAuthPlugin } = await import("../lib/codex-native")
+      const hooks = await CodexAuthPlugin({} as never)
+      const config = makeConfig()
+
+      await hooks.config?.(config as never)
+
+      expect(config.provider.openai.models["gpt-5.6-luna-fast"]).toMatchObject({
+        name: "GPT-5.6 Luna Fast",
+        api: { id: "gpt-5.6-luna" }
+      })
+      expect(config.provider.openai.models["gpt-5.6-luna-1m"]).toMatchObject({
+        name: "GPT-5.6 Luna 1M",
+        api: { id: "gpt-5.6-luna" },
+        limit: { context: 1050000, input: 922000, output: 128000 }
+      })
+      expect(config.provider.openai.models["gpt-5.6-luna-pro"]).toBeUndefined()
+    })
+  })
+
   it("keeps config untouched when no catalog data is available", async () => {
     await withIsolatedHome(async () => {
       await seedAuthFixture(Date.now() + 60_000)

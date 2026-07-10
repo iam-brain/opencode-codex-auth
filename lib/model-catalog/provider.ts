@@ -340,10 +340,14 @@ function applyGeneratedAliases(input: {
       providerSpeedTiers.some((tier) => asString(tier)?.toLowerCase() === "fast")
     if (input.settings.fast && priority && fast) add("fast", { serviceTier: "priority" }, `${display} Fast`)
 
-    const officialGpt56 = /^gpt-5\.6-(sol|terra|luna)$/i.test(slug)
+    const officialGpt56 = /^gpt-5\.6(?:-(sol|terra|luna))?$/i.test(slug)
     const maxContext = catalog?.max_context_window ?? (officialGpt56 ? 1_050_000 : undefined)
     const normalContext = catalog?.context_window ?? asFiniteNumber(asRecord(base.limit)?.context)
-    if (input.settings.extendedContext && maxContext && (!normalContext || maxContext > normalContext)) {
+    if (
+      input.settings.extendedContext &&
+      maxContext &&
+      (officialGpt56 || !normalContext || maxContext > normalContext)
+    ) {
       add("1m", {}, `${display} 1M`)
       const alias = input.providerModels[`${slug}-1m`]
       if (alias)

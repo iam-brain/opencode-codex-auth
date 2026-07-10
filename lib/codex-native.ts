@@ -255,6 +255,22 @@ function applyCatalogVariantOverridesToConfig(config: Config, catalogModels: Cod
   }
 }
 
+function applyGeneratedModelAliasesToConfig(
+  config: Config,
+  catalogModels: CodexModelInfo[] | undefined,
+  settings: { fast: boolean; extendedContext: boolean; pro: boolean }
+): void {
+  const nextConfig = config as ConfigWithProviderVariants
+  const provider = (nextConfig.provider ??= {})
+  const openai = (provider.openai ??= {})
+  const models = (openai.models ??= {})
+  applyGeneratedAliasesToProviderModels({
+    providerModels: models as Record<string, Record<string, unknown>>,
+    catalogModels,
+    settings
+  })
+}
+
 function applyCustomModelsToConfig(
   config: Config,
   customModels: Record<string, CustomModelConfig> | undefined,
@@ -491,6 +507,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         })
         applyCatalogVariantOverridesToConfig(config, catalogModels)
         applyCustomModelsToConfig(config, opts.customModels, (message) => console.warn(message))
+        applyGeneratedModelAliasesToConfig(config, catalogModels, aliasSettingsFor("oauth"))
       } catch (error) {
         if (error instanceof Error) {
           opts.log?.debug("config variant override failed", { error: error.message })
