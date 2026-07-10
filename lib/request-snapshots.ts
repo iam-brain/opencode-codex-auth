@@ -26,6 +26,7 @@ const REDACTED_HEADERS = new Set([
   "cf-connecting-ip",
   "x-client-ip",
   "chatgpt-account-id",
+  "session-id",
   "session_id"
 ])
 const REDACTED_HEADER_KEY_FRAGMENTS = ["api-key", "token", "secret", "session", "cookie", "auth"]
@@ -51,6 +52,7 @@ const REDACTED_BODY_KEYS = new Set([
   "accesstoken",
   "refreshtoken",
   "idtoken",
+  "session-id",
   "session_id",
   "sessionid",
   "chatgpt-account-id",
@@ -233,6 +235,7 @@ const REDACTED_QUERY_KEYS = new Set([
   "accesstoken",
   "refreshtoken",
   "idtoken",
+  "session-id",
   "session_id",
   "chatgpt-account-id",
   "chatgpt_account_id"

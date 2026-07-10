@@ -199,7 +199,7 @@ describe("codex-native snapshots", () => {
         const request = input as Request
         capturedUserAgent = request.headers.get("user-agent") ?? ""
         capturedOriginator = request.headers.get("originator") ?? ""
-        capturedSessionId = request.headers.get("session_id") ?? ""
+        capturedSessionId = request.headers.get("session-id") ?? ""
         return new Response("ok", { status: 200 })
       })
     )
@@ -226,7 +226,7 @@ describe("codex-native snapshots", () => {
         "content-type": "application/json",
         originator: "codex_exec",
         "user-agent": "opencode-codex-auth (...) ai-sdk/provider-utils/3.0.20 runtime/bun/1.3.5",
-        session_id: "ses_codex_fetch_1"
+        "session-id": "ses_codex_fetch_1"
       },
       body: JSON.stringify({ model: "gpt-5.2-codex", input: "hi" })
     })
@@ -239,7 +239,7 @@ describe("codex-native snapshots", () => {
     expect(capturedSessionId).toBe("ses_codex_fetch_1")
   })
 
-  it("preserves native originator/user-agent/session_id in native mode before outbound fetch", async () => {
+  it("preserves native originator/user-agent/session-id in native mode before outbound fetch", async () => {
     vi.resetModules()
 
     const auth = {
@@ -319,7 +319,7 @@ describe("codex-native snapshots", () => {
         const request = input as Request
         capturedUserAgent = request.headers.get("user-agent") ?? ""
         capturedOriginator = request.headers.get("originator") ?? ""
-        capturedSessionId = request.headers.get("session_id") ?? ""
+        capturedSessionId = request.headers.get("session-id") ?? ""
         return new Response("ok", { status: 200 })
       })
     )
@@ -346,7 +346,7 @@ describe("codex-native snapshots", () => {
         "content-type": "application/json",
         originator: "opencode",
         "user-agent": "opencode/1.2.3 (Darwin)",
-        session_id: "ses_native_fetch_1"
+        "session-id": "ses_native_fetch_1"
       },
       body: JSON.stringify({ model: "gpt-5.2-codex", input: "hi" })
     })

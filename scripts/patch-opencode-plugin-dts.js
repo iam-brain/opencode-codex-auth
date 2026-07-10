@@ -16,6 +16,8 @@ async function patchPluginTypes() {
     .replaceAll('from "./tool";', 'from "./tool.js";')
     .replaceAll('from "./tool";', 'from "./tool.js";')
     .replaceAll('export * from "./tool";', 'export * from "./tool.js";')
+    .replaceAll("headers?: HeadersInit;", 'headers?: RequestInit["headers"];')
+    .replaceAll("headers?: globalThis.HeadersInit;", 'headers?: RequestInit["headers"];')
 
   if (patched !== raw) {
     await fs.writeFile(filePath, patched, "utf8")

@@ -24,7 +24,7 @@ describe("mode smoke: native vs codex", () => {
     expect(codexOut.headers.originator).toBe("codex_cli_rs")
     expect(nativeOut.headers["OpenAI-Beta"]).toBeUndefined()
     expect(codexOut.headers["OpenAI-Beta"]).toBeUndefined()
-    expect(nativeOut.headers["session_id"]).toBe("ses_mode_smoke")
+    expect(nativeOut.headers["session-id"]).toBe("ses_mode_smoke")
     expect(nativeOut.headers["conversation_id"]).toBeUndefined()
     expect(codexOut.headers["conversation_id"]).toBeUndefined()
     expect(nativeOut.headers["User-Agent"]).toMatch(/^opencode\//)

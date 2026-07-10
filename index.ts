@@ -48,6 +48,7 @@ import { toolOutputForStatus } from "./lib/codex-status-tool.js"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage.js"
 import { refreshCachedCodexPrompts } from "./lib/codex-prompts-cache.js"
 import { setCodexPlanModeInstructions } from "./lib/codex-native/collaboration.js"
+import { composePluginDispose } from "./lib/plugin-lifecycle.js"
 
 let scheduler: { stop: () => void } | undefined
 
@@ -142,28 +143,50 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     scheduler = { stop: refreshScheduler.stop }
   }
 
+  // Capture ownership before any further async initialization. A newer plugin
+  // invocation may replace the module-level scheduler while this one awaits.
+  const instanceScheduler = scheduler
+
   log.debug("plugin init")
-  const hooks = await CodexAuthPlugin(input, {
-    log,
-    personality: getPersonality(cfg),
-    mode: runtimeMode,
-    quietMode: getQuietMode(cfg),
-    pidOffsetEnabled: getPidOffsetEnabled(cfg),
-    rotationStrategy: getRotationStrategy(cfg),
-    promptCacheKeyStrategy: getPromptCacheKeyStrategy(cfg),
-    spoofMode: getSpoofMode(cfg),
-    compatInputSanitizer: getCompatInputSanitizerEnabled(cfg),
-    remapDeveloperMessagesToUser: getRemapDeveloperMessagesToUserEnabled(cfg),
-    codexCompactionOverride: getCodexCompactionOverrideEnabled(cfg),
-    shareableDebug: getShareableDebugEnabled(cfg),
-    headerSnapshots: getHeaderSnapshotsEnabled(cfg),
-    headerSnapshotBodies: getHeaderSnapshotBodiesEnabled(cfg),
-    headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
-    collaborationProfileEnabled,
-    orchestratorSubagentsEnabled: getOrchestratorSubagentsEnabled(cfg),
-    behaviorSettings: getBehaviorSettings(cfg),
-    customModels: getCustomModels(cfg),
-    modelAliases: getModelAliasSettings(cfg)
+  let hooks: Awaited<ReturnType<typeof CodexAuthPlugin>>
+  try {
+    hooks = await CodexAuthPlugin(input, {
+      log,
+      personality: getPersonality(cfg),
+      mode: runtimeMode,
+      quietMode: getQuietMode(cfg),
+      pidOffsetEnabled: getPidOffsetEnabled(cfg),
+      rotationStrategy: getRotationStrategy(cfg),
+      promptCacheKeyStrategy: getPromptCacheKeyStrategy(cfg),
+      spoofMode: getSpoofMode(cfg),
+      compatInputSanitizer: getCompatInputSanitizerEnabled(cfg),
+      remapDeveloperMessagesToUser: getRemapDeveloperMessagesToUserEnabled(cfg),
+      codexCompactionOverride: getCodexCompactionOverrideEnabled(cfg),
+      shareableDebug: getShareableDebugEnabled(cfg),
+      headerSnapshots: getHeaderSnapshotsEnabled(cfg),
+      headerSnapshotBodies: getHeaderSnapshotBodiesEnabled(cfg),
+      headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
+      collaborationProfileEnabled,
+      orchestratorSubagentsEnabled: getOrchestratorSubagentsEnabled(cfg),
+      behaviorSettings: getBehaviorSettings(cfg),
+      customModels: getCustomModels(cfg),
+      modelAliases: getModelAliasSettings(cfg)
+    })
+  } catch (error) {
+    instanceScheduler?.stop()
+    if (scheduler === instanceScheduler) {
+      scheduler = undefined
+    }
+    throw error
+  }
+  composePluginDispose({
+    hooks,
+    scheduler: instanceScheduler,
+    clearScheduler: () => {
+      if (scheduler === instanceScheduler) {
+        scheduler = undefined
+      }
+    }
   })
 
   const z = tool.schema

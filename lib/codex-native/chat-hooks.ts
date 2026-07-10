@@ -309,7 +309,8 @@ export async function handleChatHeadersHook(input: {
   const originator = resolveCodexOriginator(input.spoofMode)
   input.output.headers.originator = originator
   input.output.headers["User-Agent"] = resolveRequestUserAgent(input.spoofMode, originator)
-  input.output.headers.session_id = input.hookInput.sessionID
+  input.output.headers["session-id"] = input.hookInput.sessionID
+  delete input.output.headers.session_id
   if (typeof input.hookInput.model.id === "string" && input.hookInput.model.id.trim()) {
     input.output.headers[input.internalSelectedModelHeader] = input.hookInput.model.id
   } else {

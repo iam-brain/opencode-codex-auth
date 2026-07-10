@@ -3,54 +3,66 @@
     {
       "id": "opencode",
       "repo": "anomalyco/opencode",
-      "baselineTag": "v1.3.0",
-      "updatedAt": "2026-03-23T16:25:00.338Z",
+      "baselineTag": "v1.17.18",
+      "updatedAt": "2026-07-10T22:17:25.114Z",
       "files": [
         {
-          "path": "packages/opencode/src/plugin/codex.ts",
-          "sha256": "2f7ddda4b6d8619c883ac227832614f0c2a4dac2cabfe31c737fcd006666752e",
+          "path": "packages/opencode/src/plugin/openai/codex.ts",
+          "sha256": "d45533d80269f959bd8eb403b288d78be5064ff9e6523dc6af01ed2a788ef064",
           "localArea": "lib/codex-native/",
           "reason": "Codex OAuth/auth headers/request routing parity"
         },
         {
+          "path": "packages/opencode/src/plugin/openai/ws.ts",
+          "sha256": "15415cbf18806caf3475e09ea0f731e96d5397daa19740d456b6aa8468640498",
+          "localArea": "lib/codex-native/openai-loader-fetch.ts",
+          "reason": "Experimental OpenAI Responses WebSocket protocol and HTTP fallback signals"
+        },
+        {
+          "path": "packages/opencode/src/plugin/openai/ws-pool.ts",
+          "sha256": "5a8b681d69ed8cfb592a107254f9df05e5a0c7574a5099853cac92a1c6d69226",
+          "localArea": "lib/codex-native/openai-loader-fetch.ts",
+          "reason": "Experimental WebSocket pooling, retry, and lifecycle behavior"
+        },
+        {
           "path": "packages/opencode/src/plugin/index.ts",
-          "sha256": "c3aa395685bceeae29b93b1eb740e762f4449a6834fcc2e6863dd9d1a53a0abe",
+          "sha256": "4495d8730a87a0b40509be27bdd432b53a8c4c914dfcba4121e3651b3e649555",
           "localArea": "index.ts",
           "reason": "Built-in plugin boot order affects auth integration behavior"
         },
         {
           "path": "packages/opencode/src/provider/provider.ts",
-          "sha256": "53bd3146d0ad5c06f5ae62d9e4c088385c221ab31e8f6a6bba15144dfe5b737c",
+          "sha256": "0a984775696b2874154b06eb29f5d933d762b03a48460c140eb59b5df82b64e7",
           "localArea": "lib/model-catalog.ts",
           "reason": "OpenAI model surface and provider model wiring parity"
         },
         {
           "path": "packages/opencode/src/provider/auth.ts",
-          "sha256": "ec8be328fcfe43b9129949ceaf93acc6e30f4daaf9c3e280c5ac64b4419e08c4",
+          "sha256": "7331fda8558fe517aa5a69a8aa78dcbb80af719f43caf16c8960f9c5ad7a0d2e",
           "localArea": "lib/storage.ts",
           "reason": "OpenAI auth structure/parsing parity signals"
         },
         {
           "path": "packages/opencode/src/provider/transform.ts",
-          "sha256": "398f78dde2876aa4ba2e23a35a35d6d6cbff663db033c4eb69715c363d683134",
+          "sha256": "061a7eb8c56072aa0bc3dec999f460ac8fc2fc5cbd7e35f7ee47cc959896aff2",
           "localArea": "lib/codex-native/request-transform*.ts",
           "reason": "Request transform behavior changes affecting auth/model requests"
         },
         {
           "path": "packages/opencode/src/provider/error.ts",
-          "sha256": "23be550ec590ac18b10bf2b6c00abdf68badc2c5e207926da59869aaf4b1c65c",
+          "sha256": "e2c87611d8cb331a509580dc0cea5d37a5d0677df1c9646d99cba03595eaf27b",
           "localArea": "lib/codex-native/openai-loader-fetch.ts",
           "reason": "OpenAI/Codex error semantics and retry-stop signals"
         },
         {
-          "path": "packages/opencode/src/provider/models.ts",
-          "sha256": "9ed3382225efb5c7b40bce0bff031a5df1ed69249f03ad81c7f9b7a50bf26051",
+          "path": "packages/core/src/models-dev.ts",
+          "sha256": "6326ca2f6d79ed55d330707cb7442f5d2fa54e2bbabbbd0307b116ca1ac59e16",
           "localArea": "lib/model-catalog.ts",
           "reason": "Provider model schema changes impacting catalog parsing"
         },
         {
           "path": "packages/opencode/src/session/message-v2.ts",
-          "sha256": "1d3c1d014c398cec06fb95e81fa5d2961370e548afa1784886d13fe6e94ee332",
+          "sha256": "6094dbeaf39b70ca00fca09cfc708c3304a8dec3636dbbc77472bf7716758c54",
           "localArea": "lib/fetch-orchestrator.ts",
           "reason": "Streaming error handling and retry behavior parity"
         }

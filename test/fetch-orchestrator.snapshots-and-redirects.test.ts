@@ -274,7 +274,7 @@ describe("FetchOrchestrator snapshots and redirect policy", () => {
     expect(onSessionObserved).not.toHaveBeenCalled()
   })
 
-  it("uses session_id as canonical session key", async () => {
+  it("uses session-id as the canonical session key", async () => {
     const acquireAuth = vi.fn(async () => ({
       access: "token_123",
       identityKey: "id1",
@@ -298,7 +298,7 @@ describe("FetchOrchestrator snapshots and redirect policy", () => {
 
     await orch.execute("https://api.com", {
       method: "POST",
-      headers: { "content-type": "application/json", session_id: "ses_header" },
+      headers: { "content-type": "application/json", "session-id": "ses_header" },
       body: JSON.stringify({
         input: "hello with mixed keys",
         prompt_cache_key: "ses_prompt_cache"

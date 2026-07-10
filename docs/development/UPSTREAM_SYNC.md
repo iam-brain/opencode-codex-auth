@@ -4,18 +4,18 @@ Track the OpenCode and Codex releases this plugin is aligned to, and how to keep
 
 ## Current baseline
 
-- OpenCode release: `v1.3.0`
+- OpenCode release: `v1.17.18`
 - Upstream repo: `https://github.com/anomalyco/opencode`
 - Baseline tag commit: tracked in `docs/development/upstream-watch.json`
 - Upstream HEAD inspected: GitHub latest release/tag via `npm run check:upstream`
-- Native Codex reference file: `packages/opencode/src/plugin/codex.ts`
+- Native Codex reference file: `packages/opencode/src/plugin/openai/codex.ts`
 - Codex upstream repo: `https://github.com/openai/codex`
 - Codex upstream release track: `rust-v0.144.1` for the GPT-5.6 Ultra contract
 - Local dependency target:
-  - `@opencode-ai/plugin`: `^1.3.0`
-  - `@opencode-ai/sdk`: `^1.3.0`
+  - `@opencode-ai/plugin`: `^1.17.18`
+  - `@opencode-ai/sdk`: `^1.17.18`
 
-## Latest parity audit (2026-03-23)
+## Latest parity audit (2026-07-10)
 
 - Verified OAuth constants and authorize URL semantics against upstream `codex.ts`.
 - Verified native callback URI now uses `http://localhost:1455/auth/callback`.
@@ -24,9 +24,14 @@ Track the OpenCode and Codex releases this plugin is aligned to, and how to keep
 - Verified live Codex model payload now includes `default_reasoning_summary` and newer GPT-5.4-era catalog metadata in addition to `display_name`, `priority`, and `supports_parallel_tool_calls`.
 - Verified default prompt caching remains upstream-owned: OpenCode sets `promptCacheKey` from `sessionID`, and Codex sends `prompt_cache_key` from the active conversation ID.
 - Verified GPT-5.4 fast mode remains request-body `service_tier: "priority"`; no new HTTP priority header is used on the normal request path.
-- Verified normal HTTP request parity for both `native` and `codex` modes continues to use `session_id` and excludes websocket-only `OpenAI-Beta` headers.
+- Updated normal HTTP request parity for both `native` and `codex` modes to use canonical `session-id`; legacy `session_id` remains accepted as an inbound compatibility alias and in snapshot redaction.
+- Verified OpenCode's new Responses WebSocket transport remains experimental and optional. This plugin continues to use the supported HTTP path and now watches the upstream transport files for future stabilization.
+- Integrated OpenCode's plugin lifecycle contract by composing `dispose` to stop the proactive-refresh scheduler. The v1 module-object export and plugin option tuples remain optional; the function export preserves older-host compatibility and runtime settings remain in `codex-config.jsonc`.
+- Verified OpenCode's OAuth model filter is catalog-driven. This plugin retains its stricter account-scoped live Codex catalog authority and does not synthesize metadata across model slugs.
+- Verified concurrent catalog fetches are deduplicated and account refreshes remain lock-guarded by strict account identity in this plugin's multi-account architecture.
 - Verified the plugin now uses Codex `default_reasoning_summary` instead of treating `reasoning_summary_format` as the default summary value.
-- Parity tests live in `test/codex-native-oauth-parity.test.ts`.
+- Detailed findings and dispositions are in `docs/development/OPENCODE_V1_17_18_SYNC.md`.
+- Parity tests live in `test/codex-native-oauth-parity.test.ts`, `test/codex-native-spoof-mode.test.ts`, and `test/upstream-watch-config.test.ts`.
 
 ## Sync checklist
 
@@ -43,14 +48,16 @@ Track the OpenCode and Codex releases this plugin is aligned to, and how to keep
 - Tracked file manifest: `docs/development/upstream-watch.json`
 - Local check command: `npm run check:upstream`
 - Baseline refresh command (after parity update): `npm run check:upstream:update`
+- OpenCode-only check/update commands: `npm run check:upstream:opencode`, `npm run check:upstream:opencode:update`
 - Scheduled CI watcher: `.github/workflows/upstream-watch.yml` (weekly + manual dispatch)
 
 Tracked upstream surfaces include:
 
-- Codex plugin: `packages/opencode/src/plugin/codex.ts`
+- Codex plugin: `packages/opencode/src/plugin/openai/codex.ts`
+- Experimental OpenAI transport: `packages/opencode/src/plugin/openai/ws.ts`, `packages/opencode/src/plugin/openai/ws-pool.ts`
 - Plugin wiring: `packages/opencode/src/plugin/index.ts`
 - Provider core: `packages/opencode/src/provider/provider.ts`, `packages/opencode/src/provider/auth.ts`
-- Provider transforms/schema/error handling: `packages/opencode/src/provider/transform.ts`, `packages/opencode/src/provider/models.ts`, `packages/opencode/src/provider/error.ts`
+- Provider transforms/schema/error handling: `packages/opencode/src/provider/transform.ts`, `packages/core/src/models-dev.ts`, `packages/opencode/src/provider/error.ts`
 - Session-side OpenAI stream error handling: `packages/opencode/src/session/message-v2.ts`
 - Codex upstream model/auth/runtime files: `codex-rs/models-manager/models.json`, `codex-rs/core/src/auth.rs`, `codex-rs/core/src/client.rs`, `codex-rs/core/src/codex.rs`, `codex-rs/core/src/compact.rs`
 

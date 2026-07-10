@@ -1,5 +1,4 @@
-import type { Hooks, PluginInput } from "@opencode-ai/plugin"
-import type { Config } from "@opencode-ai/sdk"
+import type { Config, Hooks, PluginInput } from "@opencode-ai/plugin"
 import process from "node:process"
 
 import { loadAuthStorage, setAccountCooldown } from "./storage.js"

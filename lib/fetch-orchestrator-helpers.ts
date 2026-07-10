@@ -4,6 +4,7 @@ const CROSS_ORIGIN_REDIRECT_STRIPPED_HEADERS = new Set([
   "authorization",
   "proxy-authorization",
   "chatgpt-account-id",
+  "session-id",
   "session_id",
   "cookie",
   "set-cookie"
@@ -24,7 +25,7 @@ function normalizeSessionKey(value: unknown): string | null {
 }
 
 export async function resolveSessionKey(request: Request): Promise<string | null> {
-  return normalizeSessionKey(request.headers.get("session_id"))
+  return normalizeSessionKey(request.headers.get("session-id") ?? request.headers.get("session_id"))
 }
 
 export function formatAccountLabel(auth: AuthData): string {
