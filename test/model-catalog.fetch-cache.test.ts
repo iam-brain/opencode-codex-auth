@@ -4,13 +4,22 @@ import path from "node:path"
 
 import { describe, expect, it, vi } from "vitest"
 
-import { getCodexModelCatalog, type CodexModelCatalogEvent } from "../lib/model-catalog"
+import { getCodexModelCatalog, githubModelsUrl, type CodexModelCatalogEvent } from "../lib/model-catalog"
 
 async function makeCacheDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-model-catalog-"))
 }
 
 describe("model catalog fetch and primary cache", () => {
+  it("selects the GitHub catalog path at the models-manager migration boundary", () => {
+    expect(githubModelsUrl("0.119.9")).toBe(
+      "https://raw.githubusercontent.com/openai/codex/rust-v0.119.9/codex-rs/core/models.json"
+    )
+    expect(githubModelsUrl("0.120.0")).toBe(
+      "https://raw.githubusercontent.com/openai/codex/rust-v0.120.0/codex-rs/models-manager/models.json"
+    )
+  })
+
   it("fetches /codex/models with auth headers", async () => {
     const cacheDir = await makeCacheDir()
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -309,7 +318,9 @@ describe("model catalog fetch and primary cache", () => {
         })
       }
 
-      expect(endpoint).toBe("https://raw.githubusercontent.com/openai/codex/rust-v9.9.9/codex-rs/core/models.json")
+      expect(endpoint).toBe(
+        "https://raw.githubusercontent.com/openai/codex/rust-v9.9.9/codex-rs/models-manager/models.json"
+      )
       return new Response(JSON.stringify({ models: [{ slug: "gpt-5.4-codex", context_window: 272000 }] }), {
         status: 200
       })

@@ -300,7 +300,12 @@ export function githubModelsTag(version: string): string {
 }
 
 export function githubModelsUrl(version: string): string {
-  return `${CODEX_GITHUB_MODELS_URL_PREFIX}/${githubModelsTag(version)}/codex-rs/core/models.json`
+  const parsed = parseSemver(version)
+  const modelsPath =
+    parsed && compareSemver(parsed, [0, 120, 0]) >= 0
+      ? "codex-rs/models-manager/models.json"
+      : "codex-rs/core/models.json"
+  return `${CODEX_GITHUB_MODELS_URL_PREFIX}/${githubModelsTag(version)}/${modelsPath}`
 }
 
 export function semverFromTag(tag: string | undefined): string | undefined {
