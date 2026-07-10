@@ -10,6 +10,7 @@ import {
   normalizeVerbosity,
   type PersonalityOption
 } from "./shared.js"
+import { isUltraEligible } from "../codex-native/ultra.js"
 
 const DEFAULT_OPENAI_NPM = "@ai-sdk/openai"
 const DEFAULT_OPENAI_API_URL = "https://chatgpt.com/backend-api/codex"
@@ -149,10 +150,26 @@ function buildVariants(model: CodexModelInfo): Record<string, Record<string, unk
       (model.supported_reasoning_levels ?? [])
         .map((level) => normalizeReasoningEffort(level.effort))
         .filter((value): value is NonNullable<typeof value> => value !== undefined)
+        .filter((effort) => effort !== "ultra" || isUltraEligible(model))
     )
   )
 
-  return Object.fromEntries(efforts.map((effort) => [effort, { reasoningEffort: effort }]))
+  return Object.fromEntries(
+    efforts.map((effort) => {
+      const level = (model.supported_reasoning_levels ?? []).find(
+        (candidate) => normalizeReasoningEffort(candidate.effort)?.toLowerCase() === effort.toLowerCase()
+      )
+      return [
+        effort,
+        {
+          reasoningEffort: effort,
+          ...(typeof level?.description === "string" && level.description.trim()
+            ? { description: level.description.trim() }
+            : {})
+        }
+      ]
+    })
+  )
 }
 
 function cloneValue<T>(value: T): T {

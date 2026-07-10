@@ -10,7 +10,7 @@ Track the OpenCode and Codex releases this plugin is aligned to, and how to keep
 - Upstream HEAD inspected: GitHub latest release/tag via `npm run check:upstream`
 - Native Codex reference file: `packages/opencode/src/plugin/codex.ts`
 - Codex upstream repo: `https://github.com/openai/codex`
-- Codex upstream release track: `rust-v0.116.0`
+- Codex upstream release track: `rust-v0.144.1` for the GPT-5.6 Ultra contract
 - Local dependency target:
   - `@opencode-ai/plugin`: `^1.3.0`
   - `@opencode-ai/sdk`: `^1.3.0`
@@ -52,7 +52,7 @@ Tracked upstream surfaces include:
 - Provider core: `packages/opencode/src/provider/provider.ts`, `packages/opencode/src/provider/auth.ts`
 - Provider transforms/schema/error handling: `packages/opencode/src/provider/transform.ts`, `packages/opencode/src/provider/models.ts`, `packages/opencode/src/provider/error.ts`
 - Session-side OpenAI stream error handling: `packages/opencode/src/session/message-v2.ts`
-- Codex upstream model/auth/runtime files: `codex-rs/core/models.json`, `codex-rs/core/src/auth.rs`, `codex-rs/core/src/client.rs`, `codex-rs/core/src/codex.rs`, `codex-rs/core/src/compact.rs`
+- Codex upstream model/auth/runtime files: `codex-rs/models-manager/models.json`, `codex-rs/core/src/auth.rs`, `codex-rs/core/src/client.rs`, `codex-rs/core/src/codex.rs`, `codex-rs/core/src/compact.rs`
 
 All automated upstream checks fetch directly from GitHub release tags (`api.github.com` and `raw.githubusercontent.com`).
 No local upstream clones are required for drift detection.

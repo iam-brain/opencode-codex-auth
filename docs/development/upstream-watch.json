@@ -59,12 +59,12 @@
     {
       "id": "codex-rs",
       "repo": "openai/codex",
-      "baselineTag": "rust-v0.116.0",
-      "updatedAt": "2026-03-23T16:25:00.407Z",
+      "baselineTag": "rust-v0.144.1",
+      "updatedAt": "2026-07-10T21:25:00.000Z",
       "files": [
         {
-          "path": "codex-rs/core/models.json",
-          "sha256": "5e6bb2e7e1628967407be673f70ffefe4744711bc856cb12d4fba041203ae22f",
+          "path": "codex-rs/models-manager/models.json",
+          "sha256": "dcab00231a5178a9c84b7aef4cc06a1e1359e37ee0dd7e69d5822c4b1de723b1",
           "localArea": "lib/model-catalog.ts",
           "reason": "Model catalog defaults and capabilities parity"
         },

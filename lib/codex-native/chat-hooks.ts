@@ -43,6 +43,12 @@ import {
   resolveCollaborationProfile,
   resolveSubagentHeaderValue
 } from "./collaboration.js"
+import {
+  ULTRA_EXPLICIT_ONLY_INSTRUCTIONS,
+  ULTRA_PROACTIVE_INSTRUCTIONS,
+  resolveUltraSelection,
+  type UltraResolution
+} from "./ultra.js"
 
 function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium" | "high" | "none" | undefined {
   if (typeof value !== "string") return undefined
@@ -92,7 +98,7 @@ export async function handleChatParamsHook(input: {
   spoofMode: CodexSpoofMode
   collaborationProfileEnabled: boolean
   orchestratorSubagentsEnabled: boolean
-}): Promise<{ injectedCatalogDefaultFields: string[] }> {
+}): Promise<{ injectedCatalogDefaultFields: string[]; ultra?: UltraResolution }> {
   const emptyResult = { injectedCatalogDefaultFields: [] }
   if (input.hookInput.model.providerID !== "openai") return emptyResult
   const modelOptions = isRecord(input.hookInput.model.options) ? input.hookInput.model.options : {}
@@ -233,8 +239,26 @@ export async function handleChatParamsHook(input: {
     output: input.output
   })
 
+  const ultraResolution = resolveUltraSelection({
+    reasoningEffort: input.output.options.reasoningEffort,
+    model: catalogModelFromOptions ?? catalogModelFallback,
+    childTask: resolveSubagentHeaderValue(input.hookInput.agent) !== undefined
+  })
+  if (input.spoofMode === "codex" && ultraResolution.selected && ultraResolution.eligible) {
+    const ultraInstructions =
+      ultraResolution.delegationPolicy === "proactive" ? ULTRA_PROACTIVE_INSTRUCTIONS : ULTRA_EXPLICIT_ONLY_INSTRUCTIONS
+    input.output.options.instructions = mergeInstructions(
+      asString(input.output.options.instructions),
+      ultraInstructions
+    )
+  }
+  const result = (): { injectedCatalogDefaultFields: string[]; ultra?: UltraResolution } => ({
+    injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields,
+    ...(ultraResolution.selected ? { ultra: ultraResolution } : {})
+  })
+
   if (input.spoofMode !== "codex") {
-    return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
+    return result()
   }
 
   const normalizedAgentName = resolveHookAgentName(input.hookInput.agent)?.trim().toLowerCase()
@@ -244,25 +268,25 @@ export async function handleChatParamsHook(input: {
     if (replaced) {
       input.output.options.instructions = replaced
     }
-    return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
+    return result()
   }
 
   if (!input.collaborationProfileEnabled) {
-    return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
+    return result()
   }
 
   if (!profile.enabled || !profile.kind) {
-    return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
+    return result()
   }
 
   if (profile.instructionPreset === "plan") {
     const replacedPlan =
       replaceCodexToolCallsForOpenCode(getCodexPlanModeInstructions()) ?? getCodexPlanModeInstructions()
     input.output.options.instructions = mergeInstructions(asString(input.output.options.instructions), replacedPlan)
-    return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
+    return result()
   }
 
-  return { injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields }
+  return result()
 }
 
 export async function handleChatHeadersHook(input: {
@@ -271,6 +295,8 @@ export async function handleChatHeadersHook(input: {
   spoofMode: CodexSpoofMode
   requestCatalogScopeKey?: string
   injectedCatalogDefaultFields?: string[]
+  ultra?: UltraResolution
+  internalUltraStateHeader?: string
   internalCatalogScopeHeader: string
   internalCatalogDefaultsHeader: string
   internalSelectedModelHeader: string
@@ -300,6 +326,12 @@ export async function handleChatHeadersHook(input: {
     input.output.headers[input.internalCatalogDefaultsHeader] = input.injectedCatalogDefaultFields.join(",")
   } else {
     delete input.output.headers[input.internalCatalogDefaultsHeader]
+  }
+  const internalUltraStateHeader = input.internalUltraStateHeader ?? "x-opencode-ultra-state"
+  if (input.ultra?.selected) {
+    input.output.headers[internalUltraStateHeader] = JSON.stringify(input.ultra)
+  } else {
+    delete input.output.headers[internalUltraStateHeader]
   }
 
   if (!input.collaborationProfileEnabled) {

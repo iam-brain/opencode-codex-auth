@@ -40,6 +40,7 @@ type ModelMessages = {
 
 type ModelReasoningLevel = {
   effort?: string | null
+  description?: string | null
 }
 
 type ModelServiceTier = {
@@ -51,6 +52,7 @@ type CatalogInputModality = "text" | "audio" | "image" | "video" | "pdf"
 
 export type CodexModelInfo = {
   slug: string
+  description?: string | null
   display_name?: string | null
   priority?: number | null
   context_window?: number | null
@@ -60,6 +62,10 @@ export type CodexModelInfo = {
   base_instructions?: string | null
   apply_patch_tool_type?: string | null
   supported_reasoning_levels?: ModelReasoningLevel[] | null
+  multi_agent_version?: string | null
+  minimal_client_version?: string | null
+  visibility?: string | null
+  supported_in_api?: boolean | null
   default_reasoning_level?: string | null
   supports_reasoning_summaries?: boolean | null
   reasoning_summary_format?: string | null
@@ -135,7 +141,7 @@ export type ApplyCodexCatalogInput = {
 
 export const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
 export const CODEX_GITHUB_MODELS_URL_PREFIX = "https://raw.githubusercontent.com/openai/codex"
-export const DEFAULT_CLIENT_VERSION = "0.116.0"
+export const DEFAULT_CLIENT_VERSION = "0.144.0"
 export const CACHE_TTL_MS = 15 * 60 * 1000
 export const FETCH_TIMEOUT_MS = 5000
 export const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh|max|ultra)$/i
@@ -188,7 +194,12 @@ export function parseReasoningLevels(value: unknown): ModelReasoningLevel[] | nu
     if (!isRecord(item)) continue
     const effort = normalizeReasoningEffort(item.effort)
     if (!effort) continue
-    out.push({ effort })
+    out.push({
+      effort,
+      ...(typeof item.description === "string" && item.description.trim()
+        ? { description: item.description.trim() }
+        : {})
+    })
   }
   return out.length > 0 ? out : null
 }
@@ -239,6 +250,7 @@ export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
     if (!slug) continue
     deduped.set(slug, {
       slug,
+      ...(typeof item.description === "string" ? { description: item.description } : {}),
       display_name: typeof item.display_name === "string" ? item.display_name : null,
       priority: typeof item.priority === "number" && Number.isFinite(item.priority) ? item.priority : null,
       context_window:
@@ -282,6 +294,14 @@ export function parseCatalogResponse(payload: unknown): CodexModelInfo[] {
       base_instructions: typeof item.base_instructions === "string" ? item.base_instructions : null,
       apply_patch_tool_type: typeof item.apply_patch_tool_type === "string" ? item.apply_patch_tool_type : null,
       supported_reasoning_levels: parseReasoningLevels(item.supported_reasoning_levels),
+      ...(typeof item.multi_agent_version === "string"
+        ? { multi_agent_version: item.multi_agent_version.trim() || null }
+        : {}),
+      ...(typeof item.minimal_client_version === "string"
+        ? { minimal_client_version: item.minimal_client_version.trim() || null }
+        : {}),
+      ...(typeof item.visibility === "string" ? { visibility: item.visibility.trim() || null } : {}),
+      ...(typeof item.supported_in_api === "boolean" ? { supported_in_api: item.supported_in_api } : {}),
       default_reasoning_level: normalizeReasoningEffort(item.default_reasoning_level) ?? null,
       supports_reasoning_summaries:
         typeof item.supports_reasoning_summaries === "boolean" ? item.supports_reasoning_summaries : null,

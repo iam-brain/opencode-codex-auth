@@ -118,7 +118,10 @@ describe("codex-native config variants", () => {
                       { effort: "max" },
                       { effort: "ultra" },
                       { effort: "future-custom" }
-                    ]
+                    ],
+                    multi_agent_version: "v2",
+                    visibility: "list",
+                    supported_in_api: true
                   },
                   {
                     slug: "gpt-5-codex-mini",

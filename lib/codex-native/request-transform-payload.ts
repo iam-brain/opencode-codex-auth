@@ -15,6 +15,7 @@ import {
 } from "./request-transform-model.js"
 import { type ReasoningSummaryValidationDiagnostic, resolveReasoningSummaryValue } from "./reasoning-summary.js"
 import { getRequestBodyVariantCandidates } from "./request-transform-model-service-tier.js"
+import { normalizeUltraWireEffort, resolveUltraSelection, type UltraResolution } from "./ultra.js"
 import {
   type CompatSanitizerTransformResult,
   type DeveloperRoleRemapTransformResult,
@@ -149,6 +150,8 @@ type OutboundRequestPayloadTransformInput = {
   fallbackPersonality?: PersonalityOption
   behaviorSettings?: BehaviorSettings
   customModels?: Record<string, CustomModelConfig>
+  ultraChildTask?: boolean
+  ultraState?: UltraResolution
 }
 
 export type OutboundRequestPayloadTransformResult = {
@@ -160,6 +163,7 @@ export type OutboundRequestPayloadTransformResult = {
   compatSanitizer: CompatSanitizerTransformResult
   serviceTier: ServiceTierTransformResult
   reasoningSummaryValidation?: ReasoningSummaryValidationDiagnostic
+  ultra?: UltraResolution
 }
 
 export type ServiceTierTransformResult = {
@@ -342,9 +346,37 @@ export async function transformOutboundRequestPayload(
 
   const finalPayload = compatSanitizedPayload?.payload ?? payload
   const existingReasoning = isRecord(finalPayload.reasoning) ? finalPayload.reasoning : undefined
+  const selectedSlug = asString(input.selectedModelSlug)
+  const selectedModelCandidates = selectedSlug
+    ? getModelLookupCandidates({ id: selectedSlug, api: { id: selectedSlug } })
+    : []
+  const selectedCatalogModel =
+    findCatalogModelForCandidates(input.catalogModels, selectedModelCandidates) ??
+    (() => {
+      if (!input.customModels || !selectedSlug) return undefined
+      const customEntry = Object.entries(input.customModels).find(
+        ([slug]) => slug.trim().toLowerCase() === selectedSlug.toLowerCase()
+      )?.[1]
+      if (!customEntry) return undefined
+      return findCatalogModelForCandidates(input.catalogModels, [customEntry.targetModel])
+    })()
+  const ultra = resolveUltraSelection({
+    reasoningEffort: input.ultraState?.selected
+      ? input.ultraState.logicalEffort
+      : (existingReasoning?.effort ?? input.ultraState?.logicalEffort),
+    model: selectedCatalogModel,
+    childTask: input.ultraChildTask === true || input.ultraState?.delegationPolicy === "explicit_request_only"
+  })
+  let ultraChanged = false
+  if (ultra.selected && existingReasoning) {
+    const normalizedWireEffort = normalizeUltraWireEffort(existingReasoning.effort)
+    if (normalizedWireEffort.changed && normalizedWireEffort.value) {
+      existingReasoning.effort = normalizedWireEffort.value
+      ultraChanged = true
+    }
+  }
   if (asString(existingReasoning?.mode) === undefined) {
-    const selectedSlug = asString(input.selectedModelSlug)
-    const candidates = selectedSlug ? getModelLookupCandidates({ id: selectedSlug, api: { id: selectedSlug } }) : []
+    const candidates = selectedModelCandidates
     const variants = getRequestBodyVariantCandidates({ body: finalPayload, modelSlug: selectedSlug ?? "" })
     const configuredCustomMode = getConfiguredCustomModelBehaviorOverrideValue(
       input.customModels,
@@ -396,6 +428,7 @@ export async function transformOutboundRequestPayload(
     compatSanitizer.changed ||
     selectedCatalogScopeSyncChanged ||
     gpt54LongContextClampChanged ||
+    ultraChanged ||
     serviceTier.changed
 
   if (!changed) {
@@ -407,7 +440,8 @@ export async function transformOutboundRequestPayload(
       promptCacheKey,
       compatSanitizer,
       serviceTier: { ...serviceTier, request: input.request },
-      reasoningSummaryValidation
+      reasoningSummaryValidation,
+      ultra: ultra.selected ? ultra : undefined
     }
   }
 
@@ -422,7 +456,8 @@ export async function transformOutboundRequestPayload(
       ...serviceTier,
       request: input.request
     },
-    reasoningSummaryValidation
+    reasoningSummaryValidation,
+    ultra: ultra.selected ? ultra : undefined
   }
 }
 

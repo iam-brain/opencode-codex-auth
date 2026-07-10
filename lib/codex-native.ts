@@ -65,6 +65,7 @@ import { createSessionAffinityRuntimeState } from "./codex-native/session-affini
 import { initializeCatalogSync, selectCatalogAuthCandidate } from "./codex-native/catalog-sync.js"
 import { createOpenAIFetchHandler } from "./codex-native/openai-loader-fetch.js"
 import { createShareableDebugLogger } from "./shareable-debug.js"
+import { isUltraEligible, type UltraResolution } from "./codex-native/ultra.js"
 export { browserOpenInvocationFor } from "./codex-native/browser.js"
 export { upsertAccount } from "./codex-native/accounts.js"
 export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from "./codex-native/oauth-utils.js"
@@ -74,6 +75,7 @@ const INTERNAL_COLLABORATION_AGENT_HEADER = "x-opencode-collaboration-agent-kind
 const INTERNAL_CATALOG_SCOPE_HEADER = "x-opencode-catalog-scope-key"
 const INTERNAL_CATALOG_DEFAULTS_HEADER = "x-opencode-catalog-default-fields"
 const INTERNAL_SELECTED_MODEL_HEADER = "x-opencode-selected-model-slug"
+const INTERNAL_ULTRA_STATE_HEADER = "x-opencode-ultra-state"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
 const REASONING_VARIANT_KEYS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] as const
 
@@ -221,7 +223,7 @@ function buildVariantConfigOverrides(model: CodexModelInfo): Record<string, Reco
   const variants = new Set<string>([...REASONING_VARIANT_KEYS, ...supportedEfforts])
   return Object.fromEntries(
     Array.from(variants).map((variant) => {
-      if (!supportedEfforts.includes(variant)) {
+      if (!supportedEfforts.includes(variant) || (variant === "ultra" && !isUltraEligible(model))) {
         return [variant, { disabled: true }]
       }
       return [
@@ -399,7 +401,11 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   const catalogModelsByScope = new Map<string, CodexModelInfo[]>()
   const catalogRequestMetadataBySession = new Map<
     string,
-    Array<{ catalogScopeKey?: string; injectedCatalogDefaultFields: string[] }>
+    Array<{
+      catalogScopeKey?: string
+      injectedCatalogDefaultFields: string[]
+      ultra?: UltraResolution
+    }>
   >()
   let activeCatalogScopeKey: string | undefined
   let activeCatalogModels: CodexModelInfo[] | undefined
@@ -659,7 +665,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       const queue = catalogRequestMetadataBySession.get(sessionID) ?? []
       queue.push({
         catalogScopeKey: requestCatalogScopeKey,
-        injectedCatalogDefaultFields: paramsResult.injectedCatalogDefaultFields
+        injectedCatalogDefaultFields: paramsResult.injectedCatalogDefaultFields,
+        ultra: paramsResult.ultra
       })
       catalogRequestMetadataBySession.set(sessionID, queue)
     },
@@ -676,6 +683,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         spoofMode,
         requestCatalogScopeKey,
         injectedCatalogDefaultFields: queuedMetadata?.injectedCatalogDefaultFields,
+        ultra: queuedMetadata?.ultra,
+        internalUltraStateHeader: INTERNAL_ULTRA_STATE_HEADER,
         internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
         internalCatalogDefaultsHeader: INTERNAL_CATALOG_DEFAULTS_HEADER,
         internalSelectedModelHeader: INTERNAL_SELECTED_MODEL_HEADER,

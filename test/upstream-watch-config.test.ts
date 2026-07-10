@@ -25,7 +25,7 @@ describe("upstream watch coverage", () => {
     expect(tracked.has("packages/opencode/src/provider/models.ts")).toBe(true)
     expect(tracked.has("packages/opencode/src/provider/error.ts")).toBe(true)
     expect(tracked.has("packages/opencode/src/session/message-v2.ts")).toBe(true)
-    expect(tracked.has("codex-rs/core/models.json")).toBe(true)
+    expect(tracked.has("codex-rs/models-manager/models.json")).toBe(true)
     expect(tracked.has("codex-rs/core/src/auth.rs")).toBe(true)
     expect(tracked.has("codex-rs/core/src/client.rs")).toBe(true)
     expect(tracked.has("codex-rs/core/src/codex.rs")).toBe(true)

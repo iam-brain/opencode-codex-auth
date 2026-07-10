@@ -158,6 +158,11 @@ Mode-derived runtime defaults when omitted:
   - Global reasoning effort override forwarded upstream when the request does not already set one.
   - When omitted, the selected model's live catalog `default_reasoning_level` is used, typically `"medium"`.
   - User config can still override reasoning effort globally, per model, or per variant.
+- `ultra` reasoning variant
+  - Catalog-derived and available only when the active model advertises `ultra` with `multi_agent_version: "v2"`.
+  - `codex` mode adds best-effort proactive delegation guidance; `native` mode preserves OpenCode-native prompt identity.
+  - Literal configured `ultra` values remain safe on unsupported or stale catalogs: the backend request sends wire effort `max`, without proactive delegation.
+  - No separate Ultra feature flag or concurrency setting is public; existing collaboration and subagent controls remain authoritative.
 - `global.reasoningMode: "standard" | "pro"` (optional)
   - GPT-5.6 reasoning mode, emitted as `reasoning.mode` independently of `reasoning.effort`.
   - An explicit request value is preserved. The same per-model and per-variant precedence applies.
