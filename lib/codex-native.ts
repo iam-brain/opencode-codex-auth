@@ -1,5 +1,4 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
-import type { Config } from "@opencode-ai/sdk"
 import process from "node:process"
 
 import { loadAuthStorage, setAccountCooldown } from "./storage.js"
@@ -65,15 +64,16 @@ import { createSessionAffinityRuntimeState } from "./codex-native/session-affini
 import { initializeCatalogSync, selectCatalogAuthCandidate } from "./codex-native/catalog-sync.js"
 import { createOpenAIFetchHandler } from "./codex-native/openai-loader-fetch.js"
 import { createShareableDebugLogger } from "./shareable-debug.js"
+import { isUltraEligible, type UltraResolution } from "./codex-native/ultra.js"
+import { createAgentExecutionResolver, deletedSessionIDFromEvent } from "./codex-native/agent-execution.js"
 export { browserOpenInvocationFor } from "./codex-native/browser.js"
 export { upsertAccount } from "./codex-native/accounts.js"
 export { extractAccountId, extractAccountIdFromClaims, refreshAccessToken } from "./codex-native/oauth-utils.js"
 
-const INTERNAL_COLLABORATION_MODE_HEADER = "x-opencode-collaboration-mode-kind"
-const INTERNAL_COLLABORATION_AGENT_HEADER = "x-opencode-collaboration-agent-kind"
 const INTERNAL_CATALOG_SCOPE_HEADER = "x-opencode-catalog-scope-key"
 const INTERNAL_CATALOG_DEFAULTS_HEADER = "x-opencode-catalog-default-fields"
 const INTERNAL_SELECTED_MODEL_HEADER = "x-opencode-selected-model-slug"
+const INTERNAL_ULTRA_STATE_HEADER = "x-opencode-ultra-state"
 const SESSION_AFFINITY_MISSING_GRACE_MS = 15 * 60 * 1000
 const REASONING_VARIANT_KEYS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] as const
 
@@ -174,11 +174,12 @@ export type CodexAuthPluginOptions = {
   headerSnapshots?: boolean
   headerSnapshotBodies?: boolean
   headerTransformDebug?: boolean
-  collaborationProfileEnabled?: boolean
-  orchestratorSubagentsEnabled?: boolean
+  ultraEnabled?: boolean
 }
 
-type ConfigWithProviderVariants = Config & {
+type OpenCodeConfig = Parameters<NonNullable<Hooks["config"]>>[0]
+
+type ConfigWithProviderVariants = OpenCodeConfig & {
   provider?: Record<
     string,
     {
@@ -214,14 +215,17 @@ function getSupportedReasoningEfforts(model: CodexModelInfo): string[] {
   )
 }
 
-function buildVariantConfigOverrides(model: CodexModelInfo): Record<string, Record<string, unknown>> | undefined {
+function buildVariantConfigOverrides(
+  model: CodexModelInfo,
+  ultraEnabled: boolean
+): Record<string, Record<string, unknown>> | undefined {
   const supportedEfforts = getSupportedReasoningEfforts(model)
   if (supportedEfforts.length === 0) return undefined
 
   const variants = new Set<string>([...REASONING_VARIANT_KEYS, ...supportedEfforts])
   return Object.fromEntries(
     Array.from(variants).map((variant) => {
-      if (!supportedEfforts.includes(variant)) {
+      if (!supportedEfforts.includes(variant) || (variant === "ultra" && (!ultraEnabled || !isUltraEligible(model)))) {
         return [variant, { disabled: true }]
       }
       return [
@@ -236,7 +240,11 @@ function buildVariantConfigOverrides(model: CodexModelInfo): Record<string, Reco
   )
 }
 
-function applyCatalogVariantOverridesToConfig(config: Config, catalogModels: CodexModelInfo[] | undefined): void {
+function applyCatalogVariantOverridesToConfig(
+  config: OpenCodeConfig,
+  catalogModels: CodexModelInfo[] | undefined,
+  ultraEnabled: boolean
+): void {
   if (!catalogModels || catalogModels.length === 0) return
 
   const nextConfig = config as ConfigWithProviderVariants
@@ -245,7 +253,7 @@ function applyCatalogVariantOverridesToConfig(config: Config, catalogModels: Cod
   const models = (openai.models ??= {})
 
   for (const catalogModel of catalogModels) {
-    const overrides = buildVariantConfigOverrides(catalogModel)
+    const overrides = buildVariantConfigOverrides(catalogModel, ultraEnabled)
     if (!overrides) continue
     const modelEntry = (models[catalogModel.slug] ??= {})
     modelEntry.variants = {
@@ -255,8 +263,26 @@ function applyCatalogVariantOverridesToConfig(config: Config, catalogModels: Cod
   }
 }
 
+function hideUltraVariantsInConfig(config: OpenCodeConfig): void {
+  const models = (config as ConfigWithProviderVariants).provider?.openai?.models
+  if (!models) return
+  for (const model of Object.values(models)) {
+    if (!model.variants || !("ultra" in model.variants)) continue
+    model.variants.ultra = { disabled: true }
+  }
+}
+
+function hideUltraVariantsInProviderModels(providerModels: Record<string, Record<string, unknown>>): void {
+  for (const model of Object.values(providerModels)) {
+    if (!model.variants || typeof model.variants !== "object" || Array.isArray(model.variants)) continue
+    const variants = model.variants as Record<string, unknown>
+    delete variants.ultra
+    if (Object.keys(variants).length === 0) delete model.variants
+  }
+}
+
 function applyGeneratedModelAliasesToConfig(
-  config: Config,
+  config: OpenCodeConfig,
   catalogModels: CodexModelInfo[] | undefined,
   settings: { fast: boolean; extendedContext: boolean; pro: boolean }
 ): void {
@@ -272,7 +298,7 @@ function applyGeneratedModelAliasesToConfig(
 }
 
 function applyCustomModelsToConfig(
-  config: Config,
+  config: OpenCodeConfig,
   customModels: Record<string, CustomModelConfig> | undefined,
   warn?: (message: string) => void
 ): void {
@@ -352,12 +378,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   const remapDeveloperMessagesToUserEnabled = runtimeMode === "codex" && opts.remapDeveloperMessagesToUser !== false
   const codexCompactionOverrideEnabled =
     opts.codexCompactionOverride !== undefined ? opts.codexCompactionOverride : runtimeMode === "codex"
-  const collaborationProfileEnabled =
-    typeof opts.collaborationProfileEnabled === "boolean" ? opts.collaborationProfileEnabled : runtimeMode === "codex"
-  const orchestratorSubagentsEnabled =
-    typeof opts.orchestratorSubagentsEnabled === "boolean"
-      ? opts.orchestratorSubagentsEnabled
-      : collaborationProfileEnabled
+  const ultraEnabled = opts.ultraEnabled === true
   void refreshCodexClientVersionFromGitHub(opts.log).catch((error) => {
     if (error instanceof Error) {
       // best-effort background refresh
@@ -397,13 +418,39 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     log: opts.log
   })
   const catalogModelsByScope = new Map<string, CodexModelInfo[]>()
+  type CatalogRequestMetadata = {
+    catalogScopeKey?: string
+    injectedCatalogDefaultFields: string[]
+    ultra?: UltraResolution
+  }
   const catalogRequestMetadataBySession = new Map<
     string,
-    Array<{ catalogScopeKey?: string; injectedCatalogDefaultFields: string[] }>
+    {
+      byMessageID: Map<string, CatalogRequestMetadata[]>
+      unkeyed: CatalogRequestMetadata[]
+    }
   >()
+  const requestMessageID = (hookInput: { message?: unknown }): string | undefined => {
+    if (!hookInput.message || typeof hookInput.message !== "object") return undefined
+    const id = (hookInput.message as { id?: unknown }).id
+    return typeof id === "string" && id.trim() ? id.trim() : undefined
+  }
+  const deleteCatalogRequestMetadata = (sessionID: string, messageID?: string): void => {
+    const metadata = catalogRequestMetadataBySession.get(sessionID)
+    if (!metadata) return
+    if (messageID) {
+      metadata.byMessageID.delete(messageID)
+    } else {
+      metadata.unkeyed.length = 0
+    }
+    if (metadata.byMessageID.size === 0 && metadata.unkeyed.length === 0) {
+      catalogRequestMetadataBySession.delete(sessionID)
+    }
+  }
   let activeCatalogScopeKey: string | undefined
   let activeCatalogModels: CodexModelInfo[] | undefined
   let providerModelsForCatalogSync: Record<string, Record<string, unknown>> | undefined
+  const agentExecutionResolver = createAgentExecutionResolver({ client: input.client })
   const quotaFetchCooldownByIdentity = new Map<string, number>()
   const aliasSettingsFor = (authType: "oauth" | "api") => ({
     fast: opts.modelAliases?.fast !== false,
@@ -422,7 +469,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       projectRoot: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
       customModels: opts.customModels,
       warn: (message) => console.warn(message),
-      aliasSettings: aliasSettingsFor("oauth")
+      aliasSettings: aliasSettingsFor("oauth"),
+      ultraEnabled
     })
   }
   const setCatalogModels = (scopeKey: string | undefined, models: CodexModelInfo[] | undefined): void => {
@@ -444,7 +492,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       projectRoot: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
       customModels: opts.customModels,
       warn: (message) => console.warn(message),
-      aliasSettings: aliasSettingsFor("oauth")
+      aliasSettings: aliasSettingsFor("oauth"),
+      ultraEnabled
     })
   }
   const getCatalogModels = (scopeKey?: string): CodexModelInfo[] | undefined => {
@@ -492,7 +541,15 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   }
 
   return {
+    event: async ({ event }) => {
+      const sessionID = deletedSessionIDFromEvent(event)
+      if (!sessionID) return
+      agentExecutionResolver.deleteSession(sessionID)
+      catalogRequestMetadataBySession.delete(sessionID)
+    },
     async config(config) {
+      agentExecutionResolver.updateConfig(config)
+      if (!ultraEnabled) hideUltraVariantsInConfig(config)
       try {
         const catalogAuth = await selectCatalogAuthCandidate(
           authMode,
@@ -505,9 +562,10 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           ...resolveCatalogHeaders(),
           onEvent: (event) => opts.log?.debug("codex model catalog", event)
         })
-        applyCatalogVariantOverridesToConfig(config, catalogModels)
+        applyCatalogVariantOverridesToConfig(config, catalogModels, ultraEnabled)
         applyCustomModelsToConfig(config, opts.customModels, (message) => console.warn(message))
         applyGeneratedModelAliasesToConfig(config, catalogModels, aliasSettingsFor("oauth"))
+        if (!ultraEnabled) hideUltraVariantsInConfig(config)
       } catch (error) {
         if (error instanceof Error) {
           opts.log?.debug("config variant override failed", { error: error.message })
@@ -518,6 +576,8 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
       provider: "openai",
       async loader(getAuth, provider) {
         const auth = await getAuth()
+        const providerModels = provider.models as Record<string, Record<string, unknown>>
+        if (!ultraEnabled) hideUltraVariantsInProviderModels(providerModels)
         let hasOAuth = auth.type === "oauth"
         if (!hasOAuth) {
           try {
@@ -533,7 +593,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         if (!hasOAuth) {
           if (auth.type === "api") {
             applyGeneratedAliasesToProviderModels({
-              providerModels: provider.models as Record<string, Record<string, unknown>>,
+              providerModels,
               settings: aliasSettingsFor("api")
             })
           }
@@ -547,7 +607,6 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
             missingGraceMs: SESSION_AFFINITY_MISSING_GRACE_MS,
             log: opts.log
           })
-        const providerModels = provider.models as Record<string, Record<string, unknown>>
         providerModelsForCatalogSync = providerModels
 
         const syncCatalogFromAuth = await initializeCatalogSync({
@@ -578,8 +637,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
           shareableDebug,
           internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
           internalSelectedModelHeader: INTERNAL_SELECTED_MODEL_HEADER,
-          internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
-          internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
+          ultraEnabled,
           requestSnapshots,
           sessionAffinityState: {
             orchestratorState,
@@ -646,29 +704,51 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         fallbackPersonality: opts.personality,
         projectRoot: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
         spoofMode,
-        collaborationProfileEnabled,
-        orchestratorSubagentsEnabled
+        ultraEnabled,
+        resolveAgentExecution: () =>
+          agentExecutionResolver.resolve({
+            sessionID: typeof hookInput.sessionID === "string" ? hookInput.sessionID : undefined,
+            agentName: hookInput.agent
+          })
       })
 
       const sessionID = typeof (hookInput as { sessionID?: unknown }).sessionID === "string" ? hookInput.sessionID : ""
       if (!sessionID) return
+      const messageID = requestMessageID(hookInput)
       if (hookInput.model.providerID !== "openai") {
-        catalogRequestMetadataBySession.delete(sessionID)
+        deleteCatalogRequestMetadata(sessionID, messageID)
         return
       }
-      const queue = catalogRequestMetadataBySession.get(sessionID) ?? []
-      queue.push({
+      const metadata = catalogRequestMetadataBySession.get(sessionID) ?? {
+        byMessageID: new Map<string, CatalogRequestMetadata[]>(),
+        unkeyed: []
+      }
+      const requestMetadata: CatalogRequestMetadata = {
         catalogScopeKey: requestCatalogScopeKey,
-        injectedCatalogDefaultFields: paramsResult.injectedCatalogDefaultFields
-      })
-      catalogRequestMetadataBySession.set(sessionID, queue)
+        injectedCatalogDefaultFields: paramsResult.injectedCatalogDefaultFields,
+        ultra: paramsResult.ultra
+      }
+      if (messageID) {
+        const pendingForMessage = metadata.byMessageID.get(messageID) ?? []
+        pendingForMessage.push(requestMetadata)
+        metadata.byMessageID.set(messageID, pendingForMessage)
+      } else {
+        metadata.unkeyed.push(requestMetadata)
+      }
+      catalogRequestMetadataBySession.set(sessionID, metadata)
     },
     "chat.headers": async (hookInput, output) => {
-      const queue = catalogRequestMetadataBySession.get(hookInput.sessionID)
-      const queuedMetadata = queue?.shift()
-      if (queue && queue.length === 0) {
-        catalogRequestMetadataBySession.delete(hookInput.sessionID)
-      }
+      const metadata = catalogRequestMetadataBySession.get(hookInput.sessionID)
+      const messageID = requestMessageID(hookInput)
+      const keyedMetadata = messageID ? metadata?.byMessageID.get(messageID) : undefined
+      const queuedMetadata = messageID
+        ? keyedMetadata?.length === 1
+          ? keyedMetadata[0]
+          : undefined
+        : metadata?.unkeyed.length === 1
+          ? metadata.unkeyed[0]
+          : undefined
+      deleteCatalogRequestMetadata(hookInput.sessionID, messageID)
       const requestCatalogScopeKey = queuedMetadata?.catalogScopeKey ?? activeCatalogScopeKey
       await handleChatHeadersHook({
         hookInput,
@@ -676,13 +756,11 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         spoofMode,
         requestCatalogScopeKey,
         injectedCatalogDefaultFields: queuedMetadata?.injectedCatalogDefaultFields,
+        ultra: queuedMetadata?.ultra,
+        internalUltraStateHeader: INTERNAL_ULTRA_STATE_HEADER,
         internalCatalogScopeHeader: INTERNAL_CATALOG_SCOPE_HEADER,
         internalCatalogDefaultsHeader: INTERNAL_CATALOG_DEFAULTS_HEADER,
-        internalSelectedModelHeader: INTERNAL_SELECTED_MODEL_HEADER,
-        internalCollaborationModeHeader: INTERNAL_COLLABORATION_MODE_HEADER,
-        internalCollaborationAgentHeader: INTERNAL_COLLABORATION_AGENT_HEADER,
-        collaborationProfileEnabled,
-        orchestratorSubagentsEnabled
+        internalSelectedModelHeader: INTERNAL_SELECTED_MODEL_HEADER
       })
     },
     "experimental.session.compacting": async (hookInput, output) => {

@@ -199,7 +199,7 @@ describe("codex-native snapshots", () => {
         const request = input as Request
         capturedUserAgent = request.headers.get("user-agent") ?? ""
         capturedOriginator = request.headers.get("originator") ?? ""
-        capturedSessionId = request.headers.get("session_id") ?? ""
+        capturedSessionId = request.headers.get("session-id") ?? ""
         return new Response("ok", { status: 200 })
       })
     )
@@ -226,7 +226,7 @@ describe("codex-native snapshots", () => {
         "content-type": "application/json",
         originator: "codex_exec",
         "user-agent": "opencode-codex-auth (...) ai-sdk/provider-utils/3.0.20 runtime/bun/1.3.5",
-        session_id: "ses_codex_fetch_1"
+        "session-id": "ses_codex_fetch_1"
       },
       body: JSON.stringify({ model: "gpt-5.2-codex", input: "hi" })
     })
@@ -239,7 +239,7 @@ describe("codex-native snapshots", () => {
     expect(capturedSessionId).toBe("ses_codex_fetch_1")
   })
 
-  it("preserves native originator/user-agent/session_id in native mode before outbound fetch", async () => {
+  it("preserves native originator/user-agent/session-id in native mode before outbound fetch", async () => {
     vi.resetModules()
 
     const auth = {
@@ -319,7 +319,7 @@ describe("codex-native snapshots", () => {
         const request = input as Request
         capturedUserAgent = request.headers.get("user-agent") ?? ""
         capturedOriginator = request.headers.get("originator") ?? ""
-        capturedSessionId = request.headers.get("session_id") ?? ""
+        capturedSessionId = request.headers.get("session-id") ?? ""
         return new Response("ok", { status: 200 })
       })
     )
@@ -346,7 +346,7 @@ describe("codex-native snapshots", () => {
         "content-type": "application/json",
         originator: "opencode",
         "user-agent": "opencode/1.2.3 (Darwin)",
-        session_id: "ses_native_fetch_1"
+        "session-id": "ses_native_fetch_1"
       },
       body: JSON.stringify({ model: "gpt-5.2-codex", input: "hi" })
     })
@@ -358,7 +358,7 @@ describe("codex-native snapshots", () => {
     expect(capturedSessionId).toBe("ses_native_fetch_1")
   })
 
-  it("strips internal collaboration header before outbound fetch and omits snapshot metadata", async () => {
+  it("strips internal Ultra state before outbound fetch", async () => {
     vi.resetModules()
 
     const auth = {
@@ -446,7 +446,7 @@ describe("codex-native snapshots", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const request = input as Request
-        seenInternalHeader = request.headers.get("x-opencode-collaboration-mode-kind") ?? ""
+        seenInternalHeader = request.headers.get("x-opencode-ultra-state") ?? ""
         return new Response("ok", { status: 200 })
       })
     )
@@ -454,6 +454,7 @@ describe("codex-native snapshots", () => {
     const { CodexAuthPlugin } = await import("../lib/codex-native")
     const hooks = await CodexAuthPlugin({} as never, {
       spoofMode: "codex",
+      ultraEnabled: true,
       headerTransformDebug: true
     })
     const loader = hooks.auth?.loader
@@ -475,7 +476,16 @@ describe("codex-native snapshots", () => {
       headers: {
         "content-type": "application/json",
         originator: "codex_cli_rs",
-        "x-opencode-collaboration-mode-kind": "plan"
+        "x-opencode-ultra-state": JSON.stringify({
+          selected: true,
+          logicalEffort: "ultra",
+          wireEffort: "max",
+          eligible: true,
+          delegationPolicy: "explicit_request_only",
+          agentRole: "child",
+          agentReason: "conservative_fallback",
+          reason: "eligible"
+        })
       },
       body: JSON.stringify({ model: "gpt-5.2-codex", input: "hi" })
     })
@@ -492,8 +502,6 @@ describe("codex-native snapshots", () => {
     expect(beforeTransformCall).toBeDefined()
     expect(afterTransformCall).toBeDefined()
     expect(beforeAuthCall).toBeDefined()
-    expect(afterTransformCall?.[2]?.collaborationModeKind).toBeUndefined()
-    expect(beforeAuthCall?.[2]?.collaborationModeKind).toBeUndefined()
     expect(seenInternalHeader).toBe("")
   })
 

@@ -192,7 +192,16 @@ async function collectSourceResult(source) {
 
 async function main() {
   const update = process.argv.includes("--update")
+  const sourceArg = process.argv.find((arg) => arg.startsWith("--source="))
+  const sourceFilter = sourceArg?.slice("--source=".length).trim()
   const watch = await loadWatchConfig()
+
+  if (sourceArg && !sourceFilter) {
+    throw new Error("Invalid --source value: expected a non-empty source id")
+  }
+  if (sourceFilter && !watch.sources.some((source) => source.id === sourceFilter)) {
+    throw new Error(`Unknown upstream watch source: ${sourceFilter}`)
+  }
 
   const reports = []
   const nextSources = []
@@ -202,6 +211,11 @@ async function main() {
     if (!source || typeof source.repo !== "string" || !Array.isArray(source.files)) {
       throw new Error("Invalid upstream watch source entry")
     }
+    if (sourceFilter && source.id !== sourceFilter) {
+      nextSources.push(source)
+      continue
+    }
+
     const collected = await collectSourceResult(source)
     reports.push(
       buildReport({

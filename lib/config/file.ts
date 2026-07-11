@@ -710,9 +710,8 @@ export function validateConfigFileObject(raw: unknown): ConfigValidationResult {
         "headerSnapshots",
         "headerSnapshotBodies",
         "headerTransformDebug",
-        "pidOffset",
-        "collaborationProfile",
-        "orchestratorSubagents"
+        "ultra",
+        "pidOffset"
       ]
       for (const field of boolFields) {
         if (field in runtime && typeof runtime[field] !== "boolean") {
@@ -897,10 +896,7 @@ function parseConfigFileObjectWithMetadata(raw: unknown): ParsedConfigFile {
   const headerTransformDebug =
     typeof runtime?.headerTransformDebug === "boolean" ? runtime.headerTransformDebug : undefined
   const pidOffsetEnabled = typeof runtime?.pidOffset === "boolean" ? runtime.pidOffset : undefined
-  const collaborationProfileEnabled =
-    typeof runtime?.collaborationProfile === "boolean" ? runtime.collaborationProfile : undefined
-  const orchestratorSubagentsEnabled =
-    typeof runtime?.orchestratorSubagents === "boolean" ? runtime.orchestratorSubagents : undefined
+  const ultraEnabled = typeof runtime?.ultra === "boolean" ? runtime.ultra : undefined
 
   return {
     config: {
@@ -922,10 +918,7 @@ function parseConfigFileObjectWithMetadata(raw: unknown): ParsedConfigFile {
       headerSnapshots,
       headerSnapshotBodies,
       headerTransformDebug,
-      collaborationProfile: collaborationProfileEnabled,
-      collaborationProfileEnabled,
-      orchestratorSubagents: orchestratorSubagentsEnabled,
-      orchestratorSubagentsEnabled,
+      ultraEnabled,
       behaviorSettings,
       customModels,
       modelAliases

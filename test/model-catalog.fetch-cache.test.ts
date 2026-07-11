@@ -5,6 +5,8 @@ import path from "node:path"
 import { describe, expect, it, vi } from "vitest"
 
 import { getCodexModelCatalog, githubModelsUrl, type CodexModelCatalogEvent } from "../lib/model-catalog"
+import { codexModelsSharedCachePath } from "../lib/codex-cache-layout"
+import { readCatalogFromGitHubCache } from "../lib/model-catalog/cache-helpers"
 
 async function makeCacheDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-model-catalog-"))
@@ -20,16 +22,39 @@ describe("model catalog fetch and primary cache", () => {
     )
   })
 
+  it("marks GitHub catalog models as non-authoritative fallback data", async () => {
+    const cacheDir = await makeCacheDir()
+    try {
+      await fs.mkdir(path.dirname(codexModelsSharedCachePath(cacheDir)), { recursive: true })
+      await fs.writeFile(
+        codexModelsSharedCachePath(cacheDir),
+        JSON.stringify({
+          fetchedAt: 100,
+          source: "github",
+          models: [{ slug: "gpt-5.6-sol", supported_reasoning_levels: [{ effort: "ultra" }] }]
+        })
+      )
+
+      const cached = await readCatalogFromGitHubCache(cacheDir)
+      expect(cached?.models[0]).toMatchObject({
+        slug: "gpt-5.6-sol",
+        catalog_source: "github_fallback"
+      })
+    } finally {
+      await fs.rm(cacheDir, { recursive: true, force: true })
+    }
+  })
+
   it("fetches /codex/models with auth headers", async () => {
     const cacheDir = await makeCacheDir()
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
       if (endpoint.includes("/backend-api/codex/models")) {
-        expect(endpoint).toContain("client_version=0.116.0")
+        expect(endpoint).toContain("client_version=0.144.0")
         const headers = init?.headers as Record<string, string>
         expect(headers.authorization).toBe("Bearer at")
         expect(headers["chatgpt-account-id"]).toBe("acc_123")
-        expect(headers.version).toBe("0.116.0")
+        expect(headers.version).toBe("0.144.0")
 
         return new Response(
           JSON.stringify({
@@ -39,7 +64,9 @@ describe("model catalog fetch and primary cache", () => {
         )
       }
 
-      expect(endpoint).toBe("https://raw.githubusercontent.com/openai/codex/rust-v0.116.0/codex-rs/core/models.json")
+      expect(endpoint).toBe(
+        "https://raw.githubusercontent.com/openai/codex/rust-v0.144.0/codex-rs/models-manager/models.json"
+      )
       return new Response(
         JSON.stringify({
           models: [

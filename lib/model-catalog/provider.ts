@@ -10,6 +10,7 @@ import {
   normalizeVerbosity,
   type PersonalityOption
 } from "./shared.js"
+import { isUltraEligible } from "../codex-native/ultra.js"
 
 const DEFAULT_OPENAI_NPM = "@ai-sdk/openai"
 const DEFAULT_OPENAI_API_URL = "https://chatgpt.com/backend-api/codex"
@@ -143,16 +144,37 @@ function buildInputCapabilities(model: CodexModelInfo): CapabilityMap {
   }
 }
 
-function buildVariants(model: CodexModelInfo): Record<string, Record<string, unknown>> {
-  const efforts = Array.from(
+function getSupportedReasoningEfforts(model: CodexModelInfo): string[] {
+  return Array.from(
     new Set(
       (model.supported_reasoning_levels ?? [])
         .map((level) => normalizeReasoningEffort(level.effort))
         .filter((value): value is NonNullable<typeof value> => value !== undefined)
     )
   )
+}
 
-  return Object.fromEntries(efforts.map((effort) => [effort, { reasoningEffort: effort }]))
+function buildVariants(model: CodexModelInfo, ultraEnabled: boolean): Record<string, Record<string, unknown>> {
+  const efforts = getSupportedReasoningEfforts(model).filter(
+    (effort) => effort !== "ultra" || (ultraEnabled && isUltraEligible(model))
+  )
+
+  return Object.fromEntries(
+    efforts.map((effort) => {
+      const level = (model.supported_reasoning_levels ?? []).find(
+        (candidate) => normalizeReasoningEffort(candidate.effort)?.toLowerCase() === effort.toLowerCase()
+      )
+      return [
+        effort,
+        {
+          reasoningEffort: effort,
+          ...(typeof level?.description === "string" && level.description.trim()
+            ? { description: level.description.trim() }
+            : {})
+        }
+      ]
+    })
+  )
 }
 
 function cloneValue<T>(value: T): T {
@@ -190,6 +212,7 @@ function mergeVariantMaps(
 function buildProviderModelFromCatalog(
   model: CodexModelInfo,
   providerModels: Record<string, Record<string, unknown>>,
+  ultraEnabled: boolean,
   existingModel?: Record<string, unknown>
 ): Record<string, unknown> | undefined {
   const display = resolveDisplayName(model.slug, model.display_name)
@@ -205,7 +228,7 @@ function buildProviderModelFromCatalog(
   const contextWindow = asFiniteNumber(model.context_window)
   if (contextWindow === undefined) return undefined
   const outputLimit = DEFAULT_OUTPUT_TOKEN_LIMIT
-  const variants = buildVariants(model)
+  const variants = buildVariants(model, ultraEnabled)
 
   return {
     id: model.slug,
@@ -495,13 +518,7 @@ export function getRuntimeDefaultsForModel(model: CodexModelInfo | undefined): C
     if (next) out.defaultReasoningSummary = next
   }
 
-  const supportedReasoningEfforts = Array.from(
-    new Set(
-      (model.supported_reasoning_levels ?? [])
-        .map((level) => normalizeReasoningEffort(level.effort))
-        .filter((value): value is NonNullable<typeof value> => value !== undefined)
-    )
-  )
+  const supportedReasoningEfforts = getSupportedReasoningEfforts(model)
   if (supportedReasoningEfforts.length > 0) {
     out.supportedReasoningEfforts = supportedReasoningEfforts
   }
@@ -573,7 +590,12 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
     if (!catalogModel) continue
 
     const existingModel = input.providerModels[slug]
-    const nextModel = buildProviderModelFromCatalog(catalogModel, input.providerModels, existingModel)
+    const nextModel = buildProviderModelFromCatalog(
+      catalogModel,
+      input.providerModels,
+      input.ultraEnabled === true,
+      existingModel
+    )
     if (!nextModel) {
       delete input.providerModels[slug]
       continue
@@ -593,7 +615,16 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
       clearCatalogInstructionState(input.providerModels[slug], options)
     }
 
-    const runtimeDefaults = getRuntimeDefaultsForSlug(slug, catalogModels)
+    const resolvedRuntimeDefaults = getRuntimeDefaultsForSlug(slug, catalogModels)
+    const runtimeDefaults = resolvedRuntimeDefaults ? { ...resolvedRuntimeDefaults } : undefined
+    if (runtimeDefaults && input.ultraEnabled !== true) {
+      if (runtimeDefaults.defaultReasoningEffort?.trim().toLowerCase() === "ultra") {
+        runtimeDefaults.defaultReasoningEffort = "max"
+      }
+      runtimeDefaults.supportedReasoningEfforts = runtimeDefaults.supportedReasoningEfforts?.filter(
+        (effort) => effort.trim().toLowerCase() !== "ultra"
+      )
+    }
     if (runtimeDefaults) {
       input.providerModels[slug].codexRuntimeDefaults = runtimeDefaults
       options.codexRuntimeDefaults = runtimeDefaults
@@ -630,6 +661,15 @@ export function applyCodexCatalogToProviderModels(input: ApplyCodexCatalogInput)
       settings: input.aliasSettings,
       allowed
     })
+  }
+
+  if (input.ultraEnabled !== true) {
+    for (const model of Object.values(input.providerModels)) {
+      const variants = asRecord(model.variants)
+      if (!variants || !("ultra" in variants)) continue
+      delete variants.ultra
+      if (Object.keys(variants).length === 0) delete model.variants
+    }
   }
 
   for (const modelId of Object.keys(input.providerModels)) {

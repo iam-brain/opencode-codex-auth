@@ -3,16 +3,15 @@ import { describe, expect, it } from "vitest"
 import {
   buildResolvedBehaviorSettings,
   cloneBehaviorSettings,
-  getCollaborationProfileEnabled,
   getCodexCompactionOverrideEnabled,
   getCompatInputSanitizerEnabled,
   getCustomModels,
   getModelAliasSettings,
-  getOrchestratorSubagentsEnabled,
   getProactiveRefreshBufferMs,
   getProactiveRefreshEnabled,
   getReasoningSummaryOverride,
   getThinkingSummariesOverride,
+  getUltraEnabled,
   getRemapDeveloperMessagesToUserEnabled,
   resolveConfig
 } from "../lib/config"
@@ -189,24 +188,11 @@ describe("config", () => {
     expect(getCodexCompactionOverrideEnabled({ mode: "codex" })).toBe(true)
   })
 
-  it("defaults collaboration gates to codex-on, native-off", () => {
-    expect(getCollaborationProfileEnabled({ mode: "native" })).toBe(false)
-    expect(getCollaborationProfileEnabled({ mode: "codex" })).toBe(true)
-    expect(getOrchestratorSubagentsEnabled({ mode: "native" })).toBe(false)
-    expect(getOrchestratorSubagentsEnabled({ mode: "codex" })).toBe(true)
-  })
-
-  it("allows overriding collaboration gates in any mode", () => {
-    expect(getCollaborationProfileEnabled({ mode: "native", collaborationProfileEnabled: true })).toBe(true)
-    expect(getCollaborationProfileEnabled({ mode: "codex", collaborationProfileEnabled: false })).toBe(false)
-    expect(getCollaborationProfileEnabled({ mode: "codex", collaborationProfileEnabled: true })).toBe(true)
-    expect(
-      getOrchestratorSubagentsEnabled({
-        mode: "native",
-        collaborationProfileEnabled: true,
-        orchestratorSubagentsEnabled: true
-      })
-    ).toBe(true)
+  it("keeps the Ultra WIP disabled unless explicitly enabled", () => {
+    expect(getUltraEnabled({})).toBe(false)
+    expect(getUltraEnabled({ mode: "codex" })).toBe(false)
+    expect(getUltraEnabled({ ultraEnabled: false })).toBe(false)
+    expect(getUltraEnabled({ ultraEnabled: true })).toBe(true)
   })
 
   it("allows enabling codex compaction override in native mode", () => {

@@ -155,8 +155,7 @@ Managed templates are synchronized at plugin startup:
 
 - `/create-personality` command is refreshed to the managed latest template
 - `personality-builder` skill bundle is refreshed to the managed latest template
-- pinned Codex prompts cache is refreshed best-effort (`codex-prompts-cache*.json`)
-- orchestrator agent visibility is reconciled based on effective collaboration profile
+- legacy orchestrator prompt caches and plugin-managed agent files are removed; user-authored agents are preserved
 
 ## Local development install
 

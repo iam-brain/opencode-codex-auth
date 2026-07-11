@@ -13,6 +13,7 @@ import {
 import type { Logger } from "./logger.js"
 import { defaultShareableDebugLogPath } from "./paths.js"
 import type { OpenAIAuthMode, RotationStrategy } from "./types.js"
+import type { UltraResolution } from "./codex-native/ultra.js"
 
 const PROCESS_SECRET = randomBytes(32)
 
@@ -125,6 +126,7 @@ export type ShareableDebugLogger = {
       activeIdentityKey?: string
       sessionKey?: string | null
       rotationStrategy?: string
+      ultra?: Pick<UltraResolution, "logicalEffort" | "wireEffort" | "eligible" | "delegationPolicy" | "reason">
     }
   ) => Promise<void>
   emitFetchAttemptResponse: (
@@ -138,6 +140,7 @@ export type ShareableDebugLogger = {
       activeIdentityKey?: string
       sessionKey?: string | null
       rotationStrategy?: string
+      ultra?: Pick<UltraResolution, "logicalEffort" | "wireEffort" | "eligible" | "delegationPolicy" | "reason">
     }
   ) => Promise<void>
   emitRetryAfter429: (
@@ -149,6 +152,7 @@ export type ShareableDebugLogger = {
       activeIdentityKey?: string
       sessionKey?: string | null
       rotationStrategy?: string
+      ultra?: Pick<UltraResolution, "logicalEffort" | "wireEffort" | "eligible" | "delegationPolicy" | "reason">
     }
   ) => Promise<void>
   emitAuthFailure: (
@@ -1309,7 +1313,8 @@ export function createShareableDebugLogger(input: {
         selectedIdentity: pseudonym("ident", event.selectedIdentityKey),
         activeIdentity: pseudonym("ident", event.activeIdentityKey),
         session: pseudonym("sess", event.sessionKey),
-        promptCacheKey: pseudonym("pck", await extractPromptCacheKey(event.request))
+        promptCacheKey: pseudonym("pck", await extractPromptCacheKey(event.request)),
+        ...(event.ultra ? { ultra: event.ultra } : {})
       })
     },
     async emitFetchAttemptResponse(event) {
@@ -1323,7 +1328,8 @@ export function createShareableDebugLogger(input: {
         status: event.status,
         selectedIdentity: pseudonym("ident", event.selectedIdentityKey),
         activeIdentity: pseudonym("ident", event.activeIdentityKey),
-        session: pseudonym("sess", event.sessionKey)
+        session: pseudonym("sess", event.sessionKey),
+        ...(event.ultra ? { ultra: event.ultra } : {})
       })
     },
     async emitRetryAfter429(event) {
@@ -1335,7 +1341,8 @@ export function createShareableDebugLogger(input: {
         attemptReasonCode: event.attemptReasonCode,
         selectedIdentity: pseudonym("ident", event.selectedIdentityKey),
         activeIdentity: pseudonym("ident", event.activeIdentityKey),
-        session: pseudonym("sess", event.sessionKey)
+        session: pseudonym("sess", event.sessionKey),
+        ...(event.ultra ? { ultra: event.ultra } : {})
       })
     },
     async emitAuthFailure(event) {

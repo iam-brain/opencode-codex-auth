@@ -688,7 +688,7 @@ describe("codex-native model allowlist", () => {
           }
 
           const request = url as Request
-          const sessionID = request.headers.get("session_id") ?? ""
+          const sessionID = request.headers.get("session-id") ?? ""
           if (sessionID === interleavingSessionID) {
             sawInterleavingRequest = true
             return new Response("ok", { status: 200 })

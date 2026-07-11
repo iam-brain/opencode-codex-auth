@@ -118,7 +118,10 @@ describe("codex-native config variants", () => {
                       { effort: "max" },
                       { effort: "ultra" },
                       { effort: "future-custom" }
-                    ]
+                    ],
+                    multi_agent_version: "v2",
+                    visibility: "list",
+                    supported_in_api: true
                   },
                   {
                     slug: "gpt-5-codex-mini",
@@ -139,7 +142,7 @@ describe("codex-native config variants", () => {
       )
 
       const { CodexAuthPlugin } = await import("../lib/codex-native")
-      const hooks = await CodexAuthPlugin({} as never)
+      const hooks = await CodexAuthPlugin({} as never, { ultraEnabled: true })
       const config = makeConfig()
 
       await hooks.config?.(config as never)
@@ -165,6 +168,11 @@ describe("codex-native config variants", () => {
         include: ["reasoning.encrypted_content"]
       })
       expect(config.provider.openai.models["gpt-5-codex-mini"].variants.low).toEqual({ disabled: true })
+
+      const disabledHooks = await CodexAuthPlugin({} as never)
+      const disabledConfig = makeConfig()
+      await disabledHooks.config?.(disabledConfig as never)
+      expect(disabledConfig.provider.openai.models["gpt-5.4"].variants.ultra).toEqual({ disabled: true })
       expect(config.provider.openai.models["gpt-5-codex-mini"].variants.medium).toEqual({
         reasoningEffort: "medium",
         reasoningSummary: "auto",

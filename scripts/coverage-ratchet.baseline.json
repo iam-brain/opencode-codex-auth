@@ -49,22 +49,16 @@
       "statements": 83.87
     },
     "lib/codex-cache-layout.ts": {
-      "lines": 93.87,
-      "branches": 94.44,
-      "functions": 90.9,
-      "statements": 93.87
+      "lines": 92.68,
+      "branches": 93.75,
+      "functions": 88.88,
+      "statements": 92.68
     },
     "lib/codex-native.ts": {
       "lines": 94.46,
       "branches": 77.94,
       "functions": 88.57,
       "statements": 94.46
-    },
-    "lib/codex-prompts-cache.ts": {
-      "lines": 98.94,
-      "branches": 86.95,
-      "functions": 100,
-      "statements": 98.94
     },
     "lib/codex-quota-fetch.ts": {
       "lines": 80.89,
@@ -354,12 +348,6 @@
       "functions": 91.3,
       "statements": 67.86
     },
-    "lib/codex-native/collaboration.ts": {
-      "lines": 95.05,
-      "branches": 80.61,
-      "functions": 100,
-      "statements": 95.05
-    },
     "lib/codex-native/oauth-auth-methods.ts": {
       "lines": 87.81,
       "branches": 68.51,
@@ -397,10 +385,10 @@
       "statements": 72.22
     },
     "lib/codex-native/openai-loader-fetch.ts": {
-      "lines": 90.43,
-      "branches": 88.37,
+      "lines": 91.64,
+      "branches": 86.8,
       "functions": 83.33,
-      "statements": 90.43
+      "statements": 91.64
     },
     "lib/codex-native/originator.ts": {
       "lines": 100,
@@ -463,16 +451,16 @@
       "statements": 93.15
     },
     "lib/config/file.ts": {
-      "lines": 83.08,
-      "branches": 78.26,
+      "lines": 81.87,
+      "branches": 75.34,
       "functions": 100,
-      "statements": 83.08
+      "statements": 81.87
     },
     "lib/config/resolve.ts": {
-      "lines": 96.83,
-      "branches": 90.9,
+      "lines": 96.44,
+      "branches": 89.78,
       "functions": 100,
-      "statements": 96.83
+      "statements": 96.44
     },
     "lib/config/types.ts": {
       "lines": 100,

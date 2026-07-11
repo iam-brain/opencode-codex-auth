@@ -871,7 +871,8 @@ describe("codex-native spoof + params hooks", () => {
 
     expect(output.headers.originator).toBe("opencode")
     expect(output.headers["User-Agent"]).toMatch(/^opencode\//)
-    expect(output.headers.session_id).toBe("ses_native")
+    expect(output.headers["session-id"]).toBe("ses_native")
+    expect(output.headers.session_id).toBeUndefined()
     expect(output.headers.conversation_id).toBeUndefined()
     expect(output.headers["OpenAI-Beta"]).toBeUndefined()
   })
@@ -891,7 +892,7 @@ describe("codex-native spoof + params hooks", () => {
 
     expect(output.headers.originator).toBe("opencode")
     expect(output.headers["User-Agent"]).toMatch(/^opencode\//)
-    expect(output.headers.session_id).toBe("ses_no_prompt_cache")
+    expect(output.headers["session-id"]).toBe("ses_no_prompt_cache")
     expect(output.headers.conversation_id).toBeUndefined()
     expect(output.headers["OpenAI-Beta"]).toBeUndefined()
   })
@@ -916,7 +917,7 @@ describe("codex-native spoof + params hooks", () => {
 
     expect(output.headers.originator).toBe("codex_cli_rs")
     expect(output.headers["User-Agent"]).toMatch(/^codex_cli_rs\//)
-    expect(output.headers.session_id).toBe("ses_strict")
+    expect(output.headers["session-id"]).toBe("ses_strict")
     expect(output.headers["OpenAI-Beta"]).toBeUndefined()
     expect(output.headers.conversation_id).toBeUndefined()
   })
@@ -957,7 +958,7 @@ describe("codex-native spoof + params hooks", () => {
     })
   })
 
-  it("uses sessionID as codex-mode session_id when prompt cache key is absent", async () => {
+  it("uses sessionID as codex-mode session-id when prompt cache key is absent", async () => {
     const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex" })
     const chatHeaders = hooks["chat.headers"]
     expect(chatHeaders).toBeTypeOf("function")
@@ -972,7 +973,7 @@ describe("codex-native spoof + params hooks", () => {
 
     expect(output.headers.originator).toBe("codex_cli_rs")
     expect(output.headers["User-Agent"]).toMatch(/^codex_cli_rs\//)
-    expect(output.headers.session_id).toBe("ses_strict_fallback")
+    expect(output.headers["session-id"]).toBe("ses_strict_fallback")
     expect(output.headers["OpenAI-Beta"]).toBeUndefined()
     expect(output.headers.conversation_id).toBeUndefined()
   })

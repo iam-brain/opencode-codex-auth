@@ -46,7 +46,6 @@ export {
   cloneBehaviorSettings,
   getBehaviorSettings,
   getCodexCompactionOverrideEnabled,
-  getCollaborationProfileEnabled,
   getCompatInputSanitizerEnabled,
   getCustomModels,
   getDebugEnabled,
@@ -56,7 +55,6 @@ export {
   getHeaderTransformDebugEnabled,
   getMode,
   getModelAliasSettings,
-  getOrchestratorSubagentsEnabled,
   getPersonality,
   getPidOffsetEnabled,
   getProactiveRefreshBufferMs,
@@ -69,5 +67,6 @@ export {
   getRotationStrategy,
   getSpoofMode,
   getThinkingSummariesOverride,
+  getUltraEnabled,
   resolveConfig
 } from "./config/resolve.js"

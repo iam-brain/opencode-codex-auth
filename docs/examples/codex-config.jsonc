@@ -35,9 +35,9 @@
     // Optional codex-rs compaction/profile override.
     // "codexCompactionOverride": true,
 
-    // Optional collaboration controls.
-    // "collaborationProfile": true,
-    // "orchestratorSubagents": true,
+    // Work in progress: catalog-gated Ultra agent mode.
+    // Defaults to false.
+    "ultra": false,
 
     // Debug request snapshots.
     "headerSnapshots": false,

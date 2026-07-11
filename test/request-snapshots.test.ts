@@ -142,7 +142,7 @@ describe("request snapshots", () => {
       headers: {
         Authorization: "Bearer super-secret-token",
         "ChatGPT-Account-Id": "acc_sensitive",
-        session_id: "ses_sensitive",
+        "session-id": "ses_sensitive",
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ model: "gpt-5.3-codex" })
@@ -158,7 +158,7 @@ describe("request snapshots", () => {
 
     expect(payload.headers.authorization).toBe("Bearer [redacted]")
     expect(payload.headers["chatgpt-account-id"]).toBe("[redacted]")
-    expect(payload.headers.session_id).toBe("[redacted]")
+    expect(payload.headers["session-id"]).toBe("[redacted]")
   })
 
   it("redacts token-like custom header names", async () => {

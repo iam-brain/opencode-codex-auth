@@ -229,14 +229,7 @@ export function resolveConfig(input: {
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES) ?? file.headerSnapshotBodies
   const headerTransformDebug =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG) ?? file.headerTransformDebug
-  const collaborationProfileEnabled =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE) ??
-    file.collaborationProfileEnabled ??
-    file.collaborationProfile
-  const orchestratorSubagentsEnabled =
-    parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS) ??
-    file.orchestratorSubagentsEnabled ??
-    file.orchestratorSubagents
+  const ultraEnabled = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_ULTRA) ?? file.ultraEnabled ?? false
 
   return {
     ...file,
@@ -257,8 +250,7 @@ export function resolveConfig(input: {
     headerSnapshots,
     headerSnapshotBodies,
     headerTransformDebug,
-    collaborationProfileEnabled,
-    orchestratorSubagentsEnabled,
+    ultraEnabled,
     behaviorSettings: resolvedBehaviorSettings
   }
 }
@@ -337,16 +329,8 @@ export function getHeaderSnapshotBodiesEnabled(cfg: PluginConfig): boolean {
   return cfg.headerSnapshotBodies === true
 }
 
-export function getCollaborationProfileEnabled(cfg: PluginConfig): boolean {
-  if (cfg.collaborationProfileEnabled === true) return true
-  if (cfg.collaborationProfileEnabled === false) return false
-  return getMode(cfg) === "codex"
-}
-
-export function getOrchestratorSubagentsEnabled(cfg: PluginConfig): boolean {
-  if (cfg.orchestratorSubagentsEnabled === true) return true
-  if (cfg.orchestratorSubagentsEnabled === false) return false
-  return getCollaborationProfileEnabled(cfg)
+export function getUltraEnabled(cfg: PluginConfig): boolean {
+  return cfg.ultraEnabled === true
 }
 
 export function getBehaviorSettings(cfg: PluginConfig): BehaviorSettings | undefined {

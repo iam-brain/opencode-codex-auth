@@ -75,7 +75,6 @@ describe("openai loader shareable debug wiring", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: vi.fn(async () => {}),
         captureResponse: vi.fn(async () => {})
@@ -172,7 +171,6 @@ describe("openai loader shareable debug wiring", () => {
       configuredRotationStrategy: "round_robin",
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: vi.fn(async () => {}),
         captureResponse: vi.fn(async () => {})
@@ -266,7 +264,6 @@ describe("openai loader shareable debug wiring", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: vi.fn(async () => {}),
         captureResponse: vi.fn(async () => {})
@@ -351,7 +348,6 @@ describe("openai loader shareable debug wiring", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: vi.fn(async () => {}),
         captureResponse: vi.fn(async () => {})
@@ -440,7 +436,6 @@ describe("openai loader shareable debug wiring", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: vi.fn(async () => {}),
         captureResponse: vi.fn(async () => {})

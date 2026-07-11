@@ -58,12 +58,18 @@ describe("model catalog provider model mapping", () => {
         {
           slug: "gpt-5.4",
           display_name: "gpt-5.4",
+          description: "A test model",
           priority: 0,
           context_window: 272000,
           input_modalities: ["text", "image"] as const,
           service_tiers: [{ id: "priority", name: "Fast" }, { id: " FLEX ", name: 42 }, { id: "" }, null],
           additional_speed_tiers: ["fast", " FAST ", "", null],
-          supports_parallel_tool_calls: true
+          supports_parallel_tool_calls: true,
+          multi_agent_version: "v2",
+          minimal_client_version: "0.144.0",
+          visibility: "list",
+          supported_in_api: true,
+          supported_reasoning_levels: [{ effort: "ultra", description: "Maximum with delegation" }]
         }
       ]
     })
@@ -71,6 +77,7 @@ describe("model catalog provider model mapping", () => {
     expect(parsed).toEqual([
       {
         slug: "gpt-5.4",
+        description: "A test model",
         display_name: "gpt-5.4",
         priority: 0,
         context_window: 272000,
@@ -84,7 +91,11 @@ describe("model catalog provider model mapping", () => {
         model_messages: null,
         base_instructions: null,
         apply_patch_tool_type: null,
-        supported_reasoning_levels: null,
+        supported_reasoning_levels: [{ effort: "ultra", description: "Maximum with delegation" }],
+        multi_agent_version: "v2",
+        minimal_client_version: "0.144.0",
+        visibility: "list",
+        supported_in_api: true,
         default_reasoning_level: null,
         default_reasoning_summary: null,
         supports_reasoning_summaries: null,
@@ -119,6 +130,10 @@ describe("model catalog provider model mapping", () => {
           { effort: "ultra" },
           { effort: "future-custom" }
         ],
+        multi_agent_version: "v2",
+        minimal_client_version: "0.144.0",
+        visibility: "list",
+        supported_in_api: true,
         supports_reasoning_summaries: true,
         reasoning_summary_format: "experimental",
         supports_parallel_tool_calls: false,
@@ -135,7 +150,8 @@ describe("model catalog provider model mapping", () => {
 
     applyCodexCatalogToProviderModels({
       providerModels,
-      catalogModels
+      catalogModels,
+      ultraEnabled: true
     })
 
     expect(providerModels["gpt-5.4-codex"]).toBeDefined()
@@ -166,6 +182,29 @@ describe("model catalog provider model mapping", () => {
       ultra: { reasoningEffort: "ultra" },
       "future-custom": { reasoningEffort: "future-custom" }
     })
+  })
+
+  it("hides the Ultra WIP variant and maps an Ultra catalog default to Max unless enabled", () => {
+    const model = {
+      slug: "gpt-5.6-sol",
+      context_window: 272000,
+      default_reasoning_level: "ultra",
+      supported_reasoning_levels: [{ effort: "max" }, { effort: "ultra" }],
+      multi_agent_version: "v2",
+      visibility: "list",
+      supported_in_api: true
+    }
+    const disabledModels: Record<string, Record<string, unknown>> = {}
+    applyCodexCatalogToProviderModels({ providerModels: disabledModels, catalogModels: [model] })
+    expect(disabledModels[model.slug].variants).toEqual({ max: { reasoningEffort: "max" } })
+    expect(disabledModels[model.slug].codexRuntimeDefaults).toMatchObject({
+      defaultReasoningEffort: "max",
+      supportedReasoningEfforts: ["max"]
+    })
+
+    const enabledModels: Record<string, Record<string, unknown>> = {}
+    applyCodexCatalogToProviderModels({ providerModels: enabledModels, catalogModels: [model], ultraEnabled: true })
+    expect(enabledModels[model.slug].variants).toMatchObject({ ultra: { reasoningEffort: "ultra" } })
   })
 
   it("creates new catalog-only provider entries without cross-slug inheritance", () => {

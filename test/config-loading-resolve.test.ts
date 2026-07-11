@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest"
 
 import {
   getBehaviorSettings,
-  getCollaborationProfileEnabled,
   getCodexCompactionOverrideEnabled,
   getCompatInputSanitizerEnabled,
   getCustomModels,
@@ -12,7 +11,6 @@ import {
   getShareableDebugEnabled,
   getHeaderTransformDebugEnabled,
   getMode,
-  getOrchestratorSubagentsEnabled,
   getPersonality,
   getPidOffsetEnabled,
   getPromptCacheKeyStrategy,
@@ -21,6 +19,7 @@ import {
   getRemapDeveloperMessagesToUserEnabled,
   getRotationStrategy,
   getSpoofMode,
+  getUltraEnabled,
   resolveConfig
 } from "../lib/config"
 
@@ -200,40 +199,21 @@ describe("config loading", () => {
     expect(getShareableDebugEnabled(cfg)).toBe(true)
   })
 
-  it("parses collaboration profile gate from env", () => {
+  it("parses the Ultra WIP gate from env and defaults it off", () => {
+    const defaults = resolveConfig({ env: {} })
     const enabled = resolveConfig({
       env: {
-        OPENCODE_OPENAI_MULTI_MODE: "codex",
-        OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE: "1"
+        OPENCODE_OPENAI_MULTI_ULTRA: "1"
       }
     })
     const disabled = resolveConfig({
       env: {
-        OPENCODE_OPENAI_MULTI_MODE: "native",
-        OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE: "1"
+        OPENCODE_OPENAI_MULTI_ULTRA: "0"
       }
     })
-    expect(getCollaborationProfileEnabled(enabled)).toBe(true)
-    expect(getCollaborationProfileEnabled(disabled)).toBe(true)
-  })
-
-  it("parses orchestrator subagent gate from env", () => {
-    const enabled = resolveConfig({
-      env: {
-        OPENCODE_OPENAI_MULTI_MODE: "codex",
-        OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE: "1",
-        OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS: "1"
-      }
-    })
-    const disabled = resolveConfig({
-      env: {
-        OPENCODE_OPENAI_MULTI_MODE: "codex",
-        OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE: "0",
-        OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS: "0"
-      }
-    })
-    expect(getOrchestratorSubagentsEnabled(enabled)).toBe(true)
-    expect(getOrchestratorSubagentsEnabled(disabled)).toBe(false)
+    expect(getUltraEnabled(defaults)).toBe(false)
+    expect(getUltraEnabled(enabled)).toBe(true)
+    expect(getUltraEnabled(disabled)).toBe(false)
   })
 
   it("reads personality + behavior settings from file config", () => {

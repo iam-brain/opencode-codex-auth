@@ -46,8 +46,7 @@ describe("installer cli", () => {
       expect(output).toContain("Codex config:")
       expect(output).toContain("/create-personality synchronized: created")
       expect(output).toContain("personality-builder skill synchronized: created")
-      expect(output).toContain("Codex prompts cache synchronized: yes")
-      expect(output).toContain("Orchestrator agent visible in current mode (native, collaboration=off): no")
+      expect(output).toContain("Legacy orchestrator artifacts removed: 0")
 
       const config = JSON.parse(await fs.readFile(configPath, "utf8")) as { plugin: string[] }
       expect(config.plugin).toContain("@iam-brain/opencode-codex-auth@latest")
@@ -67,11 +66,6 @@ describe("installer cli", () => {
         "utf8"
       )
       expect(skillFile).toContain("name: personality-builder")
-
-      await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md"))).rejects.toThrow()
-      await expect(
-        fs.access(path.join(root, "opencode", "agents", "orchestrator.md.disabled"))
-      ).resolves.toBeUndefined()
     } finally {
       if (previousXdg === undefined) {
         delete process.env.XDG_CONFIG_HOME
@@ -127,39 +121,6 @@ describe("installer cli", () => {
     const code = await runInstallerCli(["install", "extra-arg"], capture.io)
     expect(code).toBe(1)
     expect(capture.err.join("\n")).toContain("Unexpected argument: extra-arg")
-  })
-
-  it("shows orchestrator agent in codex mode", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-installer-codex-"))
-    const configPath = path.join(root, "opencode.json")
-    const capture = captureIo()
-    const previousXdg = process.env.XDG_CONFIG_HOME
-    const previousMode = process.env.OPENCODE_OPENAI_MULTI_MODE
-    process.env.XDG_CONFIG_HOME = root
-    process.env.OPENCODE_OPENAI_MULTI_MODE = "codex"
-
-    try {
-      const code = await runInstallerCli(["--config", configPath], capture.io)
-      expect(code).toBe(0)
-      expect(capture.out.join("\n")).toContain(
-        "Orchestrator agent visible in current mode (codex, collaboration=on): yes"
-      )
-      expect(capture.out.join("\n")).toContain("Codex prompts cache synchronized: yes")
-      await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md"))).resolves.toBeUndefined()
-      await expect(fs.access(path.join(root, "opencode", "agents", "orchestrator.md.disabled"))).rejects.toThrow()
-    } finally {
-      if (previousXdg === undefined) {
-        delete process.env.XDG_CONFIG_HOME
-      } else {
-        process.env.XDG_CONFIG_HOME = previousXdg
-      }
-
-      if (previousMode === undefined) {
-        delete process.env.OPENCODE_OPENAI_MULTI_MODE
-      } else {
-        process.env.OPENCODE_OPENAI_MULTI_MODE = previousMode
-      }
-    }
   })
 
   it("preserves customized command and skill files on rerun", async () => {

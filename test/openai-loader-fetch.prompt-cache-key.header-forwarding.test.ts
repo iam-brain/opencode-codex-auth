@@ -42,7 +42,6 @@ describe("openai loader fetch prompt cache key (header forwarding)", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: async () => {},
         captureResponse: async () => {}
@@ -112,7 +111,6 @@ describe("openai loader fetch prompt cache key (header forwarding)", () => {
         pidOffsetEnabled: false,
         headerTransformDebug: false,
         compatInputSanitizerEnabled: false,
-        internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
         requestSnapshots: {
           captureRequest: async () => {},
           captureResponse: async () => {}
@@ -182,7 +180,6 @@ describe("openai loader fetch prompt cache key (header forwarding)", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: async () => {},
         captureResponse: async () => {}
@@ -248,7 +245,6 @@ describe("openai loader fetch prompt cache key (header forwarding)", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: async () => {},
         captureResponse: async () => {}
@@ -318,7 +314,6 @@ describe("openai loader fetch prompt cache key (header forwarding)", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: async () => {},
         captureResponse: async () => {}

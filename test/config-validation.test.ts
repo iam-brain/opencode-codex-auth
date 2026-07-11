@@ -12,7 +12,8 @@ describe("config validation", () => {
     const result = validateConfigFileObject({
       runtime: {
         promptCacheKeyStrategy: "bad",
-        shareableDebug: "yes"
+        shareableDebug: "yes",
+        ultra: "yes"
       },
       global: {
         reasoningMode: "PRO",
@@ -25,6 +26,7 @@ describe("config validation", () => {
       expect.arrayContaining([
         expect.stringContaining("runtime.promptCacheKeyStrategy"),
         expect.stringContaining("runtime.shareableDebug"),
+        expect.stringContaining("runtime.ultra"),
         expect.stringContaining("global.serviceTier")
       ])
     )
@@ -57,6 +59,7 @@ describe("config validation", () => {
 
   it("normalizes canonical config fields and custom model aliases", () => {
     const parsed = parseConfigFileObject({
+      runtime: { ultra: true },
       global: {
         reasoningMode: "PRO",
         textVerbosity: "HIGH",
@@ -93,6 +96,7 @@ describe("config validation", () => {
       include: ["file_search_call.results"],
       parallelToolCalls: false
     })
+    expect(parsed.ultraEnabled).toBe(true)
     expect(parsed.modelAliases).toEqual({ fast: false, extendedContext: true, pro: true })
     expect(parsed.customModels?.["openai/my-fast-codex"]).toEqual({
       targetModel: "gpt-5.3-codex",

@@ -55,7 +55,6 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: async (stage, _request, meta) => {
           if (stage === "outbound-attempt") {
@@ -136,7 +135,6 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: async () => {},
         captureResponse: async () => {}
@@ -187,7 +185,7 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
     })
   })
 
-  it("does not mutate shared affinity maps for subagent-marked requests", async () => {
+  it("does not mutate shared affinity maps for Ultra child requests", async () => {
     vi.resetModules()
 
     const auth = {
@@ -230,13 +228,12 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
     const handler = createOpenAIFetchHandler({
       authMode: "native",
       spoofMode: "native",
+      ultraEnabled: true,
       remapDeveloperMessagesToUserEnabled: false,
       quietMode: true,
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
-      internalCollaborationAgentHeader: "x-openai-subagent",
       requestSnapshots: {
         captureRequest: async () => {},
         captureResponse: async () => {}
@@ -257,7 +254,16 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-openai-subagent": "plan",
+        "x-opencode-ultra-state": JSON.stringify({
+          selected: true,
+          logicalEffort: "ultra",
+          wireEffort: "max",
+          eligible: true,
+          delegationPolicy: "explicit_request_only",
+          agentRole: "child",
+          agentReason: "conservative_fallback",
+          reason: "eligible"
+        }),
         session_id: "ses_subagent"
       },
       body: JSON.stringify({ model: "gpt-5.3-codex", input: "hi" })
@@ -277,7 +283,7 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
     expect(persistSessionAffinityState).not.toHaveBeenCalled()
   })
 
-  it("ignores spoofed x-openai-subagent headers without internal collaboration markers", async () => {
+  it("strips the removed legacy x-openai-subagent header", async () => {
     vi.resetModules()
 
     const auth = {
@@ -312,12 +318,12 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
     const handler = createOpenAIFetchHandler({
       authMode: "native",
       spoofMode: "native",
+      ultraEnabled: false,
       remapDeveloperMessagesToUserEnabled: false,
       quietMode: true,
       pidOffsetEnabled: false,
       headerTransformDebug: false,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: async () => {},
         captureResponse: async () => {}
@@ -400,7 +406,6 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
       pidOffsetEnabled: false,
       headerTransformDebug: true,
       compatInputSanitizerEnabled: false,
-      internalCollaborationModeHeader: "x-opencode-collaboration-mode-kind",
       requestSnapshots: {
         captureRequest: async (stage, _request, meta) => {
           if (stage === "outbound-attempt") {
