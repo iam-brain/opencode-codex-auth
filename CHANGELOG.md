@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.9.0 - 2026-07-10
+
 - Refactored config precedence to keep explicit runtime mode authoritative and treat spoof mode as compatibility fallback.
 - Hardened merged auth state active-account selection to avoid disabled active identity carry-over.
 - Simplified request payload transform wrappers to route through one shared aggregate transform pipeline.
