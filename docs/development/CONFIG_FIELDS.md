@@ -24,6 +24,8 @@ Top-level:
 - `runtime.developerMessagesToUser: boolean`
 - `runtime.promptCacheKeyStrategy: "default" | "project"`
 - `runtime.codexCompactionOverride: boolean`
+- `runtime.shareableDebug: boolean`
+  - Writes privacy-first, redacted diagnostic logs and suppresses request snapshots while enabled.
 - `runtime.headerSnapshots: boolean`
 - `runtime.headerSnapshotBodies: boolean`
   - Includes request body snapshots only (no response body capture).
@@ -103,6 +105,7 @@ Default generated values:
 - `runtime.developerMessagesToUser: true`
 - `runtime.promptCacheKeyStrategy: "default"`
 - `runtime.codexCompactionOverride`: mode-derived when unset (`true` in `codex`, `false` in `native`)
+- `runtime.shareableDebug: false`
 - `runtime.headerSnapshots: false`
 - `runtime.headerSnapshotBodies: false`
 - `runtime.headerTransformDebug: false`
@@ -151,11 +154,13 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_PERSONALITY`
 - `OPENCODE_OPENAI_MULTI_REASONING_SUMMARIES`
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES` (deprecated alias)
+- `OPENCODE_OPENAI_MULTI_TEXT_VERBOSITY`
 - `OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED`
 - `OPENCODE_OPENAI_MULTI_VERBOSITY`
 - `OPENCODE_OPENAI_MULTI_SERVICE_TIER`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`
+- `OPENCODE_OPENAI_MULTI_SHAREABLE_DEBUG`
 - `OPENCODE_OPENAI_MULTI_ULTRA`
 
 Resolved by auth/runtime code (`lib/codex-native.ts` + helper modules under `lib/codex-native/`):

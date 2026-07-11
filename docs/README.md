@@ -41,6 +41,7 @@ This directory contains user and developer documentation for `opencode-codex-aut
 - `development/CONFIG_FIELDS.md`
 - `development/TESTING.md`
 - `development/UPSTREAM_SYNC.md`
+- `development/ULTRA.md` (WIP, default-off)
 
 ## Local planning and research
 

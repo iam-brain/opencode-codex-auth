@@ -145,7 +145,7 @@ Mode-derived runtime defaults when omitted:
 - When a live account-scoped `/backend-api/codex/models` fetch succeeds, the plugin uses that source alone after normalizing, deduplicating, and sorting the catalog response for provider shaping.
 - When live catalog data is unavailable, the plugin falls back to the shared GitHub `models.json` snapshot, normalized through the same catalog parser.
 - The plugin does not field-merge live catalog entries with GitHub fallback entries.
-- As of March 5, 2026, the live `/backend-api/codex/models` payload includes `gpt-5.4`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, and older GPT-5 Codex variants.
+- Do not rely on a static model list: GPT-5.6-era models and variants are sourced from the authenticated account's live catalog when that fetch succeeds, or from the shared GitHub snapshot when live catalog data is unavailable.
 - Actual availability still depends on the authenticated account's live catalog and plan entitlements.
 
 - `global.personality: string`
@@ -323,6 +323,7 @@ Advanced path:
 - `OPENCODE_OPENAI_MULTI_PROMPT_CACHE_KEY_STRATEGY`: `default|project`.
 - `OPENCODE_OPENAI_MULTI_PERSONALITY`: personality key override.
 - `OPENCODE_OPENAI_MULTI_THINKING_SUMMARIES`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_TEXT_VERBOSITY`: `default|low|medium|high|none`.
 - `OPENCODE_OPENAI_MULTI_VERBOSITY_ENABLED`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_VERBOSITY`: `default|low|medium|high`.
 - `OPENCODE_OPENAI_MULTI_SERVICE_TIER`: `default|priority|flex`.

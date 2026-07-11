@@ -25,6 +25,10 @@ All notable changes to this project will be documented in this file.
 - Replaced silent catches with explicit error handling throughout codebase.
 - Reduced read contention and catalog fallback IO in storage paths.
 
+## 1.8.1 - 2026-07-10
+
+- Scoped `standard` and `pro` reasoning modes to GPT-5.6 models so older models do not receive unsupported reasoning mode values.
+
 ## 1.8.0 - 2026-07-04
 
 - Added opt-in shareable debug logging with redacted sensitive metadata and crash-tolerant incident capture and recovery.

@@ -4,7 +4,7 @@ This guide covers install, login, migration transfer, and first verification.
 
 ## Prerequisites
 
-- Node.js 22.x
+- Node.js `>=22 <27`
 - OpenCode installed and working
 
 ## 1) Install the plugin

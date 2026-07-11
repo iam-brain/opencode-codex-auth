@@ -29,7 +29,8 @@ npm run release -- <patch|minor|major>
 5. Runs `npm run verify`.
 6. Runs `npm version <bump> -m "release: v%s"`.
 7. Pushes the default branch commit plus the release tag atomically (`git push --atomic origin <default-branch> <tag>`).
-8. Waits for GitHub Release visibility.
+8. When authenticated `gh` CLI access is available, waits for the tag-triggered `release.yml` workflow to finish successfully, including release-candidate verification, npm publication, and GitHub Release creation.
+9. With the same `gh` access, confirms the GitHub Release is visible. Otherwise, the script reports that the push completed and leaves workflow/release monitoring to the maintainer.
 
 Remote CI gate notes:
 
