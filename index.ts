@@ -15,13 +15,11 @@ import {
   getCodexCompactionOverrideEnabled,
   getBehaviorSettings,
   getCustomModels,
-  getCollaborationProfileEnabled,
   getDebugEnabled,
   getHeaderSnapshotBodiesEnabled,
   getHeaderTransformDebugEnabled,
   getHeaderSnapshotsEnabled,
   getShareableDebugEnabled,
-  getOrchestratorSubagentsEnabled,
   getMode,
   getModelAliasSettings,
   getRemapDeveloperMessagesToUserEnabled,
@@ -32,6 +30,7 @@ import {
   getProactiveRefreshBufferMs,
   getProactiveRefreshEnabled,
   getSpoofMode,
+  getUltraEnabled,
   getQuietMode,
   loadConfigFile,
   resolveConfig
@@ -41,13 +40,11 @@ import { generatePersonaSpec } from "./lib/persona-tool.js"
 import { createPersonalityFile } from "./lib/personality-create.js"
 import { installCreatePersonalityCommand } from "./lib/personality-command.js"
 import { installPersonalityBuilderSkill } from "./lib/personality-skill.js"
-import { reconcileOrchestratorAgentVisibility } from "./lib/orchestrator-agent.js"
 import { runOneProactiveRefreshTick } from "./lib/proactive-refresh.js"
 import { createRefreshScheduler, ProactiveRefreshQueue } from "./lib/refresh-queue.js"
 import { toolOutputForStatus } from "./lib/codex-status-tool.js"
 import { requireOpenAIMultiOauthAuth, saveAuthStorage } from "./lib/storage.js"
-import { refreshCachedCodexPrompts } from "./lib/codex-prompts-cache.js"
-import { setCodexPlanModeInstructions } from "./lib/codex-native/collaboration.js"
+import { removeLegacyOrchestratorArtifacts } from "./lib/legacy-orchestrator-cleanup.js"
 import { composePluginDispose } from "./lib/plugin-lifecycle.js"
 
 let scheduler: { stop: () => void } | undefined
@@ -74,29 +71,18 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
     }
   })
 
-  await refreshCachedCodexPrompts()
-    .then((prompts) => {
-      setCodexPlanModeInstructions(prompts.plan)
-    })
-    .catch((error) => {
-      if (error instanceof Error) {
-        console.warn(`[opencode-codex-auth] bootstrap: refreshCachedCodexPrompts failed: ${error.message}`)
-      }
-    })
+  await removeLegacyOrchestratorArtifacts().catch((error) => {
+    if (error instanceof Error) {
+      console.warn(`[opencode-codex-auth] bootstrap: legacy orchestrator cleanup failed: ${error.message}`)
+    }
+  })
 
   const cfg = resolveConfig({
     env: process.env,
     file: loadConfigFile({ env: process.env })
   })
   const runtimeMode = getMode(cfg)
-  const collaborationProfileEnabled = getCollaborationProfileEnabled(cfg)
   const log = createLogger({ debug: getDebugEnabled(cfg) })
-
-  await reconcileOrchestratorAgentVisibility({ visible: collaborationProfileEnabled }).catch((error) => {
-    if (error instanceof Error) {
-      console.warn(`[opencode-codex-auth] bootstrap: reconcileOrchestratorAgentVisibility failed: ${error.message}`)
-    }
-  })
 
   if (getProactiveRefreshEnabled(cfg)) {
     const bufferMs = getProactiveRefreshBufferMs(cfg)
@@ -166,8 +152,7 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
       headerSnapshots: getHeaderSnapshotsEnabled(cfg),
       headerSnapshotBodies: getHeaderSnapshotBodiesEnabled(cfg),
       headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
-      collaborationProfileEnabled,
-      orchestratorSubagentsEnabled: getOrchestratorSubagentsEnabled(cfg),
+      ultraEnabled: getUltraEnabled(cfg),
       behaviorSettings: getBehaviorSettings(cfg),
       customModels: getCustomModels(cfg),
       modelAliases: getModelAliasSettings(cfg)

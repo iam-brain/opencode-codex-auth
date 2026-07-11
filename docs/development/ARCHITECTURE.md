@@ -33,8 +33,10 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - request/body transform ownership split by model defaults, service-tier resolution, payload rewrites, and chat hook behavior
 - `lib/codex-native/catalog-sync.ts`
   - model-catalog bootstrap, auth selection for bootstrap, and per-auth refresh wiring
-- `lib/codex-native/collaboration.ts`
-  - plan-mode, orchestrator, and subagent collaboration instruction injection
+- `lib/codex-native/instruction-utils.ts`
+  - runtime-safe instruction merging and Codex/OpenCode tool-name adaptation
+- `lib/codex-native/ultra.ts`, `lib/codex-native/agent-execution.ts`
+  - WIP Ultra policy, catalog eligibility, and fail-closed root/child/auxiliary classification
 - `lib/codex-native/originator.ts`
   - originator header resolution (mode-aware `opencode` vs `codex_cli_rs`/`codex_exec`)
 - `lib/codex-native/browser.ts`
@@ -71,10 +73,8 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - tool handler logic for `codex-status`, `codex-switch-accounts`, `codex-toggle-account`, `codex-remove-account`
 - `lib/codex-status-tool.ts`, `lib/codex-status-storage.ts`, `lib/codex-status-ui.ts`
   - account status/usage tracking, persistence, and display formatting
-- `lib/codex-prompts-cache.ts`
-  - pinned upstream prompt fetch/sync (orchestrator + plan templates) with ETag/TTL refresh
-- `lib/orchestrator-agent.ts`
-  - managed `orchestrator.md` agent template sync and visibility gating
+- `lib/legacy-orchestrator-cleanup.ts`
+  - removal of prompt caches and plugin-managed agent files from the retired orchestrator WIP while preserving user-authored agents
 - `lib/quarantine.ts`
   - corrupted auth file detection and recovery
 - `lib/quota-threshold-alerts.ts`
@@ -107,16 +107,6 @@ This plugin bridges OpenCode's OpenAI provider hooks to ChatGPT Codex backend en
   - plugin-primary account-scoped server catalog cache
 - Existing instruction caches (for example `codex-instructions.md` + `codex-instructions-meta.json`) remain separate artifacts under the same cache root.
 
-## Cache files (pinned prompt sync)
-
-- `<config-root>/cache/codex-prompts-cache.json`
-  - pinned upstream prompt text for:
-    - Codex orchestrator agent template
-    - Codex plan-mode collaboration prompt
-- `<config-root>/cache/codex-prompts-cache-meta.json`
-  - prompt-cache metadata (`lastChecked`, URLs, ETags)
-
-Fetch behavior is best-effort and uses ETag/304 revalidation plus a TTL to limit network traffic.
 Successful live catalog fetches are source-faithful: the account-scoped `/backend-api/codex/models` payload is cached and handed to provider shaping without field-level merging against the GitHub fallback snapshot. The shared GitHub cache is used only when live catalog data is unavailable.
 
 ## Invariants

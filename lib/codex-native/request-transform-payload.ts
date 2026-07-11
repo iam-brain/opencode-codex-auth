@@ -15,7 +15,12 @@ import {
 } from "./request-transform-model.js"
 import { type ReasoningSummaryValidationDiagnostic, resolveReasoningSummaryValue } from "./reasoning-summary.js"
 import { getRequestBodyVariantCandidates } from "./request-transform-model-service-tier.js"
-import { normalizeUltraWireEffort, resolveUltraSelection, type UltraResolution } from "./ultra.js"
+import {
+  normalizeUltraWireEffort,
+  resolveUltraSelection,
+  stripUltraDelegationInstructions,
+  type UltraResolution
+} from "./ultra.js"
 import {
   type CompatSanitizerTransformResult,
   type DeveloperRoleRemapTransformResult,
@@ -152,6 +157,7 @@ type OutboundRequestPayloadTransformInput = {
   customModels?: Record<string, CustomModelConfig>
   ultraChildTask?: boolean
   ultraState?: UltraResolution
+  ultraEnabled?: boolean
 }
 
 export type OutboundRequestPayloadTransformResult = {
@@ -360,22 +366,29 @@ export async function transformOutboundRequestPayload(
       if (!customEntry) return undefined
       return findCatalogModelForCandidates(input.catalogModels, [customEntry.targetModel])
     })()
-  const ultra = resolveUltraSelection({
-    reasoningEffort: input.ultraState?.selected
-      ? input.ultraState.logicalEffort
-      : (existingReasoning?.effort ?? input.ultraState?.logicalEffort),
-    model: selectedCatalogModel,
-    agentExecution: input.ultraState
-      ? {
-          role: input.ultraState.agentRole,
-          reason: input.ultraState.agentReason,
-          ...(input.ultraState.agentName ? { agentName: input.ultraState.agentName } : {})
-        }
-      : undefined,
-    childTask: input.ultraState ? undefined : input.ultraChildTask === true
-  })
+  const ultra =
+    input.ultraEnabled === true
+      ? resolveUltraSelection({
+          reasoningEffort: input.ultraState?.selected
+            ? input.ultraState.logicalEffort
+            : (existingReasoning?.effort ?? input.ultraState?.logicalEffort),
+          model: selectedCatalogModel,
+          agentExecution: input.ultraState
+            ? {
+                role: input.ultraState.agentRole,
+                reason: input.ultraState.agentReason,
+                ...(input.ultraState.agentName ? { agentName: input.ultraState.agentName } : {})
+              }
+            : undefined,
+          childTask: input.ultraState ? undefined : input.ultraChildTask === true
+        })
+      : undefined
+  const logicalUltraSelected =
+    ultra?.selected === true ||
+    input.ultraState?.selected === true ||
+    asString(existingReasoning?.effort)?.trim().toLowerCase() === "ultra"
   let ultraChanged = false
-  if (ultra.selected && existingReasoning) {
+  if (logicalUltraSelected && existingReasoning) {
     const normalizedWireEffort = normalizeUltraWireEffort(existingReasoning.effort)
     if (normalizedWireEffort.changed && normalizedWireEffort.value) {
       existingReasoning.effort = normalizedWireEffort.value
@@ -414,6 +427,10 @@ export async function transformOutboundRequestPayload(
     behaviorSettings: input.behaviorSettings,
     fallbackPersonality: input.fallbackPersonality
   })
+  const ultraInstructionsChanged =
+    input.ultraEnabled !== true || (logicalUltraSelected && ultra?.eligible !== true)
+      ? stripUltraDelegationInstructions(finalPayload)
+      : false
   const gpt54LongContextClampChanged =
     input.gpt54LongContextClampEnabled !== false
       ? applyGpt54LongContextClampsToPayloadWithContext({
@@ -434,6 +451,7 @@ export async function transformOutboundRequestPayload(
     changed ||
     compatSanitizer.changed ||
     selectedCatalogScopeSyncChanged ||
+    ultraInstructionsChanged ||
     gpt54LongContextClampChanged ||
     ultraChanged ||
     serviceTier.changed
@@ -448,7 +466,7 @@ export async function transformOutboundRequestPayload(
       compatSanitizer,
       serviceTier: { ...serviceTier, request: input.request },
       reasoningSummaryValidation,
-      ultra: ultra.selected ? ultra : undefined
+      ultra: ultra?.selected ? ultra : undefined
     }
   }
 
@@ -464,7 +482,7 @@ export async function transformOutboundRequestPayload(
       request: input.request
     },
     reasoningSummaryValidation,
-    ultra: ultra.selected ? ultra : undefined
+    ultra: ultra?.selected ? ultra : undefined
   }
 }
 

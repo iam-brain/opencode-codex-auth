@@ -138,6 +138,7 @@ export type ApplyCodexCatalogInput = {
   customModels?: Record<string, CustomModelBehaviorConfig>
   warn?: (message: string) => void
   aliasSettings?: { fast: boolean; extendedContext: boolean; pro: boolean }
+  ultraEnabled?: boolean
 }
 
 export const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"

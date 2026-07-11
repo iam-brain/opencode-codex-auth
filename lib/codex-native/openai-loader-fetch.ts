@@ -26,7 +26,7 @@ import { toReasoningSummaryPluginFatalError } from "./reasoning-summary.js"
 import type { SessionAffinityRuntimeState } from "./session-affinity-state.js"
 import { scheduleQuotaRefresh } from "./openai-loader-fetch-quota.js"
 import type { ShareableDebugLogger } from "../shareable-debug.js"
-import { retainUltraState, type UltraResolution } from "./ultra.js"
+import { parseUltraState, retainUltraState, type UltraResolution } from "./ultra.js"
 import {
   CATALOG_REFRESH_FAILURE_RETRY_MS,
   CATALOG_REFRESH_TTL_MS,
@@ -58,8 +58,7 @@ export type CreateOpenAIFetchHandlerInput = {
   shareableDebug?: ShareableDebugLogger
   internalCatalogScopeHeader?: string
   internalSelectedModelHeader?: string
-  internalCollaborationModeHeader: string
-  internalCollaborationAgentHeader?: string
+  ultraEnabled?: boolean
   requestSnapshots: SnapshotRecorder
   sessionAffinityState: SessionAffinityRuntimeState
   getCatalogModels: (scopeKey?: string) => CodexModelInfo[] | undefined
@@ -82,9 +81,6 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
   const internalCatalogDefaultsHeader = "x-opencode-catalog-default-fields"
   const internalSelectedModelHeader = input.internalSelectedModelHeader ?? "x-opencode-selected-model-slug"
   const internalUltraStateHeader = "x-opencode-ultra-state"
-  const internalCollaborationAgentHeader =
-    input.internalCollaborationAgentHeader ?? "x-opencode-collaboration-agent-kind"
-  const trustedSubagentValues = new Set(["review", "compact", "memory_consolidation", "collab_spawn"])
   const quotaTrackerByIdentity = new Map<string, QuotaThresholdTrackerState>()
   const quotaRefreshAtByIdentity = new Map<string, number>()
   const catalogSyncByScope = new Map<string, CatalogSyncState>()
@@ -170,36 +166,17 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       outbound.headers.set("user-agent", resolveRequestUserAgent(input.spoofMode, outboundOriginator))
     }
 
-    const collaborationModeHeader = outbound.headers.get(input.internalCollaborationModeHeader)?.trim()
-    const collaborationAgentHeader = outbound.headers.get(internalCollaborationAgentHeader)?.trim()
-    const subagentHeader = outbound.headers.get("x-openai-subagent")?.trim()
-    const trustedSubagentHeader =
-      typeof subagentHeader === "string" && trustedSubagentValues.has(subagentHeader.toLowerCase())
-        ? subagentHeader
-        : undefined
-    const isSubagentRequest =
-      internalCollaborationAgentHeader === "x-openai-subagent"
-        ? Boolean(subagentHeader)
-        : Boolean(trustedSubagentHeader)
-    if (outbound.headers.has(input.internalCollaborationModeHeader)) {
-      outbound.headers.delete(input.internalCollaborationModeHeader)
-    }
-    if (outbound.headers.has(internalCollaborationAgentHeader)) {
-      outbound.headers.delete(internalCollaborationAgentHeader)
-    }
-    const shouldForwardSubagentHeader =
-      internalCollaborationAgentHeader === "x-openai-subagent"
-        ? Boolean(subagentHeader)
-        : Boolean(collaborationModeHeader && collaborationAgentHeader && trustedSubagentHeader)
-    if (!shouldForwardSubagentHeader && outbound.headers.has("x-openai-subagent")) {
-      outbound.headers.delete("x-openai-subagent")
-    }
+    const initialUltraState = input.ultraEnabled
+      ? parseUltraState(outbound.headers.get(internalUltraStateHeader))
+      : undefined
+    const isSubagentRequest = initialUltraState?.agentRole === "child" || initialUltraState?.agentRole === "auxiliary"
+    outbound.headers.delete("x-openai-subagent")
 
     let selectedIdentityKey: string | undefined
     let selectedAuthForQuota: { access: string; accountId?: string; identityKey?: string } | undefined
     let selectedCatalogModels: CodexModelInfo[] | undefined
     let selectedPreviousCatalogScopeKey: string | undefined
-    let ultraStateForRequest: UltraResolution | undefined
+    let ultraStateForRequest: UltraResolution | undefined = initialUltraState
     const promptCacheKeyStrategy = input.promptCacheKeyStrategy ?? "default"
     const promptCacheKeyOverride =
       promptCacheKeyStrategy === "project"
@@ -305,7 +282,9 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
       maxRedirects: 3,
       showToast: input.showToast,
       onAttemptRequest: async ({ attempt, maxAttempts, attemptReasonCode, request, auth, sessionKey }) => {
-        ultraStateForRequest = retainUltraState(ultraStateForRequest, request.headers.get(internalUltraStateHeader))
+        ultraStateForRequest = input.ultraEnabled
+          ? retainUltraState(ultraStateForRequest, request.headers.get(internalUltraStateHeader))
+          : undefined
         await input.shareableDebug?.emitFetchAttemptRequest({
           authMode: input.authMode,
           rotationStrategy: auth.selectionTrace?.strategy ?? input.configuredRotationStrategy,
@@ -371,7 +350,8 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
           behaviorSettings: input.behaviorSettings,
           customModels: input.customModels,
           ultraChildTask: isSubagentRequest,
-          ultraState: ultraStateForRequest
+          ultraState: ultraStateForRequest,
+          ultraEnabled: input.ultraEnabled
         })
 
         ultraStateForRequest = payloadTransform.ultra ?? ultraStateForRequest
@@ -393,7 +373,7 @@ export function createOpenAIFetchHandler(input: CreateOpenAIFetchHandlerInput) {
             developerMessageRemapCount: payloadTransform.developerRoleRemap.remappedCount,
             developerMessagePreservedCount: payloadTransform.developerRoleRemap.preservedCount,
             ultra: payloadTransform.ultra,
-            ...(isSubagentRequest ? { subagent: subagentHeader } : {})
+            ...(isSubagentRequest && payloadTransform.ultra ? { ultraAgentRole: payloadTransform.ultra.agentRole } : {})
           })
         }
 

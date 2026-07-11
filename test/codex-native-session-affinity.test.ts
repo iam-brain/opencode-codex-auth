@@ -6,7 +6,7 @@ afterEach(() => {
 })
 
 describe("codex-native session affinity persistence", () => {
-  it("skips affinity persistence for subagent requests", async () => {
+  it("skips affinity persistence for Ultra child requests", async () => {
     vi.resetModules()
 
     const auth = {
@@ -108,7 +108,7 @@ describe("codex-native session affinity persistence", () => {
     )
 
     const { CodexAuthPlugin } = await import("../lib/codex-native")
-    const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex" })
+    const hooks = await CodexAuthPlugin({} as never, { spoofMode: "codex", ultraEnabled: true })
     const loader = hooks.auth?.loader
     if (!loader) throw new Error("Missing auth loader")
 
@@ -120,7 +120,16 @@ describe("codex-native session affinity persistence", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-openai-subagent": "review",
+        "x-opencode-ultra-state": JSON.stringify({
+          selected: true,
+          logicalEffort: "ultra",
+          wireEffort: "max",
+          eligible: true,
+          delegationPolicy: "explicit_request_only",
+          agentRole: "child",
+          agentReason: "conservative_fallback",
+          reason: "eligible"
+        }),
         session_id: "ses_subagent_1"
       },
       body: JSON.stringify({

@@ -101,7 +101,10 @@ describe("Ultra agent execution classification", () => {
     const stale = resolver.resolve({ sessionID: "session", agentName: "custom" })
     resolver.deleteSession("session")
     release?.({ data: { id: "session" } })
-    await stale
+    await expect(stale).resolves.toMatchObject({
+      role: "child",
+      reason: "conservative_fallback"
+    })
 
     await expect(resolver.resolve({ sessionID: "session", agentName: "custom" })).resolves.toMatchObject({
       role: "child",
@@ -157,7 +160,10 @@ describe("Ultra agent execution classification", () => {
 
   it("resolves lineage through the plugin chat hook for Ultra turns", async () => {
     const get = vi.fn(async () => ({ data: { id: "root" } }))
-    const hooks = await CodexAuthPlugin({ client: { session: { get } } } as never, { mode: "codex" })
+    const hooks = await CodexAuthPlugin({ client: { session: { get } } } as never, {
+      mode: "codex",
+      ultraEnabled: true
+    })
     const output = { temperature: 0, topP: 1, topK: 0, options: {} as Record<string, unknown> }
 
     await hooks["chat.params"]?.(

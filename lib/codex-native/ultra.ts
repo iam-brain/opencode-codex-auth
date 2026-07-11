@@ -197,3 +197,26 @@ export function retainUltraState(
 ): UltraResolution | undefined {
   return parseUltraState(encoded) ?? current
 }
+
+export function stripUltraDelegationInstructions(payload: Record<string, unknown>): boolean {
+  if (typeof payload.instructions !== "string") return false
+
+  const current = payload.instructions
+  let next = current
+  let overlayRemoved = false
+  for (const overlay of [ULTRA_PROACTIVE_INSTRUCTIONS, ULTRA_EXPLICIT_ONLY_INSTRUCTIONS]) {
+    if (!next.includes(overlay)) continue
+    next = next.replaceAll(overlay, "")
+    overlayRemoved = true
+  }
+  if (!overlayRemoved) return false
+
+  next = next.replace(/\n{3,}/g, "\n\n").trim()
+
+  if (next) {
+    payload.instructions = next
+  } else {
+    delete payload.instructions
+  }
+  return true
+}

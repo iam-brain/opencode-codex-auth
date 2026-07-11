@@ -62,6 +62,7 @@ Known-field type validation is applied on load. If a known field has an invalid 
     "headerSnapshots": false,
     "headerSnapshotBodies": false,
     "headerTransformDebug": false,
+    "ultra": false,
     "pidOffset": false
   },
   "global": {
@@ -77,8 +78,7 @@ Known-field type validation is applied on load. If a known field has an invalid 
 Mode-derived runtime defaults when omitted:
 
 - `runtime.codexCompactionOverride`: `true` in `codex`, `false` in `native`
-- `runtime.collaborationProfile`: `true` in `codex`, `false` in `native`
-- `runtime.orchestratorSubagents`: inherits effective `runtime.collaborationProfile`
+- `runtime.ultra`: `false` in every mode
 
 ## Settings reference
 
@@ -134,14 +134,10 @@ Mode-derived runtime defaults when omitted:
   - Adds explicit `before-header-transform` and `after-header-transform` request snapshots for message fetches.
 - `runtime.pidOffset: boolean`
   - Enables session-aware offset behavior for account selection.
-- `runtime.collaborationProfile: boolean`
-  - Experimental: enables Codex-style collaboration mode mapping from agent names (`plan` -> plan mode, `orchestrator` -> code mode profile).
-  - If omitted, defaults to `true` in `runtime.mode="codex"` and `false` otherwise.
-  - Explicit `true`/`false` works in any mode.
-- `runtime.orchestratorSubagents: boolean`
-  - Experimental: enables Codex-style subagent header hints for helper agents under collaboration profile mode.
-  - If omitted, inherits `runtime.collaborationProfile` effective value.
-  - Explicit `true`/`false` works in any mode.
+- `runtime.ultra: boolean`
+  - Work in progress. Enables the catalog-gated Ultra agent mode.
+  - Defaults to `false`; it must be explicitly enabled in any runtime mode.
+  - When disabled, the `ultra` picker variant is hidden and no delegation policy is injected. Stale literal `ultra` inputs still degrade safely to wire effort `max`.
 
 ### Model behavior
 
@@ -159,10 +155,10 @@ Mode-derived runtime defaults when omitted:
   - When omitted, the selected model's live catalog `default_reasoning_level` is used, typically `"medium"`.
   - User config can still override reasoning effort globally, per model, or per variant.
 - `ultra` reasoning variant
-  - Catalog-derived and available only when the active model advertises `ultra` with `multi_agent_version: "v2"`.
+  - Work in progress and available only when `runtime.ultra=true` and the active model advertises `ultra` with `multi_agent_version: "v2"`.
   - `codex` mode adds best-effort proactive delegation guidance; `native` mode preserves OpenCode-native prompt identity.
   - Literal configured `ultra` values remain safe on unsupported or stale catalogs: the backend request sends wire effort `max`, without proactive delegation.
-  - No separate Ultra feature flag or concurrency setting is public; existing collaboration and subagent controls remain authoritative.
+  - There is no public concurrency setting; OpenCode remains responsible for agent execution and lifecycle.
 - `global.reasoningMode: "standard" | "pro"` (optional)
   - GPT-5.6 reasoning mode, emitted as `reasoning.mode` independently of `reasoning.effort`.
   - An explicit request value is preserved. The same per-model and per-variant precedence applies.
@@ -336,8 +332,7 @@ Advanced path:
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOTS`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`: `1|0|true|false`.
-- `OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE`: `1|0|true|false`.
-- `OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS`: `1|0|true|false`.
+- `OPENCODE_OPENAI_MULTI_ULTRA`: `1|0|true|false` (WIP; defaults to false).
 
 ### Debug/OAuth controls
 
@@ -367,18 +362,6 @@ Legacy behavior keys are no longer parsed from `codex-config.jsonc`.
 
 Use canonical `global` and `perModel` keys only.
 
-## Managed prompts and orchestrator agent
+## Legacy orchestrator cleanup
 
-The plugin synchronizes a pinned upstream Codex orchestrator prompt and plan-mode prompt into a local cache under the resolved config cache root (`$XDG_CONFIG_HOME/opencode/cache/` when `XDG_CONFIG_HOME` is set, otherwise `~/.config/opencode/cache/`):
-
-- `codex-prompts-cache.json`
-- `codex-prompts-cache-meta.json` (stores URLs, `lastChecked`, and ETags)
-
-Fetch behavior:
-
-- TTL-based refresh (best-effort; normal requests continue if refresh fails)
-- ETag-based revalidation (`If-None-Match` + `304 Not Modified`)
-
-The plan prompt from this cache is used to populate plan-mode collaboration instructions.
-
-When `runtime.collaborationProfile` is enabled, the installer and plugin startup also manage the visibility of an `orchestrator.md` agent template under the resolved config root (`$XDG_CONFIG_HOME/opencode/agents/` when `XDG_CONFIG_HOME` is set, otherwise `~/.config/opencode/agents/`).
+The removed orchestrator WIP no longer downloads prompts, injects collaboration headers, or manages an `orchestrator.md` agent. On startup and installer runs, the plugin removes its legacy prompt-cache files and removes legacy agent files only when they contain the plugin-managed orchestrator marker; user-authored files are preserved.

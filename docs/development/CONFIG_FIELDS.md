@@ -30,8 +30,7 @@ Top-level:
   - Sensitive headers/tokens and selected metadata/query keys are redacted, but prompt/tool payload content may still be present.
 - `runtime.headerTransformDebug: boolean`
 - `runtime.pidOffset: boolean`
-- `runtime.collaborationProfile: boolean`
-- `runtime.orchestratorSubagents: boolean`
+- `runtime.ultra: boolean` (WIP, default `false`)
 - `global.personality: string`
 - `global.reasoningEffort: string` (optional)
   - When omitted, the selected model's live catalog `default_reasoning_level` is used, typically `"medium"`.
@@ -108,8 +107,7 @@ Default generated values:
 - `runtime.headerSnapshotBodies: false`
 - `runtime.headerTransformDebug: false`
 - `runtime.pidOffset: false`
-- `runtime.collaborationProfile`: mode-derived when unset (`true` in `codex`, `false` in `native`)
-- `runtime.orchestratorSubagents`: inherits `runtime.collaborationProfile` effective value when unset
+- `runtime.ultra: false`
 - `global.personality: "pragmatic"`
 - `global.reasoningSummary: "auto"`
 - `global.textVerbosity: "default"`
@@ -158,8 +156,7 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_SERVICE_TIER`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH`
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`
-- `OPENCODE_OPENAI_MULTI_COLLABORATION_PROFILE`
-- `OPENCODE_OPENAI_MULTI_ORCHESTRATOR_SUBAGENTS`
+- `OPENCODE_OPENAI_MULTI_ULTRA`
 
 Resolved by auth/runtime code (`lib/codex-native.ts` + helper modules under `lib/codex-native/`):
 

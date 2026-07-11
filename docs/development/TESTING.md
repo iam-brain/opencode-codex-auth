@@ -76,12 +76,12 @@ npx vitest run test/config-loading-resolve.test.ts
 npx vitest run test/config-validation.test.ts
 npx vitest run test/config-getters.test.ts
 npx vitest run test/installer-cli.test.ts
-npx vitest run test/codex-prompts-cache.test.ts
+npx vitest run test/legacy-orchestrator-cleanup.test.ts
 npx vitest run test/remote-cache-fetch.test.ts
 npx vitest run test/cache-io.test.ts
 npx vitest run test/codex-native-oauth-callback-flow.test.ts
 npx vitest run test/acquire-auth-locking.test.ts
-npx vitest run test/codex-native-collaboration.test.ts
+npx vitest run test/ultra.test.ts
 npx vitest run test/prompt-cache-key.test.ts
 npx vitest run test/codex-native-oauth-debug-gating.test.ts
 npx vitest run test/request-snapshots.test.ts

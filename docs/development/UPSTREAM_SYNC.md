@@ -59,7 +59,7 @@ Tracked upstream surfaces include:
 - Provider core: `packages/opencode/src/provider/provider.ts`, `packages/opencode/src/provider/auth.ts`
 - Provider transforms/schema/error handling: `packages/opencode/src/provider/transform.ts`, `packages/core/src/models-dev.ts`, `packages/opencode/src/provider/error.ts`
 - Session-side OpenAI stream error handling: `packages/opencode/src/session/message-v2.ts`
-- Codex upstream model/auth/runtime files: `codex-rs/models-manager/models.json`, `codex-rs/core/src/auth.rs`, `codex-rs/core/src/client.rs`, `codex-rs/core/src/codex.rs`, `codex-rs/core/src/compact.rs`
+- Codex upstream model/auth/runtime files: `codex-rs/models-manager/models.json`, `codex-rs/login/src/auth/manager.rs`, `codex-rs/login/src/server.rs`, `codex-rs/core/src/client.rs`, `codex-rs/core/src/session/multi_agents.rs`, `codex-rs/core/src/codex_thread.rs`, `codex-rs/core/src/codex_delegate.rs`, `codex-rs/core/src/compact.rs`
 
 All automated upstream checks fetch directly from GitHub release tags (`api.github.com` and `raw.githubusercontent.com`).
 No local upstream clones are required for drift detection.

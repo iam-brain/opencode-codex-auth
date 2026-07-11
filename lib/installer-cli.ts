@@ -2,16 +2,9 @@ import path from "node:path"
 
 import { installCreatePersonalityCommand } from "./personality-command.js"
 import { installPersonalityBuilderSkill } from "./personality-skill.js"
-import {
-  ensureDefaultConfigFile,
-  getCollaborationProfileEnabled,
-  getMode,
-  loadConfigFile,
-  resolveConfig
-} from "./config.js"
-import { reconcileOrchestratorAgentVisibility } from "./orchestrator-agent.js"
+import { ensureDefaultConfigFile } from "./config.js"
+import { removeLegacyOrchestratorArtifacts } from "./legacy-orchestrator-cleanup.js"
 import { DEFAULT_PLUGIN_SPECIFIER, defaultOpencodeConfigPath, ensurePluginInstalled } from "./opencode-install.js"
-import { refreshCachedCodexPrompts } from "./codex-prompts-cache.js"
 
 type InstallerIo = {
   out: (message: string) => void
@@ -151,22 +144,8 @@ export async function runInstallerCli(args: string[], io: InstallerIo = DEFAULT_
     }`
   )
 
-  const promptsResult = await refreshCachedCodexPrompts({ forceRefresh: true })
-  io.out(`Codex prompts cache synchronized: ${promptsResult.orchestrator && promptsResult.plan ? "yes" : "fallback"}`)
-
-  const resolvedConfig = resolveConfig({
-    env: process.env,
-    file: loadConfigFile({ env: process.env })
-  })
-  const runtimeMode = getMode(resolvedConfig)
-  const collaborationProfileEnabled = getCollaborationProfileEnabled(resolvedConfig)
-  const orchestratorResult = await reconcileOrchestratorAgentVisibility({ visible: collaborationProfileEnabled })
-  io.out(`Orchestrator agent file: ${orchestratorResult.filePath}`)
-  io.out(
-    `Orchestrator agent visible in current mode (${runtimeMode}, collaboration=${collaborationProfileEnabled ? "on" : "off"}): ${
-      orchestratorResult.visible ? "yes" : "no"
-    }`
-  )
+  const cleanup = await removeLegacyOrchestratorArtifacts()
+  io.out(`Legacy orchestrator artifacts removed: ${cleanup.removed.length}`)
 
   return 0
 }

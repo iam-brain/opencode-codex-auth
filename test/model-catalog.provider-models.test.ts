@@ -150,7 +150,8 @@ describe("model catalog provider model mapping", () => {
 
     applyCodexCatalogToProviderModels({
       providerModels,
-      catalogModels
+      catalogModels,
+      ultraEnabled: true
     })
 
     expect(providerModels["gpt-5.4-codex"]).toBeDefined()
@@ -181,6 +182,29 @@ describe("model catalog provider model mapping", () => {
       ultra: { reasoningEffort: "ultra" },
       "future-custom": { reasoningEffort: "future-custom" }
     })
+  })
+
+  it("hides the Ultra WIP variant and maps an Ultra catalog default to Max unless enabled", () => {
+    const model = {
+      slug: "gpt-5.6-sol",
+      context_window: 272000,
+      default_reasoning_level: "ultra",
+      supported_reasoning_levels: [{ effort: "max" }, { effort: "ultra" }],
+      multi_agent_version: "v2",
+      visibility: "list",
+      supported_in_api: true
+    }
+    const disabledModels: Record<string, Record<string, unknown>> = {}
+    applyCodexCatalogToProviderModels({ providerModels: disabledModels, catalogModels: [model] })
+    expect(disabledModels[model.slug].variants).toEqual({ max: { reasoningEffort: "max" } })
+    expect(disabledModels[model.slug].codexRuntimeDefaults).toMatchObject({
+      defaultReasoningEffort: "max",
+      supportedReasoningEfforts: ["max"]
+    })
+
+    const enabledModels: Record<string, Record<string, unknown>> = {}
+    applyCodexCatalogToProviderModels({ providerModels: enabledModels, catalogModels: [model], ultraEnabled: true })
+    expect(enabledModels[model.slug].variants).toMatchObject({ ultra: { reasoningEffort: "ultra" } })
   })
 
   it("creates new catalog-only provider entries without cross-slug inheritance", () => {

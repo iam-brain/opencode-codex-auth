@@ -3,9 +3,6 @@ import path from "node:path"
 
 import { defaultOpencodeCachePath } from "./paths.js"
 
-export const CODEX_PROMPTS_CACHE_FILE = "codex-prompts-cache.json"
-export const CODEX_PROMPTS_CACHE_META_FILE = "codex-prompts-cache-meta.json"
-
 export const OPENCODE_MODELS_CACHE_PREFIX = "codex-models-cache"
 export const CODEX_AUTH_MODELS_CACHE_PREFIX = "codex-auth-models-"
 export const OPENCODE_MODELS_META_FILE = "codex-models-cache-meta.json"
@@ -52,12 +49,4 @@ export function codexModelsMetaPath(cacheDir: string): string {
 export function isCodexModelsCacheFileName(fileName: string): boolean {
   if (!fileName.endsWith(".json")) return false
   return fileName.startsWith(OPENCODE_MODELS_CACHE_PREFIX) || fileName.startsWith(CODEX_AUTH_MODELS_CACHE_PREFIX)
-}
-
-export function codexPromptsCachePath(cacheDir: string): string {
-  return path.join(cacheDir, CODEX_PROMPTS_CACHE_FILE)
-}
-
-export function codexPromptsCacheMetaPath(cacheDir: string): string {
-  return path.join(cacheDir, CODEX_PROMPTS_CACHE_META_FILE)
 }

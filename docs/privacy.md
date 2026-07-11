@@ -32,10 +32,6 @@
   - account-scoped server model catalog mirror
 - `<config-root>/cache/codex-auth-models-<hash>.json`
   - plugin-primary account-scoped model catalog cache
-- `<config-root>/cache/codex-prompts-cache.json`
-  - pinned upstream orchestrator/plan prompt cache
-- `<config-root>/cache/codex-prompts-cache-meta.json`
-  - pinned prompt cache metadata (`lastChecked`, URLs, ETags)
 - `<config-root>/logs/codex-plugin/` (optional)
   - request/response snapshot logs when enabled
 - `<config-root>/logs/codex-plugin/shareable-debug.jsonl` (optional)
@@ -61,7 +57,6 @@ Recommended additional local ignore patterns (not auto-managed by plugin):
 - `cache/codex-client-version.json`
 - `cache/codex-models-cache*.json`
 - `cache/codex-auth-models-*.json`
-- `cache/codex-prompts-cache*.json`
 - `logs/codex-plugin/oauth-lifecycle.log*`
 
 ## Related compatibility caches

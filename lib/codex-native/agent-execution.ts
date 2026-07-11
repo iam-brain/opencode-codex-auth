@@ -1,4 +1,6 @@
-import type { Config } from "@opencode-ai/plugin"
+import type { Hooks } from "@opencode-ai/plugin"
+
+type OpenCodeConfig = Parameters<NonNullable<Hooks["config"]>>[0]
 
 export type OpenCodeAgentMode = "primary" | "subagent" | "all"
 export type AgentExecutionRole = "root" | "child" | "auxiliary"
@@ -28,7 +30,7 @@ type SessionClient = {
   }
 }
 
-const BUILTIN_PRIMARY_AGENTS = new Set(["build", "plan", "orchestrator"])
+const BUILTIN_PRIMARY_AGENTS = new Set(["build", "plan"])
 const BUILTIN_SUBAGENTS = new Set(["general", "explore", "scout"])
 const BUILTIN_AUXILIARY_AGENTS = new Set(["title", "summary", "compaction", "compact"])
 
@@ -42,9 +44,9 @@ function normalizeMode(value: unknown): OpenCodeAgentMode | undefined {
   return value === "primary" || value === "subagent" || value === "all" ? value : undefined
 }
 
-export function readAgentModes(config: Config): Map<string, OpenCodeAgentMode> {
+export function readAgentModes(config: OpenCodeConfig): Map<string, OpenCodeAgentMode> {
   const modes = new Map<string, OpenCodeAgentMode>()
-  const agents = (config as Config & { agent?: Record<string, { mode?: unknown }> }).agent
+  const agents = (config as OpenCodeConfig & { agent?: Record<string, { mode?: unknown }> }).agent
   if (!agents) return modes
 
   for (const [name, value] of Object.entries(agents)) {
@@ -107,7 +109,7 @@ export function createAgentExecutionResolver(input: { client?: SessionClient }) 
   }
 
   return {
-    updateConfig(config: Config): void {
+    updateConfig(config: OpenCodeConfig): void {
       configuredModes = readAgentModes(config)
     },
     deleteSession(sessionID: string): void {
@@ -125,6 +127,8 @@ export function createAgentExecutionResolver(input: { client?: SessionClient }) 
       const sessionID = options.sessionID?.trim()
       if (!sessionID || !input.client?.session?.get) return fallback
 
+      const generation = sessionGenerations.get(sessionID) ?? 0
+
       const cached = sessionRoles.get(sessionID)
       if (cached) {
         return { ...fallback, role: cached, reason: cached === "child" ? "session_parent" : "session_root" }
@@ -139,6 +143,9 @@ export function createAgentExecutionResolver(input: { client?: SessionClient }) 
         })
       }
       const role = await pending
+      if ((sessionGenerations.get(sessionID) ?? 0) !== generation) {
+        return { ...fallback, role: "child", reason: "conservative_fallback" }
+      }
       return role ? { ...fallback, role, reason: role === "child" ? "session_parent" : "session_root" } : fallback
     }
   }

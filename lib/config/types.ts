@@ -59,10 +59,7 @@ export type PluginConfig = {
   headerSnapshotBodies?: boolean
   headerTransformDebug?: boolean
   promptCacheKeyStrategy?: PromptCacheKeyStrategy
-  collaborationProfile?: boolean
-  collaborationProfileEnabled?: boolean
-  orchestratorSubagents?: boolean
-  orchestratorSubagentsEnabled?: boolean
+  ultraEnabled?: boolean
   behaviorSettings?: BehaviorSettings
   customModels?: Record<string, CustomModelConfig>
   modelAliases?: { fast?: boolean; extendedContext?: boolean; pro?: boolean }
@@ -89,6 +86,7 @@ export const DEFAULT_CODEX_CONFIG = {
     headerSnapshots: false,
     headerSnapshotBodies: false,
     headerTransformDebug: false,
+    ultra: false,
     pidOffset: false
   },
   global: {
@@ -180,15 +178,10 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // default: false
     "headerTransformDebug": false,
 
-    // Collaboration profile toggles.
+    // Work in progress: enable the catalog-gated Ultra agent mode.
     // options: true | false
-    // mode default: false in "native", true in "codex"
-    // "collaborationProfile": true,
-
-    // Subagent header hints.
-    // options: true | false
-    // default: inherits collaborationProfile
-    // "orchestratorSubagents": true,
+    // default: false
+    "ultra": false,
 
     // Session-aware offset for account selection.
     // options: true | false

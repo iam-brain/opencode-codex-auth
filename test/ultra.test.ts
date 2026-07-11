@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { CodexModelInfo } from "../lib/model-catalog.js"
+import { CodexAuthPlugin } from "../lib/codex-native.js"
 import { handleChatParamsHook } from "../lib/codex-native/chat-hooks.js"
 import { transformOutboundRequestPayload } from "../lib/codex-native/request-transform-payload.js"
 import {
@@ -43,8 +44,7 @@ describe("GPT-5.6 Ultra contract", () => {
       output,
       lastCatalogModels: [eligibleModel()],
       spoofMode: "codex",
-      collaborationProfileEnabled: false,
-      orchestratorSubagentsEnabled: false,
+      ultraEnabled: true,
       resolveAgentExecution: async () => {
         calls += 1
         return { role: "root", reason: "session_root" }
@@ -92,8 +92,7 @@ describe("GPT-5.6 Ultra contract", () => {
       output,
       lastCatalogModels: [eligibleModel()],
       spoofMode: "codex",
-      collaborationProfileEnabled: false,
-      orchestratorSubagentsEnabled: false,
+      ultraEnabled: true,
       agentExecution: { role: "root", reason: "session_root", agentName: "build" }
     })
 
@@ -125,8 +124,7 @@ describe("GPT-5.6 Ultra contract", () => {
       output: nativeOutput,
       lastCatalogModels: [eligibleModel()],
       spoofMode: "native",
-      collaborationProfileEnabled: true,
-      orchestratorSubagentsEnabled: true
+      ultraEnabled: true
     })
     expect(nativeOutput.options.instructions).toBeUndefined()
 
@@ -147,8 +145,7 @@ describe("GPT-5.6 Ultra contract", () => {
       output: childOutput,
       lastCatalogModels: [eligibleModel()],
       spoofMode: "codex",
-      collaborationProfileEnabled: true,
-      orchestratorSubagentsEnabled: true,
+      ultraEnabled: true,
       agentExecution: { role: "child", reason: "session_parent", agentName: "general" }
     })
     expect(childOutput.options.instructions).toContain(ULTRA_EXPLICIT_ONLY_INSTRUCTIONS)
@@ -176,8 +173,7 @@ describe("GPT-5.6 Ultra contract", () => {
         output,
         lastCatalogModels: [eligibleModel()],
         spoofMode: "codex",
-        collaborationProfileEnabled: true,
-        orchestratorSubagentsEnabled: true,
+        ultraEnabled: true,
         agentExecution: { role: "auxiliary", reason: "builtin_auxiliary", agentName }
       })
 
@@ -200,11 +196,100 @@ describe("GPT-5.6 Ultra contract", () => {
       remapDeveloperMessagesToUserEnabled: false,
       compatInputSanitizerEnabled: false,
       promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: true,
       catalogModels: [eligibleModel()]
     })
 
     expect(JSON.parse(await transformed.request.text()).reasoning.effort).toBe("max")
     expect(transformed.ultra).toMatchObject({ logicalEffort: "ultra", wireEffort: "max" })
+  })
+
+  it("keeps the Ultra WIP hidden and policy-free when the flag is disabled", async () => {
+    const output = chatOutput()
+    const result = await handleChatParamsHook({
+      hookInput: {
+        model: {
+          id: "gpt-5.6-sol",
+          providerID: "openai",
+          options: {
+            codexCatalogModel: eligibleModel(),
+            codexRuntimeDefaults: { defaultReasoningEffort: "ultra" }
+          }
+        },
+        agent: "build",
+        message: {}
+      },
+      output,
+      lastCatalogModels: [eligibleModel()],
+      spoofMode: "codex",
+      ultraEnabled: false,
+      agentExecution: { role: "root", reason: "session_root", agentName: "build" }
+    })
+
+    expect(output.options.instructions).toBeUndefined()
+    expect(output.options.reasoningEffort).toBe("max")
+    expect(result.ultra).toBeUndefined()
+
+    const transformed = await transformOutboundRequestPayload({
+      request: new Request("https://chatgpt.com/backend-api/codex/responses", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "gpt-5.6-sol",
+          reasoning: { effort: "max" },
+          instructions: `base\n\n${ULTRA_PROACTIVE_INSTRUCTIONS}`
+        })
+      }),
+      selectedModelSlug: "gpt-5.6-sol",
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: false,
+      catalogModels: [eligibleModel()]
+    })
+    expect(JSON.parse(await transformed.request.text()).instructions).toBe("base")
+    expect(transformed.ultra).toBeUndefined()
+  })
+
+  it("does not rewrite ordinary instructions while Ultra is disabled", async () => {
+    const instructions = "  preserve leading space\n\n\nkeep the intentional gap  "
+    const transformed = await transformOutboundRequestPayload({
+      request: new Request("https://chatgpt.com/backend-api/codex/responses", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "gpt-5.6-sol",
+          reasoning: { effort: "max" },
+          instructions
+        })
+      }),
+      selectedModelSlug: "gpt-5.6-sol",
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: false,
+      catalogModels: [eligibleModel()]
+    })
+
+    expect(JSON.parse(await transformed.request.text()).instructions).toBe(instructions)
+  })
+
+  it("removes pre-existing provider Ultra variants while the WIP flag is disabled", async () => {
+    const hooks = await CodexAuthPlugin({} as never)
+    const provider = {
+      models: {
+        "gpt-5.6-sol": {
+          variants: {
+            max: { reasoningEffort: "max" },
+            ultra: { reasoningEffort: "ultra" }
+          }
+        }
+      }
+    }
+
+    await hooks.auth?.loader?.(async () => ({ type: "api", key: "test" }) as never, provider as never)
+
+    expect(provider.models["gpt-5.6-sol"].variants).toEqual({ max: { reasoningEffort: "max" } })
   })
 
   it("keeps explicit Max separate from Ultra and resolves custom targets", async () => {
@@ -219,6 +304,7 @@ describe("GPT-5.6 Ultra contract", () => {
       remapDeveloperMessagesToUserEnabled: false,
       compatInputSanitizerEnabled: false,
       promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: true,
       catalogModels: [eligibleModel()]
     })
     expect(max.ultra).toBeUndefined()
@@ -234,6 +320,7 @@ describe("GPT-5.6 Ultra contract", () => {
       remapDeveloperMessagesToUserEnabled: false,
       compatInputSanitizerEnabled: false,
       promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: true,
       catalogModels: [eligibleModel()],
       customModels: { "my-sol": { targetModel: "gpt-5.6-sol" } }
     })
@@ -253,12 +340,144 @@ describe("GPT-5.6 Ultra contract", () => {
       remapDeveloperMessagesToUserEnabled: false,
       compatInputSanitizerEnabled: false,
       promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: true,
       catalogModels: [eligibleModel()],
       ultraState: resolveUltraSelection({ reasoningEffort: "ultra", model: eligibleModel() })
     })
 
     expect(transformed.ultra).toMatchObject({ logicalEffort: "ultra", wireEffort: "max" })
     expect(JSON.parse(await transformed.request.text()).reasoning.effort).toBe("max")
+  })
+
+  it("removes delegation overlays when account rotation cannot prove Ultra eligibility", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "gpt-5.6-sol",
+        reasoning: { effort: "max" },
+        instructions: `catalog instructions\n\n${ULTRA_PROACTIVE_INSTRUCTIONS}\n\nplan instructions`
+      })
+    })
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      selectedModelSlug: "gpt-5.6-sol",
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: true,
+      catalogModels: [eligibleModel({ multi_agent_version: "v1" })],
+      ultraState: resolveUltraSelection({
+        reasoningEffort: "ultra",
+        model: eligibleModel(),
+        agentExecution: { role: "root", reason: "session_root" }
+      })
+    })
+
+    const payload = JSON.parse(await transformed.request.text())
+    expect(payload.instructions).toBe("catalog instructions\n\nplan instructions")
+    expect(transformed.ultra).toMatchObject({ eligible: false, delegationPolicy: "explicit_request_only" })
+  })
+
+  it("correlates Ultra state by message when same-session hooks interleave", async () => {
+    const hooks = await CodexAuthPlugin({} as never, { mode: "codex", ultraEnabled: true })
+    const model = {
+      id: "gpt-5.6-sol",
+      providerID: "openai",
+      capabilities: { toolcall: true },
+      options: {
+        codexCatalogModel: eligibleModel(),
+        codexRuntimeDefaults: { defaultReasoningEffort: "ultra" }
+      }
+    }
+    const ultraOutput = chatOutput()
+    const maxOutput = chatOutput()
+    maxOutput.options.reasoningEffort = "max"
+
+    await hooks["chat.params"]?.(
+      {
+        sessionID: "shared-session",
+        agent: "build",
+        provider: {},
+        message: { id: "ultra-message" },
+        model
+      } as never,
+      ultraOutput as never
+    )
+    await hooks["chat.params"]?.(
+      {
+        sessionID: "shared-session",
+        agent: "build",
+        provider: {},
+        message: { id: "max-message" },
+        model
+      } as never,
+      maxOutput as never
+    )
+
+    const maxHeaders = { headers: {} as Record<string, unknown> }
+    await hooks["chat.headers"]?.(
+      {
+        sessionID: "shared-session",
+        agent: "build",
+        provider: {},
+        message: { id: "max-message" },
+        model
+      } as never,
+      maxHeaders as never
+    )
+    const ultraHeaders = { headers: {} as Record<string, unknown> }
+    await hooks["chat.headers"]?.(
+      {
+        sessionID: "shared-session",
+        agent: "build",
+        provider: {},
+        message: { id: "ultra-message" },
+        model
+      } as never,
+      ultraHeaders as never
+    )
+
+    expect(maxHeaders.headers["x-opencode-ultra-state"]).toBeUndefined()
+    expect(JSON.parse(String(ultraHeaders.headers["x-opencode-ultra-state"]))).toMatchObject({
+      logicalEffort: "ultra",
+      delegationPolicy: "proactive"
+    })
+  })
+
+  it.each([
+    { name: "duplicate", message: { id: "duplicate-message" } },
+    { name: "missing", message: {} }
+  ])("fails closed when $name message IDs make hook correlation ambiguous", async ({ message }) => {
+    const hooks = await CodexAuthPlugin({} as never, { mode: "codex", ultraEnabled: true })
+    const model = {
+      id: "gpt-5.6-sol",
+      providerID: "openai",
+      capabilities: { toolcall: true },
+      options: {
+        codexCatalogModel: eligibleModel(),
+        codexRuntimeDefaults: { defaultReasoningEffort: "ultra" }
+      }
+    }
+    const ultraOutput = chatOutput()
+    const maxOutput = chatOutput()
+    maxOutput.options.reasoningEffort = "max"
+    const hookInput = {
+      sessionID: "ambiguous-session",
+      agent: "build",
+      provider: {},
+      message,
+      model
+    }
+
+    await hooks["chat.params"]?.(hookInput as never, ultraOutput as never)
+    await hooks["chat.params"]?.(hookInput as never, maxOutput as never)
+
+    for (let index = 0; index < 2; index += 1) {
+      const headers = { headers: {} as Record<string, unknown> }
+      await hooks["chat.headers"]?.(hookInput as never, headers as never)
+      expect(headers.headers["x-opencode-ultra-state"]).toBeUndefined()
+    }
   })
 
   it("retains explicit-only child policy when collaboration headers are unavailable", async () => {
@@ -273,6 +492,7 @@ describe("GPT-5.6 Ultra contract", () => {
       remapDeveloperMessagesToUserEnabled: false,
       compatInputSanitizerEnabled: false,
       promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: true,
       catalogModels: [eligibleModel()],
       ultraState: resolveUltraSelection({ reasoningEffort: "ultra", model: eligibleModel(), childTask: true })
     })
@@ -297,6 +517,7 @@ describe("GPT-5.6 Ultra contract", () => {
       remapDeveloperMessagesToUserEnabled: false,
       compatInputSanitizerEnabled: false,
       promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: true,
       catalogModels: [eligibleModel()],
       ultraState: state
     })
@@ -316,6 +537,7 @@ describe("GPT-5.6 Ultra contract", () => {
       remapDeveloperMessagesToUserEnabled: false,
       compatInputSanitizerEnabled: false,
       promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: true,
       catalogModels: [eligibleModel({ multi_agent_version: undefined })]
     })
     expect(JSON.parse(await transformed.request.text()).reasoning.effort).toBe("max")

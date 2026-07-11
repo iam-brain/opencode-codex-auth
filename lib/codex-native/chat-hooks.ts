@@ -35,15 +35,7 @@ import {
   readSessionMessageInfo,
   sessionUsesOpenAIProvider
 } from "./session-messages.js"
-import {
-  getCodexPlanModeInstructions,
-  isOrchestratorInstructions,
-  mergeInstructions,
-  replaceCodexToolCallsForOpenCode,
-  resolveHookAgentName,
-  resolveCollaborationProfile,
-  resolveSubagentHeaderValue
-} from "./collaboration.js"
+import { mergeInstructions, replaceCodexToolCallsForOpenCode, resolveHookAgentName } from "./instruction-utils.js"
 import {
   ULTRA_EXPLICIT_ONLY_INSTRUCTIONS,
   ULTRA_PROACTIVE_INSTRUCTIONS,
@@ -64,6 +56,21 @@ function normalizeVerbositySetting(value: unknown): "default" | "low" | "medium"
     return normalized
   }
   return undefined
+}
+
+function disableUltraRuntimeDefaults(modelOptions: Record<string, unknown>): void {
+  const defaults = isRecord(modelOptions.codexRuntimeDefaults) ? modelOptions.codexRuntimeDefaults : undefined
+  if (!defaults) return
+  const next = { ...defaults }
+  if (asString(next.defaultReasoningEffort)?.toLowerCase() === "ultra") {
+    next.defaultReasoningEffort = "max"
+  }
+  if (Array.isArray(next.supportedReasoningEfforts)) {
+    next.supportedReasoningEfforts = next.supportedReasoningEfforts.filter(
+      (effort) => typeof effort !== "string" || effort.trim().toLowerCase() !== "ultra"
+    )
+  }
+  modelOptions.codexRuntimeDefaults = next
 }
 
 export async function handleChatMessageHook(input: {
@@ -97,8 +104,7 @@ export async function handleChatParamsHook(input: {
   fallbackPersonality?: PersonalityOption
   projectRoot?: string
   spoofMode: CodexSpoofMode
-  collaborationProfileEnabled: boolean
-  orchestratorSubagentsEnabled: boolean
+  ultraEnabled?: boolean
   agentExecution?: AgentExecution
   resolveAgentExecution?: () => Promise<AgentExecution>
 }): Promise<{ injectedCatalogDefaultFields: string[]; ultra?: UltraResolution }> {
@@ -207,6 +213,10 @@ export async function handleChatParamsHook(input: {
     }
   }
 
+  if (!input.ultraEnabled) {
+    disableUltraRuntimeDefaults(modelOptions)
+  }
+
   if (asString(input.output.options.serviceTier) === undefined) {
     const resolvedServiceTier = resolveServiceTierForModel({
       behaviorSettings: input.behaviorSettings,
@@ -218,10 +228,6 @@ export async function handleChatParamsHook(input: {
       input.output.options.serviceTier = resolvedServiceTier
     }
   }
-  const profile = resolveCollaborationProfile(input.hookInput.agent)
-  const preserveOrchestratorInstructions =
-    profile.isOrchestrator === true && isOrchestratorInstructions(asString(input.output.options.instructions))
-
   const runtimeDefaultsResult = applyCodexRuntimeDefaultsToParams({
     modelOptions,
     modelToolCallCapable: input.hookInput.model.capabilities?.toolcall,
@@ -237,24 +243,30 @@ export async function handleChatParamsHook(input: {
       parallelToolCalls:
         modelParallelToolCallsOverride ?? customModelParallelToolCallsOverride ?? globalBehavior?.parallelToolCalls
     },
-    preferCodexInstructions: input.spoofMode === "codex" && !preserveOrchestratorInstructions,
+    preferCodexInstructions: input.spoofMode === "codex",
     modelId: input.hookInput.model.id,
     output: input.output
   })
 
-  const ultraSelected = asString(input.output.options.reasoningEffort)?.trim().toLowerCase() === "ultra"
+  if (!input.ultraEnabled && asString(input.output.options.reasoningEffort)?.toLowerCase() === "ultra") {
+    input.output.options.reasoningEffort = "max"
+  }
+
+  const ultraSelected =
+    input.ultraEnabled && asString(input.output.options.reasoningEffort)?.trim().toLowerCase() === "ultra"
   const agentExecution =
     input.agentExecution ??
     (ultraSelected && input.resolveAgentExecution ? await input.resolveAgentExecution() : undefined)
-  const ultraResolution = resolveUltraSelection({
-    reasoningEffort: input.output.options.reasoningEffort,
-    model: catalogModelFromOptions ?? catalogModelFallback,
-    agentExecution,
-    childTask: agentExecution ? undefined : resolveSubagentHeaderValue(input.hookInput.agent) !== undefined
-  })
+  const ultraResolution = input.ultraEnabled
+    ? resolveUltraSelection({
+        reasoningEffort: input.output.options.reasoningEffort,
+        model: catalogModelFromOptions ?? catalogModelFallback,
+        agentExecution
+      })
+    : undefined
   if (
     input.spoofMode === "codex" &&
-    ultraResolution.selected &&
+    ultraResolution?.selected &&
     ultraResolution.eligible &&
     ultraResolution.delegationPolicy !== "disabled"
   ) {
@@ -267,7 +279,7 @@ export async function handleChatParamsHook(input: {
   }
   const result = (): { injectedCatalogDefaultFields: string[]; ultra?: UltraResolution } => ({
     injectedCatalogDefaultFields: runtimeDefaultsResult.injectedFields,
-    ...(ultraResolution.selected ? { ultra: ultraResolution } : {})
+    ...(ultraResolution?.selected ? { ultra: ultraResolution } : {})
   })
 
   if (input.spoofMode !== "codex") {
@@ -281,21 +293,6 @@ export async function handleChatParamsHook(input: {
     if (replaced) {
       input.output.options.instructions = replaced
     }
-    return result()
-  }
-
-  if (!input.collaborationProfileEnabled) {
-    return result()
-  }
-
-  if (!profile.enabled || !profile.kind) {
-    return result()
-  }
-
-  if (profile.instructionPreset === "plan") {
-    const replacedPlan =
-      replaceCodexToolCallsForOpenCode(getCodexPlanModeInstructions()) ?? getCodexPlanModeInstructions()
-    input.output.options.instructions = mergeInstructions(asString(input.output.options.instructions), replacedPlan)
     return result()
   }
 
@@ -313,10 +310,6 @@ export async function handleChatHeadersHook(input: {
   internalCatalogScopeHeader: string
   internalCatalogDefaultsHeader: string
   internalSelectedModelHeader: string
-  internalCollaborationModeHeader: string
-  internalCollaborationAgentHeader: string
-  collaborationProfileEnabled: boolean
-  orchestratorSubagentsEnabled: boolean
 }): Promise<void> {
   if (input.hookInput.model.providerID !== "openai") return
   const originator = resolveCodexOriginator(input.spoofMode)
@@ -346,34 +339,6 @@ export async function handleChatHeadersHook(input: {
     input.output.headers[internalUltraStateHeader] = JSON.stringify(input.ultra)
   } else {
     delete input.output.headers[internalUltraStateHeader]
-  }
-
-  if (!input.collaborationProfileEnabled) {
-    delete input.output.headers["x-openai-subagent"]
-    delete input.output.headers[input.internalCollaborationModeHeader]
-    delete input.output.headers[input.internalCollaborationAgentHeader]
-    return
-  }
-
-  const profile = resolveCollaborationProfile(input.hookInput.agent)
-  if (!profile.enabled || !profile.kind) {
-    delete input.output.headers["x-openai-subagent"]
-    delete input.output.headers[input.internalCollaborationModeHeader]
-    delete input.output.headers[input.internalCollaborationAgentHeader]
-    return
-  }
-
-  input.output.headers[input.internalCollaborationModeHeader] = profile.kind
-  input.output.headers[input.internalCollaborationAgentHeader] = profile.isOrchestrator ? "orchestrator" : profile.kind
-
-  if (input.orchestratorSubagentsEnabled) {
-    const subagentHeader = resolveSubagentHeaderValue(input.hookInput.agent)
-    if (subagentHeader) {
-      input.output.headers["x-openai-subagent"] = subagentHeader
-    } else {
-      delete input.output.headers["x-openai-subagent"]
-    }
-    return
   }
 
   delete input.output.headers["x-openai-subagent"]

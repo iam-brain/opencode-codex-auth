@@ -49,9 +49,7 @@ describe("codex-native chat hooks instruction source order", () => {
           }
         }
       ],
-      spoofMode: "codex",
-      collaborationProfileEnabled: false,
-      orchestratorSubagentsEnabled: false
+      spoofMode: "codex"
     })
 
     expect(output.options.instructions).toBe("Cached template instructions")
@@ -94,9 +92,7 @@ describe("codex-native chat hooks instruction source order", () => {
           }
         }
       ],
-      spoofMode: "codex",
-      collaborationProfileEnabled: false,
-      orchestratorSubagentsEnabled: false
+      spoofMode: "codex"
     })
 
     expect(output.options.instructions).toBe("Cached template instructions")
@@ -127,9 +123,7 @@ describe("codex-native chat hooks instruction source order", () => {
       output: output as any,
       lastCatalogModels: undefined,
       behaviorSettings: { global: { reasoningMode: "pro" } },
-      spoofMode: "codex",
-      collaborationProfileEnabled: false,
-      orchestratorSubagentsEnabled: false
+      spoofMode: "codex"
     })
 
     expect(output.options.reasoningMode).toBeUndefined()

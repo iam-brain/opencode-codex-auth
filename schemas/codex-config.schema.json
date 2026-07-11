@@ -65,13 +65,12 @@
         "headerTransformDebug": {
           "type": "boolean"
         },
+        "ultra": {
+          "type": "boolean",
+          "default": false,
+          "description": "Work in progress. Enables catalog-gated Ultra agent mode."
+        },
         "pidOffset": {
-          "type": "boolean"
-        },
-        "collaborationProfile": {
-          "type": "boolean"
-        },
-        "orchestratorSubagents": {
           "type": "boolean"
         }
       }
