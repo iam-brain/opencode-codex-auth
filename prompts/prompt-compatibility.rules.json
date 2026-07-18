@@ -1,0 +1,74 @@
+{
+  "$schema": "./prompt-compatibility.rules.schema.json",
+  "version": 1,
+  "description": "Exact, reviewable substitutions that adapt Codex multi-agent mode overlays to the OpenCode task harness.",
+  "sources": [
+    {
+      "id": "codex_multi_agent_mode",
+      "repository": "https://github.com/openai/codex",
+      "revision": "82b294c73c902a4c51f789ba68bb599f0065616f",
+      "upstreamPath": "codex-rs/core/src/context/multi_agent_mode_instructions.rs",
+      "path": "prompts/upstream/codex-multi-agent-mode-instructions.rs",
+      "sha256": "86d3cd39999e02812e65224e85d7b1c9bc141fa439a8d84683e10d82a6a39870",
+      "requiredSymbols": [
+        "EXPLICIT_REQUEST_ONLY_MULTI_AGENT_MODE_TEXT",
+        "PROACTIVE_MULTI_AGENT_MODE_TEXT",
+        "MULTI_AGENT_MODE_OPEN_TAG",
+        "MULTI_AGENT_MODE_CLOSE_TAG"
+      ]
+    },
+    {
+      "id": "opencode_task_description",
+      "repository": "https://github.com/anomalyco/opencode",
+      "revision": "v1.17.18",
+      "upstreamPath": "packages/opencode/src/tool/task.txt",
+      "path": "prompts/upstream/opencode-task.txt",
+      "sha256": "220dcf4ad2582dbdaf2b0bbc8b7f5fa78172b1337539ac1c8912f45f2b9e5d46",
+      "requiredSymbols": ["Task tool", "subagent_type", "Launch multiple agents concurrently"]
+    },
+    {
+      "id": "opencode_task_schema",
+      "repository": "https://github.com/anomalyco/opencode",
+      "revision": "v1.17.18",
+      "upstreamPath": "packages/opencode/src/tool/task.ts",
+      "path": "prompts/upstream/opencode-task-schema.ts",
+      "sha256": "319a06eb345c33f04e983ed31a84b6d0e2c1e0698f96835504774ca0918561a4",
+      "requiredSymbols": ["const id = \"task\"", "subagent_type", "task_id", "TaskTool"]
+    }
+  ],
+  "outputs": [
+    {
+      "exportName": "ULTRA_PROACTIVE_INSTRUCTIONS",
+      "sourceId": "codex_multi_agent_mode",
+      "rustConstant": "PROACTIVE_MULTI_AGENT_MODE_TEXT",
+      "operations": [
+        {
+          "type": "replace_literal",
+          "old": "spawning sub-agents",
+          "new": "using the OpenCode `task` tool",
+          "expectedCount": 1
+        },
+        {
+          "type": "replace_literal",
+          "old": "Use sub-agents",
+          "new": "Use the OpenCode `task` tool",
+          "expectedCount": 1
+        }
+      ]
+    },
+    {
+      "exportName": "ULTRA_EXPLICIT_ONLY_INSTRUCTIONS",
+      "sourceId": "codex_multi_agent_mode",
+      "rustConstant": "EXPLICIT_REQUEST_ONLY_MULTI_AGENT_MODE_TEXT",
+      "operations": [
+        {
+          "type": "replace_literal",
+          "old": "Do not spawn sub-agents",
+          "new": "Do not use the OpenCode `task` tool",
+          "expectedCount": 1
+        }
+      ]
+    }
+  ],
+  "output": "lib/codex-native/generated/ultra-instructions.ts"
+}

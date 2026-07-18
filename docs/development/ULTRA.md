@@ -13,7 +13,7 @@ Ultra is a work-in-progress feature behind `runtime.ultra`, which defaults to `f
 | Missing or stale metadata | Ultra is disabled when catalog metadata cannot prove eligibility. A correlated Ultra selection retains its configured wire effort without proactive instructions; an uncorrelated literal `ultra` fails closed to wire `max`. |
 | Failure | Missing task tools, spawn failure, cancellation, or partial completion do not fail the root turn. The agent continues locally and must not claim delegation that did not happen. |
 
-The live account-scoped catalog is authoritative. GitHub fallback data is parsed through the same schema and remains usable for ordinary model defaults when the live source is unavailable, but it cannot prove Ultra eligibility. The plugin does not recreate account entitlement or minimum-client enforcement from catalog metadata.
+Live account-scoped entries take precedence for matching model slugs. The version-matched official GitHub catalog can supply models missing from a successful live response, and those entries pass through the same schema and Ultra eligibility checks. The plugin never combines fields across matching slugs or treats catalog metadata as proof of account entitlement or minimum-client enforcement.
 
 ## State lifecycle
 
@@ -25,7 +25,9 @@ The live account-scoped catalog is authoritative. GitHub fallback data is parsed
 
 ## Degradation and guardrails
 
-Ultra supplies the Codex proactive mode hint available at the OpenCode plugin boundary. OpenCode remains the execution host for task tools, concurrency, steering, cancellation, and child lifecycle, so the plugin does not reproduce Codex's tool-specific V2 usage prompt or claim Codex's concurrency limits. A missing task tool or failed child spawn is observable in the host's normal tool/error path, but it is not a reason to reject the request. Unknown agents and failed lineage lookups are classified conservatively, but an eligible inherited Ultra effort remains proactive as it does in Codex.
+Ultra derives its proactive mode overlay from pinned Codex source and transforms the Codex delegation wording to OpenCode's `task` tool. OpenCode remains the execution host for task tools, concurrency, steering, cancellation, and child lifecycle, so the overlay changes delegation policy but cannot guarantee that a child will be spawned. A missing task tool or failed child spawn is observable in the host's normal tool/error path, but it is not a reason to reject the request. Unknown agents and failed lineage lookups are classified conservatively, but an eligible inherited Ultra effort remains proactive as it does in Codex.
+
+Codex and OpenCode expose different harness contracts. Prompt compatibility is maintained as a pinned-source transformation rather than by appending guessed tool instructions to copied Codex text. The source, rules, generated artifact, and drift-check workflow are specified in `docs/development/PROMPT_COMPATIBILITY.md`.
 
 No public concurrency setting is exposed. `runtime.ultra` is the feature gate, `runtime.ultraReasoningEffort` only controls inference effort, and OpenCode remains authoritative for task tools and child lifecycle. The retired collaboration-profile/orchestrator WIP is not part of this flow.
 
@@ -35,9 +37,10 @@ The minimum release evidence covers:
 
 - parser retention for effort descriptions, `multi_agent_version`, `minimal_client_version`, visibility, and API support;
 - default-off config, schema, environment override, provider picker hiding, and explicit opt-in behavior;
-- eligible Sol/Terra variants, ineligible V1/hidden/non-API variants, fallback catalogs, custom aliases, and effort suffixes;
+- eligible Sol/Terra variants from live and official GitHub catalog entries, ineligible V1/hidden/non-API variants, custom aliases, and effort suffixes;
 - session-lineage classification for root, child, custom `mode: all`, built-in agents, and fail-closed lookup errors;
 - root and child proactive plus auxiliary-disabled instruction composition, including idempotent merges and preserved host instructions;
+- pinned Codex/OpenCode source hashes, evidence symbols, exact transformation match counts, and generated-artifact drift;
 - literal Ultra normalization to the configured wire effort, explicit non-Ultra efforts remaining non-Ultra, and normalization on retries/catalog-scope changes;
 - redacted snapshots for logical and wire state without internal headers reaching the backend;
 - compaction and auxiliary request paths remaining safe because their payloads pass through the same last-mile transform;
@@ -45,6 +48,6 @@ The minimum release evidence covers:
 
 ## Rollout and rollback
 
-Ultra follows the existing catalog-driven release path but remains marked WIP and default-off. It is visible only when the flag is enabled and authoritative metadata proves eligibility; there is no launch-time allowlist for Sol or Terra. Before publication or enabling it by default, run the full verification gate and a manual smoke using an eligible catalog response.
+Ultra follows the existing catalog-driven release path but remains marked WIP and default-off. It is visible only when the flag is enabled and a live or version-matched official GitHub catalog entry proves eligibility; there is no launch-time allowlist for Sol or Terra. Catalog visibility does not guarantee account access, so a newly available model may require refreshed authentication before the backend accepts it. Before publication or enabling Ultra by default, run the full verification gate and a manual smoke using an eligible catalog response and authenticated request.
 
 Rollback is the smallest code/config rollback that removes the Ultra instruction and variant eligibility predicate while leaving account storage and catalog caches intact. Existing literal `reasoningEffort: "ultra"` values remain safe because an uncorrelated request transform falls back to wire `max`. Upstream changes are tracked through `docs/development/UPSTREAM_SYNC.md` and the repository's upstream-watch configuration; a changed Ultra contract requires a new compatibility decision before behavior is broadened.

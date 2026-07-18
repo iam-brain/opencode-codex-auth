@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["version", "sources", "outputs", "output"],
+  "properties": {
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "repository", "revision", "upstreamPath", "path", "sha256", "requiredSymbols"],
+        "properties": {
+          "id": { "type": "string" },
+          "repository": { "type": "string" },
+          "revision": { "type": "string" },
+          "upstreamPath": { "type": "string" },
+          "path": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "requiredSymbols": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["exportName", "sourceId", "rustConstant", "operations"],
+        "properties": {
+          "exportName": { "type": "string" },
+          "sourceId": { "type": "string" },
+          "rustConstant": { "type": "string" },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "old", "new", "expectedCount"],
+              "properties": {
+                "type": { "const": "replace_literal" },
+                "old": { "type": "string" },
+                "new": { "type": "string" },
+                "expectedCount": { "type": "integer", "minimum": 1 }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "output": { "type": "string" }
+  },
+  "additionalProperties": false
+}

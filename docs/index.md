@@ -33,6 +33,7 @@ Use this page as the fast entrypoint for humans and agents.
 - `docs/development/TESTING.md`
 - `docs/development/UPSTREAM_SYNC.md`
 - `docs/development/ULTRA.md` (WIP, default-off)
+- `docs/development/PROMPT_COMPATIBILITY.md`
 - `docs/DOCUMENTATION.md`
 
 ## Examples

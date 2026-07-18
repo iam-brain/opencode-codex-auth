@@ -18,6 +18,8 @@ npm run check:docs
 npm run verify
 ```
 
+`npm run build` first runs `npm run generate:prompts`, then compiles the generated Ultra instruction module into `dist`. Full verification also runs `npm run check:prompts` before tests and `npm run check:prompt-artifact` after the build to prove the checked-in source and compiled exports match the pinned transformation.
+
 `npm run verify` is the required local gate before commits, pushes, and PR updates. `npm run verify:local` runs that gate with caching, and the installed git hooks enforce it automatically before `git commit` and `git push`. The commit hook accepts staged-only commit-ready changes; the push hook requires a clean tree and derives the touched-file set from the outgoing commits so the local regression-only ratchet matches the actual push surface instead of only `HEAD^`. GitHub Actions still adds extra platform and security jobs beyond the repo-local verify run.
 
 PR GitHub CI is intentionally slimmer than local `verify`: it keeps the clean-room Ubuntu verify job, Linux tarball smoke, Windows smoke, and secret scanning. The separate `npm audit` dependency audit remains GitHub-hosted, but it now runs on default-branch pushes instead of every PR.

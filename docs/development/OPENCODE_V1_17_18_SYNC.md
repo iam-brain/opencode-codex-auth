@@ -54,10 +54,10 @@ The full tagged comparison is [v1.3.0...v1.17.18](https://github.com/anomalyco/o
 | Request identity | **Aligned:** final hooks emit `session-id`; legacy `session_id` remains an inbound/redaction compatibility alias. Originator and native UA remain aligned. |
 | Endpoint routing | **Aligned for HTTP:** both Responses and Chat Completions are rewritten to the Codex Responses backend. |
 | Model catalog | **Mostly aligned and intentionally richer:** local live account-scoped Codex metadata plus tagged GitHub fallback is stronger than upstream's models.dev-based hook. Confirm hidden/API-support filtering and never clone metadata across slugs. |
-| Model visibility | **Aligned by stronger authority:** local behavior follows account-scoped live catalog visibility/support fields and refuses to grant Ultra eligibility from GitHub fallback metadata. It intentionally does not copy OpenCode's version heuristic. |
+| Model visibility | **Aligned by stronger authority:** live entries win for matching slugs, while version-matched official GitHub entries supply missing slugs and retain their provenance. Ultra eligibility requires explicit capability fields from either source; the plugin does not copy OpenCode's version heuristic. |
 | Refresh | **Aligned by stronger isolation:** catalog fetches are single-flight and account refresh/persistence remains lock-guarded by strict identity. Upstream's single-record global promise is not copied across rotating accounts. |
 | Retry/error | **Layering gap, not necessarily code gap:** local bounded 429 rotation is intentional; verify host 5xx and OpenAI `server_error`/`server_is_overloaded` semantics survive unchanged. |
-| GPT-5.6 Ultra | **No OpenCode parity gap:** upstream has no literal Ultra contract. Local logical Ultra normalization is an extension and should remain isolated from native request identity and authorized only by live catalog metadata. |
+| GPT-5.6 Ultra | **Intentional extension:** upstream has no literal Ultra contract. Local logical Ultra normalization remains isolated from native request identity and is authorized only by explicit live or version-matched official GitHub catalog metadata. Codex delegation-policy wording is transformed through pinned OpenCode task-tool evidence. |
 | WebSockets | **Optional gap:** v1.17.18 has experimental Responses WebSockets; local HTTP-only behavior remains valid unless feature parity is explicitly desired. |
 | Plugin lifecycle | **Aligned:** `dispose` stops the instance's proactive-refresh scheduler and composes any Codex-layer cleanup. |
 | Upstream watcher | **Aligned:** paths and hashes target v1.17.18, including the moved Codex plugin, models.dev core, and optional WebSocket transport files. Source-filtered checks allow OpenCode to advance independently of Codex path drift. |
@@ -68,14 +68,14 @@ The full tagged comparison is [v1.3.0...v1.17.18](https://github.com/anomalyco/o
 
 1. Changed outbound identity from `session_id` to `session-id`; affinity, redirect stripping, snapshots/redaction, and tests accept legacy input where needed while generated hooks emit only the canonical header.
 2. Updated the upstream watch and sync guide to v1.17.18 paths/hashes, including `plugin/openai/codex.ts`, `packages/core/src/models-dev.ts`, `ws.ts`, and `ws-pool.ts`.
-3. Preserved the account-scoped live Codex catalog as the stronger authority for visibility, defaults, and Ultra eligibility; GitHub fallback metadata remains fail-closed for Ultra.
+3. Preserved live Codex entries as the stronger authority for matching slugs while allowing the version-matched official GitHub catalog to supply missing models and explicit Ultra eligibility metadata without cross-slug or cross-source field synthesis.
 4. Upgraded `@opencode-ai/plugin` and `@opencode-ai/sdk` to `^1.17.18`, adapted the narrow declaration shim and config type boundary, and passed full type/test/build verification.
 5. Composed the new plugin `dispose` hook to stop proactive-refresh timers without allowing disposal of an older instance to clear a newer instance's scheduler.
 
 ### Optional follow-up
 
 - Prototype experimental Responses WebSockets behind an explicit opt-in. Match upstream pooling/disposal, custom base URL, title HTTP fallback, internal-header stripping, stream retry, and idle handling before enabling it by default.
-- Track upstream's models.dev/core catalog only for OpenCode host compatibility; keep the live account-scoped Codex catalog authoritative for Codex defaults and Ultra eligibility.
+- Track upstream's models.dev/core catalog only for OpenCode host compatibility; keep live entries authoritative for matching Codex slugs and use only source-faithful, version-matched GitHub entries for missing slugs.
 - Add a documented ownership matrix: host retries transport/5xx errors; this plugin rotates accounts only for bounded 429/auth cases; neither layer silently multiplies attempts.
 
 ### No action

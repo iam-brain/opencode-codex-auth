@@ -53,6 +53,7 @@ npm run verify
 `verify` runs:
 
 - `npm run check:esm-imports`
+- `npm run check:prompts`
 - `npm run lint`
 - `npm run format:check`
 - `npm run typecheck`
@@ -62,8 +63,11 @@ npm run verify
 - `npm run check:coverage-ratchet`
 - `npm run check:docs`
 - `npm run build`
+- `npm run check:prompt-artifact`
 - `npm run check:dist-esm-imports`
 - `npm run smoke:cli:dist`
+
+The build regenerates the OpenCode-compatible Ultra overlays from pinned Codex/OpenCode evidence before TypeScript compilation. `check:prompt-artifact` then imports the compiled module and compares its exports exactly, ensuring the completed overlay is present in the distribution consumed by `prepack` and release publishing.
 
 `npm run check:coverage-ratchet` is regression-only: it protects touched existing covered source files from coverage drops, while `npm run test:coverage` still records the full repo snapshot for visibility.
 
@@ -146,4 +150,5 @@ If release publish fails with `ENEEDAUTH`:
 
 - Do not run release commands unless publishing is intended.
 - Do not manually edit generated `dist/` files.
+- Do not manually edit `lib/codex-native/generated/ultra-instructions.ts`; update the pinned prompt sources and rules, then run `npm run generate:prompts`.
 - Prefer script-driven release flow over manual git tagging.

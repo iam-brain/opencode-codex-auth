@@ -1,6 +1,8 @@
 import type { CodexModelInfo } from "../model-catalog.js"
 import type { UltraReasoningEffort } from "../config.js"
 import type { AgentExecution, AgentExecutionReason, AgentExecutionRole } from "./agent-execution.js"
+export { ULTRA_EXPLICIT_ONLY_INSTRUCTIONS, ULTRA_PROACTIVE_INSTRUCTIONS } from "./generated/ultra-instructions.js"
+import { ULTRA_EXPLICIT_ONLY_INSTRUCTIONS, ULTRA_PROACTIVE_INSTRUCTIONS } from "./generated/ultra-instructions.js"
 
 const ULTRA_REASONING_EFFORT = "ultra"
 const DEFAULT_ULTRA_WIRE_REASONING_EFFORT: UltraReasoningEffort = "max"
@@ -38,14 +40,6 @@ export type UltraResolution = {
   modelSlug?: string
   multiAgentVersion?: string
 }
-
-export const ULTRA_PROACTIVE_INSTRUCTIONS = `<multi_agent_mode>
-Proactive multi-agent delegation is active. Any earlier instruction requiring an explicit user request before spawning sub-agents no longer applies. Use sub-agents when parallel work would materially improve speed or quality. This mode remains active until a later multi-agent mode developer message changes it.
-</multi_agent_mode>`
-
-export const ULTRA_EXPLICIT_ONLY_INSTRUCTIONS = `<multi_agent_mode>
-Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.
-</multi_agent_mode>`
 
 function normalize(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined

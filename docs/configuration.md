@@ -142,15 +142,16 @@ Mode-derived runtime defaults when omitted:
 - `runtime.ultraReasoningEffort: "low" | "medium" | "high" | "xhigh" | "max"`
   - Selects the inference effort sent while logical Ultra mode is active.
   - Defaults to `"max"`, matching official Codex. Lower values retain Ultra's proactive multi-agent policy while reducing inference reasoning effort.
+  - OpenCode may log the logical picker value `ultra` before the plugin's last-mile request transform; the backend receives this configured wire effort, not literal `ultra`.
 
 ### Model behavior
 
-- Model availability comes from the selected catalog source for the current account.
-- When a live account-scoped `/backend-api/codex/models` fetch succeeds, the plugin uses that source alone after normalizing, deduplicating, and sorting the catalog response for provider shaping.
-- When live catalog data is unavailable, the plugin falls back to the shared GitHub `models.json` snapshot, normalized through the same catalog parser.
-- The plugin does not field-merge live catalog entries with GitHub fallback entries.
-- Do not rely on a static model list: GPT-5.6-era models and variants are sourced from the authenticated account's live catalog when that fetch succeeds, or from the shared GitHub snapshot when live catalog data is unavailable.
-- Actual availability still depends on the authenticated account's live catalog and plan entitlements.
+- Model availability is assembled from the current account's live catalog and the version-matched official GitHub `models.json` cache.
+- A successful live `/backend-api/codex/models` response wins for every matching slug. Official GitHub entries supply only slugs missing from that response.
+- The plugin does not combine fields across matching live and GitHub entries. GitHub-supplied models retain `catalog_source: "github_fallback"` so their provenance remains observable.
+- When live catalog data is unavailable, the normalized GitHub snapshot supplies the fallback catalog.
+- Do not rely on a static model list: GPT-5.6-era models and variants can arrive from either source under those precedence rules.
+- Catalog visibility is not an entitlement guarantee. Actual backend access still depends on the authenticated account and may require re-authentication after an account or model rollout.
 
 - `global.personality: string`
   - Personality key applied to all models unless overridden.
@@ -160,9 +161,10 @@ Mode-derived runtime defaults when omitted:
   - User config can still override reasoning effort globally, per model, or per variant.
 - `ultra` reasoning variant
   - Work in progress and available only when `runtime.ultra=true` and the active model advertises `ultra` with `multi_agent_version: "v2"`.
-  - `codex` mode adds the official Codex proactive multi-agent mode guidance to eligible root and inherited Ultra child turns; `native` mode preserves OpenCode-native prompt identity.
+  - `codex` mode adds the generated OpenCode-compatible form of Codex's proactive multi-agent mode guidance to eligible root and inherited Ultra child turns; `native` mode preserves OpenCode-native prompt identity.
   - Correlated Ultra selections remain safe on unsupported or stale catalogs: the backend request sends the configured Ultra reasoning effort, defaulting to `max`, without proactive delegation. An uncorrelated literal `ultra` fails closed to wire `max`.
   - There is no public concurrency setting; OpenCode remains responsible for agent execution and lifecycle.
+  - The overlay is generated from pinned Codex source with exact, count-checked substitutions backed by pinned OpenCode task-tool evidence. See `docs/development/PROMPT_COMPATIBILITY.md`.
 - `global.reasoningMode: "standard" | "pro"` (optional)
   - GPT-5.6 reasoning mode, emitted as `reasoning.mode` independently of `reasoning.effort`.
   - An explicit request value is preserved. The same per-model and per-variant precedence applies.

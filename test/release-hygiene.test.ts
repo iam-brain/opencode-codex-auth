@@ -1,8 +1,7 @@
-import { describe, it, expect } from "vitest"
-
 import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
+import { describe, expect, it } from "vitest"
 
 const REQUIRED_RELEASE_RUNTIME_CI_JOBS = [
   "Verify (Node.js 22.x)",
@@ -23,6 +22,7 @@ describe("release hygiene", () => {
     expect(pkg.scripts?.["hooks:install"]).toBe("node scripts/install-git-hooks.mjs")
     const verifyOrder = [
       "npm run check:esm-imports",
+      "npm run check:prompts",
       "npm run lint",
       "npm run format:check",
       "npm run typecheck",
@@ -32,6 +32,7 @@ describe("release hygiene", () => {
       "npm run check:coverage-ratchet",
       "npm run check:docs",
       "npm run build",
+      "npm run check:prompt-artifact",
       "npm run check:dist-esm-imports",
       "npm run smoke:cli:dist"
     ]
@@ -42,15 +43,19 @@ describe("release hygiene", () => {
       searchFrom = nextIndex + step.length
     }
     expect(pkg.scripts?.["check:esm-imports"]).toBe("node scripts/check-esm-import-specifiers.mjs")
+    expect(pkg.scripts?.["generate:prompts"]).toBe("node scripts/generate-prompt-compatibility.mjs")
+    expect(pkg.scripts?.["check:prompts"]).toBe("node scripts/generate-prompt-compatibility.mjs --check")
+    expect(pkg.scripts?.["check:prompt-artifact"]).toBe("node scripts/generate-prompt-compatibility.mjs --check-dist")
     expect(pkg.scripts?.["check:dist-esm-imports"]).toBe("node scripts/check-esm-import-specifiers.mjs --dist")
     expect(pkg.scripts?.["smoke:cli:dist"]).toBe("node ./dist/bin/opencode-codex-auth.js --help")
+    expect(pkg.scripts?.build).toBe("npm run generate:prompts && npm run patch:plugin-dts && npm run clean:dist && tsc")
+    expect(pkg.scripts?.prepack).toBe("npm run build")
+    expect(pkg.files).toContain("prompts/upstream/licenses/")
     expect(pkg.scripts?.["test:coverage"]).toBe("vitest run --coverage.enabled true --coverage.provider=v8")
     expect(pkg.scripts?.["patch:plugin-dts"]).toBe("node scripts/patch-opencode-plugin-dts.js")
     expect(pkg.scripts?.typecheck).toContain("npm run patch:plugin-dts")
     expect(pkg.scripts?.["typecheck:test"]).toContain("npm run patch:plugin-dts")
     expect(pkg.scripts?.["check:file-size"]).toBeUndefined()
-    expect(pkg.scripts?.prepack).toBe("npm run build")
-    expect(pkg.scripts?.build).toBe("npm run patch:plugin-dts && npm run clean:dist && tsc")
     expect(pkg.scripts?.["clean:dist"]).toBe("node scripts/clean-dist.js")
     expect(existsSync(join(process.cwd(), "scripts", "clean-dist.js"))).toBe(true)
     expect(existsSync(join(process.cwd(), "scripts", "enforce-local-verify.mjs"))).toBe(true)
