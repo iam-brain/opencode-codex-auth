@@ -5,7 +5,7 @@ import path from "node:path"
 import { describe, expect, it, vi } from "vitest"
 
 import { getCodexModelCatalog, githubModelsUrl, type CodexModelCatalogEvent } from "../lib/model-catalog"
-import { codexModelsSharedCachePath } from "../lib/codex-cache-layout"
+import { codexAuthModelsCachePath, codexModelsSharedCachePath } from "../lib/codex-cache-layout"
 import { readCatalogFromGitHubCache } from "../lib/model-catalog/cache-helpers"
 
 async function makeCacheDir(): Promise<string> {
@@ -72,7 +72,14 @@ describe("model catalog fetch and primary cache", () => {
           models: [
             { slug: "gpt-5.4-codex", context_window: 272000, input_modalities: ["text", "image"] },
             { slug: "gpt-5.1-codex-mini", context_window: 272000, input_modalities: ["text"] },
-            { slug: "gpt-5.2-codex", context_window: 272000, input_modalities: ["text", "image"] }
+            { slug: "gpt-5.2-codex", context_window: 272000, input_modalities: ["text", "image"] },
+            {
+              slug: "gpt-5.6-sol",
+              multi_agent_version: "v2",
+              supported_in_api: true,
+              visibility: "list",
+              supported_reasoning_levels: [{ effort: "max" }, { effort: "ultra" }]
+            }
           ]
         }),
         { status: 200 }
@@ -91,8 +98,59 @@ describe("model catalog fetch and primary cache", () => {
     await vi.waitFor(() => {
       expect(fetchImpl).toHaveBeenCalledTimes(2)
     })
-    expect(result?.map((m) => m.slug)).toEqual(["gpt-5.1-codex-mini", "gpt-5.2-codex", "gpt-5.4-codex"])
+    expect(result?.map((m) => m.slug)).toEqual(["gpt-5.1-codex-mini", "gpt-5.2-codex", "gpt-5.4-codex", "gpt-5.6-sol"])
     expect(result?.find((model) => model.slug === "gpt-5.4-codex")?.context_window).toBeNull()
+    expect(result?.find((model) => model.slug === "gpt-5.6-sol")?.catalog_source).toBe("github_fallback")
+    const accountCache = JSON.parse(await fs.readFile(codexAuthModelsCachePath(cacheDir, "acc_123"), "utf8"))
+    expect(accountCache.models.map((model: { slug: string }) => model.slug)).toEqual([
+      "gpt-5.1-codex-mini",
+      "gpt-5.2-codex",
+      "gpt-5.4-codex"
+    ])
+  })
+
+  it("replaces fallback models leaked into an account cache with current shared metadata", async () => {
+    const cacheDir = await makeCacheDir()
+    await fs.writeFile(
+      codexAuthModelsCachePath(cacheDir, "acc_123"),
+      JSON.stringify({
+        fetchedAt: 1000,
+        models: [
+          { slug: "gpt-5.4", supported_reasoning_levels: [{ effort: "xhigh" }] },
+          {
+            slug: "gpt-5.6-sol",
+            catalog_source: "github_fallback",
+            supported_reasoning_levels: [{ effort: "max" }]
+          }
+        ]
+      })
+    )
+    await fs.writeFile(
+      codexModelsSharedCachePath(cacheDir),
+      JSON.stringify({
+        fetchedAt: 1100,
+        source: "github",
+        models: [
+          {
+            slug: "gpt-5.6-sol",
+            supported_reasoning_levels: [{ effort: "max" }, { effort: "ultra" }]
+          }
+        ]
+      })
+    )
+
+    const result = await getCodexModelCatalog({
+      accessToken: "at",
+      accountId: "acc_123",
+      cacheDir,
+      now: () => 1200,
+      refreshGithubModelsCache: false
+    })
+
+    expect(result?.map((model) => model.slug)).toEqual(["gpt-5.4", "gpt-5.6-sol"])
+    expect(
+      result?.find((model) => model.slug === "gpt-5.6-sol")?.supported_reasoning_levels?.map((level) => level.effort)
+    ).toEqual(["max", "ultra"])
   })
 
   it("writes plugin cache into codex-auth and codex-models-cache shard files", async () => {

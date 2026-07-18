@@ -12,6 +12,7 @@ import {
 import {
   type CodexModelInfo,
   CODEX_MODELS_ENDPOINT,
+  compareModelSlugs,
   DEFAULT_CLIENT_VERSION,
   FETCH_TIMEOUT_MS,
   type GetCodexModelCatalogInput,
@@ -22,6 +23,15 @@ import { resolveCodexCacheDir } from "../codex-cache-layout.js"
 
 const inMemoryCatalog = new Map<string, { fetchedAt: number; models: CodexModelInfo[]; staleFallback?: boolean }>()
 const inFlightCatalogFetches = new Map<string, Promise<CodexModelInfo[] | undefined>>()
+
+function mergeCatalogModels(primary: CodexModelInfo[], fallback: CodexModelInfo[] | undefined): CodexModelInfo[] {
+  if (!fallback?.length) return primary
+  const bySlug = new Map(fallback.map((model) => [model.slug, model]))
+  for (const model of primary) {
+    if (model.catalog_source !== "github_fallback") bySlug.set(model.slug, model)
+  }
+  return Array.from(bySlug.values()).sort((a, b) => compareModelSlugs(a.slug, b.slug))
+}
 
 function normalizeClientVersion(value: string | undefined, fallback?: string): string {
   const trimmed = value?.trim()
@@ -63,7 +73,8 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   const allowMemoryHit = !memory?.staleFallback || !accessToken
   if (memory && !input.forceRefresh && isFresh(memory, now) && allowMemoryHit) {
     emitEvent(input, { type: "memory_cache_hit" })
-    return memory.models
+    const github = await readCatalogFromGitHubCache(cacheDir)
+    return mergeCatalogModels(memory.models, github?.models)
   }
 
   const disk = await readCatalogFromDisk(cacheDir, input.accountId)
@@ -71,7 +82,8 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
   if (hasFreshDisk && !input.forceRefresh) {
     inMemoryCatalog.set(key, disk)
     emitEvent(input, { type: "disk_cache_hit" })
-    return disk.models
+    const github = await readCatalogFromGitHubCache(cacheDir)
+    return mergeCatalogModels(disk.models, github?.models)
   }
 
   let githubCacheFallback: { fetchedAt: number; models: CodexModelInfo[] } | undefined
@@ -171,7 +183,7 @@ export async function getCodexModelCatalog(input: GetCodexModelCatalogInput): Pr
       inMemoryCatalog.set(key, nextCache)
       await writeCatalogToDisk(cacheDir, accountId, nextCache)
       emitEvent(input, { type: "network_fetch_success" })
-      return nextCache.models
+      return mergeCatalogModels(nextCache.models, githubCacheFallback?.models)
     } catch (error) {
       emitEvent(input, { type: "network_fetch_failed", reason: deriveReason(error) })
       await ensureFallbackCaches()

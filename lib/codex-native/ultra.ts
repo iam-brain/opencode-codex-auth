@@ -64,7 +64,6 @@ function modelIsVisible(model: CodexModelInfo): boolean {
 
 function getUltraEligibilityReason(model: CodexModelInfo | undefined): UltraEligibilityReason {
   if (!model) return "missing_catalog"
-  if (model.catalog_source === "github_fallback") return "missing_catalog"
   if (!supportsEffort(model, ULTRA_REASONING_EFFORT)) return "missing_ultra_effort"
   if (normalize(model.multi_agent_version) !== ULTRA_MULTI_AGENT_VERSION) return "missing_multi_agent_v2"
   if (model.supported_in_api !== true) return "not_supported_in_api"

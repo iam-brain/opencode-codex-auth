@@ -143,7 +143,17 @@ export async function readCatalogFromDisk(cacheDir: string, accountId?: string):
     const parsed = await readJsonFileBestEffort(file)
     if (!isRecord(parsed)) return undefined
     if (typeof parsed.fetchedAt !== "number") return undefined
-    const models = parseCatalogResponse({ models: parsed.models })
+    const fallbackSlugs = new Set(
+      Array.isArray(parsed.models)
+        ? parsed.models
+            .filter((model) => isRecord(model) && model.catalog_source === "github_fallback")
+            .map((model) => (isRecord(model) && typeof model.slug === "string" ? model.slug.trim().toLowerCase() : ""))
+            .filter(Boolean)
+        : []
+    )
+    const models = parseCatalogResponse({ models: parsed.models }).map((model) =>
+      fallbackSlugs.has(model.slug) ? { ...model, catalog_source: "github_fallback" as const } : model
+    )
     return {
       fetchedAt: parsed.fetchedAt,
       models

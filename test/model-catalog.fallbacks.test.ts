@@ -149,7 +149,7 @@ describe("model catalog fallback behavior", () => {
     expect(tokenEvents.some((event) => event.type === "network_fetch_success")).toBe(true)
   })
 
-  it("keeps live model variants source-faithful even when github fallback lacks the model", async () => {
+  it("retains github-only models while keeping live model variants source-faithful", async () => {
     const { getCodexModelCatalog } = await import("../lib/model-catalog")
     const cacheDir = await makeCacheDir()
     await fs.writeFile(
@@ -203,13 +203,10 @@ describe("model catalog fallback behavior", () => {
       }
     })
 
-    expect(models?.map((model) => model.slug)).toEqual(["gpt-5.4"])
-    expect(models?.[0]?.supported_reasoning_levels?.map((level) => level.effort)).toEqual([
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ])
+    expect(models?.map((model) => model.slug)).toEqual(["gpt-5.3-codex", "gpt-5.4"])
+    expect(
+      models?.find((model) => model.slug === "gpt-5.4")?.supported_reasoning_levels?.map((level) => level.effort)
+    ).toEqual(["low", "medium", "high", "xhigh"])
     expect(providerVariantKeysFor(models)).toEqual(["low", "medium", "high", "xhigh"])
   })
 

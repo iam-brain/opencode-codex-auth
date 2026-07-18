@@ -70,7 +70,7 @@ Any earlier instruction enabling proactive multi-agent delegation no longer appl
     expect(isUltraEligible(eligibleModel({ visibility: "hidden" }))).toBe(false)
     expect(isUltraEligible(eligibleModel({ supported_in_api: undefined }))).toBe(false)
     expect(isUltraEligible(eligibleModel({ visibility: undefined }))).toBe(false)
-    expect(isUltraEligible(eligibleModel({ catalog_source: "github_fallback" }))).toBe(false)
+    expect(isUltraEligible(eligibleModel({ catalog_source: "github_fallback" }))).toBe(true)
   })
 
   it("parses only valid internal logical-state metadata", () => {
