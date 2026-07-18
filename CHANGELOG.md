@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Added `runtime.ultraReasoningEffort` to override Ultra's default `max` inference effort with `low`, `medium`, `high`, or `xhigh`.
 - Aligned Ultra's multi-agent mode prompt and inherited child policy with official Codex Multi-Agent V2 behavior.
 
 ## 1.9.0 - 2026-07-10

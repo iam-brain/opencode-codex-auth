@@ -1,4 +1,4 @@
-import type { BehaviorSettings, CustomModelConfig, PersonalityOption } from "../config.js"
+import type { BehaviorSettings, CustomModelConfig, PersonalityOption, UltraReasoningEffort } from "../config.js"
 import type { CodexModelInfo } from "../model-catalog.js"
 import { getRuntimeDefaultsForModel, resolveInstructionsForModel } from "../model-catalog.js"
 import { sanitizeRequestPayloadForCompat } from "../compat-sanitizer.js"
@@ -15,12 +15,7 @@ import {
 } from "./request-transform-model.js"
 import { type ReasoningSummaryValidationDiagnostic, resolveReasoningSummaryValue } from "./reasoning-summary.js"
 import { getRequestBodyVariantCandidates } from "./request-transform-model-service-tier.js"
-import {
-  normalizeUltraWireEffort,
-  resolveUltraSelection,
-  stripUltraDelegationInstructions,
-  type UltraResolution
-} from "./ultra.js"
+import { resolveUltraSelection, stripUltraDelegationInstructions, type UltraResolution } from "./ultra.js"
 import {
   type CompatSanitizerTransformResult,
   type DeveloperRoleRemapTransformResult,
@@ -158,6 +153,7 @@ type OutboundRequestPayloadTransformInput = {
   ultraChildTask?: boolean
   ultraState?: UltraResolution
   ultraEnabled?: boolean
+  ultraReasoningEffort?: UltraReasoningEffort
 }
 
 export type OutboundRequestPayloadTransformResult = {
@@ -373,6 +369,8 @@ export async function transformOutboundRequestPayload(
             ? input.ultraState.logicalEffort
             : (existingReasoning?.effort ?? input.ultraState?.logicalEffort),
           model: selectedCatalogModel,
+          wireReasoningEffort:
+            input.ultraReasoningEffort ?? (input.ultraState?.wireEffort as UltraReasoningEffort | undefined),
           agentExecution: input.ultraState
             ? {
                 role: input.ultraState.agentRole,
@@ -389,9 +387,9 @@ export async function transformOutboundRequestPayload(
     asString(existingReasoning?.effort)?.trim().toLowerCase() === "ultra"
   let ultraChanged = false
   if (logicalUltraSelected && existingReasoning) {
-    const normalizedWireEffort = normalizeUltraWireEffort(existingReasoning.effort)
-    if (normalizedWireEffort.changed && normalizedWireEffort.value) {
-      existingReasoning.effort = normalizedWireEffort.value
+    const wireEffort = (ultra?.wireEffort ?? input.ultraState?.wireEffort ?? "max") as UltraReasoningEffort
+    if (existingReasoning.effort !== wireEffort) {
+      existingReasoning.effort = wireEffort
       ultraChanged = true
     }
   }

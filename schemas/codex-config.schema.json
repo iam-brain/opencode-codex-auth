@@ -70,6 +70,12 @@
           "default": false,
           "description": "Work in progress. Enables catalog-gated Ultra agent mode."
         },
+        "ultraReasoningEffort": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "xhigh", "max"],
+          "default": "max",
+          "description": "Inference reasoning effort sent when logical Ultra mode is selected."
+        },
         "pidOffset": {
           "type": "boolean"
         }

@@ -10,7 +10,8 @@ import type {
   CustomModelConfig,
   PersonalityOption,
   PluginRuntimeMode,
-  PromptCacheKeyStrategy
+  PromptCacheKeyStrategy,
+  UltraReasoningEffort
 } from "./config.js"
 import { formatToastMessage } from "./toast.js"
 import {
@@ -175,6 +176,7 @@ export type CodexAuthPluginOptions = {
   headerSnapshotBodies?: boolean
   headerTransformDebug?: boolean
   ultraEnabled?: boolean
+  ultraReasoningEffort?: UltraReasoningEffort
 }
 
 type OpenCodeConfig = Parameters<NonNullable<Hooks["config"]>>[0]
@@ -379,6 +381,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
   const codexCompactionOverrideEnabled =
     opts.codexCompactionOverride !== undefined ? opts.codexCompactionOverride : runtimeMode === "codex"
   const ultraEnabled = opts.ultraEnabled === true
+  const ultraReasoningEffort = opts.ultraReasoningEffort ?? "max"
   void refreshCodexClientVersionFromGitHub(opts.log).catch((error) => {
     if (error instanceof Error) {
       // best-effort background refresh
@@ -705,6 +708,7 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         projectRoot: typeof input.worktree === "string" && input.worktree.trim() ? input.worktree : process.cwd(),
         spoofMode,
         ultraEnabled,
+        ultraReasoningEffort,
         resolveAgentExecution: () =>
           agentExecutionResolver.resolve({
             sessionID: typeof hookInput.sessionID === "string" ? hookInput.sessionID : undefined,

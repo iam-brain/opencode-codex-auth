@@ -1,8 +1,9 @@
 import type { CodexModelInfo } from "../model-catalog.js"
+import type { UltraReasoningEffort } from "../config.js"
 import type { AgentExecution, AgentExecutionReason, AgentExecutionRole } from "./agent-execution.js"
 
 const ULTRA_REASONING_EFFORT = "ultra"
-const ULTRA_WIRE_REASONING_EFFORT = "max"
+const DEFAULT_ULTRA_WIRE_REASONING_EFFORT: UltraReasoningEffort = "max"
 const ULTRA_MULTI_AGENT_VERSION = "v2"
 
 export type UltraDelegationPolicy = "proactive" | "explicit_request_only" | "disabled"
@@ -77,6 +78,7 @@ export function isUltraEligible(model: CodexModelInfo | undefined): boolean {
 
 export function resolveUltraSelection(input: {
   reasoningEffort?: unknown
+  wireReasoningEffort?: UltraReasoningEffort
   model?: CodexModelInfo
   agentExecution?: AgentExecution
   childTask?: boolean
@@ -96,7 +98,7 @@ export function resolveUltraSelection(input: {
   return {
     selected,
     logicalEffort,
-    wireEffort: selected ? ULTRA_WIRE_REASONING_EFFORT : logicalEffort,
+    wireEffort: selected ? (input.wireReasoningEffort ?? DEFAULT_ULTRA_WIRE_REASONING_EFFORT) : logicalEffort,
     eligible,
     delegationPolicy,
     agentRole: agentExecution.role,
@@ -106,13 +108,6 @@ export function resolveUltraSelection(input: {
     ...(input.model?.slug ? { modelSlug: input.model.slug } : {}),
     ...(input.model?.multi_agent_version ? { multiAgentVersion: input.model.multi_agent_version } : {})
   }
-}
-
-export function normalizeUltraWireEffort(value: unknown): { value: string | undefined; changed: boolean } {
-  const normalized = normalize(value)
-  if (!normalized) return { value: undefined, changed: false }
-  if (normalized !== ULTRA_REASONING_EFFORT) return { value: value as string, changed: false }
-  return { value: ULTRA_WIRE_REASONING_EFFORT, changed: true }
 }
 
 function isDelegationPolicy(value: unknown): value is UltraDelegationPolicy {
@@ -152,7 +147,14 @@ export function parseUltraState(value: string | null | undefined): UltraResoluti
   try {
     const parsed = JSON.parse(value) as Partial<UltraResolution>
     if (parsed.selected !== true || parsed.logicalEffort !== ULTRA_REASONING_EFFORT) return undefined
-    if (parsed.wireEffort !== ULTRA_WIRE_REASONING_EFFORT) return undefined
+    if (
+      parsed.wireEffort !== "low" &&
+      parsed.wireEffort !== "medium" &&
+      parsed.wireEffort !== "high" &&
+      parsed.wireEffort !== "xhigh" &&
+      parsed.wireEffort !== "max"
+    )
+      return undefined
     if (typeof parsed.eligible !== "boolean") return undefined
     if (!isDelegationPolicy(parsed.delegationPolicy)) return undefined
     if (!isAgentRole(parsed.agentRole) || !isAgentReason(parsed.agentReason)) return undefined
@@ -166,7 +168,7 @@ export function parseUltraState(value: string | null | undefined): UltraResoluti
     const result: UltraResolution = {
       selected: true,
       logicalEffort: ULTRA_REASONING_EFFORT,
-      wireEffort: ULTRA_WIRE_REASONING_EFFORT,
+      wireEffort: parsed.wireEffort,
       eligible: parsed.eligible,
       delegationPolicy: parsed.delegationPolicy,
       agentRole: parsed.agentRole,

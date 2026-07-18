@@ -20,6 +20,7 @@ import {
   getRotationStrategy,
   getSpoofMode,
   getUltraEnabled,
+  getUltraReasoningEffort,
   resolveConfig
 } from "../lib/config"
 
@@ -214,6 +215,21 @@ describe("config loading", () => {
     expect(getUltraEnabled(defaults)).toBe(false)
     expect(getUltraEnabled(enabled)).toBe(true)
     expect(getUltraEnabled(disabled)).toBe(false)
+  })
+
+  it("parses the Ultra reasoning effort override and defaults it to max", () => {
+    expect(getUltraReasoningEffort(resolveConfig({ env: {} }))).toBe("max")
+    expect(
+      getUltraReasoningEffort(resolveConfig({ env: { OPENCODE_OPENAI_MULTI_ULTRA_REASONING_EFFORT: "xhigh" } }))
+    ).toBe("xhigh")
+    expect(
+      getUltraReasoningEffort(
+        resolveConfig({
+          env: { OPENCODE_OPENAI_MULTI_ULTRA_REASONING_EFFORT: "invalid" },
+          file: { ultraReasoningEffort: "low" }
+        })
+      )
+    ).toBe("low")
   })
 
   it("reads personality + behavior settings from file config", () => {

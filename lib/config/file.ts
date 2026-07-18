@@ -20,6 +20,7 @@ import {
   type ReasoningSummaryOption,
   type ServiceTierOption,
   type TextVerbosityOption,
+  type UltraReasoningEffort,
   type VerbosityOption
 } from "./types.js"
 
@@ -625,6 +626,21 @@ export function parsePromptCacheKeyStrategy(value: unknown): PromptCacheKeyStrat
   return undefined
 }
 
+export function parseUltraReasoningEffort(value: unknown): UltraReasoningEffort | undefined {
+  if (typeof value !== "string") return undefined
+  const normalized = value.trim().toLowerCase()
+  if (
+    normalized === "low" ||
+    normalized === "medium" ||
+    normalized === "high" ||
+    normalized === "xhigh" ||
+    normalized === "max"
+  ) {
+    return normalized
+  }
+  return undefined
+}
+
 export function normalizeVerbosityOption(value: unknown): VerbosityOption | undefined {
   if (typeof value !== "string") return undefined
   const normalized = value.trim().toLowerCase()
@@ -687,7 +703,8 @@ export function validateConfigFileObject(raw: unknown): ConfigValidationResult {
       const enumChecks: Array<{ field: string; allowed: string[] }> = [
         { field: "mode", allowed: ["native", "codex"] },
         { field: "rotationStrategy", allowed: ["sticky", "hybrid", "round_robin"] },
-        { field: "promptCacheKeyStrategy", allowed: ["default", "project"] }
+        { field: "promptCacheKeyStrategy", allowed: ["default", "project"] },
+        { field: "ultraReasoningEffort", allowed: ["low", "medium", "high", "xhigh", "max"] }
       ]
       for (const check of enumChecks) {
         const value = runtime[check.field]
@@ -897,6 +914,7 @@ function parseConfigFileObjectWithMetadata(raw: unknown): ParsedConfigFile {
     typeof runtime?.headerTransformDebug === "boolean" ? runtime.headerTransformDebug : undefined
   const pidOffsetEnabled = typeof runtime?.pidOffset === "boolean" ? runtime.pidOffset : undefined
   const ultraEnabled = typeof runtime?.ultra === "boolean" ? runtime.ultra : undefined
+  const ultraReasoningEffort = parseUltraReasoningEffort(runtime?.ultraReasoningEffort)
 
   return {
     config: {
@@ -919,6 +937,7 @@ function parseConfigFileObjectWithMetadata(raw: unknown): ParsedConfigFile {
       headerSnapshotBodies,
       headerTransformDebug,
       ultraEnabled,
+      ultraReasoningEffort,
       behaviorSettings,
       customModels,
       modelAliases

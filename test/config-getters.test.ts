@@ -12,6 +12,7 @@ import {
   getReasoningSummaryOverride,
   getThinkingSummariesOverride,
   getUltraEnabled,
+  getUltraReasoningEffort,
   getRemapDeveloperMessagesToUserEnabled,
   resolveConfig
 } from "../lib/config"
@@ -193,6 +194,11 @@ describe("config", () => {
     expect(getUltraEnabled({ mode: "codex" })).toBe(false)
     expect(getUltraEnabled({ ultraEnabled: false })).toBe(false)
     expect(getUltraEnabled({ ultraEnabled: true })).toBe(true)
+  })
+
+  it("defaults and returns the Ultra wire reasoning effort", () => {
+    expect(getUltraReasoningEffort({})).toBe("max")
+    expect(getUltraReasoningEffort({ ultraReasoningEffort: "medium" })).toBe("medium")
   })
 
   it("allows enabling codex compaction override in native mode", () => {

@@ -79,6 +79,7 @@ Mode-derived runtime defaults when omitted:
 
 - `runtime.codexCompactionOverride`: `true` in `codex`, `false` in `native`
 - `runtime.ultra`: `false` in every mode
+- `runtime.ultraReasoningEffort`: `"max"` in every mode
 
 ## Settings reference
 
@@ -138,6 +139,9 @@ Mode-derived runtime defaults when omitted:
   - Work in progress. Enables the catalog-gated Ultra agent mode.
   - Defaults to `false`; it must be explicitly enabled in any runtime mode.
   - When disabled, the `ultra` picker variant is hidden and no delegation policy is injected. Stale literal `ultra` inputs still degrade safely to wire effort `max`.
+- `runtime.ultraReasoningEffort: "low" | "medium" | "high" | "xhigh" | "max"`
+  - Selects the inference effort sent while logical Ultra mode is active.
+  - Defaults to `"max"`, matching official Codex. Lower values retain Ultra's proactive multi-agent policy while reducing inference reasoning effort.
 
 ### Model behavior
 
@@ -157,7 +161,7 @@ Mode-derived runtime defaults when omitted:
 - `ultra` reasoning variant
   - Work in progress and available only when `runtime.ultra=true` and the active model advertises `ultra` with `multi_agent_version: "v2"`.
   - `codex` mode adds the official Codex proactive multi-agent mode guidance to eligible root and inherited Ultra child turns; `native` mode preserves OpenCode-native prompt identity.
-  - Literal configured `ultra` values remain safe on unsupported or stale catalogs: the backend request sends wire effort `max`, without proactive delegation.
+  - Correlated Ultra selections remain safe on unsupported or stale catalogs: the backend request sends the configured Ultra reasoning effort, defaulting to `max`, without proactive delegation. An uncorrelated literal `ultra` fails closed to wire `max`.
   - There is no public concurrency setting; OpenCode remains responsible for agent execution and lifecycle.
 - `global.reasoningMode: "standard" | "pro"` (optional)
   - GPT-5.6 reasoning mode, emitted as `reasoning.mode` independently of `reasoning.effort`.
@@ -334,6 +338,7 @@ Advanced path:
 - `OPENCODE_OPENAI_MULTI_HEADER_SNAPSHOT_BODIES`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG`: `1|0|true|false`.
 - `OPENCODE_OPENAI_MULTI_ULTRA`: `1|0|true|false` (WIP; defaults to false).
+- `OPENCODE_OPENAI_MULTI_ULTRA_REASONING_EFFORT`: `low|medium|high|xhigh|max` (defaults to `max`).
 
 ### Debug/OAuth controls
 

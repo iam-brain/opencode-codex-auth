@@ -9,8 +9,8 @@ Ultra is a work-in-progress feature behind `runtime.ultra`, which defaults to `f
 | Root turn | An eligible Ultra turn in `codex` mode receives the Codex proactive multi-agent mode instruction. Native mode preserves the OpenCode-native identity and does not add a Codex delegation overlay. |
 | Child turn | A child inherits Ultra's logical reasoning effort and proactive multi-agent mode, matching Codex Multi-Agent V2. OpenCode remains authoritative for the actual child tool surface and lifecycle. |
 | Auxiliary turn | OpenCode title, summary, and compaction turns retain wire normalization but receive no delegation instructions. |
-| Backend request | Every literal `reasoning.effort: "ultra"` is normalized to `"max"` at the last-mile request transform. Explicit `max` never receives Ultra policy. |
-| Missing or stale metadata | Ultra is disabled when catalog metadata cannot prove eligibility. A manually configured literal `ultra` is safe-degraded to wire `max` without proactive instructions. |
+| Backend request | A correlated logical Ultra selection is normalized to `runtime.ultraReasoningEffort` at the last-mile request transform. The setting defaults to `"max"` and also accepts `low`, `medium`, `high`, and `xhigh`. Explicit non-Ultra efforts never receive Ultra policy. |
+| Missing or stale metadata | Ultra is disabled when catalog metadata cannot prove eligibility. A correlated Ultra selection retains its configured wire effort without proactive instructions; an uncorrelated literal `ultra` fails closed to wire `max`. |
 | Failure | Missing task tools, spawn failure, cancellation, or partial completion do not fail the root turn. The agent continues locally and must not claim delegation that did not happen. |
 
 The live account-scoped catalog is authoritative. GitHub fallback data is parsed through the same schema and remains usable for ordinary model defaults when the live source is unavailable, but it cannot prove Ultra eligibility. The plugin does not recreate account entitlement or minimum-client enforcement from catalog metadata.
@@ -27,7 +27,7 @@ The live account-scoped catalog is authoritative. GitHub fallback data is parsed
 
 Ultra supplies the Codex proactive mode hint available at the OpenCode plugin boundary. OpenCode remains the execution host for task tools, concurrency, steering, cancellation, and child lifecycle, so the plugin does not reproduce Codex's tool-specific V2 usage prompt or claim Codex's concurrency limits. A missing task tool or failed child spawn is observable in the host's normal tool/error path, but it is not a reason to reject the request. Unknown agents and failed lineage lookups are classified conservatively, but an eligible inherited Ultra effort remains proactive as it does in Codex.
 
-No public concurrency setting is exposed. `runtime.ultra` is the only feature gate, and OpenCode remains authoritative for task tools and child lifecycle. The retired collaboration-profile/orchestrator WIP is not part of this flow.
+No public concurrency setting is exposed. `runtime.ultra` is the feature gate, `runtime.ultraReasoningEffort` only controls inference effort, and OpenCode remains authoritative for task tools and child lifecycle. The retired collaboration-profile/orchestrator WIP is not part of this flow.
 
 ## Verification matrix
 
@@ -38,7 +38,7 @@ The minimum release evidence covers:
 - eligible Sol/Terra variants, ineligible V1/hidden/non-API variants, fallback catalogs, custom aliases, and effort suffixes;
 - session-lineage classification for root, child, custom `mode: all`, built-in agents, and fail-closed lookup errors;
 - root and child proactive plus auxiliary-disabled instruction composition, including idempotent merges and preserved host instructions;
-- literal Ultra normalization to wire Max, explicit Max remaining non-Ultra, and normalization on retries/catalog-scope changes;
+- literal Ultra normalization to the configured wire effort, explicit non-Ultra efforts remaining non-Ultra, and normalization on retries/catalog-scope changes;
 - redacted snapshots for logical and wire state without internal headers reaching the backend;
 - compaction and auxiliary request paths remaining safe because their payloads pass through the same last-mile transform;
 - `npm run verify` and the distribution CLI smoke check.
@@ -47,4 +47,4 @@ The minimum release evidence covers:
 
 Ultra follows the existing catalog-driven release path but remains marked WIP and default-off. It is visible only when the flag is enabled and authoritative metadata proves eligibility; there is no launch-time allowlist for Sol or Terra. Before publication or enabling it by default, run the full verification gate and a manual smoke using an eligible catalog response.
 
-Rollback is the smallest code/config rollback that removes the Ultra instruction and variant eligibility predicate while leaving account storage and catalog caches intact. Existing literal `reasoningEffort: "ultra"` values remain safe because the request transform continues to send wire `max`. Upstream changes are tracked through `docs/development/UPSTREAM_SYNC.md` and the repository's upstream-watch configuration; a changed Ultra contract requires a new compatibility decision before behavior is broadened.
+Rollback is the smallest code/config rollback that removes the Ultra instruction and variant eligibility predicate while leaving account storage and catalog caches intact. Existing literal `reasoningEffort: "ultra"` values remain safe because an uncorrelated request transform falls back to wire `max`. Upstream changes are tracked through `docs/development/UPSTREAM_SYNC.md` and the repository's upstream-watch configuration; a changed Ultra contract requires a new compatibility decision before behavior is broadened.

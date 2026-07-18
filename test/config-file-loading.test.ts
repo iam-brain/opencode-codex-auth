@@ -35,6 +35,7 @@ describe("config file loading", () => {
           headerSnapshotBodies: true,
           headerTransformDebug: true,
           ultra: true,
+          ultraReasoningEffort: "high",
           pidOffset: true
         },
         global: {
@@ -83,6 +84,7 @@ describe("config file loading", () => {
     expect(loaded.headerTransformDebug).toBe(true)
     expect(loaded.pidOffsetEnabled).toBe(true)
     expect(loaded.ultraEnabled).toBe(true)
+    expect(loaded.ultraReasoningEffort).toBe("high")
     expect(loaded.rotationStrategy).toBe("hybrid")
     expect(loaded.promptCacheKeyStrategy).toBe("project")
     expect(loaded.mode).toBe("codex")
@@ -315,6 +317,7 @@ describe("config file loading", () => {
     expect(raw).toContain("// Optional model-specific overrides.")
     expect(written).toEqual(DEFAULT_CODEX_CONFIG)
     expect(DEFAULT_CODEX_CONFIG.runtime.ultra).toBe(false)
+    expect(DEFAULT_CODEX_CONFIG.runtime.ultraReasoningEffort).toBe("max")
   })
 
   it("enforces 0600 mode when overwriting codex config", async () => {

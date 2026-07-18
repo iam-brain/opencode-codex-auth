@@ -16,6 +16,7 @@ export {
   type ReasoningSummaryOption,
   type ServiceTierOption,
   type TextVerbosityOption,
+  type UltraReasoningEffort,
   type VerbosityOption
 } from "./config/types.js"
 
@@ -32,6 +33,7 @@ export {
   parseEnvBoolean,
   parseEnvNumber,
   parsePromptCacheKeyStrategy,
+  parseUltraReasoningEffort,
   parseRotationStrategy,
   parseRuntimeMode,
   parseSpoofMode,
@@ -68,5 +70,6 @@ export {
   getSpoofMode,
   getThinkingSummariesOverride,
   getUltraEnabled,
+  getUltraReasoningEffort,
   resolveConfig
 } from "./config/resolve.js"

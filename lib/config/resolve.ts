@@ -7,6 +7,7 @@ import {
   parseEnvBoolean,
   parseEnvNumber,
   parsePromptCacheKeyStrategy,
+  parseUltraReasoningEffort,
   parseRotationStrategy,
   parseRuntimeMode,
   parseSpoofMode
@@ -19,7 +20,8 @@ import type {
   PersonalityOption,
   PluginConfig,
   PluginRuntimeMode,
-  PromptCacheKeyStrategy
+  PromptCacheKeyStrategy,
+  UltraReasoningEffort
 } from "./types.js"
 
 function cloneBehaviorOverride<T extends Record<string, unknown>>(input: T | undefined): T | undefined {
@@ -230,6 +232,8 @@ export function resolveConfig(input: {
   const headerTransformDebug =
     parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_HEADER_TRANSFORM_DEBUG) ?? file.headerTransformDebug
   const ultraEnabled = parseEnvBoolean(env.OPENCODE_OPENAI_MULTI_ULTRA) ?? file.ultraEnabled ?? false
+  const ultraReasoningEffort: UltraReasoningEffort =
+    parseUltraReasoningEffort(env.OPENCODE_OPENAI_MULTI_ULTRA_REASONING_EFFORT) ?? file.ultraReasoningEffort ?? "max"
 
   return {
     ...file,
@@ -251,6 +255,7 @@ export function resolveConfig(input: {
     headerSnapshotBodies,
     headerTransformDebug,
     ultraEnabled,
+    ultraReasoningEffort,
     behaviorSettings: resolvedBehaviorSettings
   }
 }
@@ -331,6 +336,10 @@ export function getHeaderSnapshotBodiesEnabled(cfg: PluginConfig): boolean {
 
 export function getUltraEnabled(cfg: PluginConfig): boolean {
   return cfg.ultraEnabled === true
+}
+
+export function getUltraReasoningEffort(cfg: PluginConfig): UltraReasoningEffort {
+  return cfg.ultraReasoningEffort ?? "max"
 }
 
 export function getBehaviorSettings(cfg: PluginConfig): BehaviorSettings | undefined {

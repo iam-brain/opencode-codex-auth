@@ -1,6 +1,6 @@
 import type { PluginInput } from "@opencode-ai/plugin"
 
-import type { BehaviorSettings, CodexSpoofMode, PersonalityOption } from "../config.js"
+import type { BehaviorSettings, CodexSpoofMode, PersonalityOption, UltraReasoningEffort } from "../config.js"
 import type { CodexModelInfo } from "../model-catalog.js"
 import type { AgentExecution } from "./agent-execution.js"
 import { getRuntimeDefaultsForModel, resolveInstructionsForModel } from "../model-catalog.js"
@@ -106,6 +106,7 @@ export async function handleChatParamsHook(input: {
   projectRoot?: string
   spoofMode: CodexSpoofMode
   ultraEnabled?: boolean
+  ultraReasoningEffort?: UltraReasoningEffort
   agentExecution?: AgentExecution
   resolveAgentExecution?: () => Promise<AgentExecution>
 }): Promise<{ injectedCatalogDefaultFields: string[]; ultra?: UltraResolution }> {
@@ -261,6 +262,7 @@ export async function handleChatParamsHook(input: {
   const ultraResolution = input.ultraEnabled
     ? resolveUltraSelection({
         reasoningEffort: input.output.options.reasoningEffort,
+        wireReasoningEffort: input.ultraReasoningEffort,
         model: catalogModelFromOptions ?? catalogModelFallback,
         agentExecution
       })

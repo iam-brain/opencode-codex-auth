@@ -31,6 +31,7 @@ import {
   getProactiveRefreshEnabled,
   getSpoofMode,
   getUltraEnabled,
+  getUltraReasoningEffort,
   getQuietMode,
   loadConfigFile,
   resolveConfig
@@ -153,6 +154,7 @@ export const OpenAIMultiAuthPlugin: Plugin = async (input) => {
       headerSnapshotBodies: getHeaderSnapshotBodiesEnabled(cfg),
       headerTransformDebug: getHeaderTransformDebugEnabled(cfg),
       ultraEnabled: getUltraEnabled(cfg),
+      ultraReasoningEffort: getUltraReasoningEffort(cfg),
       behaviorSettings: getBehaviorSettings(cfg),
       customModels: getCustomModels(cfg),
       modelAliases: getModelAliasSettings(cfg)

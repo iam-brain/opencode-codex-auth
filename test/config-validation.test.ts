@@ -13,7 +13,8 @@ describe("config validation", () => {
       runtime: {
         promptCacheKeyStrategy: "bad",
         shareableDebug: "yes",
-        ultra: "yes"
+        ultra: "yes",
+        ultraReasoningEffort: "minimal"
       },
       global: {
         reasoningMode: "PRO",
@@ -27,6 +28,7 @@ describe("config validation", () => {
         expect.stringContaining("runtime.promptCacheKeyStrategy"),
         expect.stringContaining("runtime.shareableDebug"),
         expect.stringContaining("runtime.ultra"),
+        expect.stringContaining("runtime.ultraReasoningEffort"),
         expect.stringContaining("global.serviceTier")
       ])
     )

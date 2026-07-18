@@ -241,6 +241,55 @@ Any earlier instruction enabling proactive multi-agent delegation no longer appl
     expect(transformed.ultra).toMatchObject({ logicalEffort: "ultra", wireEffort: "max" })
   })
 
+  it.each([
+    "low",
+    "medium",
+    "high",
+    "xhigh"
+  ] as const)("sends the configured %s reasoning effort while retaining logical Ultra", async (ultraReasoningEffort) => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5.6-sol", reasoning: { effort: "ultra" } })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      selectedModelSlug: "gpt-5.6-sol",
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: true,
+      ultraReasoningEffort,
+      catalogModels: [eligibleModel()]
+    })
+
+    expect(JSON.parse(await transformed.request.text()).reasoning.effort).toBe(ultraReasoningEffort)
+    expect(transformed.ultra).toMatchObject({ logicalEffort: "ultra", wireEffort: ultraReasoningEffort })
+  })
+
+  it("reapplies the configured Ultra effort when a retry body already contains max", async () => {
+    const transformed = await transformOutboundRequestPayload({
+      request: new Request("https://chatgpt.com/backend-api/codex/responses", {
+        method: "POST",
+        body: JSON.stringify({ model: "gpt-5.6-sol", reasoning: { effort: "max" } })
+      }),
+      selectedModelSlug: "gpt-5.6-sol",
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false,
+      ultraEnabled: true,
+      ultraReasoningEffort: "medium",
+      catalogModels: [eligibleModel()],
+      ultraState: resolveUltraSelection({ reasoningEffort: "ultra", model: eligibleModel() })
+    })
+
+    expect(JSON.parse(await transformed.request.text()).reasoning.effort).toBe("medium")
+    expect(transformed.ultra?.wireEffort).toBe("medium")
+  })
+
   it("keeps the Ultra WIP hidden and policy-free when the flag is disabled", async () => {
     const output = chatOutput()
     const result = await handleChatParamsHook({

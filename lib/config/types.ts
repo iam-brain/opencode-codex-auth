@@ -10,6 +10,7 @@ export type ReasoningModeOption = "standard" | "pro"
 export type IncludeOption = "reasoning.encrypted_content" | "file_search_call.results" | "message.output_text.logprobs"
 export type ServiceTierOption = "auto" | "priority" | "flex"
 export type PromptCacheKeyStrategy = "default" | "project"
+export type UltraReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max"
 
 export type ModelBehaviorOverride = {
   personality?: PersonalityOption
@@ -60,6 +61,7 @@ export type PluginConfig = {
   headerTransformDebug?: boolean
   promptCacheKeyStrategy?: PromptCacheKeyStrategy
   ultraEnabled?: boolean
+  ultraReasoningEffort?: UltraReasoningEffort
   behaviorSettings?: BehaviorSettings
   customModels?: Record<string, CustomModelConfig>
   modelAliases?: { fast?: boolean; extendedContext?: boolean; pro?: boolean }
@@ -87,6 +89,7 @@ export const DEFAULT_CODEX_CONFIG = {
     headerSnapshotBodies: false,
     headerTransformDebug: false,
     ultra: false,
+    ultraReasoningEffort: "max",
     pidOffset: false
   },
   global: {
@@ -182,6 +185,11 @@ export const DEFAULT_CODEX_CONFIG_TEMPLATE = `{
     // options: true | false
     // default: false
     "ultra": false,
+
+    // Inference effort sent while logical Ultra mode remains active.
+    // options: "low" | "medium" | "high" | "xhigh" | "max"
+    // default: "max"
+    "ultraReasoningEffort": "max",
 
     // Session-aware offset for account selection.
     // options: true | false

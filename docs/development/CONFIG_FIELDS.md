@@ -33,6 +33,7 @@ Top-level:
 - `runtime.headerTransformDebug: boolean`
 - `runtime.pidOffset: boolean`
 - `runtime.ultra: boolean` (WIP, default `false`)
+- `runtime.ultraReasoningEffort: "low" | "medium" | "high" | "xhigh" | "max"` (default `"max"`)
 - `global.personality: string`
 - `global.reasoningEffort: string` (optional)
   - When omitted, the selected model's live catalog `default_reasoning_level` is used, typically `"medium"`.
@@ -111,6 +112,7 @@ Default generated values:
 - `runtime.headerTransformDebug: false`
 - `runtime.pidOffset: false`
 - `runtime.ultra: false`
+- `runtime.ultraReasoningEffort: "max"`
 - `global.personality: "pragmatic"`
 - `global.reasoningSummary: "auto"`
 - `global.textVerbosity: "default"`
@@ -162,6 +164,7 @@ Resolved by `resolveConfig`:
 - `OPENCODE_OPENAI_MULTI_PROACTIVE_REFRESH_BUFFER_MS`
 - `OPENCODE_OPENAI_MULTI_SHAREABLE_DEBUG`
 - `OPENCODE_OPENAI_MULTI_ULTRA`
+- `OPENCODE_OPENAI_MULTI_ULTRA_REASONING_EFFORT`
 
 Resolved by auth/runtime code (`lib/codex-native.ts` + helper modules under `lib/codex-native/`):
 
