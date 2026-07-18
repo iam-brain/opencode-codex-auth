@@ -152,7 +152,7 @@ async function main() {
   const temporaryPath = `${outputPath}.tmp`
   await writeFile(temporaryPath, rendered, "utf8")
   await rename(temporaryPath, outputPath)
-  process.stdout.write(`Generated ${rules.output}.\n`)
+  process.stderr.write(`Generated ${rules.output}.\n`)
 }
 
 main().catch((error) => {
