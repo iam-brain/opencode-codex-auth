@@ -6,8 +6,8 @@ Ultra is a work-in-progress feature behind `runtime.ultra`, which defaults to `f
 | --- | --- |
 | Feature gate | `runtime.ultra` must be explicitly set to `true`. When disabled, Ultra is absent from provider/config variants and no agent policy is injected. |
 | Catalog and picker | With the gate enabled, `ultra` remains distinct from `max` and is exposed only when the selected catalog model advertises the `ultra` effort, `multi_agent_version: "v2"`, visible status, and API support. |
-| Root turn | An eligible Ultra turn in `codex` mode receives proactive delegation instructions: parallelize independent sidecar work, assign explicit ownership, avoid duplicate work, wait for required children, verify results, and synthesize them. Native mode preserves the OpenCode-native identity and does not add a Codex delegation overlay. |
-| Child turn | A child inherits maximum reasoning but receives explicit-request-only delegation guidance to avoid uncontrolled recursive fan-out and duplicate parent or sibling work. |
+| Root turn | An eligible Ultra turn in `codex` mode receives the Codex proactive multi-agent mode instruction. Native mode preserves the OpenCode-native identity and does not add a Codex delegation overlay. |
+| Child turn | A child inherits Ultra's logical reasoning effort and proactive multi-agent mode, matching Codex Multi-Agent V2. OpenCode remains authoritative for the actual child tool surface and lifecycle. |
 | Auxiliary turn | OpenCode title, summary, and compaction turns retain wire normalization but receive no delegation instructions. |
 | Backend request | Every literal `reasoning.effort: "ultra"` is normalized to `"max"` at the last-mile request transform. Explicit `max` never receives Ultra policy. |
 | Missing or stale metadata | Ultra is disabled when catalog metadata cannot prove eligibility. A manually configured literal `ultra` is safe-degraded to wire `max` without proactive instructions. |
@@ -17,15 +17,15 @@ The live account-scoped catalog is authoritative. GitHub fallback data is parsed
 
 ## State lifecycle
 
-1. When `runtime.ultra=true`, `config` records each custom agent's OpenCode mode. `chat.params` resolves session lineage through OpenCode's session API and classifies the execution as root, child, or auxiliary. Session lineage is authoritative for `mode: all`; built-in and configured modes provide a fail-closed fallback.
-2. The logical state is retained as `ultra`; eligible `codex`-mode root turns merge the proactive instruction idempotently, while `codex`-mode child turns merge the explicit-only instruction. Native mode keeps the logical state without prompt adaptation.
+1. When `runtime.ultra=true`, `config` records each custom agent's OpenCode mode. `chat.params` resolves session lineage through OpenCode's session API and classifies the execution as root, child, or auxiliary. Session lineage is authoritative for `mode: all`; built-in and configured modes provide a conservative fallback.
+2. The logical state is retained as `ultra`; eligible `codex`-mode root and child turns merge the proactive instruction idempotently. Native mode keeps the logical state without prompt adaptation.
 3. `chat.headers` records a redacted internal Ultra state marker alongside the existing catalog scope and selected-model markers.
 4. Each retry resolves the current catalog scope again and applies the same last-mile normalization. Request snapshots include logical effort, wire effort, eligibility, policy, and the reason for any degradation.
 5. Agent role is retained with the logical Ultra state across retries, account rotation, and catalog-scope changes. Stale catalog defaults are removed by the existing catalog-scope cleanup path.
 
 ## Degradation and guardrails
 
-Ultra supplies the complete agent-mode policy available at the OpenCode plugin boundary. OpenCode remains the execution host for task tools, concurrency, steering, cancellation, and child lifecycle. A missing task tool or failed child spawn is observable in the host's normal tool/error path, but it is not a reason to reject the root request. Unknown agents and failed lineage lookups fail closed to child policy rather than enabling recursive fan-out.
+Ultra supplies the Codex proactive mode hint available at the OpenCode plugin boundary. OpenCode remains the execution host for task tools, concurrency, steering, cancellation, and child lifecycle, so the plugin does not reproduce Codex's tool-specific V2 usage prompt or claim Codex's concurrency limits. A missing task tool or failed child spawn is observable in the host's normal tool/error path, but it is not a reason to reject the request. Unknown agents and failed lineage lookups are classified conservatively, but an eligible inherited Ultra effort remains proactive as it does in Codex.
 
 No public concurrency setting is exposed. `runtime.ultra` is the only feature gate, and OpenCode remains authoritative for task tools and child lifecycle. The retired collaboration-profile/orchestrator WIP is not part of this flow.
 
@@ -37,7 +37,7 @@ The minimum release evidence covers:
 - default-off config, schema, environment override, provider picker hiding, and explicit opt-in behavior;
 - eligible Sol/Terra variants, ineligible V1/hidden/non-API variants, fallback catalogs, custom aliases, and effort suffixes;
 - session-lineage classification for root, child, custom `mode: all`, built-in agents, and fail-closed lookup errors;
-- root proactive, child explicit-only, and auxiliary-disabled instruction composition, including idempotent merges and preserved user/orchestrator instructions;
+- root and child proactive plus auxiliary-disabled instruction composition, including idempotent merges and preserved host instructions;
 - literal Ultra normalization to wire Max, explicit Max remaining non-Ultra, and normalization on retries/catalog-scope changes;
 - redacted snapshots for logical and wire state without internal headers reaching the backend;
 - compaction and auxiliary request paths remaining safe because their payloads pass through the same last-mile transform;

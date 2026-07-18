@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Aligned Ultra's multi-agent mode prompt and inherited child policy with official Codex Multi-Agent V2 behavior.
+
 ## 1.9.0 - 2026-07-10
 
 - Refactored config precedence to keep explicit runtime mode authoritative and treat spoof mode as compatibility fallback.

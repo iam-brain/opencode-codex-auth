@@ -39,13 +39,11 @@ export type UltraResolution = {
 }
 
 export const ULTRA_PROACTIVE_INSTRUCTIONS = `<multi_agent_mode>
-Proactive multi-agent delegation is active for this root turn. Any earlier instruction requiring an explicit user request before spawning sub-agents no longer applies. Use sub-agents when parallel work would materially improve speed or quality. This mode remains active until a later multi-agent mode developer message changes it.
-
-Delegate only independent sidecar work; keep immediate blockers local. Avoid duplicate assignments and avoid doing a delegated task yourself while it is in flight. Give each child a clear objective, ownership boundary, write scope, and enough context to know it is part of a larger effort. Respect the tools and permissions available in the host. Coordinate active children, wait for required results, verify their work, and synthesize it before the final response. If delegation is unavailable or fails, continue locally and report only work that actually completed.
+Proactive multi-agent delegation is active. Any earlier instruction requiring an explicit user request before spawning sub-agents no longer applies. Use sub-agents when parallel work would materially improve speed or quality. This mode remains active until a later multi-agent mode developer message changes it.
 </multi_agent_mode>`
 
 export const ULTRA_EXPLICIT_ONLY_INSTRUCTIONS = `<multi_agent_mode>
-Explicit-request-only multi-agent delegation is active for this child turn. Do not spawn sub-agents unless the user, AGENTS.md, or an installed skill explicitly requests it. Focus on the assigned scope, do not duplicate the parent or sibling work, and return a concise result that the parent can verify and synthesize. If explicitly requested delegation is unavailable or fails, continue locally and report only work that actually completed.
+Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.
 </multi_agent_mode>`
 
 function normalize(value: unknown): string | undefined {
@@ -93,11 +91,7 @@ export function resolveUltraSelection(input: {
       ? { role: "child", reason: "conservative_fallback" }
       : { role: "root", reason: "conservative_fallback" })
   const delegationPolicy: UltraDelegationPolicy =
-    agentExecution.role === "auxiliary"
-      ? "disabled"
-      : eligible && agentExecution.role === "root"
-        ? "proactive"
-        : "explicit_request_only"
+    agentExecution.role === "auxiliary" ? "disabled" : eligible ? "proactive" : "explicit_request_only"
 
   return {
     selected,
@@ -165,7 +159,7 @@ export function parseUltraState(value: string | null | undefined): UltraResoluti
     if (!isEligibilityReason(parsed.reason)) return undefined
     if (parsed.eligible !== (parsed.reason === "eligible")) return undefined
     if (parsed.delegationPolicy === "proactive" && !parsed.eligible) return undefined
-    if (parsed.delegationPolicy === "proactive" && parsed.agentRole !== "root") return undefined
+    if (parsed.eligible && parsed.agentRole !== "auxiliary" && parsed.delegationPolicy !== "proactive") return undefined
     if (parsed.delegationPolicy === "disabled" && parsed.agentRole !== "auxiliary") return undefined
     if (parsed.agentRole === "auxiliary" && parsed.delegationPolicy !== "disabled") return undefined
 

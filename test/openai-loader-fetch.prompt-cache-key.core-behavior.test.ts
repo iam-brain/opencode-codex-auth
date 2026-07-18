@@ -259,7 +259,7 @@ describe("openai loader fetch prompt cache key (core behavior)", () => {
           logicalEffort: "ultra",
           wireEffort: "max",
           eligible: true,
-          delegationPolicy: "explicit_request_only",
+          delegationPolicy: "proactive",
           agentRole: "child",
           agentReason: "conservative_fallback",
           reason: "eligible"

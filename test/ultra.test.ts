@@ -31,6 +31,15 @@ function chatOutput(): { temperature: number; topP: number; topK: number; option
 }
 
 describe("GPT-5.6 Ultra contract", () => {
+  it("uses the official Codex multi-agent mode messages", () => {
+    expect(ULTRA_PROACTIVE_INSTRUCTIONS).toBe(`<multi_agent_mode>
+Proactive multi-agent delegation is active. Any earlier instruction requiring an explicit user request before spawning sub-agents no longer applies. Use sub-agents when parallel work would materially improve speed or quality. This mode remains active until a later multi-agent mode developer message changes it.
+</multi_agent_mode>`)
+    expect(ULTRA_EXPLICIT_ONLY_INSTRUCTIONS).toBe(`<multi_agent_mode>
+Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.
+</multi_agent_mode>`)
+  })
+
   it("resolves session lineage only for Ultra requests", async () => {
     let calls = 0
     const output = chatOutput()
@@ -71,6 +80,7 @@ describe("GPT-5.6 Ultra contract", () => {
     expect(parseUltraState(JSON.stringify({ selected: false, logicalEffort: "max" }))).toBeUndefined()
     expect(parseUltraState(JSON.stringify({ ...state, secret: "must-not-survive" }))).toEqual(state)
     expect(parseUltraState(JSON.stringify({ ...state, wireEffort: "ultra" }))).toBeUndefined()
+    expect(parseUltraState(JSON.stringify({ ...state, delegationPolicy: "explicit_request_only" }))).toBeUndefined()
     expect(retainUltraState(state, undefined)).toEqual(state)
   })
 
@@ -106,7 +116,34 @@ describe("GPT-5.6 Ultra contract", () => {
     })
   })
 
-  it("preserves native identity and uses explicit-only instructions for child codex turns", async () => {
+  it("replaces an earlier explicit-only mode with proactive mode", async () => {
+    const output = chatOutput()
+    output.options.instructions = `base\n\n${ULTRA_EXPLICIT_ONLY_INSTRUCTIONS}`
+
+    await handleChatParamsHook({
+      hookInput: {
+        model: {
+          id: "gpt-5.6-sol",
+          providerID: "openai",
+          options: {
+            codexCatalogModel: eligibleModel(),
+            codexRuntimeDefaults: { defaultReasoningEffort: "ultra" }
+          }
+        },
+        agent: "build",
+        message: {}
+      },
+      output,
+      lastCatalogModels: [eligibleModel()],
+      spoofMode: "codex",
+      ultraEnabled: true,
+      agentExecution: { role: "root", reason: "session_root", agentName: "build" }
+    })
+
+    expect(output.options.instructions).toBe(`base\n\n${ULTRA_PROACTIVE_INSTRUCTIONS}`)
+  })
+
+  it("preserves native identity and keeps inherited Ultra proactive for child codex turns", async () => {
     const nativeOutput = chatOutput()
     await handleChatParamsHook({
       hookInput: {
@@ -148,9 +185,9 @@ describe("GPT-5.6 Ultra contract", () => {
       ultraEnabled: true,
       agentExecution: { role: "child", reason: "session_parent", agentName: "general" }
     })
-    expect(childOutput.options.instructions).toContain(ULTRA_EXPLICIT_ONLY_INSTRUCTIONS)
-    expect(childOutput.options.instructions).not.toContain(ULTRA_PROACTIVE_INSTRUCTIONS)
-    expect(childResult.ultra?.delegationPolicy).toBe("explicit_request_only")
+    expect(childOutput.options.instructions).toContain(ULTRA_PROACTIVE_INSTRUCTIONS)
+    expect(childOutput.options.instructions).not.toContain(ULTRA_EXPLICIT_ONLY_INSTRUCTIONS)
+    expect(childResult.ultra?.delegationPolicy).toBe("proactive")
     expect(childResult.ultra?.agentRole).toBe("child")
   })
 
@@ -480,7 +517,7 @@ describe("GPT-5.6 Ultra contract", () => {
     }
   })
 
-  it("retains explicit-only child policy when collaboration headers are unavailable", async () => {
+  it("retains proactive child policy when collaboration headers are unavailable", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
       method: "POST",
       body: JSON.stringify({ model: "gpt-5.6-sol", reasoning: { effort: "max" } })
@@ -497,7 +534,7 @@ describe("GPT-5.6 Ultra contract", () => {
       ultraState: resolveUltraSelection({ reasoningEffort: "ultra", model: eligibleModel(), childTask: true })
     })
 
-    expect(transformed.ultra?.delegationPolicy).toBe("explicit_request_only")
+    expect(transformed.ultra?.delegationPolicy).toBe("proactive")
   })
 
   it("retains disabled auxiliary policy across retries", async () => {

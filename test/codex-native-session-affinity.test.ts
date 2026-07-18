@@ -125,7 +125,7 @@ describe("codex-native session affinity persistence", () => {
           logicalEffort: "ultra",
           wireEffort: "max",
           eligible: true,
-          delegationPolicy: "explicit_request_only",
+          delegationPolicy: "proactive",
           agentRole: "child",
           agentReason: "conservative_fallback",
           reason: "eligible"

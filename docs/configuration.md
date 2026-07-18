@@ -156,7 +156,7 @@ Mode-derived runtime defaults when omitted:
   - User config can still override reasoning effort globally, per model, or per variant.
 - `ultra` reasoning variant
   - Work in progress and available only when `runtime.ultra=true` and the active model advertises `ultra` with `multi_agent_version: "v2"`.
-  - `codex` mode adds best-effort proactive delegation guidance; `native` mode preserves OpenCode-native prompt identity.
+  - `codex` mode adds the official Codex proactive multi-agent mode guidance to eligible root and inherited Ultra child turns; `native` mode preserves OpenCode-native prompt identity.
   - Literal configured `ultra` values remain safe on unsupported or stale catalogs: the backend request sends wire effort `max`, without proactive delegation.
   - There is no public concurrency setting; OpenCode remains responsible for agent execution and lifecycle.
 - `global.reasoningMode: "standard" | "pro"` (optional)

@@ -40,6 +40,7 @@ import {
   ULTRA_EXPLICIT_ONLY_INSTRUCTIONS,
   ULTRA_PROACTIVE_INSTRUCTIONS,
   resolveUltraSelection,
+  stripUltraDelegationInstructions,
   type UltraResolution
 } from "./ultra.js"
 
@@ -272,6 +273,7 @@ export async function handleChatParamsHook(input: {
   ) {
     const ultraInstructions =
       ultraResolution.delegationPolicy === "proactive" ? ULTRA_PROACTIVE_INSTRUCTIONS : ULTRA_EXPLICIT_ONLY_INSTRUCTIONS
+    stripUltraDelegationInstructions(input.output.options as Record<string, unknown>)
     input.output.options.instructions = mergeInstructions(
       asString(input.output.options.instructions),
       ultraInstructions
