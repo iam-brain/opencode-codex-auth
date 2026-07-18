@@ -42,6 +42,7 @@ This directory contains user and developer documentation for `opencode-codex-aut
 - `development/TESTING.md`
 - `development/UPSTREAM_SYNC.md`
 - `development/ULTRA.md` (WIP, default-off)
+- `development/PROMPT_COMPATIBILITY.md`
 
 ## Local planning and research
 

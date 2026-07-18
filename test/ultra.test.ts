@@ -31,12 +31,12 @@ function chatOutput(): { temperature: number; topP: number; topK: number; option
 }
 
 describe("GPT-5.6 Ultra contract", () => {
-  it("uses the official Codex multi-agent mode messages", () => {
+  it("uses the generated OpenCode-compatible multi-agent mode messages", () => {
     expect(ULTRA_PROACTIVE_INSTRUCTIONS).toBe(`<multi_agent_mode>
-Proactive multi-agent delegation is active. Any earlier instruction requiring an explicit user request before spawning sub-agents no longer applies. Use sub-agents when parallel work would materially improve speed or quality. This mode remains active until a later multi-agent mode developer message changes it.
+Proactive multi-agent delegation is active. Any earlier instruction requiring an explicit user request before using the OpenCode \`task\` tool no longer applies. Use the OpenCode \`task\` tool when parallel work would materially improve speed or quality. This mode remains active until a later multi-agent mode developer message changes it.
 </multi_agent_mode>`)
     expect(ULTRA_EXPLICIT_ONLY_INSTRUCTIONS).toBe(`<multi_agent_mode>
-Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.
+Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not use the OpenCode \`task\` tool unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.
 </multi_agent_mode>`)
   })
 

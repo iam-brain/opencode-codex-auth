@@ -4,8 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.9.1 - 2026-07-18
+
 - Added `runtime.ultraReasoningEffort` to override Ultra's default `max` inference effort with `low`, `medium`, `high`, or `xhigh`.
 - Aligned Ultra's multi-agent mode prompt and inherited child policy with official Codex Multi-Agent V2 behavior.
+- Added a pinned-source Codex-to-OpenCode prompt transformation, build-generated Ultra overlays, source/output drift checks, and compiled package delivery.
+- Corrected catalog documentation for live-entry precedence, official GitHub missing-model supplementation, and Ultra eligibility provenance.
 
 ## 1.9.0 - 2026-07-10
 
