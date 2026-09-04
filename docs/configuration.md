@@ -243,11 +243,11 @@ Custom model notes:
 ### GPT-5.4 long context
 
 - The plugin preserves an explicit request-body `service_tier` if your host already sets one.
-- The plugin preserves request-level `model_context_window`, `model_auto_compact_token_limit`, and `max_output_tokens` fields through all payload rewrites.
+- The plugin preserves request-level `model_context_window` and `model_auto_compact_token_limit` fields through payload rewrites.
 - For `gpt-5.4*`, the plugin clamps those request-level overrides to the currently documented GPT-5.4 long-context limits before sending the request:
   - `model_context_window <= 1,050,000`
   - `model_auto_compact_token_limit <= min(922,000, model_context_window - 128,000)`
-  - `max_output_tokens <= 128,000`
+- The ChatGPT backend rejects `max_output_tokens`, so the plugin removes that request field for every model before dispatch.
 - The `922,000` auto-compact ceiling is the full-window practical safe-input cap derived from the published `1,050,000` total context budget minus the published `128,000` max output budget.
 - If you request a smaller `model_context_window`, the plugin also preserves the same output headroom by clamping `model_auto_compact_token_limit` to `model_context_window - 128,000`.
 - The live Codex catalog currently still reports `context_window: 272000` for `gpt-5.4`, so any larger `model_context_window` value is an explicit request override rather than a catalog default.

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Fixed ChatGPT OAuth requests failing with `Unsupported parameter: max_output_tokens` by removing that field for every model before dispatch.
+
 ## 1.10.0 - 2026-07-18
 
 - Added `runtime.ultraReasoningEffort` to override Ultra's default `max` inference effort with `low`, `medium`, `high`, or `xhigh`.
