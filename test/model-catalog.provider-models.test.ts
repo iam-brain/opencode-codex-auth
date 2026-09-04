@@ -455,6 +455,26 @@ describe("model catalog provider model mapping", () => {
     expect(providerModels["gpt-5.6-luna-pro"]?.name).toBe("Independent Pro Model")
   })
 
+  it("preserves limits from an independently supplied Astra 1M entry", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {
+      "gpt-6-astra": { id: "gpt-6-astra", name: "GPT-6 Astra" },
+      "gpt-6-astra-1m": {
+        id: "gpt-6-astra-1m",
+        name: "Upstream Astra 1M",
+        limit: { context: 900_000, input: 800_000, output: 100_000 }
+      }
+    }
+    applyGeneratedAliasesToProviderModels({
+      providerModels,
+      settings: { fast: false, extendedContext: true, pro: false }
+    })
+    expect(providerModels["gpt-6-astra-1m"]?.limit).toEqual({
+      context: 900_000,
+      input: 800_000,
+      output: 100_000
+    })
+  })
+
   it("preserves provider models when the catalog is temporarily unavailable", () => {
     const providerModels: Record<string, Record<string, unknown>> = {
       "gpt-5.3-codex": makeBaselineModel("gpt-5.3-codex")

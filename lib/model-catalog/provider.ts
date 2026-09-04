@@ -335,7 +335,7 @@ function applyGeneratedAliases(input: {
       // generated ourselves; never replace an independently supplied collision.
       if (catalogBySlug.has(aliasSlug) || (existingAlias && !isGeneratedAlias)) {
         input.allowed?.add(aliasSlug)
-        return
+        return false
       }
       const alias = cloneValue(base)
       alias.id = aliasSlug
@@ -353,6 +353,7 @@ function applyGeneratedAliases(input: {
       options.codexCustomModelConfig = { slug: aliasSlug, targetModel: slug, ...behavior }
       input.providerModels[aliasSlug] = alias
       input.allowed?.add(aliasSlug)
+      return true
     }
     const providerServiceTiers = Array.isArray(base.service_tiers) ? base.service_tiers : []
     const providerSpeedTiers = Array.isArray(base.additional_speed_tiers) ? base.additional_speed_tiers : []
@@ -374,10 +375,11 @@ function applyGeneratedAliases(input: {
       maxContext &&
       (officialMillionTokenContext || !normalContext || maxContext > normalContext)
     ) {
-      add("1m", {}, `${display} 1M`)
-      const alias = input.providerModels[`${slug}-1m`]
-      if (alias)
+      const created = add("1m", {}, `${display} 1M`)
+      const alias = created ? input.providerModels[`${slug}-1m`] : undefined
+      if (alias) {
         alias.limit = { ...(asRecord(alias.limit) ?? {}), context: maxContext, input: 922_000, output: 128_000 }
+      }
     }
     if (input.settings.pro && (officialGpt56 || officialGpt6Astra)) {
       add("pro", { reasoningMode: "pro" }, `${display} Pro`)

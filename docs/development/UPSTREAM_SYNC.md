@@ -17,7 +17,7 @@ Track the OpenCode and Codex releases this plugin is aligned to, and how to keep
 
 ## Latest parity audit (2026-07-10)
 
-GPT-6 Astra readiness was checked separately on 2026-09-04 against `rust-v0.153.2`. The plugin now uses the model's upstream minimum client version (`0.153.0`) as its offline fallback, consumes Astra only through the existing live/official catalog path, maps it to the GPT-6 provider family, and enables the documented Fast, 1M, and Pro surfaces when their existing configuration gates allow them.
+GPT-6 Astra readiness was checked separately on 2026-09-04 against `rust-v0.153.2`. The plugin now uses `0.153.2` as its offline fallback, consumes Astra only through the existing live/official catalog path, maps it to the GPT-6 provider family, and enables the documented Fast, 1M, and Pro surfaces when their existing configuration gates allow them.
 
 - Verified OAuth constants and authorize URL semantics against upstream `codex.ts`.
 - Verified native callback URI now uses `http://localhost:1455/auth/callback`.
