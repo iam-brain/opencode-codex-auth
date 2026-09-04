@@ -39,7 +39,7 @@ Top-level:
   - When omitted, the selected model's live catalog `default_reasoning_level` is used, typically `"medium"`.
   - User config can still override reasoning effort globally, per model, or per variant.
 - `global.reasoningMode: "standard" | "pro"`
-  - Independent GPT-5.6 reasoning mode; request-level values win.
+  - Independent GPT-5.6 and GPT-6 Astra reasoning mode; request-level values win.
 - `modelAliases.fast: boolean` (default `true`)
 - `modelAliases.extendedContext: boolean` (default `true`)
 - `modelAliases.pro: boolean` (default API `true`, OAuth `false`)
