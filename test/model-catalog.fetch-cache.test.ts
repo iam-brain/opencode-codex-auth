@@ -50,11 +50,11 @@ describe("model catalog fetch and primary cache", () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const endpoint = typeof url === "string" ? url : url instanceof URL ? url.toString() : new URL(url.url).toString()
       if (endpoint.includes("/backend-api/codex/models")) {
-        expect(endpoint).toContain("client_version=0.144.0")
+        expect(endpoint).toContain("client_version=0.153.2")
         const headers = init?.headers as Record<string, string>
         expect(headers.authorization).toBe("Bearer at")
         expect(headers["chatgpt-account-id"]).toBe("acc_123")
-        expect(headers.version).toBe("0.144.0")
+        expect(headers.version).toBe("0.153.2")
 
         return new Response(
           JSON.stringify({
@@ -65,7 +65,7 @@ describe("model catalog fetch and primary cache", () => {
       }
 
       expect(endpoint).toBe(
-        "https://raw.githubusercontent.com/openai/codex/rust-v0.144.0/codex-rs/models-manager/models.json"
+        "https://raw.githubusercontent.com/openai/codex/rust-v0.153.2/codex-rs/models-manager/models.json"
       )
       return new Response(
         JSON.stringify({

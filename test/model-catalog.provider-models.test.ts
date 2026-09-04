@@ -314,6 +314,64 @@ describe("model catalog provider model mapping", () => {
     })
   })
 
+  it("maps the catalog-backed GPT-6 Astra contract", () => {
+    const providerModels: Record<string, Record<string, unknown>> = {}
+    applyCodexCatalogToProviderModels({
+      providerModels,
+      catalogModels: [
+        {
+          slug: "gpt-6-astra",
+          display_name: "GPT-6-Astra",
+          context_window: 272000,
+          max_context_window: 872000,
+          input_modalities: ["text", "image"] as const,
+          service_tiers: [{ id: "priority", name: "Fast" }],
+          additional_speed_tiers: ["fast"],
+          default_reasoning_level: "low",
+          supported_reasoning_levels: [
+            { effort: "low" },
+            { effort: "medium" },
+            { effort: "high" },
+            { effort: "xhigh" },
+            { effort: "max" }
+          ]
+        }
+      ],
+      aliasSettings: { fast: true, extendedContext: true, pro: true }
+    })
+
+    expect(Object.keys(providerModels).sort()).toEqual([
+      "gpt-6-astra",
+      "gpt-6-astra-1m",
+      "gpt-6-astra-fast",
+      "gpt-6-astra-pro"
+    ])
+    expect(providerModels["gpt-6-astra"]).toMatchObject({
+      family: "gpt-6",
+      limit: { context: 272000, input: 272000, output: 128000 },
+      capabilities: { reasoning: true, attachment: true },
+      variants: {
+        low: { reasoningEffort: "low" },
+        medium: { reasoningEffort: "medium" },
+        high: { reasoningEffort: "high" },
+        xhigh: { reasoningEffort: "xhigh" },
+        max: { reasoningEffort: "max" }
+      }
+    })
+    expect(providerModels["gpt-6-astra-1m"]).toMatchObject({
+      api: { id: "gpt-6-astra" },
+      limit: { context: 1050000, input: 922000, output: 128000 }
+    })
+    expect(providerModels["gpt-6-astra-fast"]).toMatchObject({
+      api: { id: "gpt-6-astra" },
+      options: { codexCustomModelConfig: { targetModel: "gpt-6-astra", serviceTier: "priority" } }
+    })
+    expect(providerModels["gpt-6-astra-pro"]).toMatchObject({
+      api: { id: "gpt-6-astra" },
+      options: { codexCustomModelConfig: { targetModel: "gpt-6-astra", reasoningMode: "pro" } }
+    })
+  })
+
   it("shapes API-key provider metadata without taking over authentication", () => {
     const providerModels = {
       "gpt-5.6-sol": {

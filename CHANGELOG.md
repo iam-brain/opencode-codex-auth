@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Prepared catalog-driven GPT-6 Astra support with Codex `0.153.2` fallback identity, GPT-6 provider-family metadata, Fast/1M/Pro aliases, and Pro request serialization.
+- Corrected official GPT-5.6 and GPT-6 Astra 1M aliases to use the published 1,050,000-token context, 922,000-token input, and 128,000-token output limits independently of Codex's internal override cap.
+
 ## 1.10.0 - 2026-07-18
 
 - Added `runtime.ultraReasoningEffort` to override Ultra's default `max` inference effort with `low`, `medium`, `high`, or `xhigh`.

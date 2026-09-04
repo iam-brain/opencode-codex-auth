@@ -151,7 +151,7 @@
         "reasoningMode": {
           "type": "string",
           "enum": ["standard", "pro"],
-          "description": "GPT-5.6 reasoning mode, independent of reasoningEffort."
+          "description": "GPT-5.6 and GPT-6 Astra reasoning mode, independent of reasoningEffort."
         },
         "reasoningSummary": {
           "$ref": "#/$defs/reasoningSummary"

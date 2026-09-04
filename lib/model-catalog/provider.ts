@@ -117,7 +117,8 @@ function resolveProviderTransport(
 
 function resolveFamily(slug: string): string {
   if (slug.includes("codex")) return "gpt-codex"
-  if (slug.startsWith("gpt-")) return "gpt-5"
+  const gptFamily = slug.match(/^gpt-(\d+)/i)
+  if (gptFamily?.[1]) return `gpt-${gptFamily[1]}`
   if (slug.startsWith("o")) return "o-series"
   return "openai"
 }
@@ -364,19 +365,23 @@ function applyGeneratedAliases(input: {
     if (input.settings.fast && priority && fast) add("fast", { serviceTier: "priority" }, `${display} Fast`)
 
     const officialGpt56 = /^gpt-5\.6(?:-(sol|terra|luna))?$/i.test(slug)
-    const maxContext = catalog?.max_context_window ?? (officialGpt56 ? 1_050_000 : undefined)
+    const officialGpt6Astra = /^gpt-6-astra$/i.test(slug)
+    const officialMillionTokenContext = officialGpt56 || officialGpt6Astra
+    const maxContext = officialMillionTokenContext ? 1_050_000 : catalog?.max_context_window
     const normalContext = catalog?.context_window ?? asFiniteNumber(asRecord(base.limit)?.context)
     if (
       input.settings.extendedContext &&
       maxContext &&
-      (officialGpt56 || !normalContext || maxContext > normalContext)
+      (officialMillionTokenContext || !normalContext || maxContext > normalContext)
     ) {
       add("1m", {}, `${display} 1M`)
       const alias = input.providerModels[`${slug}-1m`]
       if (alias)
         alias.limit = { ...(asRecord(alias.limit) ?? {}), context: maxContext, input: 922_000, output: 128_000 }
     }
-    if (input.settings.pro && officialGpt56) add("pro", { reasoningMode: "pro" }, `${display} Pro`)
+    if (input.settings.pro && (officialGpt56 || officialGpt6Astra)) {
+      add("pro", { reasoningMode: "pro" }, `${display} Pro`)
+    }
   }
 }
 

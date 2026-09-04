@@ -265,7 +265,7 @@ describe("codex reasoning replay stripping", () => {
   })
 })
 
-describe("GPT-5.6 reasoning mode", () => {
+describe("Pro reasoning mode", () => {
   it("serializes Pro aliases as nested reasoning.mode and preserves explicit mode", async () => {
     const makeRequest = (reasoning: Record<string, unknown>) =>
       new Request("https://chatgpt.com/backend-api/codex/responses", {
@@ -305,6 +305,24 @@ describe("GPT-5.6 reasoning mode", () => {
     })
 
     expect(JSON.parse(await transformed.request.text()).reasoning).toEqual({ effort: "high" })
+  })
+
+  it("applies Pro mode to GPT-6 Astra", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-6-astra", reasoning: { effort: "max" } })
+    })
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      selectedModelSlug: "gpt-6-astra-pro",
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false
+    })
+
+    expect(JSON.parse(await transformed.request.text()).reasoning).toEqual({ effort: "max", mode: "pro" })
   })
 })
 

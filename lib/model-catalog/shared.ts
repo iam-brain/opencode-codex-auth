@@ -143,7 +143,7 @@ export type ApplyCodexCatalogInput = {
 
 export const CODEX_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models"
 export const CODEX_GITHUB_MODELS_URL_PREFIX = "https://raw.githubusercontent.com/openai/codex"
-export const DEFAULT_CLIENT_VERSION = "0.144.0"
+export const DEFAULT_CLIENT_VERSION = "0.153.2"
 export const CACHE_TTL_MS = 15 * 60 * 1000
 export const FETCH_TIMEOUT_MS = 5000
 export const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh|max|ultra)$/i
