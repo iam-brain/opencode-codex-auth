@@ -55,15 +55,19 @@ function applyGpt54LongContextClampsToPayloadWithContext(input: {
   selectedModelSlug?: string
   customModels?: Record<string, CustomModelConfig>
 }): boolean {
+  let changed = false
+  if ("max_output_tokens" in input.payload) {
+    delete input.payload.max_output_tokens
+    changed = true
+  }
+
   const modelCandidates = resolvePayloadModelCandidatesForClamps({
     payload: input.payload,
     selectedModelSlug: input.selectedModelSlug,
     customModels: input.customModels
   })
   const isGpt54 = modelCandidates.some((candidate) => candidate.trim().toLowerCase().startsWith("gpt-5.4"))
-  if (!isGpt54) return false
-
-  let changed = false
+  if (!isGpt54) return changed
 
   const contextWindow = asFiniteNumber(input.payload.model_context_window)
   if (contextWindow !== undefined && contextWindow > GPT_5_4_MAX_CONTEXT_WINDOW) {
@@ -82,12 +86,6 @@ function applyGpt54LongContextClampsToPayloadWithContext(input: {
   const autoCompact = asFiniteNumber(input.payload.model_auto_compact_token_limit)
   if (autoCompact !== undefined && autoCompact > autoCompactMax) {
     input.payload.model_auto_compact_token_limit = autoCompactMax
-    changed = true
-  }
-
-  const maxOutputTokens = asFiniteNumber(input.payload.max_output_tokens)
-  if (maxOutputTokens !== undefined && maxOutputTokens > GPT_5_4_MAX_OUTPUT_TOKENS) {
-    input.payload.max_output_tokens = GPT_5_4_MAX_OUTPUT_TOKENS
     changed = true
   }
 

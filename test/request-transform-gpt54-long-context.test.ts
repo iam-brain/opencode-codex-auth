@@ -12,6 +12,33 @@ const PRIORITY_BEHAVIOR_SETTINGS: BehaviorSettings = {
   }
 }
 
+describe("ChatGPT backend request compatibility", () => {
+  it("strips max_output_tokens from non-GPT-5.4 requests", async () => {
+    const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        max_output_tokens: 128_000,
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }]
+      })
+    })
+
+    const transformed = await transformOutboundRequestPayload({
+      request,
+      stripReasoningReplayEnabled: false,
+      remapDeveloperMessagesToUserEnabled: false,
+      compatInputSanitizerEnabled: false,
+      promptCacheKeyOverrideEnabled: false
+    })
+
+    const body = JSON.parse(await transformed.request.text()) as { max_output_tokens?: number }
+
+    expect(transformed.changed).toBe(true)
+    expect(body.max_output_tokens).toBeUndefined()
+  })
+})
+
 describe("GPT-5.4 long-context request clamps", () => {
   it("preserves valid 1M-context fields without mutating service_tier on the main payload path", async () => {
     const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
@@ -83,7 +110,7 @@ describe("GPT-5.4 long-context request clamps", () => {
     expect(body.service_tier).toBeUndefined()
     expect(body.model_context_window).toBe(1_050_000)
     expect(body.model_auto_compact_token_limit).toBe(922_000)
-    expect(body.max_output_tokens).toBe(128_000)
+    expect(body.max_output_tokens).toBeUndefined()
   })
 
   it("reserves output headroom when a smaller GPT-5.4 context window is requested", async () => {
@@ -117,7 +144,7 @@ describe("GPT-5.4 long-context request clamps", () => {
     expect(transformed.changed).toBe(true)
     expect(body.model_context_window).toBe(300_000)
     expect(body.model_auto_compact_token_limit).toBe(172_000)
-    expect(body.max_output_tokens).toBe(128_000)
+    expect(body.max_output_tokens).toBeUndefined()
   })
 
   it("applies GPT-5.4 clamps to custom aliases that target GPT-5.4", async () => {
@@ -157,7 +184,7 @@ describe("GPT-5.4 long-context request clamps", () => {
     expect(transformed.changed).toBe(true)
     expect(body.model_context_window).toBe(1_050_000)
     expect(body.model_auto_compact_token_limit).toBe(922_000)
-    expect(body.max_output_tokens).toBe(128_000)
+    expect(body.max_output_tokens).toBeUndefined()
   })
 
   it("keeps wrapper transforms scoped instead of silently applying GPT-5.4 clamps", async () => {
