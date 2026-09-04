@@ -27,6 +27,18 @@ function normalizePct(value: number): number | undefined {
   return Math.round(value)
 }
 
+function windowNameFromDuration(fallbackName: string, windowData: Record<string, unknown>): string {
+  const windowSeconds = asNumber(windowData.limit_window_seconds)
+  if (windowSeconds === undefined) return fallbackName
+
+  const matches = (expectedSeconds: number) =>
+    windowSeconds >= expectedSeconds * 0.95 && windowSeconds <= expectedSeconds * 1.05
+
+  if (matches(5 * 60 * 60)) return "5h"
+  if (matches(7 * 24 * 60 * 60)) return "weekly"
+  return fallbackName
+}
+
 function parseWindowLimit(name: string, windowData: unknown): CodexLimit | null {
   if (!isRecord(windowData)) return null
   const usedPct = asNumber(windowData.used_percent)
@@ -35,7 +47,7 @@ function parseWindowLimit(name: string, windowData: unknown): CodexLimit | null 
   if (leftPct === undefined) return null
   const resetsAt = toEpochMs(asNumber(windowData.reset_at ?? windowData.resets_at))
   return {
-    name,
+    name: windowNameFromDuration(name, windowData),
     leftPct,
     ...(resetsAt ? { resetsAt } : null)
   }
@@ -93,7 +105,8 @@ function snapshotFromUsagePayload(input: {
   if (limits.length === 0 && Array.isArray(input.payload.limits)) {
     for (const entry of input.payload.limits) {
       if (!isRecord(entry)) continue
-      const name = typeof entry.name === "string" ? entry.name.toLowerCase() : "requests"
+      const fallbackName = typeof entry.name === "string" ? entry.name.toLowerCase() : "requests"
+      const name = windowNameFromDuration(fallbackName, entry)
       const leftPctDirect = asNumber(entry.leftPct ?? entry.left_pct)
       const usedPct = asNumber(entry.used_percent)
       const remaining = asNumber(entry.remaining)
