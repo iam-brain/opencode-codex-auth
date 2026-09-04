@@ -1,4 +1,5 @@
-import type { CodexRateLimitSnapshot, AccountRecord, CodexLimit } from "./types.js"
+import type { CodexRateLimitSnapshot, AccountRecord } from "./types.js"
+import { resolveQuotaWindows } from "./quota-windows.js"
 import { ANSI } from "./ui/tty.js"
 
 const FULL_BLOCK = "█"
@@ -40,26 +41,6 @@ function formatResetTimestamp(resetsAt: number | undefined, now = Date.now()): s
   }
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
   return `resets ${timeStr} ${date.getDate()} ${months[date.getMonth()]}`
-}
-
-function findLimitByName(snap: CodexRateLimitSnapshot, names: string[]): (typeof snap.limits)[number] | undefined {
-  const lowered = names.map((name) => name.toLowerCase())
-  return snap.limits.find((limit) => lowered.includes(limit.name.toLowerCase()))
-}
-
-function resolveQuotaRows(snap: CodexRateLimitSnapshot | undefined): {
-  fiveHour?: CodexLimit
-  weekly?: CodexLimit
-} {
-  if (!snap) {
-    return { fiveHour: undefined, weekly: undefined }
-  }
-  const fiveHour = findLimitByName(snap, ["5h", "primary", "requests"]) ?? snap.limits[0]
-  const weekly =
-    findLimitByName(snap, ["weekly", "secondary", "tokens"]) ??
-    snap.limits.find((limit) => limit !== fiveHour) ??
-    snap.limits[1]
-  return { fiveHour, weekly }
 }
 
 function formatAccountLabel(input: {
@@ -179,7 +160,7 @@ export function renderDashboard(
 
     const expired = typeof acc.expires === "number" && Number.isFinite(acc.expires) && acc.expires <= Date.now()
 
-    const rows = resolveQuotaRows(snap)
+    const rows = resolveQuotaWindows(snap)
     lines.push(
       renderQuotaLine({
         prefix: style === "menu" ? `${colorize("│", ANSI.cyan, useColor)}  ├─ ` : "├─ ",

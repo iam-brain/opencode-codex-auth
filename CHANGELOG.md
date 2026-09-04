@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Fixed quota snapshots assigning weekly usage and reset times to the `5h` row when the backend returns windows in a different order or omits the 5-hour window.
+
 ## 1.10.0 - 2026-07-18
 
 - Added `runtime.ultraReasoningEffort` to override Ultra's default `max` inference effort with `low`, `medium`, `high`, or `xhigh`.

@@ -85,4 +85,23 @@ describe("quota threshold alerts", () => {
       }
     ])
   })
+
+  it("does not treat a semantic weekly-only limit as the 5h window", () => {
+    const evaluated = evaluateQuotaThresholds({
+      snapshot: {
+        updatedAt: Date.now(),
+        modelFamily: "gpt-5.3-codex",
+        limits: [{ name: "weekly", leftPct: 0, resetsAt: 1_711_000_000_000 }]
+      },
+      previousState: DEFAULT_QUOTA_THRESHOLD_TRACKER_STATE
+    })
+
+    expect(evaluated.exhaustedCrossings).toEqual([
+      {
+        window: "weekly",
+        resetsAt: 1_711_000_000_000,
+        reasonCode: "quota_limit_exhausted_weekly"
+      }
+    ])
+  })
 })
