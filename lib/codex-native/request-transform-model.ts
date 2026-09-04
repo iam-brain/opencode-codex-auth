@@ -198,7 +198,10 @@ export function getModelLookupCandidates(model: { id?: string; api?: { id?: stri
 }
 
 export function supportsReasoningMode(modelCandidates: string[]): boolean {
-  return modelCandidates.some((candidate) => candidate.trim().toLowerCase().startsWith("gpt-5.6"))
+  return modelCandidates.some((candidate) => {
+    const normalized = candidate.trim().toLowerCase()
+    return normalized.startsWith("gpt-5.6") || normalized.startsWith("gpt-6-astra")
+  })
 }
 
 export function getSelectedModelLookupCandidates(model: { id?: string }): string[] {

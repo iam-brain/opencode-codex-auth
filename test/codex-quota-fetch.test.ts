@@ -8,7 +8,7 @@ describe("codex quota fetch", () => {
     resetStubbedGlobals()
   })
 
-  it("parses wham usage response into requests/tokens limits", async () => {
+  it("classifies wham usage windows by duration", async () => {
     const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
       async (_url: string | URL | Request, _init?: RequestInit) =>
         new Response(
@@ -47,8 +47,8 @@ describe("codex quota fetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://chatgpt.com/backend-api/wham/usage")
     expect(snapshot?.limits).toEqual([
-      { name: "requests", leftPct: 75, resetsAt: 1_710_000_000_000 },
-      { name: "tokens", leftPct: 30, resetsAt: 1_711_000_000_000 }
+      { name: "5h", leftPct: 75, resetsAt: 1_710_000_000_000 },
+      { name: "weekly", leftPct: 30, resetsAt: 1_711_000_000_000 }
     ])
     expect(snapshot?.credits).toEqual({
       hasCredits: true,
@@ -86,7 +86,33 @@ describe("codex quota fetch", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.openai.com/api/codex/usage")
-    expect(snapshot?.limits).toEqual([{ name: "requests", leftPct: 90, resetsAt: 1_712_000_000_000 }])
+    expect(snapshot?.limits).toEqual([{ name: "5h", leftPct: 90, resetsAt: 1_712_000_000_000 }])
+  })
+
+  it("classifies a weekly primary window by duration instead of position", async () => {
+    const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            rate_limit: {
+              primary_window: {
+                used_percent: 34,
+                limit_window_seconds: 604800,
+                reset_at: 1_711_000_000
+              }
+            }
+          }),
+          { status: 200 }
+        )
+    )
+
+    const snapshot = await fetchQuotaSnapshotFromBackend({
+      accessToken: "ey.a.jwt",
+      now: 222,
+      fetchImpl: fetchMock
+    })
+
+    expect(snapshot?.limits).toEqual([{ name: "weekly", leftPct: 66, resetsAt: 1_711_000_000_000 }])
   })
 
   it("routes quota requests with ChatGPT-Account-Id header for account isolation parity", async () => {

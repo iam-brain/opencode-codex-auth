@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - Fixed ChatGPT OAuth requests failing with `Unsupported parameter: max_output_tokens` by removing that field for every model before dispatch.
+- Fixed quota snapshots assigning weekly usage and reset times to the `5h` row when the backend returns windows in a different order or omits the 5-hour window.
+- Prepared catalog-driven GPT-6 Astra support with Codex `0.153.2` fallback identity, GPT-6 provider-family metadata, Fast/1M/Pro aliases, and Pro request serialization.
+- Corrected official GPT-5.6 and GPT-6 Astra 1M aliases to use the published 1,050,000-token context, 922,000-token input, and 128,000-token output limits independently of Codex's internal override cap.
 
 ## 1.10.0 - 2026-07-18
 

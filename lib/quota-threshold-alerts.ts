@@ -1,4 +1,5 @@
-import type { CodexLimit, CodexRateLimitSnapshot } from "./types.js"
+import type { CodexRateLimitSnapshot } from "./types.js"
+import { resolveQuotaWindows } from "./quota-windows.js"
 
 export const QUOTA_WARNING_THRESHOLDS_PCT = [25, 20, 10, 5, 2.5, 0] as const
 
@@ -43,22 +44,6 @@ function formatPct(value: number): string {
 
 function sanitizeReasonPct(value: number): string {
   return formatPct(value).replace(".", "_")
-}
-
-function findLimitByName(snapshot: CodexRateLimitSnapshot, names: string[]): CodexLimit | undefined {
-  const lowered = names.map((name) => name.toLowerCase())
-  return snapshot.limits.find((limit) => lowered.includes(limit.name.toLowerCase()))
-}
-
-function resolveQuotaWindows(snapshot: CodexRateLimitSnapshot): {
-  fiveHour?: CodexLimit
-  weekly?: CodexLimit
-} {
-  const fiveHour = findLimitByName(snapshot, ["5h", "primary", "requests"]) ?? snapshot.limits[0]
-  const weekly =
-    findLimitByName(snapshot, ["weekly", "secondary", "tokens"]) ??
-    snapshot.limits.find((limit) => limit !== fiveHour && limit.name.toLowerCase() !== fiveHour?.name.toLowerCase())
-  return { fiveHour, weekly }
 }
 
 function findHighestReachedThresholdIndex(leftPct: number): number {

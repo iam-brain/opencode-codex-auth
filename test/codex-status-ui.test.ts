@@ -68,4 +68,28 @@ describe("codex status ui", () => {
     expect(text).toContain("Unknown, account expired")
     expect(text).toContain("Credits")
   })
+
+  it("does not display a weekly-only snapshot as the 5h quota", () => {
+    const now = Date.now()
+    const out = renderDashboard(
+      {
+        accounts: [{ identityKey: "acc|u@e.com|plus", email: "u@e.com", plan: "plus", enabled: true }],
+        snapshots: {
+          "acc|u@e.com|plus": {
+            updatedAt: now,
+            modelFamily: "gpt-5.3-codex",
+            limits: [{ name: "weekly", leftPct: 66, resetsAt: now + 7 * 24 * 60 * 60 * 1000 }]
+          }
+        }
+      },
+      { useColor: false }
+    )
+
+    const fiveHourLine = out.find((line) => line.includes("5h"))
+    const weeklyLine = out.find((line) => line.includes("Weekly"))
+    expect(fiveHourLine).toContain("0% left")
+    expect(fiveHourLine).toContain("Unknown, no snapshot yet")
+    expect(weeklyLine).toContain("66% left")
+    expect(weeklyLine).toContain("resets")
+  })
 })
