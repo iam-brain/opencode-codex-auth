@@ -10,12 +10,14 @@ Track the OpenCode and Codex releases this plugin is aligned to, and how to keep
 - Upstream HEAD inspected: GitHub latest release/tag via `npm run check:upstream`
 - Native Codex reference file: `packages/opencode/src/plugin/openai/codex.ts`
 - Codex upstream repo: `https://github.com/openai/codex`
-- Codex upstream release track: `rust-v0.144.1` for the GPT-5.6 Ultra contract
+- Codex upstream release track: `rust-v0.153.2` for GPT-6 Astra readiness; `rust-v0.144.1` remains the pinned GPT-5.6 Ultra prompt source
 - Local dependency target:
   - `@opencode-ai/plugin`: `^1.17.18`
   - `@opencode-ai/sdk`: `^1.17.18`
 
 ## Latest parity audit (2026-07-10)
+
+GPT-6 Astra readiness was checked separately on 2026-09-04 against `rust-v0.153.2`. The plugin now uses `0.153.2` as its offline fallback, consumes Astra only through the existing live/official catalog path, maps it to the GPT-6 provider family, and enables the documented Fast, 1M, and Pro surfaces when their existing configuration gates allow them.
 
 - Verified OAuth constants and authorize URL semantics against upstream `codex.ts`.
 - Verified native callback URI now uses `http://localhost:1455/auth/callback`.
