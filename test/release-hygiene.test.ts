@@ -163,9 +163,17 @@ describe("release hygiene", () => {
   it("dispatches PR CI while retaining security audit on main pushes", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
-    expect(workflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+workflow_dispatch:/)
-    expect(workflow).not.toMatch(/^\s+pull_request:/m)
-    expect(workflow).toContain("COVERAGE_RATCHET_BASE_REF: ${{ inputs.base_sha || github.event.before }}")
+    expect(workflow).toMatch(
+      /on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:\s*\n\s+workflow_dispatch:/
+    )
+    expect(workflow).toContain(
+      "if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository"
+    )
+    expect(workflow).toContain("head_sha:")
+    expect(workflow).toContain('test "$REVIEWED_HEAD_SHA" = "$GITHUB_SHA"')
+    expect(workflow).toContain(
+      "COVERAGE_RATCHET_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_sha || github.event.before }}"
+    )
     for (const job of REQUIRED_PR_CI_JOB_NAMES) {
       expect(workflow).toContain(job)
     }
@@ -180,8 +188,14 @@ describe("release hygiene", () => {
 
   it("allows manual secret scanning while retaining main pushes", () => {
     const secretScanWorkflow = readFileSync(join(process.cwd(), ".github", "workflows", "secret-scan.yml"), "utf-8")
-    expect(secretScanWorkflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+workflow_dispatch:/)
-    expect(secretScanWorkflow).not.toMatch(/^\s+pull_request:/m)
+    expect(secretScanWorkflow).toMatch(
+      /on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:\s*\n\s+workflow_dispatch:/
+    )
+    expect(secretScanWorkflow).toContain(
+      "if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository"
+    )
+    expect(secretScanWorkflow).toContain("head_sha:")
+    expect(secretScanWorkflow).toContain('test "$REVIEWED_HEAD_SHA" = "$GITHUB_SHA"')
     expect(secretScanWorkflow).toContain("name: Secret Scan")
     expect(secretScanWorkflow).toContain("name: Gitleaks")
   })

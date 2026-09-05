@@ -88,11 +88,13 @@ npm run test
 GitHub Actions handle verification and publish automation:
 
 - `.github/workflows/ci.yml`
-  - runs on pull requests and pushes to `main`
+  - runs automatically on fork pull requests and pushes to `main`; same-repository pull requests are dispatched after exact-head review with the PR branch, `base_sha`, and reviewed `head_sha`
   - runs one full verify job on Ubuntu with Node `22.x`
   - includes packed tarball execution smoke
   - includes Windows compatibility smoke
   - includes security dependency audit gate
+- `.github/workflows/secret-scan.yml`
+  - runs automatically on fork pull requests and pushes to `main`; same-repository pull requests are dispatched after exact-head review with the PR branch and reviewed `head_sha`
 - `.github/workflows/release.yml`
   - on `v*` tag push, installs dependencies, runs `npm run verify` on Node `22.x`, publishes to npm with Trusted Publishing, and creates GitHub Release
   - publish job runs on Node `22.x`, enforces npm `>=11.5.1`, and fails early unless GitHub OIDC metadata + token claims match repository/workflow/environment expectations

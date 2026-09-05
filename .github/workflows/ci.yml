@@ -4,10 +4,15 @@ on:
   push:
     branches:
       - main
+  pull_request:
   workflow_dispatch:
     inputs:
       base_sha:
         description: PR base commit SHA for coverage comparison
+        required: true
+        type: string
+      head_sha:
+        description: Reviewed PR head commit SHA
         required: true
         type: string
 
@@ -21,6 +26,7 @@ permissions:
 jobs:
   verify:
     name: Verify (Node.js 22.x)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -58,17 +64,21 @@ jobs:
 
       - name: Run verify
         env:
-          COVERAGE_RATCHET_BASE_REF: ${{ inputs.base_sha || github.event.before }}
-          COVERAGE_RATCHET_HEAD_REF: ${{ github.sha }}
+          COVERAGE_RATCHET_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_sha || github.event.before }}
+          COVERAGE_RATCHET_HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          REVIEWED_HEAD_SHA: ${{ inputs.head_sha }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
             [[ "$COVERAGE_RATCHET_BASE_REF" =~ ^[0-9a-fA-F]{40}$ ]]
+            [[ "$REVIEWED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
             git cat-file -e "${COVERAGE_RATCHET_BASE_REF}^{commit}"
+            test "$REVIEWED_HEAD_SHA" = "$GITHUB_SHA"
           fi
           npm run verify
 
   package-smoke:
     name: Package Smoke Test
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -118,6 +128,7 @@ jobs:
 
   package-smoke-windows:
     name: Windows Compatibility Smoke
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: windows-latest
     timeout-minutes: 20
 
