@@ -166,10 +166,11 @@ describe("release hygiene", () => {
     expect(workflow).toMatch(
       /on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:\s*\n\s+workflow_dispatch:/
     )
-    expect(workflow).toContain(
-      "if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository"
-    )
+    expect(workflow).toContain('echo "Same-repository pull requests require exact-head manual dispatch." >&2')
+    expect(workflow).toContain("pr_number:")
     expect(workflow).toContain("head_sha:")
+    expect(workflow).toContain('gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .base.sha')
+    expect(workflow).toContain('gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha')
     expect(workflow).toContain('test "$REVIEWED_HEAD_SHA" = "$GITHUB_SHA"')
     expect(workflow).toContain(
       "COVERAGE_RATCHET_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_sha || github.event.before }}"
@@ -191,10 +192,10 @@ describe("release hygiene", () => {
     expect(secretScanWorkflow).toMatch(
       /on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:\s*\n\s+workflow_dispatch:/
     )
-    expect(secretScanWorkflow).toContain(
-      "if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository"
-    )
+    expect(secretScanWorkflow).toContain('echo "Same-repository pull requests require exact-head manual dispatch." >&2')
+    expect(secretScanWorkflow).toContain("pr_number:")
     expect(secretScanWorkflow).toContain("head_sha:")
+    expect(secretScanWorkflow).toContain('gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha')
     expect(secretScanWorkflow).toContain('test "$REVIEWED_HEAD_SHA" = "$GITHUB_SHA"')
     expect(secretScanWorkflow).toContain("name: Secret Scan")
     expect(secretScanWorkflow).toContain("name: Gitleaks")
