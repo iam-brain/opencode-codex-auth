@@ -26,6 +26,7 @@ concurrency:
 jobs:
   target:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -47,14 +48,19 @@ jobs:
             const repo = context.repo;
             const { data: repository } = await github.rest.repos.get(repo);
             if (context.ref !== `refs/heads/${repository.default_branch}`) throw new Error('Dispatch only from the trusted default branch');
-            const { data: pr } = await github.rest.pulls.get({ ...repo, pull_number: Number(PR_NUMBER) });
+            let pr;
+            for (let attempt = 0; attempt < 12; attempt++) {
+              ({ data: pr } = await github.rest.pulls.get({ ...repo, pull_number: Number(PR_NUMBER) }));
+              if (pr.head.sha !== HEAD_SHA || pr.base.sha !== BASE_SHA || pr.mergeable !== null) break;
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
             if (pr.state !== 'open' || pr.base.ref !== repository.default_branch || pr.head.sha !== HEAD_SHA || pr.base.sha !== BASE_SHA || pr.mergeable !== true || !pr.merge_commit_sha) throw new Error('PR changed or cannot be merged');
             const { data: merge } = await github.rest.git.getCommit({ ...repo, commit_sha: pr.merge_commit_sha });
             if (merge.parents.length !== 2 || merge.parents[0].sha !== BASE_SHA || merge.parents[1].sha !== HEAD_SHA) throw new Error('Merge parents do not match the reviewed target');
             core.setOutput('merge_sha', merge.sha);
             const checks = {};
             for (const name of ['Verify (Node.js 22.x)', 'Package Smoke Test', 'Windows Compatibility Smoke', 'Gitleaks']) {
-              const { data: check } = await github.rest.checks.create({ ...repo, name, head_sha: HEAD_SHA, status: 'in_progress', details_url: `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}` });
+              const { data: check } = await github.rest.checks.create({ ...repo, name, head_sha: merge.sha, status: 'in_progress', details_url: `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}` });
               checks[name] = check.id;
             }
             core.setOutput('checks', JSON.stringify(checks));
@@ -77,6 +83,7 @@ jobs:
     if: always() && needs.target.result == 'success'
     needs: [target, ci, secrets]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -89,9 +96,9 @@ jobs:
           BASE_SHA: ${{ inputs.base_sha }}
           MERGE_SHA: ${{ needs.target.outputs.merge_sha }}
           CHECKS: ${{ needs.target.outputs.checks }}
-          VERIFY: ${{ needs.ci.result }}
-          PACKAGE: ${{ needs.ci.result }}
-          WINDOWS: ${{ needs.ci.result }}
+          VERIFY: ${{ needs.ci.outputs.verify }}
+          PACKAGE: ${{ needs.ci.outputs.package }}
+          WINDOWS: ${{ needs.ci.outputs.windows }}
           GITLEAKS: ${{ needs.secrets.result }}
         with:
           script: |

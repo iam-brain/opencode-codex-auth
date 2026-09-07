@@ -16,6 +16,13 @@ on:
       head_sha:
         required: true
         type: string
+    outputs:
+      verify:
+        value: ${{ jobs.results.outputs.verify }}
+      package:
+        value: ${{ jobs.results.outputs.package }}
+      windows:
+        value: ${{ jobs.results.outputs.windows }}
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ inputs.head_sha || github.event.pull_request.number || github.ref }}
@@ -25,6 +32,18 @@ permissions:
   contents: read
 
 jobs:
+  results:
+    if: always() && github.event_name == 'workflow_dispatch'
+    needs: [verify, package-smoke, package-smoke-windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      verify: ${{ needs.verify.result }}
+      package: ${{ needs.package-smoke.result }}
+      windows: ${{ needs.package-smoke-windows.result }}
+    steps:
+      - run: echo 'Returning individual validation outcomes.'
+
   verify:
     name: Verify (Node.js 22.x)
     runs-on: ubuntu-latest
