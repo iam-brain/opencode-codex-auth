@@ -1,0 +1,112 @@
+name: Reviewed PR validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number
+        required: true
+        type: string
+      head_sha:
+        description: Reviewed pull request head SHA
+        required: true
+        type: string
+      base_sha:
+        description: Reviewed pull request base SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reviewed-pr-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  target:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: write
+    outputs:
+      merge_sha: ${{ steps.target.outputs.merge_sha }}
+      checks: ${{ steps.target.outputs.checks }}
+    steps:
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        id: target
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+        with:
+          script: |
+            const { PR_NUMBER, HEAD_SHA, BASE_SHA } = process.env;
+            if (!/^[1-9][0-9]*$/.test(PR_NUMBER) || !/^[0-9a-f]{40}$/.test(HEAD_SHA) || !/^[0-9a-f]{40}$/.test(BASE_SHA)) throw new Error('Invalid immutable target');
+            const repo = context.repo;
+            const { data: repository } = await github.rest.repos.get(repo);
+            if (context.ref !== `refs/heads/${repository.default_branch}`) throw new Error('Dispatch only from the trusted default branch');
+            let pr;
+            for (let attempt = 0; attempt < 12; attempt++) {
+              ({ data: pr } = await github.rest.pulls.get({ ...repo, pull_number: Number(PR_NUMBER) }));
+              if (pr.head.sha !== HEAD_SHA || pr.base.sha !== BASE_SHA || pr.mergeable !== null) break;
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+            if (pr.state !== 'open' || pr.base.ref !== repository.default_branch || pr.head.sha !== HEAD_SHA || pr.base.sha !== BASE_SHA || pr.mergeable !== true || !pr.merge_commit_sha) throw new Error('PR changed or cannot be merged');
+            const { data: merge } = await github.rest.git.getCommit({ ...repo, commit_sha: pr.merge_commit_sha });
+            if (merge.parents.length !== 2 || merge.parents[0].sha !== BASE_SHA || merge.parents[1].sha !== HEAD_SHA) throw new Error('Merge parents do not match the reviewed target');
+            core.setOutput('merge_sha', merge.sha);
+            const checks = {};
+            for (const name of ['Verify (Node.js 22.x)', 'Package Smoke Test', 'Windows Compatibility Smoke', 'Gitleaks']) {
+              const { data: check } = await github.rest.checks.create({ ...repo, name, head_sha: merge.sha, status: 'in_progress', details_url: `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}` });
+              checks[name] = check.id;
+            }
+            core.setOutput('checks', JSON.stringify(checks));
+
+  ci:
+    needs: target
+    uses: ./.github/workflows/ci.yml
+    with:
+      merge_sha: ${{ needs.target.outputs.merge_sha }}
+      base_sha: ${{ inputs.base_sha }}
+      head_sha: ${{ inputs.head_sha }}
+
+  secrets:
+    needs: target
+    uses: ./.github/workflows/secret-scan.yml
+    with:
+      merge_sha: ${{ needs.target.outputs.merge_sha }}
+
+  report:
+    if: always() && needs.target.result == 'success'
+    needs: [target, ci, secrets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: write
+    steps:
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+          MERGE_SHA: ${{ needs.target.outputs.merge_sha }}
+          CHECKS: ${{ needs.target.outputs.checks }}
+          VERIFY: ${{ needs.ci.outputs.verify }}
+          PACKAGE: ${{ needs.ci.outputs.package }}
+          WINDOWS: ${{ needs.ci.outputs.windows }}
+          GITLEAKS: ${{ needs.secrets.result }}
+        with:
+          script: |
+            const repo = context.repo;
+            const { data: pr } = await github.rest.pulls.get({ ...repo, pull_number: Number(process.env.PR_NUMBER) });
+            const current = pr.state === 'open' && pr.head.sha === process.env.HEAD_SHA && pr.base.sha === process.env.BASE_SHA && pr.merge_commit_sha === process.env.MERGE_SHA;
+            const results = { 'Verify (Node.js 22.x)': process.env.VERIFY, 'Package Smoke Test': process.env.PACKAGE, 'Windows Compatibility Smoke': process.env.WINDOWS, Gitleaks: process.env.GITLEAKS };
+            for (const [name, check_run_id] of Object.entries(JSON.parse(process.env.CHECKS))) {
+              const conclusion = current && results[name] === 'success' ? 'success' : 'failure';
+              await github.rest.checks.update({ ...repo, check_run_id, status: 'completed', conclusion, output: { title: name, summary: `Reviewed head ${process.env.HEAD_SHA}; base ${process.env.BASE_SHA}; tested merge ${process.env.MERGE_SHA}; result ${results[name] || 'missing'}; target current: ${current}` } });
+            }

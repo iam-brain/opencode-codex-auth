@@ -28,6 +28,12 @@ It now includes strict Biome linting + format checks (including typed promise-sa
 
 ## Quality policy gates
 
+### Trusted manual validation bootstrap
+
+Automatic PR checks remain enabled while `reviewed-pr.yml` is introduced. After reviewing an exact PR head, a maintainer may dispatch that workflow from `main`, supplying `pr_number`, `head_sha`, and `base_sha`. Never dispatch it from the PR branch. The trusted workflow validates the live PR and the two parents of its immutable merge commit, then calls the existing read-only validation jobs against that merge commit. A separate job that never checks out PR code reports their actual results on the tested merge commit, and fails those results if the PR head or base changed during validation. Attaching checks to the merge commit prevents them from transferring to a new merge result when the base advances. Fork PRs use the same explicit merge-commit path.
+
+Do not remove automatic PR triggers until this dispatcher exists on `main` and has been validated live. Required checks must remain enforced by repository branch policy; workflow configuration alone does not prevent an operator from merging without checks.
+
 - `npm run lint`
   - Runs Biome lint on source + tests with focused-test bans and typed promise-safety rules.
 - `npm run typecheck:test`
