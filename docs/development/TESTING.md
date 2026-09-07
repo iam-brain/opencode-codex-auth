@@ -22,11 +22,17 @@ npm run verify
 
 `npm run verify` is the required local gate before commits, pushes, and PR updates. `npm run verify:local` runs that gate with caching, and the installed git hooks enforce it automatically before `git commit` and `git push`. The commit hook accepts staged-only commit-ready changes; the push hook requires a clean tree and derives the touched-file set from the outgoing commits so the local regression-only ratchet matches the actual push surface instead of only `HEAD^`. GitHub Actions still adds extra platform and security jobs beyond the repo-local verify run.
 
-PR GitHub CI is intentionally slimmer than local `verify`: it keeps the clean-room Ubuntu verify job, Linux tarball smoke, Windows smoke, and secret scanning. For same-repository PRs, a maintainer runs `ci.yml` with the PR branch plus its `pr_number`, reviewed `base_sha`, and reviewed `head_sha`, then runs `secret-scan.yml` with that branch, `pr_number`, and `head_sha`; both workflows verify those values against the live pull request before checking out branch code. Fork pull requests run these checks automatically because their branches cannot be selected by a workflow dispatch in this repository. The separate `npm audit` dependency audit remains GitHub-hosted, but it now runs on default-branch pushes instead of every PR.
+PR GitHub CI keeps the clean-room Ubuntu verify job, Linux tarball smoke, Windows smoke, and secret scanning. A maintainer explicitly starts these checks after reviewing the exact head; pushes to PR branches do not start them. The separate `npm audit` dependency audit remains GitHub-hosted on default-branch pushes.
 
 It now includes strict Biome linting + format checks (including typed promise-safety rules), anti-mock policy checks, a regression-only coverage ratchet, docs drift checks, Node ESM regression checks (source + dist import specifiers), and a built CLI smoke run.
 
 ## Quality policy gates
+
+### Trusted manual validation
+
+After reviewing an exact PR head, a maintainer dispatches `reviewed-pr.yml` from `main`, supplying `pr_number`, `head_sha`, and `base_sha`. Never dispatch it from the PR branch. The trusted workflow validates the live PR and the two parents of its immutable merge commit, then calls the existing read-only validation jobs against that merge commit. A separate job that never checks out PR code reports their actual results on the tested merge commit, and fails those results if the PR head or base changed during validation. Attaching checks to the merge commit prevents them from transferring to a new merge result when the base advances. Fork PRs use the same explicit merge-commit path.
+
+Run `gh workflow run reviewed-pr.yml --ref main -f pr_number=NUMBER -f head_sha=REVIEWED_HEAD_SHA -f base_sha=REVIEWED_BASE_SHA`, replacing the placeholders with the reviewed values. Confirm the run's checkout SHA equals the PR merge commit and all four validation checks passed before merging. A new head or base requires fresh validation. Required checks must remain enforced by repository branch policy; workflow configuration alone does not prevent an operator from merging without checks.
 
 - `npm run lint`
   - Runs Biome lint on source + tests with focused-test bans and typed promise-safety rules.

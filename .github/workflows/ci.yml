@@ -4,62 +4,57 @@ on:
   push:
     branches:
       - main
-  pull_request:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      pr_number:
-        description: Pull request number
+      merge_sha:
         required: true
         type: string
       base_sha:
-        description: PR base commit SHA for coverage comparison
         required: true
         type: string
       head_sha:
-        description: Reviewed PR head commit SHA
         required: true
         type: string
+    outputs:
+      verify:
+        value: ${{ jobs.results.outputs.verify }}
+      package:
+        value: ${{ jobs.results.outputs.package }}
+      windows:
+        value: ${{ jobs.results.outputs.windows }}
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ inputs.head_sha || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
+  results:
+    if: always() && github.event_name == 'workflow_dispatch'
+    needs: [verify, package-smoke, package-smoke-windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      verify: ${{ needs.verify.result }}
+      package: ${{ needs.package-smoke.result }}
+      windows: ${{ needs.package-smoke-windows.result }}
+    steps:
+      - run: echo 'Returning individual validation outcomes.'
+
   verify:
     name: Verify (Node.js 22.x)
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
     steps:
-      - name: Validate dispatch target
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-          REVIEWED_BASE_SHA: ${{ inputs.base_sha }}
-          REVIEWED_HEAD_SHA: ${{ inputs.head_sha }}
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == pull_request && "${{ github.event.pull_request.head.repo.full_name }}" == "$GITHUB_REPOSITORY" ]]; then
-            echo "Same-repository pull requests require exact-head manual dispatch." >&2
-            exit 1
-          fi
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
-            [[ "$REVIEWED_BASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
-            [[ "$REVIEWED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
-            test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .base.sha)" = "$REVIEWED_BASE_SHA"
-            test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$REVIEWED_HEAD_SHA"
-            test "$REVIEWED_HEAD_SHA" = "$GITHUB_SHA"
-          fi
-
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.merge_sha || github.sha }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -89,13 +84,9 @@ jobs:
 
       - name: Run verify
         env:
-          COVERAGE_RATCHET_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_sha || github.event.before }}
-          COVERAGE_RATCHET_HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            git cat-file -e "${COVERAGE_RATCHET_BASE_REF}^{commit}"
-          fi
-          npm run verify
+          COVERAGE_RATCHET_BASE_REF: ${{ inputs.base_sha || github.event.pull_request.base.sha || github.event.before }}
+          COVERAGE_RATCHET_HEAD_REF: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
+        run: npm run verify
 
   package-smoke:
     name: Package Smoke Test
@@ -103,28 +94,12 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Validate dispatch target
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-          REVIEWED_HEAD_SHA: ${{ inputs.head_sha }}
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == pull_request && "${{ github.event.pull_request.head.repo.full_name }}" == "$GITHUB_REPOSITORY" ]]; then
-            echo "Same-repository pull requests require exact-head manual dispatch." >&2
-            exit 1
-          fi
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
-            [[ "$REVIEWED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
-            test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$REVIEWED_HEAD_SHA"
-            test "$REVIEWED_HEAD_SHA" = "$GITHUB_SHA"
-          fi
-
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
+          ref: ${{ inputs.merge_sha || github.sha }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -170,28 +145,12 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Validate dispatch target
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-          REVIEWED_HEAD_SHA: ${{ inputs.head_sha }}
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == pull_request && "${{ github.event.pull_request.head.repo.full_name }}" == "$GITHUB_REPOSITORY" ]]; then
-            echo "Same-repository pull requests require exact-head manual dispatch." >&2
-            exit 1
-          fi
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
-            [[ "$REVIEWED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
-            test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$REVIEWED_HEAD_SHA"
-            test "$REVIEWED_HEAD_SHA" = "$GITHUB_SHA"
-          fi
-
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
+          ref: ${{ inputs.merge_sha || github.sha }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

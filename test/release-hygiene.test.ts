@@ -13,6 +13,30 @@ const REQUIRED_WORKFLOW_STATIC_JOB_NAMES = ["Package Smoke Test", "Windows Compa
 const REQUIRED_PR_CI_JOB_NAMES = ["Verify (Node.js 22.x)", "Package Smoke Test", "Windows Compatibility Smoke"]
 
 describe("release hygiene", () => {
+  it("uses trusted immutable PR validation instead of automatic checks", () => {
+    const workflow = readFileSync(join(process.cwd(), ".github/workflows/reviewed-pr.yml"), "utf-8")
+    expect(workflow).toContain("workflow_dispatch:")
+    expect(workflow).toContain("Dispatch only from the trusted default branch")
+    expect(workflow).toContain("merge.parents[0].sha !== BASE_SHA")
+    expect(workflow).toContain("merge.parents[1].sha !== HEAD_SHA")
+    expect(workflow).toContain("attempt < 12")
+    expect(workflow).toContain("head_sha: merge.sha")
+    expect(workflow).toContain("VERIFY: ${{ needs.ci.outputs.verify }}")
+    expect(workflow.match(/timeout-minutes: 5/g)).toHaveLength(2)
+    expect(workflow).toContain("pr.head.sha === process.env.HEAD_SHA")
+    expect(workflow).toContain("pr.base.sha === process.env.BASE_SHA")
+    expect(workflow).toContain("results[name] === 'success' ? 'success' : 'failure'")
+    expect(workflow).not.toContain("actions/checkout")
+    expect(workflow).not.toContain("secrets: inherit")
+    for (const file of ["ci.yml", "secret-scan.yml"]) {
+      const validation = readFileSync(join(process.cwd(), ".github/workflows", file), "utf-8")
+      expect(validation).not.toContain("pull_request:")
+      expect(validation).toContain("workflow_call:")
+      expect(validation).toContain("ref: ${{ inputs.merge_sha || github.sha }}")
+      expect(validation).not.toContain("checks: write")
+    }
+  })
+
   it("package.json has verify script", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
@@ -163,17 +187,13 @@ describe("release hygiene", () => {
   it("dispatches PR CI while retaining security audit on main pushes", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
-    expect(workflow).toMatch(
-      /on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:\s*\n\s+workflow_dispatch:/
-    )
-    expect(workflow).toContain('echo "Same-repository pull requests require exact-head manual dispatch." >&2')
-    expect(workflow).toContain("pr_number:")
+    expect(workflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+workflow_call:/)
+    expect(workflow).not.toContain("pull_request:")
+    expect(workflow).not.toContain("workflow_dispatch:")
+    expect(workflow).toContain("merge_sha:")
     expect(workflow).toContain("head_sha:")
-    expect(workflow).toContain('gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .base.sha')
-    expect(workflow).toContain('gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha')
-    expect(workflow).toContain('test "$REVIEWED_HEAD_SHA" = "$GITHUB_SHA"')
     expect(workflow).toContain(
-      "COVERAGE_RATCHET_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_sha || github.event.before }}"
+      "COVERAGE_RATCHET_BASE_REF: ${{ inputs.base_sha || github.event.pull_request.base.sha || github.event.before }}"
     )
     for (const job of REQUIRED_PR_CI_JOB_NAMES) {
       expect(workflow).toContain(job)
@@ -189,14 +209,10 @@ describe("release hygiene", () => {
 
   it("allows manual secret scanning while retaining main pushes", () => {
     const secretScanWorkflow = readFileSync(join(process.cwd(), ".github", "workflows", "secret-scan.yml"), "utf-8")
-    expect(secretScanWorkflow).toMatch(
-      /on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:\s*\n\s+workflow_dispatch:/
-    )
-    expect(secretScanWorkflow).toContain('echo "Same-repository pull requests require exact-head manual dispatch." >&2')
-    expect(secretScanWorkflow).toContain("pr_number:")
-    expect(secretScanWorkflow).toContain("head_sha:")
-    expect(secretScanWorkflow).toContain('gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha')
-    expect(secretScanWorkflow).toContain('test "$REVIEWED_HEAD_SHA" = "$GITHUB_SHA"')
+    expect(secretScanWorkflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+workflow_call:/)
+    expect(secretScanWorkflow).not.toContain("pull_request:")
+    expect(secretScanWorkflow).not.toContain("workflow_dispatch:")
+    expect(secretScanWorkflow).toContain("merge_sha:")
     expect(secretScanWorkflow).toContain("name: Secret Scan")
     expect(secretScanWorkflow).toContain("name: Gitleaks")
   })
