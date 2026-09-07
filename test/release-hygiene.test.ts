@@ -13,6 +13,26 @@ const REQUIRED_WORKFLOW_STATIC_JOB_NAMES = ["Package Smoke Test", "Windows Compa
 const REQUIRED_PR_CI_JOB_NAMES = ["Verify (Node.js 22.x)", "Package Smoke Test", "Windows Compatibility Smoke"]
 
 describe("release hygiene", () => {
+  it("bootstraps trusted immutable PR validation without disabling automatic checks", () => {
+    const workflow = readFileSync(join(process.cwd(), ".github/workflows/reviewed-pr.yml"), "utf-8")
+    expect(workflow).toContain("workflow_dispatch:")
+    expect(workflow).toContain("Dispatch only from the trusted default branch")
+    expect(workflow).toContain("merge.parents[0].sha !== BASE_SHA")
+    expect(workflow).toContain("merge.parents[1].sha !== HEAD_SHA")
+    expect(workflow).toContain("pr.head.sha === process.env.HEAD_SHA")
+    expect(workflow).toContain("pr.base.sha === process.env.BASE_SHA")
+    expect(workflow).toContain("results[name] === 'success' ? 'success' : 'failure'")
+    expect(workflow).not.toContain("actions/checkout")
+    expect(workflow).not.toContain("secrets: inherit")
+    for (const file of ["ci.yml", "secret-scan.yml"]) {
+      const validation = readFileSync(join(process.cwd(), ".github/workflows", file), "utf-8")
+      expect(validation).toContain("pull_request:")
+      expect(validation).toContain("workflow_call:")
+      expect(validation).toContain("ref: ${{ inputs.merge_sha || github.sha }}")
+      expect(validation).not.toContain("checks: write")
+    }
+  })
+
   it("package.json has verify script", () => {
     const pkgPath = join(process.cwd(), "package.json")
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
