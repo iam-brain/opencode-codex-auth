@@ -72,7 +72,7 @@ npm run check:docs
 
 Local git hooks now enforce `npm run verify` before both `git commit` and `git push`. The commit hook accepts staged-only commit-ready changes, and the push hook requires a clean tree so it verifies the exact commits being pushed. `npm run verify:local` runs the same enforcement manually, with a cache so unchanged trees do not rerun the full suite twice in a row.
 
-Pull request CI stays intentionally lean: GitHub still runs clean-room verify, tarball smoke, Windows smoke, and secret scanning. Dependency vulnerability auditing via `npm audit` runs on default-branch pushes instead of every PR.
+Pull request CI stays intentionally lean. After an exact-head review, maintainers dispatch `reviewed-pr.yml` from `main` with the PR number and reviewed head/base SHAs. The trusted workflow runs clean-room verify, tarball smoke, Windows smoke, and secret scanning against the immutable PR merge result, including fork PRs. See [manual validation](docs/development/TESTING.md#trusted-manual-validation). Dependency vulnerability auditing via `npm audit` runs on default-branch pushes instead of every PR.
 
 ## Usage Note
 

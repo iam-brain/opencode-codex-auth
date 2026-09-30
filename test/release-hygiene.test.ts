@@ -13,7 +13,7 @@ const REQUIRED_WORKFLOW_STATIC_JOB_NAMES = ["Package Smoke Test", "Windows Compa
 const REQUIRED_PR_CI_JOB_NAMES = ["Verify (Node.js 22.x)", "Package Smoke Test", "Windows Compatibility Smoke"]
 
 describe("release hygiene", () => {
-  it("bootstraps trusted immutable PR validation without disabling automatic checks", () => {
+  it("uses trusted immutable PR validation instead of automatic checks", () => {
     const workflow = readFileSync(join(process.cwd(), ".github/workflows/reviewed-pr.yml"), "utf-8")
     expect(workflow).toContain("workflow_dispatch:")
     expect(workflow).toContain("Dispatch only from the trusted default branch")
@@ -30,7 +30,7 @@ describe("release hygiene", () => {
     expect(workflow).not.toContain("secrets: inherit")
     for (const file of ["ci.yml", "secret-scan.yml"]) {
       const validation = readFileSync(join(process.cwd(), ".github/workflows", file), "utf-8")
-      expect(validation).toContain("pull_request:")
+      expect(validation).not.toContain("pull_request:")
       expect(validation).toContain("workflow_call:")
       expect(validation).toContain("ref: ${{ inputs.merge_sha || github.sha }}")
       expect(validation).not.toContain("checks: write")
@@ -184,10 +184,17 @@ describe("release hygiene", () => {
     }
   })
 
-  it("keeps PR CI lean while retaining security audit on main pushes", () => {
+  it("dispatches PR CI while retaining security audit on main pushes", () => {
     const workflowPath = join(process.cwd(), ".github", "workflows", "ci.yml")
     const workflow = readFileSync(workflowPath, "utf-8")
-    expect(workflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:/)
+    expect(workflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+workflow_call:/)
+    expect(workflow).not.toContain("pull_request:")
+    expect(workflow).not.toContain("workflow_dispatch:")
+    expect(workflow).toContain("merge_sha:")
+    expect(workflow).toContain("head_sha:")
+    expect(workflow).toContain(
+      "COVERAGE_RATCHET_BASE_REF: ${{ inputs.base_sha || github.event.pull_request.base.sha || github.event.before }}"
+    )
     for (const job of REQUIRED_PR_CI_JOB_NAMES) {
       expect(workflow).toContain(job)
     }
@@ -200,9 +207,12 @@ describe("release hygiene", () => {
     expect(securityAuditBlock).toContain("npm audit --audit-level=high")
   })
 
-  it("keeps secret scanning on pull requests", () => {
+  it("allows manual secret scanning while retaining main pushes", () => {
     const secretScanWorkflow = readFileSync(join(process.cwd(), ".github", "workflows", "secret-scan.yml"), "utf-8")
-    expect(secretScanWorkflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+pull_request:/)
+    expect(secretScanWorkflow).toMatch(/on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+-\s+main\s*\n\s+workflow_call:/)
+    expect(secretScanWorkflow).not.toContain("pull_request:")
+    expect(secretScanWorkflow).not.toContain("workflow_dispatch:")
+    expect(secretScanWorkflow).toContain("merge_sha:")
     expect(secretScanWorkflow).toContain("name: Secret Scan")
     expect(secretScanWorkflow).toContain("name: Gitleaks")
   })
