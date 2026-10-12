@@ -145,6 +145,7 @@ jobs:
 
   npm-publish:
     name: Publish to npm
+    if: github.repository == 'iam-brain/opencode-codex-auth'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -321,7 +322,8 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: npm-publish
+    needs: [verify, npm-publish]
+    if: always() && needs.verify.result == 'success' && (needs.npm-publish.result == 'success' || needs.npm-publish.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -333,6 +335,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download release artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: npm-release-tarball
+          path: release-artifact
+
       - name: Create release (idempotent)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -342,11 +350,11 @@ jobs:
           echo "Tag: ${TAG}"
 
           if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            echo "Release already exists for ${TAG}; skipping."
+            gh release upload "${TAG}" ./release-artifact/*.tgz --repo "${GITHUB_REPOSITORY}" --clobber
             exit 0
           fi
 
-          gh release create "${TAG}" \
+          gh release create "${TAG}" ./release-artifact/*.tgz \
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
             --generate-notes
