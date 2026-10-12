@@ -543,6 +543,21 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
     await persistOAuthTokensForMode(tokens, authMode)
   }
 
+  const browserAuthorizeDeps = {
+    authMode,
+    spoofMode,
+    runInteractiveAuthMenu,
+    startOAuthServer,
+    waitForOAuthCallback,
+    scheduleOAuthServerStop,
+    persistOAuthTokens,
+    openAuthUrl: (url: string) => {
+      void tryOpenUrlInBrowser(url, opts.log)
+    },
+    shutdownGraceMs: OAUTH_SERVER_SHUTDOWN_GRACE_MS,
+    shutdownErrorGraceMs: OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS
+  }
+
   return {
     event: async ({ event }) => {
       const sessionID = deletedSessionIDFromEvent(event)
@@ -667,25 +682,17 @@ export async function CodexAuthPlugin(input: PluginInput, opts: CodexAuthPluginO
         {
           label: "ChatGPT Pro/Plus (browser)",
           type: "oauth",
-          authorize: createBrowserOAuthAuthorize({
-            authMode,
-            spoofMode,
-            runInteractiveAuthMenu,
-            startOAuthServer,
-            waitForOAuthCallback,
-            scheduleOAuthServerStop,
-            persistOAuthTokens,
-            openAuthUrl: (url: string) => {
-              void tryOpenUrlInBrowser(url, opts.log)
-            },
-            shutdownGraceMs: OAUTH_SERVER_SHUTDOWN_GRACE_MS,
-            shutdownErrorGraceMs: OAUTH_SERVER_SHUTDOWN_ERROR_GRACE_MS
-          })
+          authorize: createBrowserOAuthAuthorize(browserAuthorizeDeps)
         },
         {
           label: "ChatGPT Pro/Plus (headless)",
           type: "oauth",
           authorize: createHeadlessOAuthAuthorize({ spoofMode, persistOAuthTokens })
+        },
+        {
+          label: "Manage accounts",
+          type: "oauth",
+          authorize: createBrowserOAuthAuthorize(browserAuthorizeDeps, "manage")
         },
         {
           label: "Manually enter API Key",

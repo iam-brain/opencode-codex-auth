@@ -99,10 +99,19 @@ function toOAuthSuccess(tokens: TokenResponse): OAuthSuccess {
   }
 }
 
-export function createBrowserOAuthAuthorize(deps: BrowserAuthorizeDeps) {
+export function createBrowserOAuthAuthorize(deps: BrowserAuthorizeDeps, mode: "login" | "manage" = "login") {
   return async (inputs?: Record<string, string>): Promise<OAuthAuthorizePayload> => {
+    const hasInteractiveTerminal = process.stdin.isTTY && process.stdout.isTTY
+    if (mode === "manage" && !hasInteractiveTerminal) {
+      return {
+        url: "",
+        method: "auto",
+        instructions: "Account management requires an interactive terminal. Run opencode auth login in a terminal.",
+        callback: async () => ({ type: "failed" })
+      }
+    }
     const shouldUseInteractiveMenu =
-      process.env.OPENCODE_NO_BROWSER !== "1" && process.stdin.isTTY && process.stdout.isTTY
+      hasInteractiveTerminal && (mode === "manage" || process.env.OPENCODE_NO_BROWSER !== "1")
 
     const runSingleBrowserOAuthInline = async (): Promise<TokenResponse | null> => {
       let redirectUri: string

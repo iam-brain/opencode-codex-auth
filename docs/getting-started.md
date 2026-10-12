@@ -65,6 +65,14 @@ Use schemas for autocomplete/validation:
 opencode auth login
 ```
 
+Select **OpenAI**, then **Manage accounts**. To open the manager directly:
+
+```bash
+opencode auth login --provider openai --method "Manage accounts"
+```
+
+The **ChatGPT Pro/Plus (browser)** login method also opens this menu in an interactive terminal. Use **ChatGPT Pro/Plus (headless)** when a browser is unavailable. If you see **Add Another OpenAI Account** instead, OpenCode is loading a different plugin. Replace that plugin entry in `opencode.json` with this plugin.
+
 Account manager highlights:
 
 - Add multiple accounts in one run (`Add new account` returns to menu)

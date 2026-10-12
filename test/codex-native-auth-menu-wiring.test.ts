@@ -242,7 +242,7 @@ describe("codex-native auth menu wiring", () => {
     vi.unstubAllGlobals()
   })
 
-  it("keeps auth methods list native (no standalone transfer method)", async () => {
+  it("exposes account management alongside native login methods", async () => {
     const { hooks } = await loadPluginWithMenu({
       offerLegacyTransfer: true,
       menuResult: "exit"
@@ -250,6 +250,54 @@ describe("codex-native auth menu wiring", () => {
     const labels = hooks.auth?.methods.map((method) => method.label) ?? []
     expect(labels).not.toContain(TRANSFER_LABEL)
     expect(labels).toContain("ChatGPT Pro/Plus (browser)")
+    expect(labels).toContain("Manage accounts")
+  })
+
+  it("opens the explicit account manager even when browser launch is disabled", async () => {
+    const { hooks, runAuthMenuOnce } = await loadPluginWithMenu({
+      offerLegacyTransfer: true,
+      menuResult: "exit"
+    })
+    const method = hooks.auth?.methods.find((entry) => entry.label === "Manage accounts")
+    if (!method || method.type !== "oauth") throw new Error("Missing account manager method")
+    const previousIn = process.stdin.isTTY
+    const previousOut = process.stdout.isTTY
+    process.stdin.isTTY = true
+    process.stdout.isTTY = true
+    vi.stubEnv("OPENCODE_NO_BROWSER", "1")
+    try {
+      const flow = await method.authorize({})
+      expect(runAuthMenuOnce).toHaveBeenCalledTimes(1)
+      expect(flow.url).toBe("")
+      await expect(flow.callback("")).resolves.toEqual({ type: "failed" })
+    } finally {
+      process.stdin.isTTY = previousIn
+      process.stdout.isTTY = previousOut
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it("does not start OAuth when account management has no interactive terminal", async () => {
+    const { hooks, runAuthMenuOnce } = await loadPluginWithMenu({
+      offerLegacyTransfer: false,
+      menuResult: "add"
+    })
+    const method = hooks.auth?.methods.find((entry) => entry.label === "Manage accounts")
+    if (!method || method.type !== "oauth") throw new Error("Missing account manager method")
+    const previousIn = process.stdin.isTTY
+    const previousOut = process.stdout.isTTY
+    process.stdin.isTTY = false
+    process.stdout.isTTY = false
+    try {
+      const flow = await method.authorize({})
+      expect(runAuthMenuOnce).not.toHaveBeenCalled()
+      expect(flow.instructions).toContain("requires an interactive terminal")
+      expect(flow.url).toBe("")
+      await expect(flow.callback("")).resolves.toEqual({ type: "failed" })
+    } finally {
+      process.stdin.isTTY = previousIn
+      process.stdout.isTTY = previousOut
+    }
   })
 
   it("shows interactive menu in CLI login flow and can cancel login", async () => {
