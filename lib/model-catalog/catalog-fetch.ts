@@ -33,6 +33,36 @@ function mergeCatalogModels(primary: CodexModelInfo[], fallback: CodexModelInfo[
   return Array.from(bySlug.values()).sort((a, b) => compareModelSlugs(a.slug, b.slug))
 }
 
+export type CachedCodexModelCatalog = {
+  models: CodexModelInfo[]
+  stale: boolean
+}
+
+export async function getCachedCodexModelCatalog(
+  input: Pick<GetCodexModelCatalogInput, "accountId" | "cacheDir" | "now" | "onEvent">
+): Promise<CachedCodexModelCatalog | undefined> {
+  const now = (input.now ?? Date.now)()
+  const cacheDir = resolveCodexCacheDir(input.cacheDir)
+  const [disk, github] = await Promise.all([
+    readCatalogFromDisk(cacheDir, input.accountId),
+    readCatalogFromGitHubCache(cacheDir)
+  ])
+
+  if (disk?.models.length) {
+    const stale = !isFresh(disk, now)
+    emitEvent(input, { type: stale ? "stale_cache_used" : "disk_cache_hit", reason: "startup_cache" })
+    return {
+      models: mergeCatalogModels(disk.models, github?.models),
+      stale
+    }
+  }
+  if (github?.models.length) {
+    emitEvent(input, { type: "stale_cache_used", reason: "github_cache_fallback" })
+    return { models: github.models, stale: true }
+  }
+  return undefined
+}
+
 function normalizeClientVersion(value: string | undefined, fallback?: string): string {
   const trimmed = value?.trim()
   if (trimmed) return trimmed

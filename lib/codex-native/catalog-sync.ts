@@ -1,5 +1,10 @@
 import type { Logger } from "../logger.js"
-import { getCodexModelCatalog, type CodexModelInfo } from "../model-catalog.js"
+import {
+  getCachedCodexModelCatalog,
+  getCodexModelCatalog,
+  type CodexModelCatalogEvent,
+  type CodexModelInfo
+} from "../model-catalog.js"
 import { selectAccount } from "../rotation.js"
 import { getOpenAIOAuthDomain, loadAuthStorage } from "../storage.js"
 import type { OpenAIAuthMode, RotationStrategy } from "../types.js"
@@ -74,17 +79,42 @@ export async function initializeCatalogSync(input: {
   }) => Promise<CodexModelInfo[] | undefined>
 > {
   const catalogAuth = await selectCatalogAuthCandidate(input.authMode, input.pidOffsetEnabled, input.rotationStrategy)
-
-  const initialCatalog = await getCodexModelCatalog({
-    accessToken: catalogAuth.accessToken,
-    accountId: catalogAuth.accountId,
-    ...input.resolveCatalogHeaders(),
-    onEvent: (event) => input.log?.debug("codex model catalog", event)
-  })
-
   const initialScopeKey = resolveCatalogScopeKey(catalogAuth)
-  input.setCatalogModels(initialScopeKey, initialCatalog)
-  input.activateCatalogScope(initialScopeKey)
+  const catalogHeaders = input.resolveCatalogHeaders()
+  const onEvent = (event: CodexModelCatalogEvent) => input.log?.debug("codex model catalog", event)
+  const cachedCatalog = await getCachedCodexModelCatalog({
+    accountId: catalogAuth.accountId,
+    onEvent
+  }).catch(() => undefined)
+
+  if (cachedCatalog) {
+    input.setCatalogModels(initialScopeKey, cachedCatalog.models)
+    input.activateCatalogScope(initialScopeKey)
+
+    void getCodexModelCatalog({
+      accessToken: catalogAuth.accessToken,
+      accountId: catalogAuth.accountId,
+      ...catalogHeaders,
+      onEvent
+    })
+      .then((refreshedCatalog) => {
+        if (refreshedCatalog) input.setCatalogModels(initialScopeKey, refreshedCatalog)
+      })
+      .catch((error) => {
+        input.log?.debug("codex model catalog background refresh failed", {
+          error: error instanceof Error ? error.message : String(error)
+        })
+      })
+  } else {
+    const initialCatalog = await getCodexModelCatalog({
+      accessToken: catalogAuth.accessToken,
+      accountId: catalogAuth.accountId,
+      ...catalogHeaders,
+      onEvent
+    })
+    input.setCatalogModels(initialScopeKey, initialCatalog)
+    input.activateCatalogScope(initialScopeKey)
+  }
 
   return async (auth): Promise<CodexModelInfo[] | undefined> => {
     if (!auth.accessToken) return undefined

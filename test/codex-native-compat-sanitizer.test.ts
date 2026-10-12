@@ -80,6 +80,7 @@ async function loadPluginForAuth(authFile: MockAuthFile, pluginOpts?: PluginOpts
   }))
 
   vi.doMock("../lib/model-catalog", () => ({
+    getCachedCodexModelCatalog: vi.fn(async () => undefined),
     getCodexModelCatalog: vi.fn(async () => undefined),
     applyCodexCatalogToProviderModels: vi.fn(
       (input: { providerModels: Record<string, Record<string, unknown>> }) => input.providerModels

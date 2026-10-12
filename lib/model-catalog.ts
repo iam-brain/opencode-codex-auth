@@ -30,7 +30,11 @@ export {
   semverFromTag
 } from "./model-catalog/shared.js"
 
-export { getCodexModelCatalog } from "./model-catalog/catalog-fetch.js"
+export {
+  type CachedCodexModelCatalog,
+  getCachedCodexModelCatalog,
+  getCodexModelCatalog
+} from "./model-catalog/catalog-fetch.js"
 
 export {
   applyCodexCatalogToProviderModels,

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import authFixture from "./fixtures/auth-multi.json"
 
 const catalogSyncMocks = vi.hoisted(() => ({
+  getCachedCodexModelCatalog: vi.fn(
+    async (): Promise<{ models: Array<{ slug: string }>; stale: boolean } | undefined> => undefined
+  ),
   getCodexModelCatalog: vi.fn(),
   loadAuthStorage: vi.fn(async () => ({})),
   getOpenAIOAuthDomain: vi.fn(),
@@ -17,16 +21,116 @@ vi.doMock("../lib/rotation.js", () => ({
 }))
 
 vi.doMock("../lib/model-catalog.js", () => ({
+  getCachedCodexModelCatalog: catalogSyncMocks.getCachedCodexModelCatalog,
   getCodexModelCatalog: catalogSyncMocks.getCodexModelCatalog
 }))
 
 describe("catalog sync", () => {
   afterEach(() => {
     vi.resetModules()
+    catalogSyncMocks.getCachedCodexModelCatalog.mockReset()
+    catalogSyncMocks.getCachedCodexModelCatalog.mockResolvedValue(undefined)
     catalogSyncMocks.getCodexModelCatalog.mockReset()
     catalogSyncMocks.loadAuthStorage.mockReset()
     catalogSyncMocks.getOpenAIOAuthDomain.mockReset()
     catalogSyncMocks.selectAccount.mockReset()
+  })
+
+  it("returns cached models immediately and refreshes stale catalog in the background", async () => {
+    const account = authFixture.openai.accounts[0]
+    catalogSyncMocks.getOpenAIOAuthDomain.mockReturnValue({
+      strategy: "sticky",
+      activeIdentityKey: account.identityKey,
+      accounts: [account]
+    })
+    catalogSyncMocks.selectAccount.mockReturnValue({
+      ...account,
+      expires: Date.now() + 10_000
+    })
+    catalogSyncMocks.getCachedCodexModelCatalog.mockResolvedValue({
+      models: [{ slug: "gpt-5.3-codex" }],
+      stale: true
+    })
+
+    let resolveRefresh: ((models: Array<{ slug: string }>) => void) | undefined
+    catalogSyncMocks.getCodexModelCatalog.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRefresh = resolve
+      })
+    )
+
+    const { initializeCatalogSync } = await import("../lib/codex-native/catalog-sync.js")
+    const setCatalogModels = vi.fn()
+    const activateCatalogScope = vi.fn()
+
+    const initialization = initializeCatalogSync({
+      authMode: "native",
+      pidOffsetEnabled: false,
+      resolveCatalogHeaders: () => ({
+        originator: "opencode",
+        userAgent: "opencode/test",
+        clientVersion: "0.0.0",
+        versionHeader: "0.0.0"
+      }),
+      setCatalogModels,
+      activateCatalogScope
+    })
+
+    await expect(
+      Promise.race([
+        initialization.then(() => "ready"),
+        new Promise<string>((resolve) => setTimeout(() => resolve("blocked"), 50))
+      ])
+    ).resolves.toBe("ready")
+    expect(setCatalogModels).toHaveBeenNthCalledWith(1, `account:${account.accountId}`, [{ slug: "gpt-5.3-codex" }])
+    expect(activateCatalogScope).toHaveBeenCalledWith(`account:${account.accountId}`)
+
+    resolveRefresh?.([{ slug: "gpt-5.4-codex" }])
+    await vi.waitFor(() => {
+      expect(setCatalogModels).toHaveBeenNthCalledWith(2, `account:${account.accountId}`, [{ slug: "gpt-5.4-codex" }])
+    })
+    expect(activateCatalogScope).toHaveBeenCalledTimes(1)
+  })
+
+  it("contains background refresh failures after cached startup", async () => {
+    const account = authFixture.openai.accounts[0]
+    catalogSyncMocks.getOpenAIOAuthDomain.mockReturnValue({
+      strategy: "sticky",
+      activeIdentityKey: account.identityKey,
+      accounts: [account]
+    })
+    catalogSyncMocks.selectAccount.mockReturnValue({
+      ...account,
+      expires: Date.now() + 60_000
+    })
+    catalogSyncMocks.getCachedCodexModelCatalog.mockResolvedValue({
+      models: [{ slug: "gpt-5.3-codex" }],
+      stale: true
+    })
+    catalogSyncMocks.getCodexModelCatalog.mockRejectedValue(new Error("offline"))
+    const debug = vi.fn()
+    const setCatalogModels = vi.fn()
+    const activateCatalogScope = vi.fn()
+
+    const { initializeCatalogSync } = await import("../lib/codex-native/catalog-sync.js")
+    await initializeCatalogSync({
+      authMode: "codex",
+      pidOffsetEnabled: false,
+      resolveCatalogHeaders: () => ({
+        originator: "opencode",
+        userAgent: "ua",
+        clientVersion: "1.0.0",
+        versionHeader: "1.0.0"
+      }),
+      log: { debug, info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      setCatalogModels,
+      activateCatalogScope
+    })
+
+    await vi.waitFor(() =>
+      expect(debug).toHaveBeenCalledWith("codex model catalog background refresh failed", { error: "offline" })
+    )
+    expect(setCatalogModels).toHaveBeenCalledTimes(1)
   })
 
   it("bootstraps with selected auth candidate and applies refreshed catalogs", async () => {

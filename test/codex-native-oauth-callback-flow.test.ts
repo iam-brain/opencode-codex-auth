@@ -132,6 +132,7 @@ async function loadPluginForOAuthFlow(input: { mode: "native" | "codex"; spoofMo
   }))
 
   vi.doMock("../lib/model-catalog", () => ({
+    getCachedCodexModelCatalog: vi.fn(async () => undefined),
     getCodexModelCatalog: vi.fn(async () => undefined),
     applyCodexCatalogToProviderModels: vi.fn(
       (args: { providerModels: Record<string, unknown> }) => args.providerModels

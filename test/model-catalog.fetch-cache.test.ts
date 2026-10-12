@@ -4,15 +4,110 @@ import path from "node:path"
 
 import { describe, expect, it, vi } from "vitest"
 
-import { getCodexModelCatalog, githubModelsUrl, type CodexModelCatalogEvent } from "../lib/model-catalog"
+import {
+  getCachedCodexModelCatalog,
+  getCodexModelCatalog,
+  githubModelsUrl,
+  type CodexModelCatalogEvent
+} from "../lib/model-catalog"
 import { codexAuthModelsCachePath, codexModelsSharedCachePath } from "../lib/codex-cache-layout"
 import { readCatalogFromGitHubCache } from "../lib/model-catalog/cache-helpers"
+import authFixture from "./fixtures/auth-single.json"
 
 async function makeCacheDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "opencode-codex-auth-model-catalog-"))
 }
 
 describe("model catalog fetch and primary cache", () => {
+  it("reads and merges stale account cache without network I/O", async () => {
+    const cacheDir = await makeCacheDir()
+    const events: CodexModelCatalogEvent[] = []
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network request"))
+    try {
+      await fs.writeFile(
+        codexAuthModelsCachePath(cacheDir, authFixture.openai.accountId),
+        JSON.stringify({ fetchedAt: 100, models: [{ slug: "gpt-5.4-codex", context_window: 128_000 }] })
+      )
+      await fs.writeFile(
+        codexModelsSharedCachePath(cacheDir),
+        JSON.stringify({
+          fetchedAt: 100,
+          source: "github",
+          models: [{ slug: "gpt-5.4-codex", context_window: 256_000 }, { slug: "gpt-5.6-sol" }]
+        })
+      )
+
+      const cached = await getCachedCodexModelCatalog({
+        accountId: authFixture.openai.accountId,
+        cacheDir,
+        now: () => 100 + 16 * 60 * 1000,
+        onEvent: (event) => events.push(event)
+      })
+
+      expect(cached).toMatchObject({ stale: true })
+      expect(cached?.models.map((model) => model.slug)).toEqual(["gpt-5.4-codex", "gpt-5.6-sol"])
+      expect(cached?.models[0]?.context_window).toBe(128_000)
+      expect(events).toContainEqual(expect.objectContaining({ type: "stale_cache_used", reason: "startup_cache" }))
+      expect(fetchSpy).not.toHaveBeenCalled()
+    } finally {
+      fetchSpy.mockRestore()
+      await fs.rm(cacheDir, { recursive: true, force: true })
+    }
+  })
+
+  it("reports fresh account cache without requiring a GitHub fallback", async () => {
+    const cacheDir = await makeCacheDir()
+    const events: CodexModelCatalogEvent[] = []
+    try {
+      await fs.writeFile(
+        codexAuthModelsCachePath(cacheDir, authFixture.openai.accountId),
+        JSON.stringify({ fetchedAt: 100, models: [{ slug: "gpt-5.4-codex" }] })
+      )
+      const cached = await getCachedCodexModelCatalog({
+        accountId: authFixture.openai.accountId,
+        cacheDir,
+        now: () => 101,
+        onEvent: (event) => events.push(event)
+      })
+      expect(cached).toMatchObject({ stale: false, models: [{ slug: "gpt-5.4-codex" }] })
+      expect(events).toContainEqual(expect.objectContaining({ type: "disk_cache_hit", reason: "startup_cache" }))
+    } finally {
+      await fs.rm(cacheDir, { recursive: true, force: true })
+    }
+  })
+
+  it("uses only official GitHub cache when account cache is empty", async () => {
+    const cacheDir = await makeCacheDir()
+    try {
+      await fs.writeFile(
+        codexAuthModelsCachePath(cacheDir, authFixture.openai.accountId),
+        JSON.stringify({ fetchedAt: 100, models: [] })
+      )
+      await fs.writeFile(
+        codexModelsSharedCachePath(cacheDir),
+        JSON.stringify({ fetchedAt: 100, source: "github", models: [{ slug: "gpt-5.6-sol" }] })
+      )
+      const cached = await getCachedCodexModelCatalog({ accountId: authFixture.openai.accountId, cacheDir })
+      expect(cached).toMatchObject({
+        stale: true,
+        models: [{ slug: "gpt-5.6-sol", catalog_source: "github_fallback" }]
+      })
+    } finally {
+      await fs.rm(cacheDir, { recursive: true, force: true })
+    }
+  })
+
+  it("leaves cold startup to the fetch path when caches are absent", async () => {
+    const cacheDir = await makeCacheDir()
+    try {
+      await expect(
+        getCachedCodexModelCatalog({ accountId: authFixture.openai.accountId, cacheDir })
+      ).resolves.toBeUndefined()
+    } finally {
+      await fs.rm(cacheDir, { recursive: true, force: true })
+    }
+  })
+
   it("selects the GitHub catalog path at the models-manager migration boundary", () => {
     expect(githubModelsUrl("0.119.9")).toBe(
       "https://raw.githubusercontent.com/openai/codex/rust-v0.119.9/codex-rs/core/models.json"
