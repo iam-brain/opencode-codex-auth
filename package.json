@@ -101,5 +101,9 @@
   },
   "dependencies": {
     "proper-lockfile": "^4.1.2"
+  },
+  "overrides": {
+    "tinypool": "^2.2.0",
+    "toml": "^4.2.0"
   }
 }
