@@ -4,6 +4,39 @@ import process from "node:process"
 import { describe, expect, it, vi } from "vitest"
 import { __testOnly } from "../lib/codex-native"
 
+function clearTerminalEnv(): Record<string, string | undefined> {
+  const saved: Record<string, string | undefined> = {}
+  for (const key of [
+    "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
+    "TERM",
+    "WEZTERM_VERSION",
+    "TMUX",
+    "TMUX_PANE",
+    "ITERM_SESSION_ID",
+    "ITERM_PROFILE",
+    "ITERM_PROFILE_NAME",
+    "TERM_SESSION_ID",
+    "KITTY_WINDOW_ID",
+    "ALACRITTY_SOCKET",
+    "KONSOLE_VERSION",
+    "GNOME_TERMINAL_SCREEN",
+    "VTE_VERSION",
+    "WT_SESSION"
+  ]) {
+    saved[key] = process.env[key]
+    delete process.env[key]
+  }
+  return saved
+}
+
+function restoreTerminalEnv(saved: Record<string, string | undefined>): void {
+  for (const [key, value] of Object.entries(saved)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+}
+
 describe("codex-native user-agent parity", () => {
   it("builds codex-style user-agent format for codex_cli_rs", () => {
     const ua = __testOnly.buildCodexUserAgent("codex_cli_rs")
@@ -51,37 +84,14 @@ describe("codex-native user-agent parity", () => {
 
   it("falls back terminal token to unknown when terminal env is absent", async () => {
     vi.resetModules()
-    const saved: Record<string, string | undefined> = {
-      TERM_PROGRAM: process.env.TERM_PROGRAM,
-      TERM_PROGRAM_VERSION: process.env.TERM_PROGRAM_VERSION,
-      TERM: process.env.TERM,
-      WEZTERM_VERSION: process.env.WEZTERM_VERSION,
-      TMUX: process.env.TMUX,
-      TMUX_PANE: process.env.TMUX_PANE,
-      ITERM_SESSION_ID: process.env.ITERM_SESSION_ID,
-      ITERM_PROFILE: process.env.ITERM_PROFILE,
-      ITERM_PROFILE_NAME: process.env.ITERM_PROFILE_NAME,
-      TERM_SESSION_ID: process.env.TERM_SESSION_ID,
-      KITTY_WINDOW_ID: process.env.KITTY_WINDOW_ID,
-      ALACRITTY_SOCKET: process.env.ALACRITTY_SOCKET,
-      KONSOLE_VERSION: process.env.KONSOLE_VERSION,
-      GNOME_TERMINAL_SCREEN: process.env.GNOME_TERMINAL_SCREEN,
-      VTE_VERSION: process.env.VTE_VERSION,
-      WT_SESSION: process.env.WT_SESSION
-    }
+    const saved = clearTerminalEnv()
     try {
-      for (const key of Object.keys(saved)) {
-        delete process.env[key]
-      }
       const identity = await import("../lib/codex-native/client-identity")
       const ua = identity.buildCodexUserAgent("codex_exec")
       expect(ua.startsWith("codex_exec/")).toBe(true)
       expect(ua.endsWith(" unknown")).toBe(true)
     } finally {
-      for (const [key, value] of Object.entries(saved)) {
-        if (value === undefined) delete process.env[key]
-        else process.env[key] = value
-      }
+      restoreTerminalEnv(saved)
     }
   })
 
@@ -144,7 +154,7 @@ describe("codex-native user-agent parity", () => {
   it("falls back unknown architecture and platform labels when runtime values are empty", async () => {
     vi.resetModules()
     const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")
-    const originalTerm = process.env.TERM
+    const saved = clearTerminalEnv()
     const archSpy = vi.spyOn(os, "arch").mockReturnValue("")
     const releaseSpy = vi.spyOn(os, "release").mockReturnValue("5.11")
     try {
@@ -160,8 +170,7 @@ describe("codex-native user-agent parity", () => {
       if (originalPlatform) {
         Object.defineProperty(process, "platform", originalPlatform)
       }
-      if (originalTerm === undefined) delete process.env.TERM
-      else process.env.TERM = originalTerm
+      restoreTerminalEnv(saved)
     }
   })
 })
